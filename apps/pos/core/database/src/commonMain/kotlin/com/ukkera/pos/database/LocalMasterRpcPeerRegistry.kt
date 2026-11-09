@@ -6,6 +6,7 @@ import com.ukkera.pos.security.LocalAuthenticationEntropy
 import com.ukkera.pos.security.LocalAuthenticationEnvironment
 import com.ukkera.pos.security.LocalEmployeePrincipal
 import com.ukkera.pos.security.LocalGatewayCredentials
+import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.security.LocalSessionViewResult
 import com.ukkera.pos.security.TrustedPrincipalFactory
 import com.ukkera.pos.types.DomainId
@@ -170,7 +171,7 @@ internal class LocalMasterRpcPeerRegistry(
     internal fun bind(lifetime: LocalMasterRpcPeerRegistrationLifetime, trust: LocalMasterRpcTrust,
         appId: AppId, client: LocalMasterClient, principals: TrustedPrincipalFactory): LocalMasterRpcPeerRegistration {
         check(!denied.value && owner.operational && localPeer.isCurrent() && lifetime.isCurrent() && lifetime.cleanupScope.isActive &&
-            appId == owner.compositionProfile.appId(owner.originalScope))
+            appId == LocalMasterSdkProfileV1.appId(owner.originalScope))
         registration.value?.let { check(it.lifetime === lifetime); return it }
         val candidate = LocalMasterRpcPeerRegistration(this, lifetime, trust, appId, client, principals)
         check(registration.compareAndSet(null, candidate))

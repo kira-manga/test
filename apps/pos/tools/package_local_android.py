@@ -80,9 +80,7 @@ def signing_environment(initialize, keytool):
 
 
 def compile_candidate(offline, no_build_cache):
-    command = [str(APP / "gradlew"), ":apps:android:assembleLocalTesting", "--console=plain",
-        "--no-daemon", "--max-workers=2", "-Pkotlin.compiler.execution.strategy=in-process",
-        "-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m"]
+    command = [str(APP / "gradlew"), ":apps:android:assembleLocalTesting", "--console=plain"]
     if offline:
         command.append("--offline")
     if no_build_cache:

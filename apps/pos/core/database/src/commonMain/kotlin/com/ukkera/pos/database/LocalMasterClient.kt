@@ -41,20 +41,6 @@ public interface LocalMasterClient : LocalAuthenticationService {
 }
 
 /**
- * A transport that can defer its terminal Receipt until this exact recorded result has been
- * validated and durably retained. Returning from the callback is a durability promise, never
- * an authorization grant. A failed/cancelled callback must withhold Receipt and preserve the
- * original operation for current-authority lookup. Ordinary execute/lookup on such a transport
- * must withhold Receipt when no durable acceptance callback is supplied.
- */
-public interface LocalMasterClientResultAcceptance : LocalMasterClient {
-    public suspend fun executeAccepting(credentials: LocalGatewayCredentials, request: MutationRequest,
-        accept: suspend (MutationReply.Recorded) -> Unit): MutationReply
-    public suspend fun lookupAccepting(credentials: LocalGatewayCredentials, identity: OperationIdentity,
-        accept: suspend (MutationReply.Recorded) -> Unit): LookupReply
-}
-
-/**
  * Separately bound, protected management port of the SAME master/peer lifetime. An interface
  * or cast is not a grant: the service reauthenticates every directory/receipt/mutation request.
  * No company grant publication, additional-device pairing or recovery activation is implied.

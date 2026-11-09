@@ -225,7 +225,6 @@ private class ContinuationForbiddenStorage(private val world: ContinuationWorld)
 }
 
 private class ContinuationServices(private val harness: UnsignedPairingContinuationHarness) : LocalSetupNativeServices {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
     private val world get() = harness.world
     override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult = world.forbidden("open-provisioner")
     override suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult {
@@ -270,7 +269,6 @@ private class ContinuationMaster(private val context: SelfOwnedLocalSecurityCont
 }
 
 private class ContinuationTarget(private val harness: UnsignedPairingContinuationHarness) : LocalSetupFreshDeviceTarget {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
     private val world get() = harness.world
     override suspend fun original(): LocalSetupFreshDeviceTargetResult<LocalDevicePairingTargetReference> {
         world.read("target-original")

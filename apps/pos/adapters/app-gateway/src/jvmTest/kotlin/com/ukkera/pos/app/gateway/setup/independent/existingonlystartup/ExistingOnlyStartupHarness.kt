@@ -708,8 +708,6 @@ internal class ExistingOnlyStartupHarness(
     inner class ControlledContext(
         override val materialAtOpen: SelfOwnedNativeMaterialView,
     ) : SelfOwnedNativeContextController {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-            get() = com.ukkera.pos.security.LocalMasterSdkProfileV1
         var transferredMaster: LocalSetupMaster? = null
             set(value) {
                 field = value

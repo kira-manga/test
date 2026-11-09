@@ -59,8 +59,6 @@ public class AndroidEmployeeClientCustody internal constructor(
     public val originalRequestId: DomainId get() = native.request.requestId
     public val originalActionId: DomainId get() = native.originalActionId
     public val material: SelfOwnedNativeMaterialView get() = enrollment.original.material
-    public val compositionMode: com.ukkera.pos.security.LocalSetupCompositionMode
-        get() = enrollment.original.compositionMode
     public val serviceIncarnationId: DomainId get() = enrollment.original.serviceIncarnationId
     public fun isCurrent(): Boolean = service.ownsEmployeeClient(this)
     public fun belongsTo(application: Application): Boolean = enrollment.belongsTo(application) && isCurrent()

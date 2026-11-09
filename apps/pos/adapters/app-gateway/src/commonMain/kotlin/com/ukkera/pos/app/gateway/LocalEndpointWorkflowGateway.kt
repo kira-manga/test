@@ -29,7 +29,6 @@ import com.ukkera.pos.app.LocalWorkflowQuery
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.DeferredReason
 import com.ukkera.pos.database.LocalMasterClient
-import com.ukkera.pos.database.LocalMasterClientResultAcceptance
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.LocalMasterApprovalClient
 import com.ukkera.pos.database.LookupReply
@@ -672,7 +671,7 @@ public class LocalEndpointWorkflowGateway(
                             if (journal.markDispatched(request.operationId) != JournalWrite.DURABLE)
                                 throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
                             access.checkCurrent()
-                            when (val sent = access.execute(entry, request)) {
+                            when (val sent = endpoint.execute(access.lease.credentials, request)) {
                                 is MutationReply.Recorded -> sent
                                 is MutationReply.Deferred -> throw GatewayFailure(
                                     if (sent.operationId == request.operationId) problem(sent.reason) else LocalServiceProblem.STORAGE_UNCERTAIN)
@@ -968,7 +967,7 @@ public class LocalEndpointWorkflowGateway(
                             access.checkCurrent()
                             val original = continuation.request()
                             installed.requireMutation(continuation.localAction, original)
-                            when (val reply = access.execute(continuation, original)) {
+                            when (val reply = endpoint.execute(access.lease.credentials, original)) {
                                 is MutationReply.Recorded -> {
                                     // Retain the committed observation even if the UI became locked while awaiting it.
                                     if (matches(continuation, reply)) {
@@ -1147,20 +1146,6 @@ public class LocalEndpointWorkflowGateway(
         }
     }
 
-    /** Runs inside the official transport acceptance callback, before its terminal Receipt. */
-    private suspend fun retainForTransportReceipt(access: GatewayAccess, entry: StoredClientIntentV1,
-        reply: MutationReply.Recorded) {
-        access.checkCurrent()
-        if (!matches(entry, reply)) throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
-        validateRecordedResult(entry, reply)
-        val stored = StoredKernelResultV1.from(reply)
-        if (entry.recorded != null && entry.recorded != stored)
-            throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
-        if (journal.remember(entry.operationId, stored) != JournalWrite.DURABLE)
-            throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
-        access.checkCurrent()
-    }
-
     private suspend fun rememberRecorded(entry: StoredClientIntentV1, result: StoredKernelResultV1) {
         val retained = journal.remember(entry.operationId, result)
         // Restricted mutation result presentation/ACK requires a genuinely retained terminal result.
@@ -1221,7 +1206,7 @@ public class LocalEndpointWorkflowGateway(
             }
             if (view.actorId != journal.owner.actorId || view.scope != journal.owner.scope || view.deviceId != journal.owner.deviceId)
                 throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            val access = GatewayAccess(endpoint, lease, view, installed, actionApprovals != null, ::retainForTransportReceipt)
+            val access = GatewayAccess(endpoint, lease, view, installed, actionApprovals != null)
             val result = block(access)
             access.checkCurrent()
             return result
@@ -1235,7 +1220,6 @@ internal class GatewayAccess(
     val view: LocalSessionView,
     val installed: LocalWorkflowInstallation,
     val actionApprovalsBound: Boolean = false,
-    private val retainForReceipt: (suspend (GatewayAccess, StoredClientIntentV1, MutationReply.Recorded) -> Unit)? = null,
 ) {
     suspend fun checkCurrent() {
         currentCoroutineContext().ensureActive()
@@ -1254,21 +1238,8 @@ internal class GatewayAccess(
     suspend fun lookup(entry: StoredClientIntentV1): LookupReply {
         checkCurrent()
         requireOriginal(entry)
-        val retention = retainForReceipt
-        val result = if (endpoint is LocalMasterClientResultAcceptance && retention != null)
-            endpoint.lookupAccepting(lease.credentials, entry.identity()) { reply -> retention(this, entry, reply) }
-        else endpoint.lookup(lease.credentials, entry.identity())
+        val result = endpoint.lookup(lease.credentials, entry.identity())
         checkCurrent()
-        return result
-    }
-
-    suspend fun execute(entry: StoredClientIntentV1, request: MutationRequest): MutationReply {
-        checkCurrent()
-        requireOriginal(entry)
-        val retention = retainForReceipt
-        val result = if (endpoint is LocalMasterClientResultAcceptance && retention != null)
-            endpoint.executeAccepting(lease.credentials, request) { reply -> retention(this, entry, reply) }
-        else endpoint.execute(lease.credentials, request)
         return result
     }
 
@@ -1310,25 +1281,19 @@ internal class GatewayAccess(
     }
 
     /** Narrow audit transport used only by the typed begin/finish/lookup export adapter. */
-    suspend fun reportExportCommand(request: MutationRequest,
-        acceptRecorded: (suspend (MutationReply.Recorded) -> Unit)? = null): MutationReply {
+    suspend fun reportExportCommand(request: MutationRequest): MutationReply {
         checkCurrent()
         require(request.command == LocalBranchReportExportCodecV1.COMMAND && request.actionApprovalId == null)
         if (!installed.has(request.command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
-        val result = if (endpoint is LocalMasterClientResultAcceptance && acceptRecorded != null)
-            endpoint.executeAccepting(lease.credentials, request, acceptRecorded)
-        else endpoint.execute(lease.credentials, request)
+        val result = endpoint.execute(lease.credentials, request)
         checkCurrent()
         return result
     }
 
-    suspend fun reportExportOperation(identity: OperationIdentity,
-        acceptRecorded: (suspend (MutationReply.Recorded) -> Unit)? = null): LookupReply {
+    suspend fun reportExportOperation(identity: OperationIdentity): LookupReply {
         checkCurrent()
         if (!installed.has(LocalBranchReportExportCodecV1.COMMAND)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
-        val result = if (endpoint is LocalMasterClientResultAcceptance && acceptRecorded != null)
-            endpoint.lookupAccepting(lease.credentials, identity, acceptRecorded)
-        else endpoint.lookup(lease.credentials, identity)
+        val result = endpoint.lookup(lease.credentials, identity)
         checkCurrent()
         return result
     }

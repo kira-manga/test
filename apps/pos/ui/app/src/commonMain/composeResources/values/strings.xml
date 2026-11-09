@@ -78,8 +78,6 @@
     <string name="training_ar">للتدريب فقط</string>
     <string name="synthetic_banner_en">Sample data. Nothing is charged, printed or synchronized.</string>
     <string name="synthetic_banner_ar">بيانات تجريبية. لا دفع أو طباعة أو مزامنة.</string>
-    <string name="composition_training_banner_en">SYNTHETIC TRAINING - NOT LIVE. Separate local root, session and journals; never synchronized into live.</string>
-    <string name="composition_training_banner_ar">تدريب اصطناعي — ليس مباشرًا. جذر وجلسة ويوميات محلية منفصلة؛ لا تُزامن مع المباشر.</string>
     <string name="exit_training_en">Exit training</string>
     <string name="exit_training_ar">الخروج من التدريب</string>
     <string name="sign_out_en">Sign out</string>

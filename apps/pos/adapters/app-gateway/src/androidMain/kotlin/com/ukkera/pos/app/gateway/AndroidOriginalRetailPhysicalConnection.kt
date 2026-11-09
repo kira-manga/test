@@ -18,7 +18,6 @@ public object AndroidOriginalRetailPhysicalConnection {
         currentCoroutineContext().ensureActive()
         if (!original.belongsTo(application)) return null
         val gate = original.physicalRecordingGate() as? AndroidOriginalPhysicalJournalExecutionGate ?: return null
-        if (!gate.ownsComposition(original.compositionMode)) return null
         val selected = if (action == LocalOriginalClientJournalAction.ENROLL_FIRST_CLIENT)
             AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL else AndroidOriginalRetailPhysicalAction.REOPEN_EXISTING
         return try {

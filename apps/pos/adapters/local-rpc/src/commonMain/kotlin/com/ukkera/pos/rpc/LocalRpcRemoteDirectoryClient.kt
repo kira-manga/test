@@ -2,7 +2,6 @@ package com.ukkera.pos.rpc
 
 import com.ukkera.pos.database.DeferredReason
 import com.ukkera.pos.database.LocalMasterClient
-import com.ukkera.pos.database.LocalMasterClientResultAcceptance
 import com.ukkera.pos.database.LocalMasterEndpointHealth
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.LocalMasterRpcBusinessAccess
@@ -45,7 +44,7 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
     private val owner: LocalRpcOriginalClientOwner,
     internal val authentication: LocalRpcRemoteAuthenticationService,
     public val profile: LocalMasterRpcWorkflowProfile,
-) : LocalMasterClientResultAcceptance {
+) : LocalMasterClient {
     public val connectionId: DomainId get() = authentication.connectionId
     private val state = MutableStateFlow(LocalMasterEndpointHealth.ACTIVE)
     override public val health: StateFlow<LocalMasterEndpointHealth> = state.asStateFlow()
@@ -80,23 +79,7 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
             { ReadReply.Unavailable(ReadFailure.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.read(actual, request, actor) }
     }
 
-    override public suspend fun execute(credentials: LocalGatewayCredentials, request: MutationRequest): MutationReply =
-        executeOriginal(credentials, request, null)
-
-    override public suspend fun executeAccepting(credentials: LocalGatewayCredentials, request: MutationRequest,
-        accept: suspend (MutationReply.Recorded) -> Unit): MutationReply {
-        val caller = currentCoroutineContext()
-        return executeOriginal(credentials, request) { recorded ->
-            // The retained owner worker outlives abandoned delivery; it cannot make a
-            // cancelled caller's persistence promise on that worker's lifetime alone.
-            caller.ensureActive()
-            accept(recorded)
-            caller.ensureActive()
-        }
-    }
-
-    private suspend fun executeOriginal(credentials: LocalGatewayCredentials, request: MutationRequest,
-        accept: (suspend (MutationReply.Recorded) -> Unit)?): MutationReply {
+    override public suspend fun execute(credentials: LocalGatewayCredentials, request: MutationRequest): MutationReply {
         currentCoroutineContext().ensureActive()
         if (profile == LocalMasterRpcWorkflowProfile.REPORTS && !LocalMasterReportRpcKeysV1.accepts(request.command) ||
             profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && !LocalMasterStockTransferRpcKeysV1.accepts(request.command) ||
@@ -112,26 +95,13 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
             return MutationReply.Deferred(request.operationId, DeferredReason.UNKNOWN_COMMAND)
         return owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Execute(request, profile),
             { MutationReply.Deferred(request.operationId, DeferredReason.STORAGE_UNCERTAIN) },
-            { MutationReply.Deferred(request.operationId, DeferredReason.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.execute(actual, request, actor, accept) }
+            { MutationReply.Deferred(request.operationId, DeferredReason.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.execute(actual, request, actor) }
     }
 
     override public suspend fun lookup(credentials: LocalGatewayCredentials, identity: OperationIdentity): LookupReply =
-        lookupOriginal(credentials, identity, null)
-
-    override public suspend fun lookupAccepting(credentials: LocalGatewayCredentials, identity: OperationIdentity,
-        accept: suspend (MutationReply.Recorded) -> Unit): LookupReply {
-        val caller = currentCoroutineContext()
-        return lookupOriginal(credentials, identity) { recorded ->
-            caller.ensureActive()
-            accept(recorded)
-            caller.ensureActive()
-        }
-    }
-
-    private suspend fun lookupOriginal(credentials: LocalGatewayCredentials, identity: OperationIdentity,
-        accept: (suspend (MutationReply.Recorded) -> Unit)?): LookupReply = owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Lookup(identity, profile),
+        owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Lookup(identity, profile),
             { LookupReply.Deferred(identity.operationId, DeferredReason.STORAGE_UNCERTAIN) },
-            { LookupReply.Deferred(identity.operationId, DeferredReason.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.lookup(actual, identity, actor, accept) }
+            { LookupReply.Deferred(identity.operationId, DeferredReason.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.lookup(actual, identity, actor) }
 
     override fun toString(): String = "LocalRpcRemoteDirectoryClient([REDACTED])"
 }

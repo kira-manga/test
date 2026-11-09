@@ -73,9 +73,7 @@ public class LocalSetupFreshDeviceTargetInput(
     public fun matches(other: LocalSetupFreshDeviceTargetInput): Boolean = scope == other.scope &&
         describedCapabilities == other.describedCapabilities && appId == other.appId && deviceName == other.deviceName
     /** New-effect eligibility only; historical inputs remain readable without being relabeled. */
-    public val matchesBranchRpcNamespace: Boolean get() = matchesRpcNamespace(LocalMasterSdkProfileV1)
-    public fun matchesRpcNamespace(profile: com.ukkera.pos.security.LocalCompositionSdkProfileV1): Boolean =
-        appId == profile.appId(scope).value
+    public val matchesBranchRpcNamespace: Boolean get() = appId == LocalMasterSdkProfileV1.appId(scope).value
     override fun toString(): String = "LocalSetupFreshDeviceTargetInput([REDACTED])"
 }
 

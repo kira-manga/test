@@ -621,8 +621,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
     private fun requireInitialRecord(record: NativeHistoryAnchorRecordV2) {
         val original = record.masterSdkOriginal ?: uncertain()
         known(record.recordFormat==SelfOwnedNativeHistoryWireV2.MASTER_SDK_ORIGINAL_RECORD_FORMAT &&
-            original.compositionProfile == environment.profile.sdkProfile &&
-            original.exactDeviceName == original.compositionProfile.deviceName(record.allocation.coordinates.deviceId) &&
+            original.exactDeviceName == LocalMasterSdkProfileV1.deviceName(record.allocation.coordinates.deviceId) &&
             record.generation==1L && record.denialGeneration==0L && record.definition==null && record.database==null &&
             record.parent==null && record.pending==null && record.roleIntent==null && record.attempt==null &&
             record.retiredAttempts.isEmpty() && record.firstChild==null && record.receipt==null &&

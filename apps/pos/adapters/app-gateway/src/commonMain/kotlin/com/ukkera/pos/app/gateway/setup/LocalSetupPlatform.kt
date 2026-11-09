@@ -15,11 +15,7 @@ import com.ukkera.pos.security.LocalBranchInstallationDefinitionV2
 import com.ukkera.pos.security.LocalBranchInstallationSnapshotV2
 import com.ukkera.pos.security.LocalCompanyAuthorityResult
 import com.ukkera.pos.security.LocalCompanyAuthorityFailure
-import com.ukkera.pos.security.LocalCompositionSdkProfileV1
 import com.ukkera.pos.security.LocalCredentialAdministrationResult
-import com.ukkera.pos.security.LocalLoginIdentifier
-import com.ukkera.pos.security.LocalMasterLifecycleRequest
-import com.ukkera.pos.security.LocalMasterLifecycleResult
 import com.ukkera.pos.security.LocalDevicePairingAction
 import com.ukkera.pos.security.LocalDevicePairingApproval
 import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
@@ -58,11 +54,6 @@ import kotlinx.coroutines.flow.StateFlow
  * Client publication must reject handles not created by this same actual platform adapter.
  */
 public interface LocalSetupNativeServices {
-    /**
-     * Exact fixed composition profile of this concrete native stack. A missing declaration
-     * disables new pairing effects in every mode; no LIVE profile is inferred.
-     */
-    public val compositionProfile: LocalCompositionSdkProfileV1? get() = null
     public suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult
     public suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult
     /** A distinct fresh physical target, never the installation/cohost target above. */
@@ -72,9 +63,6 @@ public interface LocalSetupNativeServices {
     public suspend fun openOriginalFreshDeviceTarget(): LocalSetupFreshDeviceTargetOpenResult =
         LocalSetupFreshDeviceTargetOpenResult.Unresolved(SelfOwnedInstallationFailureV1.UNAVAILABLE)
     public suspend fun openMaster(context: SelfOwnedLocalSecurityContext): LocalSetupMasterOpenResult
-    /** Real installation-only native+Room owner for pre-start current-authority lifecycle work. */
-    public suspend fun openInstalledLifecycle(context: SelfOwnedLocalSecurityContext): LocalSetupLifecycleOpenResult =
-        LocalSetupLifecycleOpenResult.Unresolved(SelfOwnedInstallationFailureV1.UNAVAILABLE)
     public suspend fun openOriginalReceipt(context: SelfOwnedLocalSecurityContext): LocalMasterInstallationReceiptOpenResult
     public suspend fun connectClient(master: LocalSetupMaster, action: LocalOriginalClientJournalAction): LocalSetupClient?
     public fun ownsEmployeeConnection(connection: LocalSetupEmployeeConnection): Boolean
@@ -95,8 +83,6 @@ public interface LocalSetupNativeServices {
 
 /** Exact native target owner plumbing. Public descriptors and results remain DATA. */
 public interface LocalSetupFreshDeviceTarget {
-    /** Exact fixed profile of this native target; null is a non-live fail-closed no-claim. */
-    public val compositionProfile: LocalCompositionSdkProfileV1? get() = null
     public suspend fun original(): LocalSetupFreshDeviceTargetResult<LocalDevicePairingTargetReference>
     public suspend fun descriptor(): LocalSetupFreshDeviceTargetResult<LocalDevicePairingTargetDescriptor>
     public suspend fun acquireSdkIdentity(appId: AppId, deviceName: String): LocalSetupFreshDeviceTargetResult<LocalDevicePairingSdkIdentityV2>
@@ -166,30 +152,8 @@ public interface LocalSetupMaster {
         headSecret: CharArray, employeePassword: CharArray): LocalMasterInstallationOutcome
     public suspend fun resumeOriginalAcknowledgement(): LocalMasterInstallationOutcome
     public suspend fun readOriginalSetup(): LocalOriginalInstallationSetup
-    /** Explicit current-authority lifecycle action on this same operational owner. */
-    public suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult =
-        LocalMasterLifecycleResult.Unavailable
     public fun denyNewWork()
     public suspend fun quiesceAndClose(): Boolean
-}
-
-/**
- * Installation-only native+Room lifetime used before an operational endpoint exists. It exposes
- * no client, handler, RPC binding or business intake. Its only action is the authenticated
- * current-authority lifecycle ingress over the same protected owner/security.
- */
-public interface LocalSetupLifecycleMaster {
-    public val mode: StateFlow<LocalMasterLifecycleMode>
-    public suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult
-    public fun denyNewWork()
-    public suspend fun quiesceAndClose(): Boolean
-}
-
-public sealed interface LocalSetupLifecycleOpenResult {
-    public class Opened(public val lifecycle: LocalSetupLifecycleMaster) : LocalSetupLifecycleOpenResult
-    public data class Unresolved(public val reason: SelfOwnedInstallationFailureV1) : LocalSetupLifecycleOpenResult
 }
 
 public sealed interface LocalSetupMasterOpenResult {

@@ -108,7 +108,6 @@ import com.ukkera.pos.app.foodTableAssignmentUiRoute
 import com.ukkera.pos.app.UkkeraRuntime
 import com.ukkera.pos.app.navigation.AppArea
 import com.ukkera.pos.app.navigation.AppRoute
-import com.ukkera.pos.app.navigation.NavigationAction
 import com.ukkera.pos.app.navigation.NavigationToken
 import com.ukkera.pos.app.navigation.RouteRegistry
 
@@ -551,14 +550,6 @@ internal fun LocalWorkflowScreen(runtime: UkkeraRuntime, route: AppRoute, model:
                 }, if (paymentCorrectionsOnly) language.text(LocalText(
                     "Look up the original sale, select its payment and review linked historical classifications.",
                     "ابحث عن البيع الأصلي واختر دفعه وراجع التصنيفات التاريخية المرتبطة.")) else copy(Copy.LOCAL_WORKFLOW_HELP))
-                if (area == AppArea.SETUP && !warehouseOnly) OutlinedButton(
-                    onClick = { runtime.navigate(NavigationAction.Push(AppRoute.SetupClosure), token) },
-                    modifier = Modifier.touchTarget(),
-                ) {
-                    Text(language.text(LocalText(
-                        "Installed setup acknowledgement, checkpoints and go-live",
-                        "تأكيد الإعداد المثبت ونقاط التحقق وبدء العمل")))
-                }
                 if (paymentCorrectionsOnly) Notice(language.text(LocalText(
                     "Enter payment-correction:SALE_UUID, then select the original payment to review its history. The correction records a historical classification with exact original identifiers, amount, reason and evidence. Save and submit separately, then recover and acknowledge the original result. Current Master permission is required for every read and operation.",
                     "أدخل payment-correction:SALE_UUID ثم اختر الدفع الأصلي لمراجعة سجله. يسجل التصحيح تصنيفًا تاريخيًا بالمعرفات والمبلغ والسبب والإثبات الأصلية الدقيقة. احفظ وأرسل في خطوتين منفصلتين ثم استرد النتيجة الأصلية وأكد استلامها. تتطلب كل قراءة وعملية إذنًا حاليًا من الجهاز الرئيسي.")))

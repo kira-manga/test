@@ -28,7 +28,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         while (aliases.hasMoreElements()) {
             if (++count > 65_536) keyFailure()
             val value = aliases.nextElement()
-            if (value.startsWith(environment.profile.p2SigningPrefix) || value.startsWith(environment.profile.p2DataPrefix)) {
+            if (value.startsWith(SIGNING_PREFIX) || value.startsWith(DATA_PREFIX)) {
                 if (value !in allowed || !seen.add(value) || seen.size > 3) keyFailure()
             }
         }
@@ -355,12 +355,16 @@ internal class AndroidSelfOwnedInstallationSigning(
     private fun aliasFor(original: SelfOwnedNativeIntentV1, role: SelfOwnedTargetKeyRoleV1): String {
         val coordinates = original.source.preparationBody.coordinates
         return when (role) {
-            SelfOwnedTargetKeyRoleV1.TARGET_SIGNING -> "${environment.profile.p2SigningPrefix}${coordinates.installationId.value}.target.${coordinates.targetSigningKeyId.value}"
-            SelfOwnedTargetKeyRoleV1.STORAGE -> "${environment.profile.p2DataPrefix}${coordinates.installationId.value}/storage/${coordinates.storageKeyId.value}"
-            SelfOwnedTargetKeyRoleV1.PEPPER -> "${environment.profile.p2DataPrefix}${coordinates.installationId.value}/pepper/${coordinates.pepperKeyId.value}"
+            SelfOwnedTargetKeyRoleV1.TARGET_SIGNING -> "$SIGNING_PREFIX${coordinates.installationId.value}.target.${coordinates.targetSigningKeyId.value}"
+            SelfOwnedTargetKeyRoleV1.STORAGE -> "$DATA_PREFIX${coordinates.installationId.value}/storage/${coordinates.storageKeyId.value}"
+            SelfOwnedTargetKeyRoleV1.PEPPER -> "$DATA_PREFIX${coordinates.installationId.value}/pepper/${coordinates.pepperKeyId.value}"
         }
     }
     private fun guard() { work.requireActive(); environment.requireCurrent(); journal.intent(); work.requireActive() }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
 
+    companion object {
+        private const val SIGNING_PREFIX = "ukkera.self-owned.p2.v1."
+        private const val DATA_PREFIX = "ukkera.local.v1/"
+    }
 }

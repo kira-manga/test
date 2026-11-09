@@ -55,11 +55,9 @@ public object AndroidOriginalRetailPhysicalRecording {
         LocalOriginalPhysicalJournalBackend.awaitingOriginal(owner, Dispatchers.IO, Dispatchers.IO)
 
     public suspend fun acquire(application: Application, original: AndroidOriginalLocalClient,
-        backend: LocalOriginalPhysicalJournalBackend, action: AndroidOriginalRetailPhysicalAction,
-        composition: AndroidPhysicalCompositionNamespaceV1 = AndroidPhysicalCompositionNamespaceV1.LIVE): Boolean {
+        backend: LocalOriginalPhysicalJournalBackend, action: AndroidOriginalRetailPhysicalAction): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null ||
-            composition.mode != original.compositionMode) return false
+        if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null) return false
         val coordinates = original.material.coordinates
         val keySecurity = when (original.material.storageKeySecurity) {
             SelfOwnedStorageKeySecurity.SOFTWARE -> AndroidPhysicalSpoolKeySecurity.SOFTWARE
@@ -90,15 +88,14 @@ public object AndroidOriginalRetailPhysicalRecording {
             val enroll = action == AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL
             if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null ||
                 (enroll && !original.permitsFirstEnrollment())) return@installOriginalAndroidOwners false
-            val namespace = OriginalAndroidPhysicalNamespace(application, original, listOf(master, client), history,
-                enroll, composition)
+            val namespace = OriginalAndroidPhysicalNamespace(application, original, listOf(master, client), history, enroll)
             // Capture the preparation owner before its first mkdir/open/fsync. The same gate
             // mutex serializes master close, including cleanup of partial native acquisition.
             attempt.nativePreparation = namespace
             namespace.prepare()
             attempt.unreturnedNativeOwner = true
-            val first = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, master, keySecurity, composition)
-                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, master, keySecurity, composition)
+            val first = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, master, keySecurity)
+                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, master, keySecurity)
             if (first !is LocalPhysicalCatalogueOpen.Opened) {
                 if (first === LocalPhysicalCatalogueOpen.Busy) attempt.unreturnedNativeOwner = false
                 return@installOriginalAndroidOwners false
@@ -106,8 +103,8 @@ public object AndroidOriginalRetailPhysicalRecording {
             attempt.master = first.catalogue
             // The master is now captured; reserve this same uncertainty slot for the client.
             attempt.unreturnedNativeOwner = true
-            val second = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, client, keySecurity, composition)
-                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, client, keySecurity, composition)
+            val second = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, client, keySecurity)
+                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, client, keySecurity)
             if (second !is LocalPhysicalCatalogueOpen.Opened) {
                 if (second === LocalPhysicalCatalogueOpen.Busy) attempt.unreturnedNativeOwner = false
                 return@installOriginalAndroidOwners false
@@ -176,7 +173,6 @@ private class OriginalAndroidPhysicalNamespace(
     private val owners: List<LocalPhysicalCatalogueBinding>,
     private val employees: List<OriginalPhysicalEmployeeEnrollment>,
     private val enroll: Boolean,
-    private val composition: AndroidPhysicalCompositionNamespaceV1,
 ) : PhysicalJournalNativePreparation {
     private val uid = Process.myUid()
     private val pid = Process.myPid()
@@ -198,7 +194,7 @@ private class OriginalAndroidPhysicalNamespace(
         framework = parent
         // Deliberately do not call the creating noBackupFilesDir getter.
         hold(parent, OriginalPhysicalDirectoryRole.FRAMEWORK_NO_BACKUP)
-        val root = File(parent, composition.journalDirectoryName)
+        val root = File(parent, "physical-journal-v1")
         val installation = File(root, original.material.coordinates.installationId.value)
         if (enroll) {
             check(absent(installation))
@@ -232,8 +228,7 @@ private class OriginalAndroidPhysicalNamespace(
         requireCurrent()
         check(catalogue.binding in owners && catalogue.storageProfile == LocalPhysicalSpoolStorageProfileV1.ANDROID_API30_APP_PRIVATE_FALLOCATE_V1)
         val selectors = catalogue.retainedAllocationSelectors() ?: error("physical.original.catalogue")
-        check(selectors.size <= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES *
-            LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS && selectors.distinct().size == selectors.size)
+        check(selectors.size <= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES && selectors.distinct().size == selectors.size)
         val receipts = ArrayList<LocalPhysicalJournalReceipt>(selectors.size)
         for (id in selectors) {
             requireCurrent()
@@ -276,13 +271,13 @@ private class OriginalAndroidPhysicalNamespace(
             check(attempt.journals.remove(opened.journal))
             receipts.add(receipt)
         }
-        check(receipts.size == selectors.size)
-        val census = catalogue.nativeFileCensus()
+        val bySlot = receipts.associateBy { it.binding.slotIndex }
+        check(bySlot.size == receipts.size)
         val role = roleDirectory(catalogue.binding)
-        requireEntries(File(role, "anchor"), census.anchorFilenames)
-        requireEntries(File(role, "catalogue"), census.catalogueFilenames)
+        requireEntries(File(role, "anchor"), setOf(PhysicalNativeLayoutV1.ANCHOR.filename))
+        requireEntries(File(role, "catalogue"), setOf(PhysicalNativeLayoutV1.CATALOGUE.filename))
         for (index in 0 until LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) {
-            requireEntries(File(role, slotName(index)), census.journalFilenames[index] ?: emptySet())
+            requireEntries(File(role, slotName(index)), if (index in bySlot) setOf(PhysicalNativeLayoutV1.JOURNAL.filename) else emptySet())
         }
         if (enroll) check(receipts.isEmpty())
         requireCurrent()
@@ -291,7 +286,7 @@ private class OriginalAndroidPhysicalNamespace(
 
     private fun roleDirectory(owner: LocalPhysicalCatalogueBinding): File {
         val parent = checkNotNull(framework)
-        return File(File(File(File(parent, composition.journalDirectoryName), owner.installationId.value), owner.catalogueId.value), owner.role.name.lowercase())
+        return File(File(File(File(parent, "physical-journal-v1"), owner.installationId.value), owner.catalogueId.value), owner.role.name.lowercase())
     }
 
     private fun requireCurrent() {
@@ -299,7 +294,7 @@ private class OriginalAndroidPhysicalNamespace(
             Process.myUid() == uid && Process.myPid() == pid && uid == application.applicationInfo.uid &&
             application.applicationContext === application && !application.isDeviceProtectedStorage &&
             application.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0 && original.belongsTo(application) &&
-            composition.mode == original.compositionMode && (!enroll || original.permitsFirstEnrollment()))
+            (!enroll || original.permitsFirstEnrollment()))
         check(application.getSystemService(UserManager::class.java)?.isUserUnlocked == true)
         data?.let { check(application.dataDir.canonicalFile == it) }
         directories.values.forEach { it.requireCurrent(uid) }

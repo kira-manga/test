@@ -249,42 +249,6 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
         accountImages(images)
     }
 
-    /**
-     * Verify a MASTER_LIFECYCLE audit against this original's genuine chronological session,
-     * account, admission, policy and issuance evidence at the event cut. Non-null metadata is
-     * not authority: the active session/device/generation, access window, policy revision and
-     * MASTER_LIFECYCLE/ADMINISTER grant are all joined before returning true.
-     */
-    internal fun lifecycle(event: LocalAuthEvent, audit: LocalMasterLifecycleAudit): Boolean {
-        val deviceId = audit.deviceId ?: return false
-        val admissionRevision = audit.admissionRevision ?: return false
-        val sessionGeneration = audit.sessionGeneration ?: return false
-        val issuerContextId = audit.issuerContextId ?: return false
-        if (event.operatorId != actor || event.sessionId == null || event.accountRevision != account.state.revision ||
-            !account.state.enabled || account.credential == null || policy.revision != audit.policyRevision) return false
-        val session = account.state.sessions.singleOrNull {
-            it.sessionId == event.sessionId && it.status == SessionStatus.ACTIVE
-        } ?: return false
-        if (session.actorId != actor || session.scope != scope || session.deviceId != deviceId ||
-            session.generation != sessionGeneration ||
-            session.authenticationPurpose != AuthenticationPurpose.INTERACTIVE) return false
-        val device = authenticationAdmission(deviceId)
-        if (!device.admitted || device.revision != admissionRevision) return false
-        val access = issuances[session.sessionId]?.access ?: return false
-        if (access.actorId != actor || access.sessionId != session.sessionId || access.deviceId != deviceId ||
-            access.generation != sessionGeneration || access.admissionRevisionAtIssue != admissionRevision ||
-            access.credentialRevisionAtIssue != account.credentialRevision ||
-            access.issuerContextId != issuerContextId ||
-            event.at.bootId != access.issuedAt.bootId ||
-            event.at.elapsedMillis < access.issuedAt.elapsedMillis ||
-            event.at.elapsedMillis >= access.expiresAtElapsedMillis) return false
-        return AuthorizationEvaluator.historicalLocalEmployeeAllows(actor, scope, deviceId,
-            session.sessionId, sessionGeneration, admissionRevision, AuthenticationPurpose.INTERACTIVE,
-            audit.policyRevision, account.state.enabled, account.credential != null,
-            session.status == SessionStatus.ACTIVE, device.admitted, policy.grants,
-            runtimeLifecycleRequirement(scope, audit, event))
-    }
-
     private fun replaceAccount(next: LocalAccountSessionState, images: MutableList<RuntimeAuthenticationImageV1>) {
         account = ProtectedLocalAccount(next, account.credentialRevision, account.credential)
         images += image(ProtectedLocalRecordKey.Account(scope, actor), next.revision, ProtectedLocalSecurityCodec.encodeAccount(account))

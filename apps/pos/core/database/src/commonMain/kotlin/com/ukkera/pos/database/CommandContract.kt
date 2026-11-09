@@ -1,7 +1,6 @@
 package com.ukkera.pos.database
 
 import com.ukkera.pos.recovery.AuthorityIdentity
-import com.ukkera.pos.database.setup.SavedOriginalSetupV1
 import com.ukkera.pos.recovery.OperationIdentity
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.recovery.RecoveryResourceKind
@@ -116,13 +115,6 @@ public interface CommandReadView {
      * Partial, unsupported or invalid pairs fail closed as storage uncertainty.
      */
     public suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence?
-    /**
-     * Exact durable LIVE original installation binding observed on this borrowed writer, never a
-     * request-supplied original, caller readiness, cached projection or accepting default.
-     * Null means the actual current writer cannot produce the saved original binding; it is not
-     * authoritative absence of an installation and cannot authorize a replacement.
-     */
-    public suspend fun savedOriginalSetup(): SavedOriginalSetupV1? = null
 }
 
 public class AggregateChange(
@@ -247,12 +239,6 @@ public abstract class PreparedMutation {
         authorization: AuthorizedAction, recordedAt: UtcInstant,
     ): PhysicalRecordingAdmission? = null
     public abstract fun evaluate(authorization: AuthorizedAction, recordedAt: UtcInstant): ProposedOutcome
-}
-
-/** A trusted handler may further deny execute-replay when its live source has changed.
- * Explicit protected result recovery remains separate and retains the historical original. */
-public interface MasterRetainedResultGuard {
-    public suspend fun permitsRetainedResult(view: CommandReadView, result: StoredBytes): Boolean
 }
 
 public interface MasterCommandHandler {

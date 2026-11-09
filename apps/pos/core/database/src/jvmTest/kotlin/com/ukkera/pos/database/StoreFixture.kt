@@ -71,7 +71,7 @@ internal class StoreFixture(
     val path: Path = Files.createTempDirectory("ukkera-room-test-").resolve("master.db"),
     driver: SQLiteDriver = BundledSQLiteDriver(),
 ) {
-    val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize), driver)
+    val database = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize), driver)
     val handler = CounterHandler()
     var clockValue = TEST_TIME
     var writerVerification = RuntimeVerification.VERIFIED

@@ -27,7 +27,7 @@ internal data class SelfOwnedNativeNamespaceV1(
 ) {
     init {
         require(canonicalPath.length in 1..1024 && canonicalPath.startsWith('/') &&
-            SelfOwnedCompositionNames.isTargetPath(canonicalPath) && '\u0000' !in canonicalPath &&
+            canonicalPath.endsWith("/ukkera-self-owned-target-v1") && '\u0000' !in canonicalPath &&
             canonicalPath.split('/').none { it == "." || it == ".." })
         selfOwnedUtf16(canonicalPath)
         require(volumeUuid.length == 36 && volumeUuid.withIndex().all { (index, character) ->

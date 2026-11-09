@@ -17,8 +17,6 @@ public object LocalPhysicalJournalFormatV1 {
     public const val CELL_BYTES: Int = 32_768
     public const val JOURNAL_BYTES: Int = 262_144
     public const val CATALOGUE_ENTRIES: Int = 128
-    /** Bounded append-only successor generations; each keeps the immutable 128-slot geometry. */
-    public const val MAX_CATALOGUE_GENERATIONS: Int = 128
     public const val CATALOGUE_BYTES: Int = 4_227_072
     public const val ANCHOR_BYTES: Int = 32_768
     public const val MAX_REQUIREMENT_BYTES: Int = 8_192
@@ -52,30 +50,6 @@ internal enum class PhysicalNativeLayoutV1(val bytes: Int, val filename: String)
     CATALOGUE(LocalPhysicalJournalFormatV1.CATALOGUE_BYTES, "physical.catalogue-v1.enc"),
     ANCHOR(LocalPhysicalJournalFormatV1.ANCHOR_BYTES, "physical.catalogue-anchor-v1.enc");
 
-    /**
-     * Generation zero keeps the original exact leaf filename. A successor is a new immutable
-     * file in the SAME installer-owned leaf directory; it never rewrites, renames or reuses an
-     * older generation. The bounded suffix is canonical and closed.
-     */
-    fun generationFilename(generation: Int): String {
-        require(generation in 0 until LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-        if (generation == 0) return filename
-        require(this != LEGACY)
-        val suffix = generation.toString().padStart(4, '0')
-        return filename.removeSuffix(".enc") + ".g" + suffix + ".enc"
-    }
-
-    /** Returns the exact canonical generation for [name], or null for an unknown/torn name. */
-    fun generationOf(name: String): Int? {
-        if (name == filename) return 0
-        if (this == LEGACY || !name.startsWith(filename.removeSuffix(".enc") + ".g") || !name.endsWith(".enc")) return null
-        val digits = name.substring(filename.length - 2, name.length - 4)
-        if (digits.length != 4 || digits.any { it !in '0'..'9' }) return null
-        val generation = digits.toIntOrNull() ?: return null
-        if (generation !in 1 until LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS) return null
-        return generation.takeIf { generationFilename(it) == name }
-    }
-
     fun range(offset: Int, size: Int, writable: Boolean = false) {
         if (this == LEGACY) return physicalSpoolRange(offset, size, writable)
         check(size == LocalPhysicalJournalFormatV1.CELL_BYTES && offset >= 0 &&
@@ -89,18 +63,14 @@ internal class PhysicalNativeFileSpecV1(
     val keyId: DomainId,
     val segments: List<String>,
     val layout: PhysicalNativeLayoutV1,
-    val generation: Int = 0,
 ) {
     init {
         check(segments.size in 1..12 && segments.all { it.matches(Regex("[a-zA-Z0-9_-]{1,64}")) })
-        check(generation in 0 until LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-        check(layout != PhysicalNativeLayoutV1.LEGACY || generation == 0)
     }
-    val filename: String get() = layout.generationFilename(generation)
 }
 
 internal fun physicalJournalNativeSpec(owner: LocalPhysicalCatalogueBinding,
-    layout: PhysicalNativeLayoutV1, slot: Int? = null, generation: Int = 0): PhysicalNativeFileSpecV1 {
+    layout: PhysicalNativeLayoutV1, slot: Int? = null): PhysicalNativeFileSpecV1 {
     check(layout != PhysicalNativeLayoutV1.LEGACY)
     check((layout == PhysicalNativeLayoutV1.JOURNAL) == (slot != null))
     if (slot != null) check(slot in 0 until LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES)
@@ -111,8 +81,7 @@ internal fun physicalJournalNativeSpec(owner: LocalPhysicalCatalogueBinding,
         PhysicalNativeLayoutV1.LEGACY -> error("physical.journal.layout")
     }
     return PhysicalNativeFileSpecV1(owner.installationId, owner.keyId,
-        listOf("physical-journal-v1", owner.installationId.value, owner.catalogueId.value, owner.role.name.lowercase(), leaf),
-        layout, generation)
+        listOf("physical-journal-v1", owner.installationId.value, owner.catalogueId.value, owner.role.name.lowercase(), leaf), layout)
 }
 
 internal class PhysicalNativeOwnedFileV1(
@@ -130,14 +99,6 @@ internal sealed interface PhysicalNativeOpenV1 {
 /** Implemented only by the actual Android/JVM native factories in this module. */
 internal fun interface PhysicalJournalNativeFilesV1 {
     fun open(spec: PhysicalNativeFileSpecV1, expected: LocalPhysicalSpoolNativeIdentity?, create: Boolean): PhysicalNativeOpenV1
-
-    /**
-     * Exact no-follow listing of the already installed leaf directory that contains [spec]'s
-     * files, bound to the already opened original directory identity. Null means the native owner could not provide a trustworthy bounded observation.
-     * The result is untrusted metadata: every caller must authenticate each canonical generation
-     * file it selects. A listing is never an allocation permit or proof of absence.
-     */
-    fun list(spec: PhysicalNativeFileSpecV1, expectedDirectoryIdentity: String): List<String>? = null
 }
 
 internal class PhysicalJournalPlanV1(val binding: LocalPhysicalJournalBinding,

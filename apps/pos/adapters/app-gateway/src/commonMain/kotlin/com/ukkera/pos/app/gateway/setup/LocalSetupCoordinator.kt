@@ -43,14 +43,7 @@ import com.ukkera.pos.security.LocalDevicePairingProfileV1
 import com.ukkera.pos.security.LocalDevicePairingProfileV2
 import com.ukkera.pos.security.LocalDevicePairingReference
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
-import com.ukkera.pos.security.LocalCompositionSdkProfileV1
-import com.ukkera.pos.security.LocalLoginIdentifier
-import com.ukkera.pos.security.LocalMasterLifecycleAction
-import com.ukkera.pos.security.LocalMasterLifecycleDenial
-import com.ukkera.pos.security.LocalMasterLifecycleIntent
-import com.ukkera.pos.security.LocalMasterLifecycleReceipt
-import com.ukkera.pos.security.LocalMasterLifecycleRequest
-import com.ukkera.pos.security.LocalMasterLifecycleResult
+import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.security.LocalDevicePairingTargetPhase
 import com.ukkera.pos.security.LocalProvisioningStatus
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
@@ -133,15 +126,10 @@ public class LocalSetupCoordinator(
     private val deviceAdmissionIntents: LocalDeviceAdmissionIntents? = null,
     private val freshDevicePairingIntents: LocalFreshDevicePairingIntents? = null,
     private val pairingDocuments: LocalSetupPairingDocuments? = null,
-    /** Durable pre-dispatch lifecycle request identity; separate from launch bytes. */
-    private val lifecycleIntents: LocalMasterLifecycleIntentStore? = null,
-    /** Exact twelve-coordinate binding for the durable STOP projection. */
-    private val stopBindingIntents: LocalMasterLifecycleIntentStore? = null,
 ) : LocalSetupController {
     private val gate = LocalSetupMonitor()
     private val scope = CoroutineScope(SupervisorJob() + execution.dispatcher)
     private val published = MutableStateFlow(LocalSetupView())
-    override val compositionProfile: LocalCompositionSdkProfileV1? get() = services.compositionProfile
     override val state: StateFlow<LocalSetupView> = published.asStateFlow()
     private var view = LocalSetupView()
     private var native: OwnedNative? = null
@@ -321,8 +309,6 @@ public class LocalSetupCoordinator(
 
     override fun openOriginalFirstAccount() {
         start(LocalSetupWork.OPENING_ORIGINAL_INSTALLATION, FIRST_ACCOUNT_OPEN_PHASES) {
-            // Plain setup entry is not lifecycle authority. An explicitly authenticated,
-            // current-permission lifecycle action is the only path that may clear STOP.
             operation { openOriginalInstallation() }
         }
     }
@@ -372,418 +358,6 @@ public class LocalSetupCoordinator(
         }
     }
 
-    /**
-     * Explicit current-authority intentional STOP. The protected lifecycle audit commits before
-     * the existing STOP hint/close path is entered; a denied/unavailable action changes no
-     * launch hint and closes nothing. The single cached physical retirement remains in
-     * [requestRetirement].
-     */
-    override fun authenticateAndStopLocalMaster(login: String, password: CharArray) {
-        try {
-            start(LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_STOP, STOP_LIFECYCLE_PHASES) {
-                if (view.lifecycleStopPending) {
-                    val owned = password.copyOf()
-                    return@start operation(clear = { owned.fill('\u0000') }) {
-                        recoverRetainedStop(LocalLoginIdentifier(login), owned)
-                    }
-                }
-                val target = requireTarget()
-                val master = target.master ?: throw OriginalRequired()
-                requireOriginal(master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
-                val coordinates = target.context.materialAtOpen.coordinates
-                val owned = password.copyOf()
-                operation(clear = { owned.fill('\u0000') }) {
-                    if (lifecycleIntents == null) {
-                        change { it.copy(problem = LocalSetupProblem.NATIVE_UNAVAILABLE) }; return@operation
-                    }
-                    val intent = try {
-                        retainedLifecycleIntent(coordinates, LocalMasterLifecycleAction.STOP)
-                    } catch (_: Throwable) {
-                        fail(LocalSetupProblem.STATE_UNCERTAIN); return@operation
-                    }
-                    val result = master.authenticateAndApplyLifecycle(LocalLoginIdentifier(login), owned,
-                        intent.request)
-                    when (result) {
-                        is LocalMasterLifecycleResult.Committed -> {
-                            if (!matchesLifecycleReceipt(result.receipt, intent, coordinates)) {
-                                change { it.copy(problem = LocalSetupProblem.STATE_UNCERTAIN) }
-                                return@operation
-                            }
-                            // The exact original/receipt binding must be forced before STOP.
-                            try { retainStopBinding(coordinates, intent) } catch (_: Throwable) {
-                                change { it.copy(problem = LocalSetupProblem.STATE_UNCERTAIN) }
-                                return@operation
-                            }
-                            // An ordinary disposal may already be draining this admitted job.
-                            // Its cached close must still retain this committed STOP projection.
-                            beginRetirement(authenticatedStop = intent)
-                            // STOP is the terminal projection. Retire the request identity only
-                            // after that durable record is actually observed.
-                            if (launchRecord.read() == LocalMasterLaunchRecord.Read.Stopped) {
-                                clearLifecycleIntent(lifecycleIntents, intent)
-                            }
-                        }
-                        is LocalMasterLifecycleResult.Denied -> change {
-                            it.copy(problem = lifecycleProblem(result.reason))
-                        }
-                        LocalMasterLifecycleResult.Busy -> change { it.copy(problem = LocalSetupProblem.BUSY) }
-                        LocalMasterLifecycleResult.Unavailable -> change { it.copy(problem = LocalSetupProblem.NATIVE_UNAVAILABLE) }
-                        LocalMasterLifecycleResult.StorageUncertain -> change { it.copy(problem = LocalSetupProblem.STATE_UNCERTAIN) }
-                    }
-                }
-            }
-        } finally { password.fill('\u0000') }
-    }
-
-    /**
-     * Explicit same-original RESUME from a durable STOP. It opens the real installation-only
-     * native+Room owner, authenticates the current employee through that same protected
-     * security, and commits the lifecycle audit before any RUN clear. Only a confirmed close
-     * of that pre-start owner, a forced RUN write/readback and the normal all-coordinate native
-     * checks may open the operational endpoint and publish its client. No endpoint is opened
-     * merely to relabel it stopped, and crash before the RUN clear leaves STOP in force.
-     */
-    override fun authenticateAndResumeLocalMaster(login: String, password: CharArray) {
-        try {
-            start(LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_RESUME, RESUME_LIFECYCLE_PHASES) {
-                val owned = password.copyOf()
-                operation(clear = { owned.fill('\u0000') }) {
-                    if (launchRecord.read() != LocalMasterLaunchRecord.Read.Stopped) {
-                        fail(LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE); return@operation
-                    }
-                    val owner = acquireTarget(preparation = false) ?: return@operation
-                    if (!continueWork() || !readNative(owner)) return@operation
-                    val coordinates = owner.context.materialAtOpen.coordinates
-                    val stopBinding = try {
-                        verifiedStopBinding(coordinates)
-                    } catch (_: UnsupportedStopBinding) {
-                        closeNativeOwner(owner)
-                        if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STOP_BINDING_UNSUPPORTED)
-                        return@operation
-                    } catch (_: Throwable) {
-                        closeNativeOwner(owner)
-                        if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN)
-                        return@operation
-                    }
-                    val intent = if (lifecycleIntents == null) null else try {
-                        retainedLifecycleIntent(coordinates, LocalMasterLifecycleAction.RESUME)
-                    } catch (_: Throwable) { null }
-                    if (intent == null) {
-                        closeNativeOwner(owner)
-                        if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN)
-                        return@operation
-                    }
-                    // Durable request identity/action/original binding is retained BEFORE the
-                    // pre-start owner or authentication can produce any lifecycle side effect.
-                    val opened = try {
-                        services.openInstalledLifecycle(owner.context)
-                    } catch (failure: Throwable) {
-                        withSetupLock(gate) { owner.settleFailedLifecycleAttachment() }
-                        throw failure
-                    }
-                    when (opened) {
-                        is LocalSetupLifecycleOpenResult.Opened -> {
-                            owner.attachLifecycle(opened.lifecycle)
-                            retainNative(owner)
-                        }
-                        is LocalSetupLifecycleOpenResult.Unresolved -> {
-                            withSetupLock(gate) { owner.settleFailedLifecycleAttachment() }
-                            acquisitionFailure(opened.reason)
-                            return@operation
-                        }
-                    }
-                    if (!continueWork()) return@operation
-                    val lifecycle = checkNotNull(owner.lifecycle)
-                    val request = intent.request
-                    val result = lifecycle.authenticateAndApplyLifecycle(LocalLoginIdentifier(login), owned, request)
-                    when (result) {
-                        is LocalMasterLifecycleResult.Committed -> {
-                            val receipt = result.receipt
-                            if (!matchesLifecycleReceipt(receipt, intent, coordinates)) {
-                                closeNativeOwner(owner)
-                                if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN)
-                                return@operation
-                            }
-                            // A concurrent stop/clear change wins over this stale resume attempt.
-                            if (launchRecord.read() != LocalMasterLaunchRecord.Read.Stopped) {
-                                closeNativeOwner(owner)
-                                if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN)
-                                return@operation
-                            }
-                            // The pre-start owner must really close before RUN/operational start.
-                            closeNativeOwner(owner)
-                            if (!continueWork()) return@operation
-                            try { launchRecord.retainRunning(coordinates) } catch (_: Exception) {
-                                lifecycleResumeFailure(LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE); return@operation
-                            }
-                            val running = launchRecord.read()
-                            if (running !is LocalMasterLaunchRecord.Read.Running || !running.matches(coordinates)) {
-                                lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN); return@operation
-                            }
-                            // Clear the retained intent only after the forced RUN readback.
-                            clearLifecycleIntent(lifecycleIntents, intent)
-                            clearLifecycleIntent(stopBindingIntents, stopBinding)
-                            change { it.copy(lifecycleStopped = false) }
-                            if (!continueWork()) return@operation
-                            openOriginalInstallation(keepPendingOwner = false, expectedLaunch = running)
-                            if (!continueWork()) return@operation
-                            val target = withSetupLock(gate) { native as? Target } ?: return@operation
-                            val master = target.master ?: return@operation
-                            val current = launchRecord.read()
-                            if (master.mode.value != LocalMasterLifecycleMode.OPERATIONAL || target.localClient != null ||
-                                current !is LocalMasterLaunchRecord.Read.Running ||
-                                !current.matches(target.context.materialAtOpen.coordinates)) {
-                                change { it.copy(problem = LocalSetupProblem.RUNTIME_PUBLICATION_HELD) }
-                                return@operation
-                            }
-                            beforeClientHosting()
-                            attachOriginalClient(target, master, LocalOriginalClientJournalAction.REOPEN_EXISTING,
-                                automatic = true)
-                        }
-                        is LocalMasterLifecycleResult.Denied -> {
-                            closeNativeOwner(owner)
-                            if (continueWork()) lifecycleResumeFailure(lifecycleProblem(result.reason))
-                        }
-                        LocalMasterLifecycleResult.Busy -> {
-                            closeNativeOwner(owner)
-                            if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.BUSY)
-                        }
-                        LocalMasterLifecycleResult.Unavailable -> {
-                            closeNativeOwner(owner)
-                            if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.NATIVE_UNAVAILABLE)
-                        }
-                        LocalMasterLifecycleResult.StorageUncertain -> {
-                            closeNativeOwner(owner)
-                            if (continueWork()) lifecycleResumeFailure(LocalSetupProblem.STATE_UNCERTAIN)
-                        }
-                    }
-                }
-            }
-        } finally { password.fill('\u0000') }
-    }
-
-    private fun lifecycleProblem(reason: LocalMasterLifecycleDenial): LocalSetupProblem = when (reason) {
-        LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED -> LocalSetupProblem.AUTHENTICATION_REFUSED
-        LocalMasterLifecycleDenial.NOT_AUTHORIZED -> LocalSetupProblem.ORIGINAL_ACTION_REQUIRED
-        LocalMasterLifecycleDenial.WRONG_STATE -> LocalSetupProblem.RUNTIME_PUBLICATION_HELD
-        LocalMasterLifecycleDenial.IDENTITY_CONFLICT -> LocalSetupProblem.STATE_UNCERTAIN
-        LocalMasterLifecycleDenial.SERVICE_BUSY -> LocalSetupProblem.BUSY
-    }
-
-    private fun matchesLifecycleReceipt(receipt: LocalMasterLifecycleReceipt,
-        intent: LocalMasterLifecycleIntent, coordinates: SelfOwnedAllocationCoordinatesV1): Boolean =
-        intent.matches(coordinates, intent.request) && receipt.eventId == intent.request.requestId &&
-            receipt.action == intent.request.action && receipt.installationId == coordinates.installationId &&
-            receipt.coordinatesDigest == intent.coordinatesDigest && receipt.requestDigest == intent.requestDigest
-
-    /** No fresh request ID, creating factory or operational endpoint is used in this path. */
-    private suspend fun recoverRetainedStop(login: LocalLoginIdentifier, password: CharArray) {
-        val store = lifecycleIntents ?: return pendingLifecycleStop(LocalSetupProblem.NATIVE_UNAVAILABLE)
-        val read = try { readLifecycleStore(store) }
-        catch (_: Throwable) { return pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN) }
-        val intent = when (val retained = read) {
-            is LocalMasterLifecycleIntentRead.Retained -> retained.intent
-            else -> return pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN)
-        }
-        val running = launchRecord.read() as? LocalMasterLaunchRecord.Read.Running
-            ?: return pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN)
-        if (intent.request.action != LocalMasterLifecycleAction.STOP)
-            return pendingLifecycleStop(LocalSetupProblem.ORIGINAL_ACTION_REQUIRED)
-        withSetupLock(gate) { native }?.let { closeNativeOwner(it) }
-        if (!continueWork()) return
-        val owner = acquireTarget(preparation = false) ?: return
-        if (!continueWork() || !readNative(owner)) return
-        val coordinates = owner.context.materialAtOpen.coordinates
-        if (!running.matches(coordinates) || !intent.matches(coordinates, intent.request)) {
-            closeNativeOwner(owner)
-            pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN)
-            return
-        }
-        val opened = try { services.openInstalledLifecycle(owner.context) }
-        catch (failure: Throwable) {
-            withSetupLock(gate) { owner.settleFailedLifecycleAttachment() }
-            throw failure
-        }
-        when (opened) {
-            is LocalSetupLifecycleOpenResult.Opened -> {
-                owner.attachLifecycle(opened.lifecycle)
-                retainNative(owner)
-            }
-            is LocalSetupLifecycleOpenResult.Unresolved -> {
-                withSetupLock(gate) { owner.settleFailedLifecycleAttachment() }
-                acquisitionFailure(opened.reason)
-                return
-            }
-        }
-        if (!continueWork()) return
-        val result = checkNotNull(owner.lifecycle).authenticateAndApplyLifecycle(login, password, intent.request)
-        if (result is LocalMasterLifecycleResult.Committed) {
-            if (!matchesLifecycleReceipt(result.receipt, intent, coordinates) ||
-                (launchRecord.read() as? LocalMasterLaunchRecord.Read.Running)?.matches(coordinates) != true) {
-                closeNativeOwner(owner)
-                pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN)
-                return
-            }
-            try { retainStopBinding(coordinates, intent) }
-            catch (_: Throwable) {
-                closeNativeOwner(owner)
-                pendingLifecycleStop(LocalSetupProblem.STATE_UNCERTAIN)
-                return
-            }
-            beginRetirement(authenticatedStop = intent)
-            if (launchRecord.read() == LocalMasterLaunchRecord.Read.Stopped) clearLifecycleIntent(store, intent)
-            return
-        }
-        closeNativeOwner(owner)
-        if (!continueWork()) return
-        pendingLifecycleStop(when (result) {
-            is LocalMasterLifecycleResult.Denied -> lifecycleProblem(result.reason)
-            LocalMasterLifecycleResult.Busy -> LocalSetupProblem.BUSY
-            LocalMasterLifecycleResult.Unavailable -> LocalSetupProblem.NATIVE_UNAVAILABLE
-            LocalMasterLifecycleResult.StorageUncertain -> LocalSetupProblem.STATE_UNCERTAIN
-            is LocalMasterLifecycleResult.Committed -> LocalSetupProblem.STATE_UNCERTAIN
-        })
-    }
-
-    private fun pendingLifecycleStop(problem: LocalSetupProblem) = change {
-        LocalSetupView(phase = LocalSetupPhase.ORIGINAL_UNRESOLVED, work = it.work,
-            problem = problem, lifecycleStopPending = true)
-    }
-
-    /** Ordinary startup observes intent bytes; interrupted-write settlement is explicit only. */
-    private fun lifecycleAllowsStartup(coordinates: SelfOwnedAllocationCoordinatesV1): Boolean {
-        val store = lifecycleIntents ?: return true
-        val read = try { store.read() } catch (_: Throwable) { LocalMasterLifecycleIntentRead.Unresolved }
-        if (read == LocalMasterLifecycleIntentRead.Absent) return true
-        if (read is LocalMasterLifecycleIntentRead.Retained &&
-            read.intent.matches(coordinates, read.intent.request) &&
-            read.intent.request.action == LocalMasterLifecycleAction.RESUME &&
-            (launchRecord.read() as? LocalMasterLaunchRecord.Read.Running)?.matches(coordinates) == true) {
-            // A forced matching RUN is already the terminal projection of this exact request.
-            clearLifecycleIntent(store, read.intent)
-            return true
-        }
-        pendingLifecycleStop(LocalSetupProblem.ORIGINAL_ACTION_REQUIRED)
-        return false
-    }
-
-    /** A failed resume attempt exposes only the still-durable STOP posture, never a RUN claim. */
-    private fun lifecycleResumeFailure(problem: LocalSetupProblem) = change {
-        LocalSetupView(work = it.work, locked = it.locked, problem = problem, lifecycleStopped = true)
-    }
-
-    /**
-     * Reads the retained request identity before any auth/dispatch. It reuses the exact same
-     * ID/action/original binding after process loss; a stale intent is cleared only when its
-     * own terminal launch projection is already durable. Foreign, malformed or unresolved
-     * records throw and therefore dispatch nothing.
-     */
-    private fun readLifecycleStore(store: LocalMasterLifecycleIntentStore): LocalMasterLifecycleIntentRead =
-        when (val read = store.read()) {
-            LocalMasterLifecycleIntentRead.Unresolved -> store.settleInterruptedWrite()
-            else -> read
-        }
-
-    private fun retainedLifecycleIntent(coordinates: SelfOwnedAllocationCoordinatesV1,
-        action: LocalMasterLifecycleAction): LocalMasterLifecycleIntent {
-        val store = checkNotNull(lifecycleIntents) { "Lifecycle intent storage is unavailable" }
-        val retained = when (val read = readLifecycleStore(store)) {
-            is LocalMasterLifecycleIntentRead.Retained -> read.intent
-            LocalMasterLifecycleIntentRead.Absent -> null
-            LocalMasterLifecycleIntentRead.Unresolved -> error("Lifecycle intent is unresolved")
-        }
-        if (retained != null) {
-            check(retained.matches(coordinates, retained.request)) {
-                "The retained lifecycle intent is not bound to this original"
-            }
-            val projection = launchRecord.read()
-            val terminal = when (retained.request.action) {
-                LocalMasterLifecycleAction.STOP -> projection == LocalMasterLaunchRecord.Read.Stopped
-                LocalMasterLifecycleAction.RESUME ->
-                    projection is LocalMasterLaunchRecord.Read.Running &&
-                        retained.installationId == coordinates.installationId &&
-                        projection.matches(coordinates)
-            }
-            if (terminal) {
-                store.clear()
-            } else {
-                check(retained.request.action == action) {
-                    "A different lifecycle intent is already retained"
-                }
-                return retained
-            }
-        }
-        val fresh = LocalMasterLifecycleIntent.create(coordinates,
-            LocalMasterLifecycleRequest(DomainId.random(), action))
-        return store.retain(fresh)
-    }
-
-    /** Retirement is attempted only after the caller observed the terminal launch projection. */
-    private fun clearLifecycleIntent(store: LocalMasterLifecycleIntentStore?,
-        retained: LocalMasterLifecycleIntent) {
-        if (store == null) return
-        try {
-            val current = readLifecycleStore(store)
-            if (current is LocalMasterLifecycleIntentRead.Retained &&
-                current.intent.request.requestId == retained.request.requestId &&
-                current.intent.request.action == retained.request.action &&
-                current.intent.requestDigest == retained.requestDigest) {
-                store.clear()
-            }
-        } catch (_: Throwable) {
-            // The launch projection is already terminal. A retained record is reconciled only
-            // after re-observing that same projection, never cleared on an uncertain read.
-        }
-    }
-
-    /**
-     * Persist the exact STOP receipt/original binding before the launch STOP is allowed to be
-     * written. A different prior binding is retired only when RUN is already the durable
-     * projection (its STOP is no longer active).
-     */
-    private fun retainStopBinding(coordinates: SelfOwnedAllocationCoordinatesV1,
-        intent: LocalMasterLifecycleIntent): LocalMasterLifecycleIntent {
-        val store = checkNotNull(stopBindingIntents) { "STOP binding storage is unavailable" }
-        check(intent.request.action == LocalMasterLifecycleAction.STOP &&
-            intent.matches(coordinates, intent.request)) { "STOP binding intent differs from this original" }
-        val retained = when (val read = readLifecycleStore(store)) {
-            is LocalMasterLifecycleIntentRead.Retained -> read.intent
-            LocalMasterLifecycleIntentRead.Absent -> null
-            LocalMasterLifecycleIntentRead.Unresolved -> error("STOP binding is unresolved")
-        }
-        if (retained != null) {
-            check(retained.request.action == LocalMasterLifecycleAction.STOP &&
-                retained.matches(coordinates, retained.request)) { "STOP binding differs from this original" }
-            if (retained.request.requestId == intent.request.requestId &&
-                retained.requestDigest == intent.requestDigest) return retained
-            val running = launchRecord.read()
-            check(running is LocalMasterLaunchRecord.Read.Running && running.matches(coordinates)) {
-                "A different STOP binding is retained without a matching RUN projection"
-            }
-            store.clear()
-        }
-        return store.retain(intent)
-    }
-
-    /**
-     * Verify the exact STOP binding before any pre-start authentication. An old STOP record
-     * without this binding is explicitly unsupported, never treated as a same-original grant.
-     */
-    private fun verifiedStopBinding(coordinates: SelfOwnedAllocationCoordinatesV1): LocalMasterLifecycleIntent {
-        val store = checkNotNull(stopBindingIntents) { "STOP binding storage is unavailable" }
-        val retained = when (val read = readLifecycleStore(store)) {
-            is LocalMasterLifecycleIntentRead.Retained -> read.intent
-            LocalMasterLifecycleIntentRead.Absent -> throw UnsupportedStopBinding()
-            LocalMasterLifecycleIntentRead.Unresolved -> error("STOP binding is unresolved")
-        }
-        check(retained.request.action == LocalMasterLifecycleAction.STOP &&
-            retained.matches(coordinates, retained.request) &&
-            retained.installationId == coordinates.installationId) { "STOP binding differs from this original" }
-        return retained
-    }
-
-    private class UnsupportedStopBinding : RuntimeException()
-
     override fun enrollOriginalLocalClient(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.ENROLL_FIRST_CLIENT)
     override fun continueOriginalLocalClientEnrollment(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.CONTINUE_FIRST_CLIENT)
     override fun reconnectOriginalLocalClient(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.REOPEN_EXISTING)
@@ -801,10 +375,10 @@ public class LocalSetupCoordinator(
                 when (val retained = launchRecord.read()) {
                     LocalMasterLaunchRecord.Read.Absent -> Unit // Fresh installation: no native open.
                     LocalMasterLaunchRecord.Read.Stopped -> change {
-                        it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED, lifecycleStopped = true)
+                        it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED)
                     }
                     LocalMasterLaunchRecord.Read.Unresolved -> change {
-                        it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE, lifecycleStopped = false)
+                        it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE)
                     }
                     is LocalMasterLaunchRecord.Read.Running -> {
                         lockPresentation() // Backend startup does not unlock private setup or employee UI.
@@ -835,18 +409,10 @@ public class LocalSetupCoordinator(
 
     private suspend fun attachOriginalClient(target: Target, master: LocalSetupMaster,
         action: LocalOriginalClientJournalAction, automatic: Boolean) {
-        val admissionRefusal = withSetupLock(gate) {
+        withSetupLock(gate) {
             requireOriginal(!retiring && native === target && !acquisitionCloseUnobserved)
-            val problem = launchProblem(launchRecord.read(), target.context.materialAtOpen.coordinates,
-                allowAbsent = !automatic)
-            if (problem != null) return@withSetupLock problem
             target.beginClientAttachment()
             acquisitionCloseUnobserved = true
-            null
-        }
-        if (admissionRefusal != null) {
-            refuseLaunch(admissionRefusal)
-            return
         }
         // A throw settles this call but not native custody: a partial native Client may exist
         // while no public handle was returned. Record the settled-unknown state; never retry,
@@ -868,24 +434,18 @@ public class LocalSetupCoordinator(
                 problem = LocalSetupProblem.CLIENT_JOURNAL_UNAVAILABLE) }
             return
         }
-        val publicationRefusal = withSetupLock(gate) {
+        withSetupLock(gate) {
             requireOriginal(!retiring && native === target && client.isCurrent())
             val coordinates = target.context.materialAtOpen.coordinates
-            val retained = launchRecord.read()
-            val problem = launchProblem(retained, coordinates, allowAbsent = !automatic)
-            if (problem != null) return@withSetupLock problem
-            if (retained == LocalMasterLaunchRecord.Read.Absent) launchRecord.retainRunning(coordinates)
+            if (automatic) requireOriginal((launchRecord.read() as? LocalMasterLaunchRecord.Read.Running)
+                ?.matches(coordinates) == true)
+            else launchRecord.retainRunning(coordinates)
             // Saving a launch hint cannot make an expired/native-held runtime usable.
             requireOriginal(!retiring && client.isCurrent() && master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
             services.publishClient(target, client)
             view = view.copy(localClientConnected = true, firstClientEnrollmentAvailable = false,
                 firstClientEnrollmentContinuationAvailable = false, problem = null)
             publishLocked()
-            null
-        }
-        if (publicationRefusal != null) {
-            refuseLaunch(publicationRefusal)
-            return
         }
         watchOriginalClient(target, master)
     }
@@ -956,7 +516,7 @@ public class LocalSetupCoordinator(
             val verified = original.verifiedMaster ?: throw OriginalRequired()
             requireOriginal(freshTargetOriginal === original && verified.originalPairingActionId == actionId &&
                 original.identity != null && original.possession != null && !original.continuationAttempted)
-            requireFreshRpcNamespace(requireNotNull(original.identity), targetCompositionProfile(target.value))
+            requireFreshRpcNamespace(requireNotNull(original.identity))
             val retained = lanAttachment
             requireOriginal(retained == null && freshTargetCurrent(target, original) || retained is LanClient &&
                 retained.owner === target && retained.original === original && retained.actionId == actionId &&
@@ -1579,7 +1139,7 @@ public class LocalSetupCoordinator(
                 view.freshDevicePairing?.stage in setOf(LocalSetupFreshDevicePairingStage.TARGET_INPUT,
                     LocalSetupFreshDevicePairingStage.TARGET_INPUT_REVIEW) && !original.preparationEntered && original.record == null)
             val copied = LocalSetupFreshDeviceTargetInput(input.scope, input.capabilities, input.appId, input.deviceName)
-            requireOriginal(matchesReviewedTargetNamespace(copied))
+            requireOriginal(copied.matchesBranchRpcNamespace)
             operation {
                 requireOriginal(requireFreshPairingJournal().target() == null)
                 original.intentId = DomainId.random(); original.input = copied
@@ -1595,7 +1155,7 @@ public class LocalSetupCoordinator(
             requireOriginal(native == null && view.freshDevicePairing?.stage == LocalSetupFreshDevicePairingStage.TARGET_INPUT_REVIEW &&
                 !original.preparationEntered && original.record == null)
             val input = requireNotNull(original.input); val intentId = requireNotNull(original.intentId)
-            requireOriginal(matchesReviewedTargetNamespace(input))
+            requireOriginal(input.matchesBranchRpcNamespace)
             operation {
                 val journal = requireFreshPairingJournal()
                 requireOriginal(journal.target() == null)
@@ -1631,7 +1191,7 @@ public class LocalSetupCoordinator(
             requireOriginal(view.freshDevicePairing?.stage == LocalSetupFreshDevicePairingStage.TARGET_KEY_READY &&
                 !original.sdkEntered && original.record != null)
             val input = requireNotNull(original.input); val intentId = requireNotNull(original.intentId)
-            requireOriginal(matchesReviewedTargetNamespace(input))
+            requireOriginal(input.matchesBranchRpcNamespace)
             operation {
                 if (!readFreshTarget(owner, original)) return@operation
                 requireOriginal(original.reference?.phase == LocalDevicePairingTargetPhase.KEY_READY && !original.sdkEntered)
@@ -1701,7 +1261,7 @@ public class LocalSetupCoordinator(
             requireOriginal(view.freshDevicePairing?.stage == LocalSetupFreshDevicePairingStage.MASTER_IDENTITY_REVIEW &&
                 !original.preparationEntered && original.record == null)
             val identity = requireNotNull(original.identity)
-            requireOriginal(identity.appId == compositionProfile().appId(original.context.scope))
+            requireOriginal(identity.appId == LocalMasterSdkProfileV1.appId(original.context.scope))
             operation {
                 val inventory = freshMasterInventory(target, client) ?: return@operation
                 requireFreshMasterCanBegin(target, client, inventory)
@@ -1867,7 +1427,7 @@ public class LocalSetupCoordinator(
             requireOriginal(view.freshDevicePairing?.stage == LocalSetupFreshDevicePairingStage.TARGET_CHALLENGE_REVIEW &&
                 !original.responseEntered && original.record != null)
             val challenge = requireNotNull(original.challenge); val intentId = requireNotNull(original.intentId)
-            requireFreshRpcNamespace(requireNotNull(original.identity), targetCompositionProfile(owner.value))
+            requireFreshRpcNamespace(requireNotNull(original.identity))
             operation {
                 if (!readFreshTarget(owner, original)) return@operation
                 requireFreshChallengeIdentity(challenge, requireNotNull(original.identity))
@@ -1991,7 +1551,7 @@ public class LocalSetupCoordinator(
             requireFreshReview(reviewId, LocalSetupFreshDevicePairingRole.FRESH_TARGET)
             requireOriginal(view.freshDevicePairing?.stage == LocalSetupFreshDevicePairingStage.TARGET_RETIREMENT_REVIEW && !original.continuationAttempted)
             val certificate = requireNotNull(original.retirement); val intentId = requireNotNull(original.intentId)
-            requireFreshRpcNamespace(requireNotNull(original.identity), targetCompositionProfile(owner.value))
+            requireFreshRpcNamespace(requireNotNull(original.identity))
             operation {
                 if (!readFreshTarget(owner, original)) return@operation
                 requireOriginal(original.retirement === certificate && (!original.responseEntered || original.possession != null))
@@ -2370,21 +1930,8 @@ public class LocalSetupCoordinator(
     private fun freshMasterEffectCurrent(target: Target, client: LocalSetupClient,
         original: LocalSetupFreshDeviceMasterOriginal): Boolean = freshMasterCurrent(target, client, original) && freshPresentationOpen()
 
-    private fun compositionProfile(): LocalCompositionSdkProfileV1 =
-        services.compositionProfile ?: throw OriginalRequired()
-
-    private fun targetCompositionProfile(owner: LocalSetupFreshDeviceTarget): LocalCompositionSdkProfileV1 {
-        val profile = owner.compositionProfile ?: throw OriginalRequired()
-        requireOriginal(profile == compositionProfile())
-        return profile
-    }
-
-    private fun matchesReviewedTargetNamespace(input: LocalSetupFreshDeviceTargetInput): Boolean =
-        input.appId == compositionProfile().appId(input.scope).value
-
-    private fun requireFreshRpcNamespace(identity: LocalDevicePairingSdkIdentityV2,
-        profile: LocalCompositionSdkProfileV1 = compositionProfile()) {
-        requireOriginal(identity.appId == profile.appId(identity.target.admission.scope))
+    private fun requireFreshRpcNamespace(identity: LocalDevicePairingSdkIdentityV2) {
+        requireOriginal(identity.appId == LocalMasterSdkProfileV1.appId(identity.target.admission.scope))
     }
 
     private suspend fun acquireFreshTarget(original: LocalSetupFreshDeviceTargetOriginal,
@@ -3282,66 +2829,10 @@ public class LocalSetupCoordinator(
         phase = LocalSetupPhase.INSTALLATION_ACK_PENDING, receipt = null, definitionReview = null,
         firstAccountHeadLogin = null, problem = null) }
 
-    private fun launchProblem(retained: LocalMasterLaunchRecord.Read,
-        coordinates: SelfOwnedAllocationCoordinatesV1, allowAbsent: Boolean): LocalSetupProblem? = when (retained) {
-        LocalMasterLaunchRecord.Read.Stopped -> LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED
-        LocalMasterLaunchRecord.Read.Unresolved -> LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE
-        LocalMasterLaunchRecord.Read.Absent -> if (allowAbsent) null else LocalSetupProblem.STATE_UNCERTAIN
-        is LocalMasterLaunchRecord.Read.Running -> if (retained.matches(coordinates)) null else LocalSetupProblem.STATE_UNCERTAIN
-    }
-
-    /** Withdraw presentation and deny the actual retained owners. A changed launch hint
-     * cannot discard custody or authorize a close/replacement. Normal retirement still owns
-     * their eventual close; a refusal never leaves a published or workable client. */
-    private suspend fun refuseLaunch(problem: LocalSetupProblem) {
-        change { LocalSetupView(work = it.work, locked = it.locked, problem = problem,
-            lifecycleStopped = problem == LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED) }
-        val owner = withSetupLock(gate) { native }
-        if (owner != null) {
-            try {
-                owner.denyTokenOnce()
-                owner.denyOwnedHandlesOnce()
-                owner.awaitDenialSettled()
-                owner.denialFailure?.let { throw it }
-            } catch (failure: Throwable) {
-                withSetupLock(gate) { problemLocked(LocalSetupProblem.CLOSE_UNCONFIRMED) }
-                requestRetirement()
-                throw failure
-            }
-        }
-        change { it.copy(phase = LocalSetupPhase.CHOOSE_ROUTE, problem = problem) }
-    }
-
     private suspend fun openOriginalInstallation(keepPendingOwner: Boolean = true,
         expectedLaunch: LocalMasterLaunchRecord.Read.Running? = null) {
-        // Plain setup open/refresh is not lifecycle authority. It never clears or bypasses a
-        // durable STOP/UNRESOLVED record; only the authenticated lifecycle ingress above may
-        // clear STOP. Automatic reopen already refuses these records.
-        val retained = withSetupLock(gate) {
-            requireOriginal(lanAttachment == null)
-            launchRecord.read()
-        }
-        when (retained) {
-            LocalMasterLaunchRecord.Read.Absent -> if (expectedLaunch != null) {
-                fail(LocalSetupProblem.STATE_UNCERTAIN)
-                return
-            }
-            LocalMasterLaunchRecord.Read.Stopped -> {
-                refuseLaunch(LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED)
-                return
-            }
-            LocalMasterLaunchRecord.Read.Unresolved -> {
-                refuseLaunch(LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE)
-                return
-            }
-            is LocalMasterLaunchRecord.Read.Running -> Unit
-        }
+        withSetupLock(gate) { requireOriginal(lanAttachment == null) }
         val previous = withSetupLock(gate) { native }
-        if (retained is LocalMasterLaunchRecord.Read.Running && previous is Target &&
-            !retained.matches(previous.context.materialAtOpen.coordinates)) {
-            refuseLaunch(LocalSetupProblem.STATE_UNCERTAIN)
-            return
-        }
         if (keepPendingOwner && (previous as? Target)?.master?.mode?.value == LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING) {
             // Ordinary entry preserves the genuine completion. Only the explicit close/rescan
             // action discards this owner, and only after its actual close is confirmed.
@@ -3353,25 +2844,8 @@ public class LocalSetupCoordinator(
         // Always close the preparation/P3 owner, then acquire the original existing-only
         // context. A creating preparation context cannot be relabeled as D7 custody.
         val target = acquireTarget(preparation = false) ?: return
-        if (retained is LocalMasterLaunchRecord.Read.Running &&
-            !retained.matches(target.context.materialAtOpen.coordinates) ||
-            expectedLaunch != null && !expectedLaunch.matches(target.context.materialAtOpen.coordinates)) {
-            refuseLaunch(LocalSetupProblem.STATE_UNCERTAIN)
-            return
-        }
+        requireOriginal(expectedLaunch == null || expectedLaunch.matches(target.context.materialAtOpen.coordinates))
         if (!continueWork() || !readNative(target, verifyOriginalBinding = expectedLaunch != null)) return
-        if (!lifecycleAllowsStartup(target.context.materialAtOpen.coordinates)) return
-        // Re-read after native observation, immediately before actual runtime acquisition.
-        // Android composition owns one nonexported service in the application process;
-        // the native existing-only owner remains responsible for exclusive writer custody.
-        val refused = withSetupLock(gate) {
-            launchProblem(launchRecord.read(), target.context.materialAtOpen.coordinates,
-                allowAbsent = expectedLaunch == null && retained == LocalMasterLaunchRecord.Read.Absent)
-        }
-        if (refused != null) {
-            refuseLaunch(refused)
-            return
-        }
         beginAttachment(target)
         // A throw or Unresolved result settles the invocation but exposes no transfer-status
         // fact. The returned target is HELD_TRANSFER_UNKNOWN: it may still own the native
@@ -3585,7 +3059,6 @@ public class LocalSetupCoordinator(
         it.copy(phase = if (it.phase == LocalSetupPhase.CLOSED) it.phase else LocalSetupPhase.ORIGINAL_UNRESOLVED,
             problem = problem, native = null, receipt = null, firstAccountHeadLogin = null,
             definitionReview = null,
-            lifecycleStopped = problem == LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED,
             localClientConnected = connected,
             localClientConnectionAvailable = false,
             firstClientEnrollmentAvailable = false,
@@ -3660,30 +3133,11 @@ public class LocalSetupCoordinator(
      * references; the service must keep its process slot and must not publish a replacement.
      */
     public fun requestRetirement(intentional: Boolean = false): Deferred<Unit> {
-        // Retain the public call shape for existing disposal callers. Only the private
-        // authenticated STOP path may change the durable launch projection.
-        withSetupLock(gate) {
-            retirement?.let { return it }
-            if (intentional) return CompletableDeferred<Unit>().also {
-                it.completeExceptionally(IllegalStateException("Authenticated lifecycle STOP is required"))
-            }
-        }
-        return beginRetirement()
-    }
-
-    private fun beginRetirement(authenticatedStop: LocalMasterLifecycleIntent? = null): Deferred<Unit> {
         val result: CompletableDeferred<Unit>
         val admitted: Work?
         val captured: OwnedNative?
         withSetupLock(gate) {
-            if (authenticatedStop != null) {
-                val target = native as? Target
-                if (target == null || authenticatedStop.request.action != LocalMasterLifecycleAction.STOP ||
-                    !authenticatedStop.matches(target.context.materialAtOpen.coordinates, authenticatedStop.request)) {
-                    return CompletableDeferred<Unit>().also {
-                        it.completeExceptionally(IllegalStateException("Lifecycle STOP original binding differs"))
-                    }
-                }
+            if (intentional) {
                 try { launchRecord.retainStop() }
                 catch (_: Exception) {
                     problemLocked(LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE)
@@ -3692,8 +3146,6 @@ public class LocalSetupCoordinator(
                     }
                 }
             }
-            // Disposal drains the admitted STOP operation before closing its native owner.
-            // Preserve its authenticated launch projection even when the physical close is cached.
             retirement?.let { return it }
             result = CompletableDeferred()
             retirement = result
@@ -4359,9 +3811,6 @@ public class LocalSetupCoordinator(
         fun capture(context: SelfOwnedLocalSecurityContext) { acquired = context }
         @Volatile var master: LocalSetupMaster? = null
             private set
-        @Volatile var lifecycle: LocalSetupLifecycleMaster? = null
-            private set
-        @Volatile private var lifecycleCustodyUnknown = false
         @Volatile private var receiptOwner: LocalMasterInstallationReceiptOpenResult.Opened? = null
         private var attachmentPending = false
         private var clientAttachmentPending = false
@@ -4391,14 +3840,6 @@ public class LocalSetupCoordinator(
             master = value // Capture before checks/continuation; retirement drains this actual owner.
             attachmentPending = false
             masterCustodyUnknown = false
-        }
-        fun attachLifecycle(value: LocalSetupLifecycleMaster) {
-            check(lifecycle == null && master == null)
-            lifecycle = value
-            lifecycleCustodyUnknown = false
-        }
-        fun settleFailedLifecycleAttachment() {
-            lifecycleCustodyUnknown = true
         }
         fun attachReceipt(value: LocalMasterInstallationReceiptOpenResult.Opened) {
             receiptOwner = value
@@ -4439,7 +3880,6 @@ public class LocalSetupCoordinator(
         }
         override fun denyOwnedHandles() {
             localClient?.let { actual -> denyHandleOnce(actual) { actual.denyNewWork() } }
-            lifecycle?.let { actual -> denyHandleOnce(actual) { actual.denyNewWork() }; return }
             master?.let { actual -> denyHandleOnce(actual) { actual.denyNewWork() }; return }
             receiptOwner?.let { actual -> denyHandleOnce(actual) { actual.denyNewReads() }; return }
             val actual = acquired ?: return
@@ -4454,19 +3894,14 @@ public class LocalSetupCoordinator(
             localClient?.close()
             localClient = null
             val service = master
-            val installationHeld = lifecycle
             val reader = receiptOwner
             when {
                 service != null -> {
                     check(service.quiesceAndClose()) { "Original master close remains unconfirmed" }
                     master = null
                 }
-                installationHeld != null -> {
-                    check(installationHeld.quiesceAndClose()) { "Installed lifecycle close remains unconfirmed" }
-                    lifecycle = null
-                }
                 reader != null -> { reader.close(); receiptOwner = null }
-                masterCustodyUnknown || lifecycleCustodyUnknown -> Unit // No public retained-custody observation.
+                masterCustodyUnknown -> Unit // No public retained-custody observation exists.
                 else -> context.close()
             }
             definition = null
@@ -4478,7 +3913,6 @@ public class LocalSetupCoordinator(
             // explicit so retirement cannot report CLOSED from a normal Deferred alone.
             check(!clientCustodyUnknown) { "Original unreturned Client custody remains unconfirmed" }
             check(!masterCustodyUnknown) { "Original target transfer remains unconfirmed" }
-            check(!lifecycleCustodyUnknown) { "Original installed lifecycle transfer remains unconfirmed" }
         }
     }
     private class Work(val kind: LocalSetupWork, val deadline: Long, val watchMillis: Long) {
@@ -4499,8 +3933,6 @@ public class LocalSetupCoordinator(
         val LAN_HOST_PHASES = setOf(LocalSetupPhase.INSTALLATION_RETAINED, LocalSetupPhase.EMPLOYEE_ENROLLMENT,
             LocalSetupPhase.EMPLOYEE_POLICY, LocalSetupPhase.DEVICE_ADMISSION, LocalSetupPhase.FRESH_DEVICE_PAIRING,
             LocalSetupPhase.ORIGINAL_UNRESOLVED)
-        val STOP_LIFECYCLE_PHASES = LocalSetupPhase.entries.toSet() - setOf(LocalSetupPhase.CLOSING, LocalSetupPhase.CLOSED)
-        val RESUME_LIFECYCLE_PHASES = setOf(LocalSetupPhase.CHOOSE_ROUTE, LocalSetupPhase.ORIGINAL_UNRESOLVED)
         val LAN_ACTION_PHASES = LocalSetupPhase.entries.toSet() - setOf(LocalSetupPhase.CLOSING, LocalSetupPhase.CLOSED)
         val FRESH_PAIRING_WORK = setOf(LocalSetupWork.READING_FRESH_DEVICE_PAIRING,
             LocalSetupWork.PREPARING_FRESH_DEVICE_TARGET, LocalSetupWork.ACQUIRING_FRESH_DEVICE_SDK,

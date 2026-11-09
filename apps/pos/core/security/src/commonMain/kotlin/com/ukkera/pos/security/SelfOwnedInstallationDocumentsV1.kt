@@ -80,9 +80,6 @@ public class SelfOwnedPreparationPacketV1 internal constructor(
             delegation.role == SelfOwnedDocumentRoleV1.ISSUER_DELEGATION &&
             preparation.role == SelfOwnedDocumentRoleV1.NATIVE_PREPARATION)
     }
-    /** Explicit Android legacy binding for consumers that share the platform-neutral surface. */
-    public val installedTarget: SelfOwnedInstalledTargetBindingV1 =
-        SelfOwnedInstalledTargetBindingV1.android(target)
     override fun toString(): String = "SelfOwnedPreparationPacketV1([REDACTED])"
 }
 
@@ -104,7 +101,7 @@ internal data class SelfOwnedRegistryNamespaceV1(
 ) {
     init {
         require(canonicalPath.length in 1..1024 && canonicalPath.startsWith('/') &&
-            SelfOwnedCompositionNames.isProvisionerPath(canonicalPath) && '\u0000' !in canonicalPath &&
+            canonicalPath.endsWith("/ukkera-self-owned-provisioner-v1") && '\u0000' !in canonicalPath &&
             canonicalPath.split('/').none { it == "." || it == ".." })
         selfOwnedUtf16(canonicalPath)
         require(volumeUuid.length == 36 && volumeUuid.withIndex().all { (index, character) ->

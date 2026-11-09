@@ -312,9 +312,6 @@ internal class RoomLocalSecurityTransaction internal constructor(
         contentDigest: PayloadDigest? = null) {
         database.runtimeHistoryOwner?.frameFor(connection)?.captureSecurityPurpose(value,actor,request,contentDigest)
     }
-    internal fun historyMasterLifecycle(evidence: RuntimeMasterLifecycleEvidenceV1) {
-        database.runtimeHistoryOwner?.frameFor(connection)?.captureMasterLifecycleEvidence(evidence)
-    }
     internal fun historyThrottle(evidence: RuntimeThrottleEvidenceV1) {
         database.runtimeHistoryOwner?.frameFor(connection)?.captureThrottle(evidence)
     }

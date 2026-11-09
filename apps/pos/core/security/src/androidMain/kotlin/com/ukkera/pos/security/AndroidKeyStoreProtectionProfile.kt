@@ -38,15 +38,14 @@ internal data class AndroidKeyStoreConfiguration(
     val storageReference: ProtectedStorageKeyReference,
     val pepperReference: ProtectedPepperReference,
     val protectionRequirement: AndroidKeyStoreProtectionRequirement,
-    val aliasPrefix: String = "ukkera.local.v1",
 ) {
     init {
         require(storageReference.keyId != pepperReference.keyId) { "Distinct native key identities required" }
     }
 
     val profile: String get() = "ukkera.android-keystore/service-no-user-auth/v1"
-    val storageAlias: String get() = "$aliasPrefix/${installationId.value}/storage/${storageReference.keyId.value}"
-    val pepperAlias: String get() = "$aliasPrefix/${installationId.value}/pepper/${pepperReference.keyId.value}"
+    val storageAlias: String get() = "ukkera.local.v1/${installationId.value}/storage/${storageReference.keyId.value}"
+    val pepperAlias: String get() = "ukkera.local.v1/${installationId.value}/pepper/${pepperReference.keyId.value}"
 
     override fun toString(): String = "AndroidKeyStoreConfiguration([REDACTED])"
 }

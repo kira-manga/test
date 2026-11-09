@@ -98,7 +98,7 @@ internal class RoomLocalMasterRpcTrust(
             check(before.record.pending == null)
             val masterOriginal = checkNotNull(before.record.masterSdkOriginal)
             check(masterOriginal.allocation.digest == before.record.allocation.digest &&
-                masterOriginal.appId == owner.compositionProfile.appId(owner.originalScope) &&
+                masterOriginal.appId == LocalMasterSdkProfileV1.appId(owner.originalScope) &&
                 exactAppId == masterOriginal.appId)
             val observed = source.observeCurrent(currentCoroutineContext())
             val retained = when (val result = native.retained()) {

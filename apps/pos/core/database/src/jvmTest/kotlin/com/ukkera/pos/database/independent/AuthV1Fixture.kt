@@ -213,7 +213,7 @@ internal class AuthV1Fixture(
 
     /** Lead-authorized initial trust only: no security/session/grant/stock/money rows. */
     private suspend fun seedInertInitialTrust(authority: AuthorityIdentity) {
-        val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize))
+        val database = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize))
         try {
             database.useWriterConnection { connection ->
                 requireDurableWriter(connection)
@@ -247,7 +247,7 @@ internal class AuthV1Fixture(
 
     /** An authorized executor inspection, NOT a new client read endpoint or an auth replacement. */
     suspend fun snapshot(label: String): AuthV1Snapshot {
-        val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize))
+        val database = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize))
         val result = try {
             val store = RoomLocalSecurityStore(database, keys, keys.storageReference)
             database.useWriterConnection { connection ->

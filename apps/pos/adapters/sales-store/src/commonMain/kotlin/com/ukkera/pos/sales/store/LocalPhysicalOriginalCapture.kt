@@ -115,23 +115,20 @@ internal class LocalPhysicalOriginalCaptureEntry(
     private val temporaryOwnership = PhysicalJournalLeaseOwnership(temporaryOwnership)
     private val evidenceOwnership = PhysicalJournalLeaseOwnership(evidenceOwnership)
     private val cleanupUncertain = MutableStateFlow(false)
-    private val employeeDenial = PhysicalJournalDenialOwnership()
+    private var employeeDenial: LocalPhysicalExternalDenialRegistration? = null
     init {
         // This is end-only notification, not a verifier/grant callback. The exact upper
         // owner was independently validated before this backend captured native ownership.
-        employeeDenial.attach(temporaryExternal?.custody?.observeLifetimeDenial { withdraw() })
+        employeeDenial = temporaryExternal?.custody?.observeLifetimeDenial { withdraw() }
         if (temporaryExternal?.lifetimeDenied == true) withdraw()
     }
 
     val cleanupCertain: Boolean get() = !cleanupUncertain.value && continuation.cleanupCertain &&
-        temporaryOwnership.cleanupCertain && evidenceOwnership.cleanupCertain && employeeDenial.cleanupCertain &&
-        temporaryExternal?.cleanupCertain != false
-
-    internal fun pinsJournal(journal: LocalPhysicalJournal): Boolean = continuation.pinsJournal(journal)
+        temporaryOwnership.cleanupCertain && evidenceOwnership.cleanupCertain && temporaryExternal?.cleanupCertain != false
 
     /** A failed/in-progress capture prevents native-owner close from discarding memory custody. */
     val canCloseNativeOwners: Boolean get() = cleanupCertain && temporaryOwnership.released && evidenceOwnership.released &&
-        temporaryExternal?.released != false && employeeDenial.released &&
+        temporaryExternal?.released != false &&
         worker.value?.isCompleted != false && uncertainCandidate.value == null && when (val current = state.value) {
             PhysicalOriginalMemoryState.Withdrawn -> true
             is PhysicalOriginalMemoryState.Finished -> hasDurableClientOriginal(current.delivery, current.accepted.candidate)
@@ -283,7 +280,7 @@ internal class LocalPhysicalOriginalCaptureEntry(
         binding.denial.deny()
         continuation.deny()
         releaseTemporaryOwnership()
-        employeeDenial.release()
+        try { employeeDenial?.release() } catch (_: Exception) { cleanupUncertain.value = true }
         while (true) {
             val current = state.value
             if (current !== PhysicalOriginalMemoryState.Preparing && current !== PhysicalOriginalMemoryState.AwaitingAdoption &&
@@ -354,7 +351,6 @@ internal class LocalPhysicalOriginalCaptureEntry(
         } finally {
             binding.denial.deny()
             continuation.deny()
-            employeeDenial.release()
             mailbox.close()
             releaseEvidenceIfSafe()
         }

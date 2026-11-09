@@ -25,21 +25,6 @@ internal object SelfOwnedLegacyInstallationCompatibilityV1 {
         bytes: ByteArray,
         expected: SelfOwnedTargetDescriptorV1,
     ): SelfOwnedInstalledIdentityResultV2<SelfOwnedTargetDescriptorV1> =
-        when (val decoded = decodeTarget(bytes)) {
-            is SelfOwnedInstalledIdentityResultV2.Data -> {
-                if (!decoded.value.same(expected)) {
-                    SelfOwnedInstalledIdentityResultV2.Refused(
-                        SelfOwnedInstalledIdentityRefusalV2.REFUSE_IDENTITY_MISMATCH,
-                    )
-                } else decoded
-            }
-            is SelfOwnedInstalledIdentityResultV2.Refused -> decoded
-        }
-
-    /** Pure DATA parse of one exact legacy four-field target record. */
-    fun decodeTarget(
-        bytes: ByteArray,
-    ): SelfOwnedInstalledIdentityResultV2<SelfOwnedTargetDescriptorV1> =
         selfOwnedIdentityGuarded {
             if (bytes.size > MAXIMUM_TARGET_BYTES) {
                 refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_OVERSIZE)
@@ -47,6 +32,9 @@ internal object SelfOwnedLegacyInstallationCompatibilityV1 {
             val reader = SelfOwnedIdentityReader(bytes)
             val actual = readTarget(reader)
             reader.finish()
+            if (!actual.same(expected)) {
+                refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_IDENTITY_MISMATCH)
+            }
             actual
         }
 

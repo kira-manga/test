@@ -21,11 +21,8 @@ internal enum class AndroidSetupIntentRole(val directoryName: String, val maximu
 }
 
 /** Native private-file adapter only; intent interpretation/order/encoding live in commonMain. */
-internal class AndroidSetupIntentStorage(
-    private val application: Application,
-    private val role: AndroidSetupIntentRole = AndroidSetupIntentRole.EMPLOYEE,
-    private val namespaceSuffix: String = "",
-) : LocalSetupIntentStorage {
+internal class AndroidSetupIntentStorage(private val application: Application,
+    private val role: AndroidSetupIntentRole = AndroidSetupIntentRole.EMPLOYEE) : LocalSetupIntentStorage {
     private var closureUncertain = false
 
     private inline fun <T> protectedIo(block: () -> T): T {
@@ -82,7 +79,7 @@ internal class AndroidSetupIntentStorage(
 
     private fun directory(create: Boolean): File? {
         check(!closureUncertain) { "Native storage closure remains unresolved" }
-        val root = File(application.noBackupFilesDir, role.directoryName + namespaceSuffix)
+        val root = File(application.noBackupFilesDir, role.directoryName)
         try { checkDirectory(root) }
         catch (missing: ErrnoException) {
             if (missing.errno != OsConstants.ENOENT) throw missing

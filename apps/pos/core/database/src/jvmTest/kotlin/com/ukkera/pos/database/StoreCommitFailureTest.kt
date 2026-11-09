@@ -50,7 +50,7 @@ class StoreCommitFailureTest {
         val request = seed.request(650, input)
         val principal = testPrincipal()
         val driver = CommitFaultDriver(cut)
-        val database = buildControlledMasterRoomFixture(
+        val database = buildMasterRoom(
             Room.databaseBuilder<MasterRoomDatabase>(seed.path.toString(), MasterRoomConstructor::initialize),
             driver,
         )

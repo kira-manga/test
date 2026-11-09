@@ -17,15 +17,10 @@ coil = "3.6.3"
 ktor = "3.6.0"
 activity = "1.13.0"
 bouncycastle = "1.85.2"
-p2pkit = "0.8.0-rc12"
+p2pkit = "0.8.0-rc11"
 android-desugar = "2.1.5"
-jna = "5.18.1"
-cryptography = "0.6.0"
 
 [libraries]
-cryptography-core = { module = "dev.whyoleg.cryptography:cryptography-core", version.ref = "cryptography" }
-cryptography-provider-cryptokit = { module = "dev.whyoleg.cryptography:cryptography-provider-cryptokit", version.ref = "cryptography" }
-jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 android-desugar = { module = "com.android.tools:desugar_jdk_libs", version.ref = "android-desugar" }
 serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
 bignum = { module = "com.ionspin.kotlin:bignum", version.ref = "bignum" }
@@ -57,7 +52,6 @@ p2pkit-lan = { module = "io.github.apdelrahman1911:p2p-transport-lan", version.r
 p2pkit-rpc = { module = "io.github.apdelrahman1911:p2p-rpc", version.ref = "p2pkit" }
 
 [plugins]
-cryptography = { id = "dev.whyoleg.cryptography", version.ref = "cryptography" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }

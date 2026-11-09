@@ -359,11 +359,9 @@ public class SelfOwnedInstalledIdentitySignedDocumentV2 internal constructor(
 }
 
 /**
- * Shared factory/matcher/consumer surface. `accept*` returns bounded DATA only. This historical
- * surface intentionally hard-refuses the iOS active-app factory with `REFUSE_POLICY_PENDING`;
- * there is no caller-supplied policy switch or accepting fallback here. The distinct
- * owner-approved P1 boundary is [SelfOwnedInstalledIdentityIosPolicyV1] and still requires
- * native code-signature evidence, exact expected-target matching, and separate key custody.
+ * Shared factory/matcher/consumer surface. `accept*` returns bounded DATA only. The iOS
+ * active-app factory is intentionally hard-refused `REFUSE_POLICY_PENDING` while P1 is
+ * unanswered; there is no caller-supplied policy switch or accepting fallback.
  */
 public object SelfOwnedInstalledIdentityV2 {
     /** Full parsed-target factory check. Wrong platform wins over role mismatch. */
@@ -387,9 +385,8 @@ public object SelfOwnedInstalledIdentityV2 {
             return SelfOwnedInstalledIdentityResultV2.Refused(discrimination)
         }
         if (factory == SelfOwnedInstalledIdentityFactoryV2.IOS_ACTIVE_APP) {
-            // This historical V2 factory retains its frozen pending-policy refusal.
-            // The approved additive iOS boundary separately requires current native evidence;
-            // no schema flag, caller Boolean or fallback enables this historical factory.
+            // P1 is PENDING_LEAD_OWNER_CONFIRMATION. No schema flag, caller policy Boolean or
+            // accepting fallback can enable identity-bearing iOS acceptance.
             return SelfOwnedInstalledIdentityResultV2.Refused(
                 SelfOwnedInstalledIdentityRefusalV2.REFUSE_POLICY_PENDING,
             )

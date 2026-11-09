@@ -3,6 +3,7 @@ package com.ukkera.pos.rpc
 import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
 import com.ukkera.pos.security.LocalDevicePairingProfileV2
 import com.ukkera.pos.security.LocalDevicePairingSdkOriginal
+import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.types.DomainId
 import dev.p2pkit.core.AppId
 import dev.p2pkit.core.PeerFingerprint
@@ -50,8 +51,8 @@ internal class LocalRpcSelectedMasterClientReadback(
             approvedMaster.targetKeyId == target.keyId && master.allocation.coordinates.scope == scope) {
             "Approved Master target scope differs"
         }
-        val appId = master.compositionProfile.appId(scope)
-        require(master.appId == appId && sdk.appId == appId) { "Approved Master AppId differs" }
+        val appId = LocalMasterSdkProfileV1.appId(scope)
+        require(sdk.appId == appId && master.appId == appId) { "Approved Master AppId differs" }
         require(master.originalAcquisitionId != sdk.originalAcquisitionId &&
             master.originalAcquisitionId != sdk.originalPreparationId &&
             master.peerId != sdk.peerId && master.fingerprint != sdk.fingerprint && master.pairingQr != sdk.pairingQr) {

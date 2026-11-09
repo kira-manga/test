@@ -90,7 +90,7 @@ internal object NativeDevicePairingApprovedMasterPolicyV1 {
             allocation.originalNativeBindingDigest == origin.bindingDigest &&
             allocation.p1RootDocumentDigest == origin.rootDocumentDigest &&
             requested.request.scope == origin.coordinates.scope && target.admission.scope == origin.coordinates.scope &&
-            master.appId == master.compositionProfile.appId(origin.coordinates.scope) && master.appId == sdk.appId)
+            master.appId == LocalMasterSdkProfileV1.appId(origin.coordinates.scope) && master.appId == sdk.appId)
         val targetReferences = listOf(target.admission.deviceId, target.keyId,
             sdk.originalAcquisitionId, sdk.originalPreparationId,
             retainedChallenge.originalActionId, requested.request.requestId)

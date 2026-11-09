@@ -8,7 +8,6 @@ import com.ukkera.pos.recovery.RecoveryAdmissionPolicy
 import com.ukkera.pos.recovery.RecoveryAdmissionState
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.recovery.RecoveryResourceKind
-import com.ukkera.pos.database.setup.SavedOriginalSetupV1
 import com.ukkera.pos.recovery.ResourceAdmissionDecision
 import com.ukkera.pos.security.ActionBinding
 import com.ukkera.pos.security.AuthenticatedPrincipal
@@ -1294,11 +1293,8 @@ public class AtomicMasterStore internal constructor(
                                         requirements.any { actionPolicy.authorize(principal, it) !is AuthorizationDecision.Allowed })
                                         return@transactionBody KernelReply.Deferred(DeferredReason.AUTHORIZATION_DENIED)
                                 }
-                                if (!matches(existing, identity)) return@transactionBody KernelReply.Conflict
-                                if (handler is MasterRetainedResultGuard &&
-                                    !handler.permitsRetainedResult(view, StoredBytes(existing.result)))
-                                    return@transactionBody KernelReply.Deferred(DeferredReason.CURRENT_SOURCE_UNAVAILABLE)
-                                return@transactionBody KernelReply.Recorded(existing, true)
+                                return@transactionBody if (matches(existing, identity)) KernelReply.Recorded(existing, true)
+                                else KernelReply.Conflict
                             }
                             val recovery = recoveryState(branch)
                             val observed = observe(branch, recovery)
@@ -1488,11 +1484,7 @@ public class AtomicMasterStore internal constructor(
                     }
                 }
             }
-            // Typed rollback returns normally from Room. It did not commit a new result,
-            // so it must not cross the post-commit fault/crash cut (nor may a replay do so).
-            if (!preflight && stored is KernelReply.Recorded && !stored.replayed) {
-                fault.at(StoreFaultPoint.AFTER_COMMIT)
-            }
+            if (!preflight) fault.at(StoreFaultPoint.AFTER_COMMIT)
             currentCoroutineContext().ensureActive()
             stored
         } catch (cancelled: CancellationException) {
@@ -2856,39 +2848,6 @@ internal class TransactionView private constructor(
             // original observations; retained ancestry or current rows cannot replace them.
             writer?.historyFrame?.foodPaymentAlreadyAppliedOriginalSources(this, operationId)
         }
-
-    override suspend fun savedOriginalSetup(): SavedOriginalSetupV1? = nonPhysicalOwnedRead {
-        val owner = writer?.database?.runtimeHistoryOwner ?: return@nonPhysicalOwnedRead null
-        if (owner.originalScope != scope || owner.compositionProfile.mode !=
-            com.ukkera.pos.security.LocalSetupCompositionMode.LIVE) return@nonPhysicalOwnedRead null
-        val record = owner.originalRecord.record
-        val receipt = record.receipt ?: return@nonPhysicalOwnedRead null
-        val definition = record.definition ?: return@nonPhysicalOwnedRead null
-        val coordinates = receipt.core.allocation.coordinates
-        check(coordinates.scope == scope)
-        check(definition.definitionDigest == receipt.core.definitionDigest) {
-            "Saved original definition/receipt identity diverged"
-        }
-        SavedOriginalSetupV1(
-            scope = scope,
-            installationId = coordinates.installationId,
-            assignmentId = coordinates.assignmentId,
-            deviceId = coordinates.deviceId,
-            firstActorId = coordinates.firstActorId,
-            originalRequestId = receipt.core.originalRequestId,
-            issuedAttemptId = receipt.core.issuedAttemptId,
-            attemptSequence = receipt.core.attemptSequence,
-            definitionDigest = receipt.core.definitionDigest,
-            genesisDigest = receipt.genesis,
-            receiptDigest = receipt.digest,
-            installationAuthorityEpoch = receipt.core.authorityEpoch,
-            currentAuthorityEpoch = owner.originalAuthority.epoch,
-            installedAt = UtcInstant(kotlin.time.Instant.fromEpochMilliseconds(
-                receipt.core.installedAtOsUtcEpochMillis)),
-            nativeSettlement = record.pending == null && record.issuerAcknowledgement != null &&
-                record.parent != null && record.firstChild != null,
-        )
-    }
 
     override suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence? = tracedRead(PhysicalReadDependency.Retained(operationId)) {
         val operationMetadata = retainedRead { dao.retainedOperationMetadata(scope.storageKey(), operationId.value) }

@@ -1,16 +1,12 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
-    alias(libs.plugins.cryptography)
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.android.kmp.library)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.compose)
 }
-
-// Resolve the active Xcode Swift libraries when linking the CryptoKit-backed framework.
-cryptography { configureSwiftLinkerOpts = true }
 
 kotlin {
     jvmToolchain(21)
@@ -61,8 +57,6 @@ kotlin {
             implementation(compose.desktop.currentOs)
             // Desktop lifecycle/session cleanup runs on the actual Swing UI dispatcher.
             implementation(libs.coroutines.swing)
-            // Actual macOS geteuid/extended-ACL and Windows volume/kernel-file observations.
-            implementation(libs.jna)
         }
         jvmTest.dependencies {
             implementation(kotlin("test-junit"))

@@ -51,7 +51,6 @@ internal fun LocalSetupDeviceAdmissionScreen(controller: LocalSetupController, v
         PosTheme {
             LazyColumn(modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
-                    LocalSetupCompositionNotice(controller)
                     onBack?.let { back -> OutlinedButton(onClick = { controller.lockPresentation(); back() },
                         modifier = Modifier.touchTarget()) { Text(t("Device choices", "خيارات الجهاز")) } }
                     OutlinedButton(onClick = controller::lockPresentation, modifier = Modifier.touchTarget()) {

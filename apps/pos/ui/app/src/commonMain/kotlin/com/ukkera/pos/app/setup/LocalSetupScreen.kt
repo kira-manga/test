@@ -54,7 +54,6 @@ import com.ukkera.pos.app.ui.PosTheme
 import com.ukkera.pos.app.ui.SectionHeading
 import com.ukkera.pos.app.ui.touchTarget
 import com.ukkera.pos.security.LocalCompanyHeadPurposeV1
-import com.ukkera.pos.security.LocalSetupCompositionMode
 import com.ukkera.pos.security.SelfOwnedKeyProtectionV1
 import com.ukkera.pos.types.DomainId
 
@@ -70,12 +69,8 @@ public fun LocalSetupScreen(
     onLanguageChange: (AppLanguage) -> Unit,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
-    compositionMode: LocalSetupCompositionMode = LocalSetupCompositionMode.LIVE,
-    lanPermissionGranted: Boolean = true,
-    onRequestLanPermission: (() -> Unit)? = null,
 ) {
     val view by controller.state.collectAsState()
-    val training = compositionMode == LocalSetupCompositionMode.TRAINING
     DisposableEffect(controller) { onDispose { controller.lockPresentation() } }
     if (!view.locked && view.phase == LocalSetupPhase.EMPLOYEE_ENROLLMENT) {
         LocalSetupEmployeeEnrollmentScreen(controller, view, language, onLanguageChange, modifier, onBack)
@@ -90,8 +85,7 @@ public fun LocalSetupScreen(
         return
     }
     if (!view.locked && view.phase == LocalSetupPhase.FRESH_DEVICE_PAIRING) {
-        LocalSetupFreshDevicePairingScreen(controller, view, language, onLanguageChange, modifier, onBack,
-            lanPermissionGranted, onRequestLanPermission)
+        LocalSetupFreshDevicePairingScreen(controller, view, language, onLanguageChange, modifier, onBack)
         return
     }
     val definition = view.definitionReview
@@ -123,14 +117,9 @@ public fun LocalSetupScreen(
                         }
                     }
                 }
-                SectionHeading(t(if (training) "Synthetic training composition" else "Set up local Ukkera POS",
-                        if (training) "تكوين تدريب اصطناعي" else "إعداد نقطة بيع عُكّرة المحلية"),
+                SectionHeading(t("Set up local Ukkera POS", "إعداد نقطة بيع عُكّرة المحلية"),
                     t("Local authority, branch installation, and employee sign-in are separate steps.",
                         "السلطة المحلية وتثبيت الفرع وتسجيل دخول الموظف خطوات منفصلة."))
-                if (training) {
-                    Notice(t("SYNTHETIC TRAINING - NOT LIVE. Separate native root, keys, SDK identity and journals; no live publication or in-place promotion.",
-                        "تدريب اصطناعي — ليس مباشرًا. جذر ومفاتيح وهوية SDK ويوميات منفصلة؛ لا نشر مباشر ولا ترقية داخل المكان."), caution = true)
-                }
                 Notice(t("Central services remain held. A local setup does not require an Internet checkout lease.",
                     "الخدمات المركزية معلّقة. لا يتطلب الإعداد المحلي تصريح بيع عبر الإنترنت."))
                 Notice(t("This authority/preparation view is not branch go-live. Activity configuration, local policy, catalog, counted opening balances, recovery access and the applicable device checks remain separate required work.",
@@ -156,7 +145,7 @@ public fun LocalSetupScreen(
                 } else {
                     val editable = view.work == null && view.problem != LocalSetupProblem.CLOSE_UNCONFIRMED
                     if (view.phase == LocalSetupPhase.INSTALLATION_RETAINED || view.lan.role != null ||
-                        view.lan.hostAvailable || view.lan.clientAvailable) LocalSetupLanSection(controller, view, lanPermissionGranted, onRequestLanPermission)
+                        view.lan.hostAvailable || view.lan.clientAvailable) LocalSetupLanSection(controller, view)
                     when (view.phase) {
                         LocalSetupPhase.CHOOSE_ROUTE -> {
                             Notice(t("Create a NEW local company only when that is the intended action. Original recovery never falls back to a new company because files are missing.",
@@ -177,26 +166,13 @@ public fun LocalSetupScreen(
                                 modifier = Modifier.fillMaxWidth().touchTarget()) {
                                 Text(t("Continue the original first-account installation", "متابعة تثبيت الحساب الأول الأصلي"))
                             }
-                            if (view.lifecycleStopPending) {
-                                LifecycleAuthorityForm(
-                                    t("Recover the same retained stop request", "استعادة طلب الإيقاف المحفوظ نفسه"),
-                                    controller::authenticateAndStopLocalMaster, editable)
+                            OutlinedButton(onClick = controller::chooseFreshDeviceTarget, enabled = editable,
+                                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                                Text(t("Prepare this new device as a pairing target", "تحضير هذا الجهاز الجديد هدفًا للاقتران"))
                             }
-                            if (view.lifecycleStopped) {
-                                LifecycleAuthorityForm(
-                                    t("Resume the same explicitly stopped original master",
-                                        "استئناف الجهاز الرئيسي الأصلي نفسه الموقوف صراحةً"),
-                                    controller::authenticateAndResumeLocalMaster, editable)
-                            }
-                            if (controller.compositionProfile != null) {
-                                OutlinedButton(onClick = controller::chooseFreshDeviceTarget, enabled = editable,
-                                    modifier = Modifier.fillMaxWidth().touchTarget()) {
-                                    Text(t("Prepare this new device as a pairing target", "تحضير هذا الجهاز الجديد هدفًا للاقتران"))
-                                }
-                                OutlinedButton(onClick = controller::inspectOriginalFreshDeviceTarget, enabled = editable,
-                                    modifier = Modifier.fillMaxWidth().touchTarget()) {
-                                    Text(t("Recover this device's original pairing target", "استعادة هدف الاقتران الأصلي لهذا الجهاز"))
-                                }
+                            OutlinedButton(onClick = controller::inspectOriginalFreshDeviceTarget, enabled = editable,
+                                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                                Text(t("Recover this device's original pairing target", "استعادة هدف الاقتران الأصلي لهذا الجهاز"))
                             }
                             Notice(t("Joining an existing company or enrolling an additional client requires its genuine enrollment path; this is not a replacement company creator.",
                                 "يتطلب الانضمام إلى شركة قائمة أو تسجيل جهاز عميل إضافي مسار التسجيل الأصلي؛ ولا يستبدله إنشاء شركة جديدة."))
@@ -351,12 +327,6 @@ public fun LocalSetupScreen(
                                     t("Read this same retained installation status", "قراءة حالة التثبيت المحفوظ نفسه")
                                     else t("Close and verify the same original installation again", "إغلاق التثبيت الأصلي نفسه والتحقق منه مجددًا"))
                             }
-                            if (view.localClientConnected) {
-                                LifecycleAuthorityForm(
-                                    t("Explicitly stop this local master",
-                                        "إيقاف هذا الجهاز الرئيسي المحلي صراحةً"),
-                                    controller::authenticateAndStopLocalMaster, editable)
-                            }
                         }
                         LocalSetupPhase.EMPLOYEE_ENROLLMENT -> Unit // The dedicated full-policy screen above owns this route.
                         LocalSetupPhase.EMPLOYEE_POLICY -> Unit // The separate complete replacement review owns this route.
@@ -368,17 +338,6 @@ public fun LocalSetupScreen(
                             OutlinedButton(onClick = controller::refreshOriginalStatus, enabled = editable,
                                 modifier = Modifier.fillMaxWidth().touchTarget()) {
                                 Text(t("Inspect the same original again", "فحص الأصل نفسه مجددًا"))
-                            }
-                            if (view.lifecycleStopPending) {
-                                LifecycleAuthorityForm(
-                                    t("Recover the same retained stop request", "استعادة طلب الإيقاف المحفوظ نفسه"),
-                                    controller::authenticateAndStopLocalMaster, editable)
-                            }
-                            if (view.lifecycleStopped) {
-                                LifecycleAuthorityForm(
-                                    t("Resume the same explicitly stopped original master",
-                                        "استئناف الجهاز الرئيسي الأصلي نفسه الموقوف صراحةً"),
-                                    controller::authenticateAndResumeLocalMaster, editable)
                             }
                         }
                         LocalSetupPhase.CLOSING -> Notice(t("Waiting for actual native-owner close. No replacement owner is opened meanwhile.",
@@ -783,34 +742,6 @@ internal fun workText(work: LocalSetupWork): String = when (work) {
     LocalSetupWork.CONNECTING_LAN_CLIENT -> t("Transferring this original target and connecting the selected LAN Client…", "نقل هذا الهدف الأصلي ووصل عميل الشبكة المحلية المختار…")
     LocalSetupWork.READING_LAN_ATTACHMENT -> t("Reobserving only this retained LAN attachment…", "رصد اتصال الشبكة المحلية المحفوظ هذا فقط مجددًا…")
     LocalSetupWork.CLOSING_LAN_ATTACHMENT -> t("Waiting for this LAN attachment's actual close…", "بانتظار الإغلاق الفعلي لاتصال الشبكة المحلية هذا…")
-    LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_STOP -> t("Authenticating current authority for the intentional local-master stop…", "جارٍ التحقق من السلطة الحالية لإيقاف الجهاز الرئيسي المحلي صراحةً…")
-    LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_RESUME -> t("Authenticating current authority, then reopening only the same original installation…", "جارٍ التحقق من السلطة الحالية ثم إعادة فتح التثبيت الأصلي نفسه فقط…")
-}
-
-@Composable
-private fun LifecycleAuthorityForm(
-    title: String,
-    submit: (String, CharArray) -> Unit,
-    enabled: Boolean,
-) {
-    var login by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    DisposableEffect(Unit) { onDispose { login = ""; password = "" } }
-    SectionHeading(title)
-    Notice(t("This action requires the employee's current local login, password and an explicitly granted MASTER_LIFECYCLE administration permission. A UI lock, setup button or cached role is not authority, and a refused action changes no launch state.",
-        "يتطلب هذا الإجراء تسجيل دخول الموظف المحلي الحالي وكلمة مروره وصلاحية MASTER_LIFECYCLE الإدارية الممنوحة صراحةً. قفل الواجهة أو زر الإعداد أو الدور المحفوظ ليس سلطة، والإجراء المرفوض لا يغير حالة التشغيل."), caution = true)
-    SetupInput(login, { login = it }, t("Current employee login", "معرّف الموظف الحالي"), enabled, 128)
-    SetupSecret(password, { password = it }, t("Current employee password", "كلمة مرور الموظف الحالية"), enabled)
-    Button(onClick = {
-        if (!enabled || login.isBlank() || password.length < 4) return@Button
-        val selected = login
-        val owned = password.toCharArray()
-        login = ""; password = ""
-        submit(selected, owned)
-    }, enabled = enabled && login.isNotBlank() && password.length >= 4,
-        modifier = Modifier.fillMaxWidth().touchTarget()) {
-        Text(t("Authenticate and continue", "التحقق والمتابعة"))
-    }
 }
 
 @Composable
@@ -840,17 +771,4 @@ internal fun problemText(problem: LocalSetupProblem): String = when (problem) {
         "أُوقف الجهاز الرئيسي المحلي صراحةً. أعد فتح التثبيت الأصلي بإجراء واضح؛ لم يبدأ جهاز رئيسي جديد أو جلسة موظف.")
     LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE -> t("The saved startup or stop intent could not be verified. Keep the original storage and use explicit original-state recovery; no automatic repair was attempted.",
         "تعذر التحقق من نية التشغيل أو الإيقاف المحفوظة. احتفظ بالتخزين الأصلي واستخدم استرداد الحالة الأصلية صراحةً؛ لم تُجرَ محاولة إصلاح تلقائي.")
-    LocalSetupProblem.STOP_BINDING_UNSUPPORTED -> t("This STOP record predates exact original-coordinate binding. It cannot be resumed as if it belonged to the currently visible original. Preserve storage and use explicit original recovery; no replacement binding or grant was invented.",
-        "سجل الإيقاف هذا أقدم من ربط إحداثيات الأصل الدقيقة. لا يمكن استئنافه كأنه يخص الأصل الظاهر حاليًا. احتفظ بالتخزين واستخدم استرداد الأصل صراحةً؛ لم يُنشأ ربط أو تصريح بديل.")
-}
-
-/** Dedicated setup routes retain the same conspicuous synthetic composition label. */
-@Composable
-internal fun LocalSetupCompositionNotice(controller: LocalSetupController) {
-    val profile = controller.compositionProfile as? com.ukkera.pos.security.LocalTrainingSdkProfileV1 ?: return
-    val number = when (profile.slot) {
-        com.ukkera.pos.security.LocalTrainingCompositionSlot.TRAINING_1 -> "1"
-        com.ukkera.pos.security.LocalTrainingCompositionSlot.TRAINING_2 -> "2"
-    }
-    Notice(t("SYNTHETIC TRAINING $number · NOT LIVE", "تدريب اصطناعي $number · ليس مباشرًا"), caution = true)
 }

@@ -84,7 +84,7 @@ internal class CommerceV1Fixture(
         if (incarnation?.reopenAfterReap != true) {
             check(!Files.exists(databasePath)) { "commerce.fixture.requires_new_database" }
             Files.createDirectories(databasePath.parent)
-            val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(databasePath.toString(), MasterRoomConstructor::initialize))
+            val database = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(databasePath.toString(), MasterRoomConstructor::initialize))
             try {
                 database.useWriterConnection { connection ->
                     requireDurableWriter(connection)

@@ -54,25 +54,12 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /**
- * Private local report roots. LIVE is the existing production root and provider. TRAINING is a
- * disjoint root that the live report provider never reads, so a synthetic training export cannot
- * appear as a live branch document (and conversely).
- */
-enum class AndroidLocalBranchReportStorageV1(internal val directoryName: String) {
-    LIVE("branch-report-export-v1"),
-    TRAINING("branch-report-export-training-v1"),
-}
-
-/**
  * Actual foreground native chooser into Context.noBackupFilesDir, never external/cloud SAF.
  * onStop still locks the app; this bridge does not exempt a picker from that security boundary.
  * API24+ protected file access uses the native adapter for atomic close-on-exec/no-follow
  * and bounded enumeration, without hidden APIs or guessed ABI constants.
  */
-class AndroidLocalBranchReportFiles(
-    context: Context,
-    private val storage: AndroidLocalBranchReportStorageV1 = AndroidLocalBranchReportStorageV1.LIVE,
-) : LocalBranchReportFileDelivery() {
+class AndroidLocalBranchReportFiles(context: Context) : LocalBranchReportFileDelivery() {
     private val application = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     internal override val commitGate: LocalReportCommitGate = object : LocalReportCommitGate {
@@ -135,20 +122,15 @@ class AndroidLocalBranchReportFiles(
                         setText(suggestedName)
                         contentDescription = "CSV file name / اسم ملف CSV"
                     }
-                    val training = storage == AndroidLocalBranchReportStorageV1.TRAINING
                     val content = LinearLayout(activity).apply {
                         orientation = LinearLayout.VERTICAL
                         setPadding(padding, padding, padding, padding)
-                        addView(TextView(activity).apply { text = if (training)
-                            "Destination: Ukkera POS SYNTHETIC TRAINING report files on this device only. NOT LIVE. Choose an Arabic or English name ending .csv. Existing files are never replaced. No cloud provider, upload, open or share.\n" +
-                            "الوجهة: ملفات تقارير تدريب اصطناعي خاصة بـ Ukkera POS على هذا الجهاز فقط. ليست مباشرة. اختر اسمًا بالعربية أو الإنجليزية ينتهي بـ .csv. لا تُستبدل الملفات الموجودة ولا يتم رفعها أو فتحها أو مشاركتها."
-                        else
+                        addView(TextView(activity).apply { text =
                             "Destination: Ukkera POS local report files on this device only. Choose an Arabic or English name ending .csv. Existing files are never replaced. No cloud provider, upload, open or share.\n" +
                             "الوجهة: ملفات تقارير Ukkera POS المحلية على هذا الجهاز فقط. اختر اسمًا بالعربية أو الإنجليزية ينتهي بـ .csv. لا تُستبدل الملفات الموجودة ولا يتم رفعها أو فتحها أو مشاركتها." })
                         addView(name)
                     }
-                    chooser = AlertDialog.Builder(activity).setTitle(if (training)
-                        "Save training CSV / حفظ CSV تدريبي" else "Save local CSV / حفظ CSV محلي")
+                    chooser = AlertDialog.Builder(activity).setTitle("Save local CSV / حفظ CSV محلي")
                         .setView(content).setPositiveButton("Choose / اختيار", null)
                         .setNegativeButton("Cancel / إلغاء") { _, _ -> if (continuation.isActive) continuation.resume(null) }
                         .create()
@@ -173,9 +155,7 @@ class AndroidLocalBranchReportFiles(
                                 name.error = "Use letters, digits, spaces, -, _ or . and end .csv (up to 84 characters; no path or controls) / استخدم أحرفًا أو أرقامًا أو مسافات وامتداد .csv (بحد أقصى 84 حرفًا، دون مسار أو محارف تحكم)"
                             } else {
                                 val result = if (hostCurrent(captured) && lifetime.isCurrent())
-                                    LocalReportNativeChoice(captured, chosen, if (training)
-                                        "Ukkera POS · SYNTHETIC TRAINING report files · NOT LIVE / ملفات تقارير تدريب اصطناعي · ليست مباشرة"
-                                    else "Ukkera POS · local report files / ملفات التقارير المحلية",
+                                    LocalReportNativeChoice(captured, chosen, "Ukkera POS · local report files / ملفات التقارير المحلية",
                                         LocalBranchReportFileDestinationKind.ANDROID_LOCAL_DOCUMENT) else null
                                 if (continuation.isActive) continuation.resume(result)
                                 dialog.dismiss()
@@ -196,28 +176,27 @@ class AndroidLocalBranchReportFiles(
     }
 
     override suspend fun <T> disk(block: (LocalReportReceiptDisk) -> T): T = withContext(Dispatchers.IO) {
-        AndroidReportFileStorage.access(application, storage, block)
+        AndroidReportFileStorage.access(application, block)
     }
 }
 
 /** Shared by the real Activity bridge and the OS DocumentsProvider in this app process. */
 internal object AndroidReportFileStorage {
     private val mutex = ReentrantLock()
-    private val storages = mutableMapOf<AndroidLocalBranchReportStorageV1, AndroidReportReceiptDisk>()
-    private val initializationAttempted = mutableSetOf<AndroidLocalBranchReportStorageV1>()
+    private var storage: AndroidReportReceiptDisk? = null
     private var application: Application? = null
-    fun <T> access(context: Context, storageKind: AndroidLocalBranchReportStorageV1,
-        block: (AndroidReportReceiptDisk) -> T): T = mutex.withLock {
+    private var initializationAttempted = false
+    fun <T> access(context: Context, block: (AndroidReportReceiptDisk) -> T): T = mutex.withLock {
         if (Build.VERSION.SDK_INT < AndroidNativeKeyPolicy.MINIMUM_ANDROID_API) fileFailure(LocalBranchReportFileProblem.UNSUPPORTED_STORAGE)
         val app = context.applicationContext as? Application ?: fileFailure(LocalBranchReportFileProblem.UNSUPPORTED_STORAGE)
         check(application == null || application === app)
-        val actual = storages[storageKind] ?: run {
-            // A failed initialization/descriptor cleanup is held per root for this process. No
-            // automatic reopening, descriptor-number guessing, directory repair or second lock.
-            if (storageKind in initializationAttempted) fileFailure(LocalBranchReportFileProblem.STORAGE_UNCERTAIN)
-            initializationAttempted += storageKind
+        val actual = storage ?: run {
+            // A failed initialization/descriptor cleanup is held for this process. No automatic
+            // reopening, descriptor-number guessing, directory repair or second lock owner.
+            if (initializationAttempted) fileFailure(LocalBranchReportFileProblem.STORAGE_UNCERTAIN)
+            initializationAttempted = true
             application = app
-            AndroidReportReceiptDisk.open(app, storageKind).also { storages[storageKind] = it }
+            AndroidReportReceiptDisk.open(app).also { storage = it }
         }
         actual.current()
         block(actual).also { actual.current() }
@@ -395,13 +374,12 @@ internal class AndroidReportReceiptDisk private constructor(
     }
 
     companion object {
-        fun open(application: Application,
-            storage: AndroidLocalBranchReportStorageV1 = AndroidLocalBranchReportStorageV1.LIVE): AndroidReportReceiptDisk {
+        fun open(application: Application): AndroidReportReceiptDisk {
             if (Build.VERSION.SDK_INT < AndroidNativeKeyPolicy.MINIMUM_ANDROID_API) fileFailure(LocalBranchReportFileProblem.UNSUPPORTED_STORAGE)
             val frameworkParent = AndroidReportFrameworkParent.capture(application)
             val uid = frameworkParent.uid
             val parent = frameworkParent.noBackup
-            val root = File(parent, storage.directoryName)
+            val root = File(parent, "branch-report-export-v1")
             if (!root.exists()) { Os.mkdir(root.path, 448); forceAndroidDirectory(parent) }
             androidPrivateDirectory(root, uid)
             for (name in listOf("receipts", "published")) {

@@ -25,7 +25,6 @@ import com.ukkera.pos.database.PhysicalRecordingParticipants
 import com.ukkera.pos.recovery.AuthorityIdentity
 import com.ukkera.pos.sales.store.AndroidOriginalRetailPhysicalAction
 import com.ukkera.pos.sales.store.AndroidOriginalRetailPhysicalRecording
-import com.ukkera.pos.sales.store.AndroidPhysicalCompositionNamespaceV1
 import com.ukkera.pos.sales.store.LocalPhysicalDelivery
 import com.ukkera.pos.sales.store.LocalPhysicalExternalCustody
 import com.ukkera.pos.sales.store.LocalPhysicalJournalExecutionOwner
@@ -54,7 +53,6 @@ import kotlinx.coroutines.withContext
  * company-head, device-credential, generic account-row or additional-device authority. */
 internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
     private val application: Application,
-    internal val composition: AndroidPhysicalCompositionNamespaceV1,
 ) : LocalPhysicalJournalExecutionOwner {
     private val backend = AndroidOriginalRetailPhysicalRecording.createBackend(this)
     private class OriginalOwner(val original: AndroidOriginalLocalClient) {
@@ -73,15 +71,9 @@ internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
     private val admissions = Mutex()
 
     internal companion object {
-        fun create(application: Application,
-            composition: AndroidPhysicalCompositionNamespaceV1 = AndroidPhysicalCompositionNamespaceV1.LIVE):
-            AndroidOriginalPhysicalJournalExecutionGate =
-            AndroidOriginalPhysicalJournalExecutionGate(application, composition)
+        fun create(application: Application): AndroidOriginalPhysicalJournalExecutionGate =
+            AndroidOriginalPhysicalJournalExecutionGate(application)
     }
-
-    /** The gate is created for exactly one already-created setup composition. */
-    internal fun ownsComposition(mode: com.ukkera.pos.security.LocalSetupCompositionMode): Boolean =
-        composition.mode == mode
 
     /** Original native acquisition preserves all namespace/catalogue/key/census checks. The
      * exact original reference is nonreplaceable even when acquisition or close is uncertain. */
@@ -95,7 +87,7 @@ internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
             selected.original?.let { if (it.original !== original) return@withLock false }
             if (selected.original != null || state.compareAndSet(selected, State(false, OriginalOwner(original), selected.employees))) break
         }
-        val acquired = AndroidOriginalRetailPhysicalRecording.acquire(application, original, backend, action, composition)
+        val acquired = AndroidOriginalRetailPhysicalRecording.acquire(application, original, backend, action)
         currentCoroutineContext().ensureActive()
         acquired && !state.get().denied && state.get().original?.original === original &&
             original.belongsTo(application) && original.physicalEndpoint(this) != null && backend.belongsToOriginalOwner(original)
@@ -118,7 +110,7 @@ internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
         }
         if (!native.recheckEmployeePhysical(custody)) return@withLock false
         if (!AndroidOriginalRetailPhysicalRecording.acquire(application, original, backend,
-                AndroidOriginalRetailPhysicalAction.REOPEN_EXISTING, composition)) return@withLock false
+                AndroidOriginalRetailPhysicalAction.REOPEN_EXISTING)) return@withLock false
         currentCoroutineContext().ensureActive()
         val history = custody.physicalEnrollmentHistory
         if (!backend.hasOriginalEnrollment(history) || !history.belongsToOriginalOwner(original) ||

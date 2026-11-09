@@ -748,8 +748,6 @@ internal class SupplementalV8Harness(
     private inner class ControlledContext(
         override val materialAtOpen: SelfOwnedNativeMaterialView,
     ) : com.ukkera.pos.security.SelfOwnedNativeContextController {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-            get() = com.ukkera.pos.security.LocalMasterSdkProfileV1
         override suspend fun readOriginalNativeBinding(): SelfOwnedNativeReadResult {
             val binding = if (phase == Phase.REFRESH) script.refreshBinding
                 else BindingScript("agree", 0, null)

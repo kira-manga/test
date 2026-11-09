@@ -2,7 +2,6 @@ package com.ukkera.pos.app
 
 import com.ukkera.pos.app.navigation.AppArea
 import com.ukkera.pos.app.navigation.AppRoute
-import com.ukkera.pos.security.LocalSetupCompositionMode
 import com.ukkera.pos.types.DomainId
 import kotlinx.coroutines.flow.StateFlow
 
@@ -18,8 +17,6 @@ data class AppDependencies(
     val branchReportFiles: LocalBranchReportFileDelivery = UnavailableLocalBranchReportFiles,
     /** Actual user-selected native input/output; no URI-only or mock production fallback. */
     val documentFiles: LocalPurchasingDocumentFiles = UnavailableLocalPurchasingDocumentFiles,
-    /** Presentation/ownership mode; never authority. LIVE keeps existing production behavior. */
-    val compositionMode: LocalSetupCompositionMode = LocalSetupCompositionMode.LIVE,
 )
 
 data class PlatformCapabilities(
@@ -174,8 +171,6 @@ interface BranchUiSession {
     val administration: LocalAdministrationUiGateway get() = UnavailableLocalAdministration
     /** Explicit head-authorized company publication, separate from this employee's activation permission. */
     val companyCatalog: LocalCompanyCatalogGateway get() = UnavailableLocalCompanyCatalog
-    /** Installed production setup ACK/checkpoints/go-live; absent providers stay explicitly unavailable. */
-    val setupClosure: LocalSetupClosureUiGateway get() = UnavailableLocalSetupClosure
     /** Concrete same-endpoint/native-owner binding only; configuration is never an action grant. */
     val retailPhysical: LocalRetailPhysicalGateway get() = UnavailableLocalRetailPhysical
     /** Null only for an adapter without lifecycle monitoring; never a proof that it is current. */

@@ -12,10 +12,7 @@ import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchStorage
 import java.io.File
 
 /** Android private-file/atomic-write adapter. No record codec, role or restart decisions. */
-internal class AndroidLocalMasterLaunchStorage(
-    private val application: Application,
-    private val directoryName: String = "ukkera.local-master-launch.v1",
-) : LocalMasterLaunchStorage {
+internal class AndroidLocalMasterLaunchStorage(private val application: Application) : LocalMasterLaunchStorage {
     private var closureUncertain = false
 
     private inline fun <T> protectedIo(block: () -> T): T {
@@ -91,7 +88,7 @@ internal class AndroidLocalMasterLaunchStorage(
 
     private fun directory(create: Boolean): File? {
         check(!closureUncertain) { "Native storage closure remains unresolved" }
-        val root = File(application.noBackupFilesDir, directoryName)
+        val root = File(application.noBackupFilesDir, "ukkera.local-master-launch.v1")
         val stat = try { Os.lstat(root.path) } catch (missing: ErrnoException) {
             if (missing.errno != OsConstants.ENOENT) throw missing
             if (!create) return null

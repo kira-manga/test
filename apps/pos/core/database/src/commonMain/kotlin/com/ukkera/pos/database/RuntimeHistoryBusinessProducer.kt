@@ -114,14 +114,6 @@ public class RuntimeHistoricalCommand internal constructor(
         is RetainedOriginalV2.Legacy -> value.evidence.recordedAt
         is RetainedOriginalV2.Streamed -> value.evidence.identity.recordedAt
     }
-    /** Compares immutable setup identity against this active native history owner's saved
-     * receipt. It observes historical DATA only; it grants no current action or session. */
-    public suspend fun matchesOriginalSetup(installationId: DomainId, originalRequestId: DomainId,
-        issuedAttemptId: DomainId, attemptSequence: Long, definitionDigest: PayloadDigest,
-        genesisDigest: PayloadDigest, receiptDigest: PayloadDigest): Boolean =
-        owner.matchesOriginalSetup(this, installationId, originalRequestId, issuedAttemptId,
-            attemptSequence, definitionDigest, genesisDigest, receiptDigest)
-
     /** The exact original serial-qualification observation, independent of restart time.
      * Existing native history retains audit timestamps and final deadline decisions,
      * but no qualified serial-time source/precision. Neither fact supplies that gap. */

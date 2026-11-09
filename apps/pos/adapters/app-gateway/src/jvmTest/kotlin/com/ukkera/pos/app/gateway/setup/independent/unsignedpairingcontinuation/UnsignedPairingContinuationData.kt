@@ -230,8 +230,6 @@ internal class ContinuationOriginal(val identity: LocalDevicePairingSdkIdentityV
 /** Original binding reads only; every native-history/new-authority operation refuses. */
 private class ContinuationBindingDataContext(override val materialAtOpen: SelfOwnedNativeMaterialView,
     private val binding: SelfOwnedNativeBindingV1) : SelfOwnedNativeContextController {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-            get() = com.ukkera.pos.security.LocalMasterSdkProfileV1
     private var readable = true
     override suspend fun readOriginalNativeBinding(): SelfOwnedNativeReadResult = if (readable)
         SelfOwnedNativeReadResult.Retained(materialAtOpen, binding)

@@ -111,49 +111,6 @@ public enum class SecurityAction(
     PURCHASING_INVOICE_CAPTURE,
     /** Exact accepted-goods matching and payable recognition; not variance or settlement authority. */
     PURCHASING_INVOICE_MATCH_RECOGNIZE(RequiredLimits.AMOUNT),
-    /**
-     * Explicit voluntary acknowledgement that the saved original setup result was delivered.
-     * Appended without changing any existing ordinal or expanding an existing grant. This does
-     * not complete installation, authenticate an employee, start RUN or perform business go-live.
-     */
-    SETUP_RESULT_DELIVERY_ACKNOWLEDGE,
-    /**
-     * Protected read/recovery of the saved original setup result. Appended separately from all
-     * existing reads; it discloses only the setup-result projection and never mutates setup,
-     * native or business state.
-     */
-    SETUP_RESULT_READ,
-    /**
-     * Responsible local business go-live for the saved original installation. Appended as a
-     * distinct exact action; installation, delivery acknowledgement, login and RUN never imply it.
-     */
-    SETUP_BUSINESS_GO_LIVE,
-    /**
-     * Explicit current setup-configuration settlement: actual activity, currency, timezone,
-     * business-day cutoff and legal/tax identity recorded against the saved original. Appended
-     * separately from every existing administrator/manager grant and from go-live.
-     */
-    SETUP_CONFIGURATION_SETTLE,
-    /**
-     * Explicit current settlement of a complete catalog import manifest whose rows reference
-     * actual retained catalog publication operations. This does not activate a catalog itself
-     * and does not expand CATALOG_ACTIVATE or any manager grant.
-     */
-    SETUP_CATALOG_IMPORT_SETTLE,
-    /**
-     * Explicit current settlement of counted opening stock/value and opening drawer float whose
-     * rows reference actual retained stock/cash operations. Never a stock/cash operation grant.
-     */
-    SETUP_OPENING_SETTLE,
-    /** Explicit disclosure of fiscal configuration and opening checkpoint details. */
-    SETUP_CHECKPOINTS_READ,
-    /**
-     * Explicit current local lifecycle authority for intentional STOP and same-original RESUME.
-     * Appended without changing an existing ordinal or granting any role by default. The action
-     * is authorized only through the narrow protected lifecycle transaction; setup/UI state,
-     * cached grants, a plain open command and automatic launch never imply it.
-     */
-    MASTER_LIFECYCLE,
 }
 
 public data class Permission(public val action: SecurityAction, public val verb: PermissionVerb)
@@ -479,37 +436,6 @@ public object AuthorizationEvaluator {
             return AuthorizationDecision.Allowed(AuthorizedAction.issue(principal, requirement, snapshot))
         }
         return deny(failure)
-    }
-
-    /**
-     * Pure historical grant decision for an already verified local session/account/admission
-     * cut. It constructs only an ephemeral principal/snapshot and returns a boolean; no
-     * authority object escapes. Callers must still prove the session/currentness facts against
-     * their own historical evidence. Never use this as a request authentication entry point.
-     */
-    public fun historicalLocalEmployeeAllows(
-        actorId: DomainId,
-        scope: BranchScope,
-        deviceId: DomainId,
-        sessionId: DomainId,
-        sessionGeneration: SessionGeneration,
-        admissionRevision: Revision,
-        authenticationPurpose: AuthenticationPurpose,
-        policyRevision: Revision,
-        accountEnabled: Boolean,
-        credentialPresent: Boolean,
-        sessionActive: Boolean,
-        admissionAdmitted: Boolean,
-        grants: List<PermissionGrant>,
-        requirement: AuthorizationRequirement,
-    ): Boolean {
-        if (!credentialPresent) return false
-        val principal = LocalEmployeePrincipal.verified(VerifiedLocalIdentity(
-            actorId, scope, deviceId, sessionId, sessionGeneration, admissionRevision, authenticationPurpose))
-        val snapshot = AuthorizationSnapshot(actorId, PrincipalKind.LOCAL_EMPLOYEE, scope, sessionId,
-            sessionGeneration, deviceId, admissionRevision, policyRevision, accountEnabled, sessionActive,
-            admissionAdmitted, authenticationPurpose, grants)
-        return evaluate(principal, snapshot, requirement) is AuthorizationDecision.Allowed
     }
 
     internal fun currentIdentityFailure(

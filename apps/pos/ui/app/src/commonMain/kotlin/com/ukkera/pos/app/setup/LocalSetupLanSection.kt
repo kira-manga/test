@@ -27,12 +27,7 @@ import com.ukkera.pos.app.ui.touchTarget
 
 /** Explicit transport/profile review only. The retained setup owner validates and owns attachment. */
 @Composable
-internal fun LocalSetupLanSection(
-    controller: LocalSetupController,
-    view: LocalSetupView,
-    permissionGranted: Boolean,
-    onRequestPermission: (() -> Unit)?,
-) {
+internal fun LocalSetupLanSection(controller: LocalSetupController, view: LocalSetupView) {
     if (view.locked) return
     val lan = view.lan
     val role = lan.role ?: when {
@@ -49,7 +44,7 @@ internal fun LocalSetupLanSection(
         null -> false
     }
     val idle = view.work == null && view.phase != LocalSetupPhase.CLOSING && view.phase != LocalSetupPhase.CLOSED
-    val mayBegin = permissionGranted && idle && view.problem != LocalSetupProblem.CLOSE_UNCONFIRMED &&
+    val mayBegin = idle && view.problem != LocalSetupProblem.CLOSE_UNCONFIRMED &&
         lan.status == LocalSetupLanStatus.NOT_ATTACHED && available
     var subnets by remember(controller, role) { mutableStateOf("") }
     var interfaceName by remember(controller, role) { mutableStateOf("") }
@@ -82,14 +77,6 @@ internal fun LocalSetupLanSection(
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeading(t("Explicit branch LAN attachment", "اتصال صريح بالشبكة المحلية للفرع"))
-        if (!permissionGranted) {
-            Notice(t("Allow local network access to host or connect to the branch. If access was denied permanently, enable Nearby devices in this app’s system settings, then return. Granting access does not start a connection or sign you in.",
-                "اسمح بالوصول إلى الشبكة المحلية لاستضافة الفرع أو الاتصال به. إذا رُفض الوصول نهائيًا، فعّل الأجهزة القريبة في إعدادات النظام لهذا التطبيق ثم عُد. لا يبدأ منح الإذن اتصالًا ولا يسجل دخولك."))
-            if (onRequestPermission != null) OutlinedButton(onClick = onRequestPermission,
-                enabled = idle, modifier = Modifier.fillMaxWidth().touchTarget()) {
-                Text(t("Allow local network access", "السماح بالوصول إلى الشبكة المحلية"))
-            }
-        }
         ReviewField(t("Transport role", "دور الاتصال"), when (role) {
             LocalSetupLanRole.CLIENT -> t("Client to the selected original Master", "عميل للجهاز الرئيسي الأصلي المختار")
             LocalSetupLanRole.HOST -> t("Host on the existing operational Master", "مضيف على الجهاز الرئيسي التشغيلي الموجود")

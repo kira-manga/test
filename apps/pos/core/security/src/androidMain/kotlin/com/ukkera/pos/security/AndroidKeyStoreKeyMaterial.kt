@@ -396,8 +396,7 @@ internal class AndroidSelfOwnedDataKeyMaterial(
             SelfOwnedKeyProtectionV1.STRONGBOX -> AndroidKeyStoreProtectionRequirement.STRONGBOX
         }
         return AndroidKeyStoreConfiguration(coordinates.installationId, coordinates.scope,
-            ProtectedStorageKeyReference(coordinates.storageKeyId), ProtectedPepperReference(coordinates.pepperKeyId), requirement,
-            aliasPrefix = environment.profile.keystoreAliasPrefix)
+            ProtectedStorageKeyReference(coordinates.storageKeyId), ProtectedPepperReference(coordinates.pepperKeyId), requirement)
     }
 
     private fun createProof(original: SelfOwnedNativeIntentV1, role: SelfOwnedTargetKeyRoleV1, key: SecretKey): ByteArray {

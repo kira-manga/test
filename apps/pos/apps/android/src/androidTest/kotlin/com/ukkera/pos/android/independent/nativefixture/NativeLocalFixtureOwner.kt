@@ -50,7 +50,6 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
     private var client: C? = null
     private var unconnectedJournals: AndroidOriginalClientJournals? = null
     private var acquisitionUnconfirmed = false
-    private var closeUnconfirmed = false
     private var setupAttempted = false
     private var firstClientAcquired = false
     private var clientLifetimeCount = 0
@@ -60,11 +59,9 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
     private var previous: AndroidOriginalLocalClient? = null
     val coordinates: SelfOwnedAllocationCoordinatesV1 get() = checkNotNull(material).coordinates
     val currentClient: C get() = checkNotNull(client)
-    /** Actual retained master for independently specified native lifecycle actions. */
-    val currentMaster: AndroidSelfOwnedMasterService get() = checkNotNull(master)
 
     suspend fun setup(installer: CharArray, head: CharArray, employee: CharArray) {
-        check(!setupAttempted && !acquisitionUnconfirmed && !closeUnconfirmed)
+        check(!setupAttempted && !acquisitionUnconfirmed)
         setupAttempted = true
         evidence.event("NATIVE_SETUP_STARTED")
         acquisitionUnconfirmed = true
@@ -91,8 +88,8 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
         val granted = nativeFixtureSecret(installer) {
             actual.issueOriginalPreparation(prepared.action, setupInputs.installerLogin, it)
         } as? LocalProvisionerGrant.Retained ?: error("Original native branch issuance is unresolved")
+        actual.close()
         provisioner = null
-        closeResource { actual.close() }
 
         acquireContext(preparing = true)
         val initial = checkNotNull(context).materialAtOpen
@@ -161,7 +158,7 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
 
     suspend fun openClient(): C {
         check(client == null && master == null && context == null && nativeRead == null &&
-            provisioner == null && unconnectedJournals == null && !acquisitionUnconfirmed && !closeUnconfirmed)
+            provisioner == null && unconnectedJournals == null && !acquisitionUnconfirmed)
         acquireMaster(installationOnly = false)
         val service = checkNotNull(master)
         check(service.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
@@ -204,7 +201,7 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
     /** Fresh existing-only native connection; never read a live Master's database by another path. */
     suspend fun <T> readClosedNativeHistory(reader: suspend (SelfOwnedNativeHistoryCustody) -> T): T {
         check(master == null && client == null && context == null && nativeRead == null &&
-            provisioner == null && unconnectedJournals == null && !acquisitionUnconfirmed && !closeUnconfirmed)
+            provisioner == null && unconnectedJournals == null && !acquisitionUnconfirmed)
         acquireContext(preparing = false)
         acquisitionUnconfirmed = true
         val claimed = AndroidSelfOwnedInstallationOwner.claimOriginalHistoryCustody(checkNotNull(context))
@@ -213,13 +210,13 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
         context = null // Actual successful affine transfer; only custody may now close it.
         acquisitionUnconfirmed = false
         val observed = reader(claimed.custody)
+        claimed.custody.close()
         nativeRead = null
-        closeResource { claimed.custody.close() }
         return observed
     }
 
     private suspend fun acquireContext(preparing: Boolean) {
-        check(context == null && master == null && nativeRead == null && !acquisitionUnconfirmed && !closeUnconfirmed)
+        check(context == null && master == null && nativeRead == null && !acquisitionUnconfirmed)
         acquisitionUnconfirmed = true
         val opened = if (preparing) AndroidSelfOwnedInstallationOwner.prepareOriginal(application)
             else AndroidSelfOwnedInstallationOwner.openOriginal(application)
@@ -243,48 +240,27 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
         acquisitionUnconfirmed = false
     }
 
-    private suspend fun closeContext() {
-        val actual = checkNotNull(context)
-        context = null
-        closeResource { actual.close() }
-    }
-
-    private suspend fun closeResource(block: suspend () -> Unit) {
-        try { block() } catch (failure: Throwable) {
-            closeUnconfirmed = true
-            throw failure
-        }
-    }
-
-    /** Transfers the exact current Master to a lifecycle case that owns its one permitted close.
-     * The caller must consume the handle once and must not return it here afterwards. */
-    fun detachMasterForExplicitClose(): AndroidSelfOwnedMasterService {
-        check(master != null && context == null && nativeRead == null && !acquisitionUnconfirmed && !closeUnconfirmed)
-        val actual = checkNotNull(master)
-        master = null
-        return actual
-    }
+    private suspend fun closeContext() { checkNotNull(context).close(); context = null }
 
     /** Visit every actual owner; only a normal close result permits a subsequent acquisition. */
     suspend fun closeOwned(): Unit = withContext(NonCancellable) {
-        check(!closeUnconfirmed) { "An earlier owner close is unconfirmed; consumed close must not be retried" }
         var failure: Throwable? = null
         suspend fun attempt(block: suspend () -> Unit) {
-            try { closeResource(block) } catch (caught: Throwable) {
+            try { block() } catch (caught: Throwable) {
                 if (failure == null) failure = caught
                 else if (failure !== caught) checkNotNull(failure).addSuppressed(caught)
             }
         }
-        client?.let { value -> client = null; attempt { value.close() } }
-        unconnectedJournals?.let { value -> unconnectedJournals = null; attempt { value.close() } }
-        master?.let { value -> master = null; attempt {
-            check(value.quiesceAndClose()) { "Actual original Master close is unconfirmed" }
+        client?.let { value -> attempt { value.close(); client = null } }
+        unconnectedJournals?.let { value -> attempt { value.close(); unconnectedJournals = null } }
+        master?.let { value -> attempt {
+            check(value.quiesceAndClose()) { "Actual original Master close is unconfirmed" }; master = null
         } }
-        nativeRead?.let { value -> nativeRead = null; attempt { value.close() } }
-        context?.let { value -> context = null; attempt { value.close() } }
-        provisioner?.let { value -> provisioner = null; attempt { value.close() } }
+        nativeRead?.let { value -> attempt { value.close(); nativeRead = null } }
+        context?.let { value -> attempt { value.close(); context = null } }
+        provisioner?.let { value -> attempt { value.close(); provisioner = null } }
         failure?.let { throw it }
-        check(!acquisitionUnconfirmed && !closeUnconfirmed) { "An unresolved acquisition does not prove owner closure" }
+        check(!acquisitionUnconfirmed) { "An unresolved acquisition does not prove owner closure" }
         evidence.event("ACTUAL_OWNED_CLOSE_CONFIRMED_NOT_BUSINESS_SERVICE_STOP")
     }
 }

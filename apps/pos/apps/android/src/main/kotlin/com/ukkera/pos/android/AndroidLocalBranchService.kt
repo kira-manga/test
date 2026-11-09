@@ -28,9 +28,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * a client or restore employee sign-in. Explicit setup uses the actual native/Room installer.
  *
  * onUnbind/task removal/backgrounding lock presentation, without closing admitted setup work.
- * Destruction or service disposal unpublishes first, then drains and closes the actual owner.
- * Service disposal is NOT an authorized intentional STOP and publishes no STOP intent; only the
- * explicit authenticated lifecycle ingress may clear/set the durable STOP projection.
+ * Destruction or an explicit stop unpublishes first, then drains and closes the actual owner.
  * A process-static slot retains a destroyed service's owner until its real close succeeds.
  * Failed/unknown close does NOT release that slot or let a new service hide the old lifetime.
  *
@@ -72,9 +70,7 @@ public class AndroidLocalBranchService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_RETAIN_SETUP -> owned?.owner?.reopenRetainedMaster()
-            // Disposal/relaunch plumbing only: this is not employee lifecycle authority and
-            // must never publish an authorized STOP intent. The authenticated UI ingress owns STOP.
-            ACTION_RETIRE_SETUP -> retireOwnedSlot(intentional = false)
+            ACTION_RETIRE_SETUP -> retireOwnedSlot(intentional = true)
             else -> if (owned == null) stopSelf(startId)
         }
         return START_NOT_STICKY
@@ -118,10 +114,10 @@ public class AndroidLocalBranchService : Service() {
             owned?.owner?.lockPresentation()
         }
 
-        /** Ordinary service-owner disposal. Never a product intentional STOP or lifecycle grant. */
+        /** Explicitly retires this owner and its original cohost; never just a screen lock. */
         public fun retireSetup() {
             requireSameProcess()
-            retireOwnedSlot(intentional = false)
+            retireOwnedSlot(intentional = true)
         }
     }
 

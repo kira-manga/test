@@ -89,14 +89,6 @@ internal fun actionLabel(action: LocalAction): LocalText = when (action) {
     LocalAction.SUPPLIER_ADVANCE_ALLOCATE -> text("Allocate an already paid supplier advance", "تخصيص دفعة مورد مقدمة مدفوعة بالفعل")
     LocalAction.SUPPLIER_OPENING_RECORD -> text("Record migrated opening supplier debt", "تسجيل دين مورد افتتاحي مرحّل")
     LocalAction.SALES_ROUTE_CONFIGURE -> text("Configure stock routing for sales", "إعداد مخزن الصرف للمبيعات")
-    LocalAction.SETUP_RESULT_ACKNOWLEDGE -> text("Acknowledge installed setup result delivery", "تأكيد تسليم نتيجة الإعداد المثبت")
-    LocalAction.SETUP_BUSINESS_GO_LIVE -> text("Record responsible business go-live", "تسجيل بدء العمل التجاري المسؤول")
-    LocalAction.SETUP_CONFIGURATION_RECORD -> text("Record setup configuration checkpoint", "تسجيل نقطة تحقق إعداد التكوين")
-    LocalAction.SETUP_CATALOG_IMPORT_ROW -> text("Record setup catalog import row", "تسجيل صف استيراد كتالوج الإعداد")
-    LocalAction.SETUP_CATALOG_IMPORT_COMPLETE -> text("Complete setup catalog import checkpoint", "إتمام نقطة تحقق استيراد كتالوج الإعداد")
-    LocalAction.SETUP_OPENING_STOCK_ROW -> text("Record setup opening stock row", "تسجيل صف مخزون افتتاحي للإعداد")
-    LocalAction.SETUP_OPENING_FLOAT_ROW -> text("Record setup opening float row", "تسجيل صف عهدة افتتاحية للإعداد")
-    LocalAction.SETUP_OPENING_COMPLETE -> text("Complete setup opening checkpoint", "إتمام نقطة تحقق الافتتاح للإعداد")
     else -> text("Unsupported action: ${action.name}", "إجراء غير مدعوم: ${action.name}")
 }
 
@@ -329,6 +321,5 @@ internal fun fieldLabel(field: LocalField): LocalText = when (field) {
     LocalField.FOOD_SERVING_COUNT -> text("Number of configured servings", "عدد الحصص المُعدّة")
     LocalField.LINE_SEAT_NOTE -> text("Commercial line seat note", "ملاحظة مقعد السطر التجاري")
     LocalField.FOOD_PORTION_IDS -> text("Original preparation member IDs", "معرفات حصص التحضير الأصلية")
-    LocalField.SETUP_BODY_DIGEST -> text("Exact immutable setup request digest", "بصمة طلب الإعداد الثابتة الدقيقة")
     else -> text("Field: ${field.name}", "حقل: ${field.name}")
 }

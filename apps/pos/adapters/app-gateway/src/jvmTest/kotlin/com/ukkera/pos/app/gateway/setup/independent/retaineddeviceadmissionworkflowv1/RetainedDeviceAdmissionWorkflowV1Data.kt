@@ -264,8 +264,6 @@ private class ControlledBindingDataContext(
     override val materialAtOpen: SelfOwnedNativeMaterialView,
     private val binding: SelfOwnedNativeBindingV1,
 ) : SelfOwnedNativeContextController {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-            get() = com.ukkera.pos.security.LocalMasterSdkProfileV1
     @Volatile private var readable: Boolean = true
 
     override suspend fun readOriginalNativeBinding(): SelfOwnedNativeReadResult = if (readable)

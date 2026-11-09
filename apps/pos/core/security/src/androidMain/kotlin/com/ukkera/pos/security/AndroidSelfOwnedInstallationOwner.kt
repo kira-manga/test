@@ -19,7 +19,7 @@ import kotlinx.coroutines.withContext
 public object AndroidSelfOwnedInstallationOwner {
     /** Explicit preparation/resume of ONLY the original P1-retained allocation on this device. */
     public suspend fun prepareOriginal(application: Application): SelfOwnedNativeOpenResult =
-        acquire(application, preparation = true, profile = SelfOwnedNativeProfileV1.LIVE)
+        acquire(application, preparation = true)
 
     /**
      * Original completed target only: no key generation, P1 registry, installer or cashier
@@ -27,17 +27,7 @@ public object AndroidSelfOwnedInstallationOwner {
      * Every acquisition/current observation is existing-only; full-history/read admission is separate.
      */
     public suspend fun openOriginal(application: Application): SelfOwnedNativeOpenResult =
-        acquire(application, preparation = false, profile = SelfOwnedNativeProfileV1.LIVE)
-
-    /** Explicit training-slot preparation; a distinct root/key/SDK namespace from live. */
-    public suspend fun prepareTraining(application: Application,
-        slot: LocalTrainingCompositionSlot): SelfOwnedNativeOpenResult =
-        acquire(application, preparation = true, profile = SelfOwnedNativeProfileV1.training(slot))
-
-    /** Existing-only training-slot original; never creates or repairs a missing training root. */
-    public suspend fun openTraining(application: Application,
-        slot: LocalTrainingCompositionSlot): SelfOwnedNativeOpenResult =
-        acquire(application, preparation = false, profile = SelfOwnedNativeProfileV1.training(slot))
+        acquire(application, preparation = false)
 
     /** Transfers a single claim from THIS actual context; never creates a second P2 lease. */
     public suspend fun claimOriginalHistoryCustody(actualContext: SelfOwnedLocalSecurityContext): SelfOwnedNativeHistoryClaimResult =
@@ -56,9 +46,8 @@ public object AndroidSelfOwnedInstallationOwner {
         (custody.controller as? AndroidSelfOwnedInstallationLifetime ?: error("Original native custody required"))
             .yieldExistingMasterSdkForHost(expectedCurrentSnapshot)
 
-    private suspend fun acquire(application: Application, preparation: Boolean,
-        profile: SelfOwnedNativeProfileV1): SelfOwnedNativeOpenResult {
-        val lease = AndroidProvisionerProcessLease.acquire(profile)
+    private suspend fun acquire(application: Application, preparation: Boolean): SelfOwnedNativeOpenResult {
+        val lease = AndroidProvisionerProcessLease.acquire()
             ?: return SelfOwnedNativeOpenResult.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
         val work = try { AndroidOwnedInstallationWork(lease) } catch (_: Throwable) {
             // Construction precedes all registry/namespace/key opens.
@@ -68,7 +57,7 @@ public object AndroidSelfOwnedInstallationOwner {
         val retained = AtomicReference<AndroidSelfOwnedInstallationLifetime?>(null)
         var delivered = false
         try {
-            val lifetime = AndroidSelfOwnedInstallationLifetime(application, work, profile)
+            val lifetime = AndroidSelfOwnedInstallationLifetime(application, work)
             retained.set(lifetime) // Retain partial ownership BEFORE dispatch/native acquisition.
             return when (val result = work.run {
                 object : AndroidOwnedTask<AndroidSelfOwnedInstallationLifetime> {
@@ -106,7 +95,6 @@ public object AndroidSelfOwnedInstallationOwner {
 internal class AndroidSelfOwnedInstallationLifetime(
     private val application: Application,
     private val work: AndroidOwnedInstallationWork,
-    private val profile: SelfOwnedNativeProfileV1,
 ) : SelfOwnedNativeContextController, SelfOwnedNativeHistoryController,
     SelfOwnedCompanyBusinessPublicationsOwner, SelfOwnedOriginalSerialCustodyOwnerV1,
     SelfOwnedSerialPrivatePublicationController,
@@ -115,7 +103,6 @@ internal class AndroidSelfOwnedInstallationLifetime(
     SelfOwnedEmployeeEnrollmentsOwner, NativeLocalEmployeeEnrollmentController, SelfOwnedEmployeeProvisioningOwner,
     SelfOwnedEmployeePolicyActivationsOwner, NativeLocalEmployeePolicyActivationController, SelfOwnedEmployeePolicyActivationFrameOwner,
     NativeLocalDevicePairingController, NativeLocalDeviceAdmissionController, SelfOwnedDeviceAdmissionFrameOwner {
-    override val compositionProfile: LocalCompositionSdkProfileV1 get() = profile.sdkProfile
     private val ownerToken = Any()
     private val ceremoniesDenied = AtomicBoolean(false)
     private val dataDenied = AtomicBoolean(false)
@@ -196,8 +183,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
         acquisitionKind = if (preparation) AcquisitionKind.PREPARATION else AcquisitionKind.EXISTING_ORIGINAL
         // Preparation never becomes an existing-original data owner in place. Its actual
         // close and a separate existing-only acquisition precede the full D7/Room ceremony.
-        val actualEnvironment = if (preparation) AndroidSelfOwnedEnvironment.capture(application, work, profile)
-            else AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work, profile)
+        val actualEnvironment = if (preparation) AndroidSelfOwnedEnvironment.capture(application, work)
+            else AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work)
         environment = actualEnvironment
         // This local value never leaves this one synchronous admitted invocation. Parsed UI
         // documents cannot enter this path, and ordinary reopen does not enter P1 at all.
@@ -297,8 +284,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
         masterSdkConstructionEntered = true // Retain entry before even the partial owner constructor.
         val owned = AndroidDevicePairingSdkOwnerV2(application, work)
         masterSdkOwner = owned // Retain BEFORE official SDK storage or Kit construction.
-        owned.createNative(compositionProfile.appId(actualAllocation.coordinates.scope),
-            compositionProfile.deviceName(actualAllocation.coordinates.deviceId))
+        owned.createNative(LocalMasterSdkProfileV1.appId(actualAllocation.coordinates.scope),
+            LocalMasterSdkProfileV1.deviceName(actualAllocation.coordinates.deviceId))
         val captured = owned.captureMasterNative(acquisitionId, actualAllocation, actualEnvironment.target)
         masterSdkOriginal = captured // This exact association must survive first force/readback.
         requireInitialMasterSdkOriginalNative(initialization, captured)
@@ -318,8 +305,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
                 if (!actualBytes.contentEquals(observedBytes)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             } finally { observedBytes.fill(0) }
         } finally { actualBytes.fill(0) }
-        if (original.compositionProfile != compositionProfile ||
-            !original.nativeApplication.same(requireNotNull(environment).target) ||
+        if (!original.nativeApplication.same(requireNotNull(environment).target) ||
             !original.nativeApplication.same(materialAtOpen.target) ||
             original.allocation.originalNativeBindingDigest.value != materialAtOpen.originalNativeBindingDigest)
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
@@ -514,8 +500,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
         val original = checkNotNull(record.masterSdkOriginal)
         // The authenticated native read above joins the complete original allocation/application
         // to the actual native participants. Branch compatibility adds no capture or repair edge.
-        check(original.compositionProfile == compositionProfile &&
-            original.appId == compositionProfile.appId(record.allocation.coordinates.scope))
+        check(original.appId == LocalMasterSdkProfileV1.appId(record.allocation.coordinates.scope))
         original
     }
     override suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession {

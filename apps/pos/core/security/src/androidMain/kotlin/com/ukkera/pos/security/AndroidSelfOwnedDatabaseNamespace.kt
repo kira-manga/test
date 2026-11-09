@@ -31,7 +31,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
 ) {
     private enum class Phase { NEW, OPENING, OPEN, CLOSE_STARTED, CLOSED }
     private var phase = Phase.NEW
-    private val directory = File(environment.noBackupDirectory, environment.profile.targetDirectoryName)
+    private val directory = File(environment.noBackupDirectory, DIRECTORY_NAME)
     private val databaseDirectory = File(directory, DATABASE_DIRECTORY)
     private val descriptors = mutableListOf<OwnedDescriptor>()
     private val ancestors = linkedMapOf<File, Stamp>()
@@ -539,6 +539,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
     private fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
 
     companion object {
+        private const val DIRECTORY_NAME = "ukkera-self-owned-target-v1"
         private const val DATABASE_DIRECTORY = "database"
         private const val LOCK = "lock.v1"
         private const val INTENT = "native-intent.v1"

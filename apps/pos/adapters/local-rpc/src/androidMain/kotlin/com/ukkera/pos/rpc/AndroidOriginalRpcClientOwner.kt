@@ -129,19 +129,19 @@ public class AndroidOriginalRpcClientOwner private constructor(
 /** Holds the exact native source and shared owner even after all temporary callers exit. */
 private object AndroidOriginalRpcClientSlot {
     private val gate = Any()
-    private val retained = mutableMapOf<com.ukkera.pos.security.LocalCompositionSdkProfileV1, AndroidOriginalRpcClientSource>()
+    private var retained: AndroidOriginalRpcClientSource? = null
 
     fun retain(source: AndroidOriginalRpcClientSource) {
         synchronized(gate) {
-            check(retained[source.compositionProfile] == null) { "An original RPC client composition is already retained" }
-            retained[source.compositionProfile] = source
+            check(retained == null) { "An original RPC client composition is already retained" }
+            retained = source
         }
     }
 
     fun release(source: AndroidOriginalRpcClientSource) {
         synchronized(gate) {
-            check(retained[source.compositionProfile] === source) { "Original RPC client holder differs" }
-            retained.remove(source.compositionProfile)
+            check(retained === source) { "Original RPC client holder differs" }
+            retained = null
         }
     }
 }
@@ -149,7 +149,6 @@ private object AndroidOriginalRpcClientSlot {
 private class AndroidOriginalRpcClientSource(
     private val target: AndroidDevicePairingTarget,
 ) : LocalRpcOriginalClientSource {
-    val compositionProfile = target.compositionProfile
     @Volatile private var owner: LocalRpcOriginalClientOwner? = null
     @Volatile private var constructionFailure: Throwable? = null
 

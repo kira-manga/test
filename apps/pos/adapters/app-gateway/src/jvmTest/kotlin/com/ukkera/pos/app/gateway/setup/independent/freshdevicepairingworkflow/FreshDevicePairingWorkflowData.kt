@@ -205,8 +205,6 @@ internal class FreshDevicePairingWorkflowOriginal(val identity: LocalDevicePairi
 /** Binding read DATA only. Every history-custody or new-authority operation refuses. */
 private class FreshWorkflowBindingDataContext(override val materialAtOpen: SelfOwnedNativeMaterialView,
     private val binding: SelfOwnedNativeBindingV1) : SelfOwnedNativeContextController {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-            get() = com.ukkera.pos.security.LocalMasterSdkProfileV1
     @Volatile private var readable = true
     override suspend fun readOriginalNativeBinding(): SelfOwnedNativeReadResult = if (readable)
         SelfOwnedNativeReadResult.Retained(materialAtOpen, binding)

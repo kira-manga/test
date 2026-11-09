@@ -62,7 +62,7 @@ internal data class NativeDevicePairingBodyV1(val originalActionId: DomainId,
                 master.allocation.digest == origin.allocationDigest &&
                 master.allocation.originalNativeBindingDigest == origin.bindingDigest &&
                 master.allocation.p1RootDocumentDigest == origin.rootDocumentDigest &&
-                master.appId == master.compositionProfile.appId(origin.coordinates.scope))
+                master.appId == LocalMasterSdkProfileV1.appId(origin.coordinates.scope))
         }
     }
     fun requested(): LocalDevicePairingDefinition {

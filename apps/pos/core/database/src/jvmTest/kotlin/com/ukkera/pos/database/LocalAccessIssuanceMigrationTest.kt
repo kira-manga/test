@@ -1,5 +1,6 @@
 package com.ukkera.pos.database
 
+import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.room3.useWriterConnection
 import androidx.sqlite.SQLiteConnection
@@ -128,9 +129,9 @@ class LocalAccessIssuanceMigrationTest {
         // Historical migration and reopen above REALLY completed at v3. The same
         // file now advances to v4 solely for the current production-store assertions.
         // Do not merge this phase's driver observations into the original 2->3 probe.
-        // v4 is the genuine historical twelve-entity schema, not the owned schema-7 opener.
         repeat(2) { // Actual 3->4 followed by genuine current-v4 close/reopen.
-            val current = buildLegacyV4MasterRoom(source.path)
+            val current = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(
+                source.path.toString(), MasterRoomConstructor::initialize))
             try {
                 assertSourcePreserved(source, current)
                 assertCurrentV4ProtectedValues(current, legacy)
@@ -283,7 +284,7 @@ class LocalAccessIssuanceMigrationTest {
 }
 
 /** Current adapter phase only; the historical observations are complete before this call. */
-private suspend fun assertCurrentV4ProtectedValues(migrated: LegacyV4MasterDatabase, legacy: LegacyV2MasterFixture) {
+private suspend fun assertCurrentV4ProtectedValues(migrated: MasterRoomDatabase, legacy: LegacyV2MasterFixture) {
     migrated.useWriterConnection { connection ->
         connection.usePrepared("PRAGMA user_version") { check(it.step()); assertEquals(4L, it.getLong(0)) }
         connection.usePrepared("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name") {
@@ -292,8 +293,7 @@ private suspend fun assertCurrentV4ProtectedValues(migrated: LegacyV4MasterDatab
                 REPLACEMENT_EXPECTED_NAMES).sorted(), names)
         }
     }
-    // Historical v4 read only: production DAO checks and codec/AEAD, no schema-7 composition.
-    val store = LegacyV4ProtectedReadFixture(migrated, legacy.protection, legacy.keyReference)
+    val store = RoomLocalSecurityStore(migrated, legacy.protection, legacy.keyReference)
     store.transaction { transaction ->
         val account = assertNotNull(transaction.readProtectedAccount(TEST_SCOPE, TEST_ACTOR))
         assertContentEquals(ProtectedLocalSecurityCodec.encodeAccount(legacy.account),

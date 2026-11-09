@@ -25,7 +25,7 @@ internal class AndroidLocalProvisionerRegistry(
 ) {
     private enum class Phase { NEW, OPENING, OPEN, CLOSE_STARTED, CLOSED }
     private var phase = Phase.NEW
-    private val directory = File(environment.noBackupDirectory, environment.profile.provisionerDirectoryName)
+    private val directory = File(environment.noBackupDirectory, "ukkera-self-owned-provisioner-v1")
     private val descriptors = mutableListOf<OwnedDescriptor>()
     private val ancestors = linkedMapOf<File, Stamp>()
     private var dataDescriptor: OwnedDescriptor? = null

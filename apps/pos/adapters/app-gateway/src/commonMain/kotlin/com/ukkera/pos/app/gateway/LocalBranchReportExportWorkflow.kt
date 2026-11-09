@@ -51,10 +51,7 @@ private interface ExportAuditPort {
     suspend fun lookup(receipt: LocalBranchReportFileReceipt): LocalBranchReportExportViewV1?
 }
 
-private class CurrentMasterExportAudit(
-    private val access: GatewayAccess,
-    private val files: LocalBranchReportFileDelivery,
-) : ExportAuditPort {
+private class CurrentMasterExportAudit(private val access: GatewayAccess) : ExportAuditPort {
     override suspend fun begin(receipt: LocalBranchReportFileReceipt, command: LocalBranchReportAuditCommand): ExportAuditDecision =
         submit(receipt, LocalBranchReportAuditSlot.BEGIN, command)
     override suspend fun finalize(receipt: LocalBranchReportFileReceipt, slot: LocalBranchReportAuditSlot,
@@ -64,9 +61,7 @@ private class CurrentMasterExportAudit(
     }
     private suspend fun submit(receipt: LocalBranchReportFileReceipt, slot: LocalBranchReportAuditSlot,
         command: LocalBranchReportAuditCommand): ExportAuditDecision =
-        decision(receipt, slot, command, access.reportExportCommand(request(access, receipt, slot, command)) { result ->
-            retainForReceipt(receipt, slot, command, result)
-        })
+        decision(receipt, slot, command, access.reportExportCommand(request(access, receipt, slot, command)))
 
     override suspend fun recover(receipt: LocalBranchReportFileReceipt, slot: LocalBranchReportAuditSlot,
         command: LocalBranchReportAuditCommand): ExportAuditDecision = recoverOriginal(receipt, slot, command, repeatIfAbsent = true)
@@ -78,9 +73,7 @@ private class CurrentMasterExportAudit(
         command: LocalBranchReportAuditCommand, repeatIfAbsent: Boolean): ExportAuditDecision {
         request(access, receipt, slot, command) // recheck canonical bytes + original semantic identity
         val identity = OperationIdentity(receipt.owner.branchId, command.operationId, receipt.owner.actorId, 1, command.semanticSha256)
-        return when (val result = access.reportExportOperation(identity) { recorded ->
-            retainForReceipt(receipt, slot, command, recorded)
-        }) {
+        return when (val result = access.reportExportOperation(identity)) {
             is LookupReply.Found -> decision(receipt, slot, command, result.result)
             is LookupReply.AbsentAtCurrentWriter -> {
                 if (result.operationId != command.operationId) unavailable()
@@ -101,19 +94,6 @@ private class CurrentMasterExportAudit(
             LocalBranchReportExportResultV1.NotFound -> null
             is LocalBranchReportExportResultV1.Rejected -> unavailable()
         }
-    }
-
-    /** A transport Receipt requires the genuine native audit acknowledgement, not UI adoption. */
-    private suspend fun retainForReceipt(receipt: LocalBranchReportFileReceipt, slot: LocalBranchReportAuditSlot,
-        command: LocalBranchReportAuditCommand, result: MutationReply.Recorded) {
-        access.checkCurrent()
-        val acknowledgement = when (val validated = decision(receipt, slot, command, result)) {
-            is ExportAuditDecision.Recorded -> validated.acknowledgement
-            is ExportAuditDecision.Rejected -> validated.acknowledgement
-            is ExportAuditDecision.Unavailable -> unavailable()
-        }
-        native(files.rememberAudit(receipt.exportId, receipt.owner, slot, command, acknowledgement))
-        access.checkCurrent()
     }
 
     private fun decision(receipt: LocalBranchReportFileReceipt, slot: LocalBranchReportAuditSlot,
@@ -156,7 +136,7 @@ internal suspend fun exportLocalBranchReport(access: GatewayAccess, selection: L
     val context = currentCoroutineContext()
     val lifetime = interactive.child { context.isActive && access.lease.isCurrent() }
     val owner = fileOwner(access)
-    val audit: ExportAuditPort = CurrentMasterExportAudit(access, files)
+    val audit: ExportAuditPort = CurrentMasterExportAudit(access)
     var destination: LocalBranchReportDestination? = null
     var last: LocalBranchReportFileResult.Recorded? = null
     try {
@@ -304,7 +284,7 @@ internal suspend fun listLocalBranchReportExports(access: GatewayAccess, files: 
     val history = files.history(fileOwner(access), after)
     if (history is LocalBranchReportFileHistory.Unavailable) return LocalBranchReportExportHistory.Unavailable(fileProblem = history.problem)
     history as LocalBranchReportFileHistory.Available
-    val audit: ExportAuditPort = CurrentMasterExportAudit(access, files)
+    val audit: ExportAuditPort = CurrentMasterExportAudit(access)
     val records = history.receipts.map { receipt ->
         requireCurrent(access, lifetime)
         // Every disclosed native row has a fresh actual current-EXPORT metadata lookup. A
@@ -322,7 +302,7 @@ internal suspend fun recoverLocalBranchReportExport(access: GatewayAccess, expor
     val originals = mutableListOf<LocalBranchReportRecoveredAudit>()
     try {
         val owner = fileOwner(access)
-        val audit: ExportAuditPort = CurrentMasterExportAudit(access, files)
+        val audit: ExportAuditPort = CurrentMasterExportAudit(access)
         requireCurrent(access, lifetime)
         var receipt = native(files.retained(exportId, owner)).receipt
         // Resolve only already-recorded opaque results before fresh EXPORT metadata access.
@@ -414,7 +394,7 @@ private suspend fun recoveredAuditsCurrent(access: GatewayAccess, files: LocalBr
     try {
         requireCurrent(access, lifetime)
         val receipt = native(files.retained(exportId, fileOwner(access))).receipt
-        val audit: ExportAuditPort = CurrentMasterExportAudit(access, files)
+        val audit: ExportAuditPort = CurrentMasterExportAudit(access)
         for (original in originals) {
             requireCurrent(access, lifetime)
             val command = receipt.auditCommand(original.slot) ?: return false

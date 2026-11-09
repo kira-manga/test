@@ -19,12 +19,7 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
-    // Preserve iosMain actuals while adding the separate JVM/Android JCA branch.
-    applyDefaultHierarchyTemplate()
     sourceSets {
-        val jcaMain by creating { dependsOn(commonMain.get()) }
-        jvmMain.get().dependsOn(jcaMain)
-        androidMain.get().dependsOn(jcaMain)
         commonMain.dependencies {
             api(project(":core:types"))
             api(libs.p2pkit.core)
@@ -44,11 +39,6 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
         }
-        iosMain.dependencies {
-            implementation(libs.cryptography.core)
-            implementation(libs.cryptography.provider.cryptokit)
-        }
-        jvmMain.dependencies { implementation(libs.jna) }
         jvmTest.dependencies { implementation(kotlin("test-junit")) }
     }
 }

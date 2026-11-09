@@ -17,7 +17,7 @@ import kotlinx.serialization.Serializable
 
 /** Public destination category only; no private filesystem path or implicit cloud provider. */
 @Serializable
-public enum class LocalBranchReportExportDestinationV1 { DESKTOP_LOCAL_FILE, ANDROID_LOCAL_DOCUMENT, IOS_LOCAL_DOCUMENT }
+public enum class LocalBranchReportExportDestinationV1 { DESKTOP_LOCAL_FILE, ANDROID_LOCAL_DOCUMENT }
 
 /** Null retains the original PAGE selector; this extension never represents period totals. */
 @Serializable

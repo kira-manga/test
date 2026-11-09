@@ -157,9 +157,7 @@ public class LocalPhysicalActionContinuation internal constructor(
     private val storeIncarnationId = origin.storeIncarnationId
     private val serviceIncarnationId = origin.serviceIncarnationId
     private val invocationId = origin.invocationId
-    internal val cleanupCertain: Boolean get() = !cleanupUncertain.value && ownership.cleanupCertain && employeeDenial.cleanupCertain
-    /** No remaining instruction rights or native leases; never inferred from IDs or a timeout. */
-    internal val retired: Boolean get() = denied && cleanupCertain && ownership.released && employeeDenial.released
+    internal val cleanupCertain: Boolean get() = !cleanupUncertain.value && ownership.cleanupCertain
     internal val nativeRequirement: LocalPhysicalJournalRequirementV1 = clientStart.journal.receipt.binding.requirement
     public val scope: BranchScope = service.scope
     public val originalActorId: DomainId = service.originalActorId
@@ -168,9 +166,9 @@ public class LocalPhysicalActionContinuation internal constructor(
     public val sessionGeneration: SessionGeneration = service.sessionGeneration
     public val operationId: OperationId = service.operationId
     // The parent view, NOT the completed invocation loan's released flag, denies fresh B4.
-    private val employeeDenial = PhysicalJournalDenialOwnership()
+    private var employeeDenial: LocalPhysicalExternalDenialRegistration? = null
     init {
-        employeeDenial.attach(employeeLifetime?.observeLifetimeDenial { deny() })
+        employeeDenial = employeeLifetime?.observeLifetimeDenial { deny() }
         if (employeeLifetime?.lifetimeDenied == true) deny()
     }
     public val denied: Boolean get() = denial.denied || service.denied || originatingJob.isCancelled ||
@@ -181,7 +179,7 @@ public class LocalPhysicalActionContinuation internal constructor(
         denial.deny()
         service.deny()
         ownership.release()
-        employeeDenial.release()
+        try { employeeDenial?.release() } catch (_: Exception) { cleanupUncertain.value = true }
     }
 
     /**
@@ -198,9 +196,6 @@ public class LocalPhysicalActionContinuation internal constructor(
             binding.serviceIncarnationId == serviceIncarnationId && binding.invocationId == invocationId
 
     /** Distinct real native ownership for temporary preparation OR evidence; no public IO port. */
-    internal fun pinsJournal(journal: LocalPhysicalJournal): Boolean =
-        masterStart.journal === journal || clientStart.journal === journal
-
     internal fun captureInstructionOwnership(onRetirement: () -> Unit): List<PhysicalSpoolLease>? {
         if (denied) return null
         return captureLocalPairNative(masterStart.journal, clientStart.journal, newAction = true) {
@@ -500,9 +495,6 @@ internal class PhysicalJournalNativeBackend private constructor(
     private val invocations = MutableStateFlow<List<PhysicalJournalGateEntry>>(emptyList())
     private val continuations = MutableStateFlow<List<LocalPhysicalActionContinuation>>(emptyList())
     private val originalCaptures = MutableStateFlow<List<LocalPhysicalOriginalCaptureEntry>>(emptyList())
-    // Exact returned-object identities retain idempotent cleanup without pinning native journals.
-    // One instruction can be consumed per immutable allocation in this bounded catalogue family.
-    private val retiredPreparations = mutableListOf<PhysicalNativeInstructionLease>()
     // Registered before first native IO. Uncertain native/loan cleanup retains these real
     // upper journal loans; employee close may not release its OS/key/process lease first.
     private val externalCustodies = MutableStateFlow<List<PhysicalJournalExternalCustodyOwnership>>(emptyList())
@@ -769,7 +761,6 @@ internal class PhysicalJournalNativeBackend private constructor(
                             if (continuation != null) {
                                 // Native consumption is one-shot. Never replace/evict an earlier
                                 // continuation or recover one from certificate/lookup metadata.
-                                retireTerminalInstructionOwners()
                                 if (ownerDenial.denied || continuations.value.any { it.operationId == continuation.operationId } ||
                                     continuations.value.size >= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) continuation.deny()
                                 else {
@@ -845,7 +836,6 @@ internal class PhysicalJournalNativeBackend private constructor(
                         currentCoroutineContext().ensureActive()
                         if (ownerDenial.denied || nativeOwners.value == null || binding.denial.denied || caller[Job]?.isActive != true || !evidenceRoot.isActive)
                             return@nativeWork PhysicalNativeInstructionPreparation.Held
-                        retireTerminalInstructionOwners()
                         val original = continuations.value.singleOrNull { it.matchesInstruction(binding) }
                             ?: return@nativeWork PhysicalNativeInstructionPreparation.Held
                         continuation = original
@@ -929,8 +919,6 @@ internal class PhysicalJournalNativeBackend private constructor(
     public suspend fun releaseInstruction(prepared: PhysicalNativeInstructionLease): PhysicalRecordingNativeRelease = try {
         withContext(NonCancellable + nativeDispatcher) {
             mutex.withLock {
-                if (retiredPreparations.any { it === prepared })
-                    return@withLock PhysicalRecordingNativeRelease.RELEASED
                 val entry = exactOriginalCapture(prepared) ?: run {
                     prepared.binding.denial.deny()
                     return@withLock PhysicalRecordingNativeRelease.STORAGE_UNCERTAIN
@@ -1311,58 +1299,13 @@ internal class PhysicalJournalNativeBackend private constructor(
             }))
     }
 
-    /** Called under the native mutex. Unresolved accepted bodies and uncertain cleanup stay owned. */
-    private fun retireTerminalInstructionOwners() {
-        val completed = originalCaptures.value.filter { it.canCloseNativeOwners }
-        if (completed.isNotEmpty()) {
-            check(retiredPreparations.size + completed.size <=
-                LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES * LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-            completed.forEach { retiredPreparations += it.prepared }
-            originalCaptures.value = originalCaptures.value.filterNot { it in completed }
-        }
-        continuations.value = continuations.value.filterNot { it.retired }
-    }
-
-    /**
-     * The 128 bound is ACTIVE in-memory ownership, not a lifetime allocation allowance. A journal
-     * with no invocation, continuation, capture, intake or transfer user is closed and forgotten;
-     * its immutable catalogue/journal bytes remain the only authority for a later existing-only
-     * reopen. A HELD close is retained and never treated as free capacity.
-     */
-    private fun retireIdleJournals(owned: MutableMap<DomainId, LocalPhysicalJournal>): Boolean {
-        if (owned.size < LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) return true
-        val pinned = mutableSetOf<LocalPhysicalJournal>()
-        invocations.value.forEach { entry ->
-            pinned += entry.native.master
-            pinned += entry.native.client
-        }
-        continuations.value.forEach { continuation ->
-            owned.values.forEach { if (continuation.pinsJournal(it)) pinned += it }
-        }
-        originalCaptures.value.forEach { capture ->
-            owned.values.forEach { if (capture.pinsJournal(it)) pinned += it }
-        }
-        intakeEntries.value.forEach { entry ->
-            owned.values.forEach { if (entry.pinsJournal(it)) pinned += it }
-        }
-        journalAwaitingTransfer?.let { pinned += it }
-        for ((id, journal) in owned.toList()) {
-            if (journal in pinned) continue
-            val closed = try { journal.close() } catch (_: Exception) { LocalPhysicalSpoolClose.HELD }
-            if (closed == LocalPhysicalSpoolClose.CLOSED) owned.remove(id)
-        }
-        return owned.size < LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES
-    }
-
     private fun ownedJournal(catalogue: LocalPhysicalAllocationCatalogue,
         owned: MutableMap<DomainId, LocalPhysicalJournal>, requirement: LocalPhysicalJournalRequirementV1,
         domain: LocalPhysicalJournalDomain, create: Boolean): LocalPhysicalJournalOpen {
-        retireTerminalInstructionOwners()
         val id = if (catalogue.binding.role == LocalPhysicalSpoolRole.MASTER) requirement.masterAllocationId else requirement.clientAllocationId
         owned[id]?.let { journal -> return if (journal.receipt.binding.requirement.canonicalBytes == requirement.canonicalBytes)
             LocalPhysicalJournalOpen.Opened(journal) else LocalPhysicalJournalOpen.IdentityConflict }
-        if (owned.size >= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES && !retireIdleJournals(owned))
-            return LocalPhysicalJournalOpen.Busy
+        if (owned.size >= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) return LocalPhysicalJournalOpen.Exhausted
         if (unreturnedJournalOwner || journalAwaitingTransfer != null) return LocalPhysicalJournalOpen.Held
         // Reserve the uncertainty slot BEFORE invoking a native factory. HELD conflates read
         // refusal and uncertain internal cleanup; only a returned owner or an explicit known
@@ -1475,52 +1418,6 @@ internal class PhysicalJournalDenial {
     private val denial = MutableStateFlow(false)
     val denied: Boolean get() = denial.value
     fun deny() { denial.value = true }
-}
-
-/** A synchronous denial during registration cannot lose the returned end-only observation. */
-internal class PhysicalJournalDenialOwnership {
-    private enum class State { REGISTERING, OWNED, REQUESTED, RELEASING, RELEASED, UNCERTAIN }
-    private val state = MutableStateFlow(State.REGISTERING)
-    private var registration: LocalPhysicalExternalDenialRegistration? = null
-    val released: Boolean get() = state.value == State.RELEASED
-    val cleanupCertain: Boolean get() = state.value == State.OWNED || state.value == State.RELEASED
-
-    fun attach(value: LocalPhysicalExternalDenialRegistration?) {
-        registration = value
-        while (true) {
-            when (val selected = state.value) {
-                State.REGISTERING -> if (state.compareAndSet(selected, State.OWNED)) return
-                State.REQUESTED -> if (state.compareAndSet(selected, State.RELEASING)) {
-                    releaseCaptured()
-                    return
-                }
-                else -> error("physical.journal.denial_registration")
-            }
-        }
-    }
-
-    fun release() {
-        while (true) {
-            when (val selected = state.value) {
-                State.REGISTERING -> if (state.compareAndSet(selected, State.REQUESTED)) return
-                State.OWNED -> if (state.compareAndSet(selected, State.RELEASING)) {
-                    releaseCaptured()
-                    return
-                }
-                else -> return // In-progress and unknown releases are never retried.
-            }
-        }
-    }
-
-    private fun releaseCaptured() {
-        try {
-            registration?.release()
-            registration = null
-            state.value = State.RELEASED
-        } catch (_: Exception) {
-            state.value = State.UNCERTAIN
-        }
-    }
 }
 
 /**

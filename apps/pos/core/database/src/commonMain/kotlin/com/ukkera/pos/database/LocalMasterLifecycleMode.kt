@@ -20,23 +20,7 @@ public sealed interface LocalMasterInstallationOutcome {
 public class LocalOriginalInstallationSetup internal constructor(
     public val company: LocalCompanyAuthorityView,
     public val definition: LocalBranchInstallationSnapshotV2?,
-    /** Settled original data; use the ACK observation to distinguish PENDING from CONFIRMED. */
     public val receipt: LocalBranchInstallationReceiptV2?,
 ) {
     override fun toString(): String = "LocalOriginalInstallationSetup([REDACTED])"
-}
-
-/** Saved native original ACK fact only; never current custody, runtime/history admission or business authority. */
-public enum class LocalOriginalAcknowledgementStatus { PENDING, CONFIRMED }
-
-public sealed interface LocalOriginalAcknowledgementRead {
-    public class Observed internal constructor(
-        public val status: LocalOriginalAcknowledgementStatus,
-        public val receipt: LocalBranchInstallationReceiptV2,
-    ) : LocalOriginalAcknowledgementRead {
-        override fun toString(): String = "LocalOriginalAcknowledgementRead.Observed([REDACTED])"
-    }
-    public data object Busy : LocalOriginalAcknowledgementRead
-    /** No conclusive native observation; never evidence of absence or failed installation. */
-    public data object Unresolved : LocalOriginalAcknowledgementRead
 }

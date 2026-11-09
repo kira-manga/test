@@ -14,8 +14,6 @@ import com.ukkera.pos.database.AndroidOriginalLocalClient
 import com.ukkera.pos.database.AndroidLocalEmployeeEnrollmentConnection
 import com.ukkera.pos.database.AndroidSelfOwnedMasterOpenResult
 import com.ukkera.pos.database.AndroidSelfOwnedMasterService
-import com.ukkera.pos.sales.store.AndroidPhysicalCompositionNamespaceV1
-import com.ukkera.pos.sales.store.TransactionRetailJournalParticipantsSource
 import com.ukkera.pos.sales.store.UnavailableSalesPhysicalRecordingCapacityV2
 import com.ukkera.pos.sales.store.UnavailableSalesRecordingCapacity
 import com.ukkera.pos.sales.store.UnavailableSalesReturnPolicy
@@ -78,13 +76,6 @@ public class AndroidLocalBranchRuntime private constructor(
         LocalBranchDisplayLabels(original.peer.scope, original.companyName, original.material.branchName),
         retailPhysicalBinding = retailPhysical, administrationClient = original.administration,
         companyPublications = publications,
-        installationId = original.material.coordinates.installationId.takeIf {
-            original.compositionMode == com.ukkera.pos.security.LocalSetupCompositionMode.LIVE },
-        setupOriginalBinding = if (original.compositionMode != com.ukkera.pos.security.LocalSetupCompositionMode.LIVE) null
-            else com.ukkera.pos.catalog.store.setup.LocalSetupOriginalBindingV1(
-            original.material.coordinates.installationId, original.receipt.core.originalRequestId,
-            original.receipt.core.issuedAttemptId, original.receipt.core.attemptSequence,
-            original.receipt.core.definitionDigest, original.receipt.genesis, original.receipt.digest),
         currentLifetime = original::isCurrent))
     private val gateway = LocalEndpointBranchGateway(connections, journals.credentials, journals)
     private val employeePublications = MutableStateFlow<LocalEnrollmentPublication?>(null)
@@ -414,10 +405,7 @@ public class AndroidLocalBranchRuntime private constructor(
     public companion object {
         /** Concrete registered local services, not the previous installation-only empty set. */
         public suspend fun openOriginalMaster(application: Application,
-            context: SelfOwnedLocalSecurityContext,
-            trainingComposition: Boolean = false): AndroidSelfOwnedMasterOpenResult {
-            check(trainingComposition == (context.compositionProfile.mode ==
-                com.ukkera.pos.security.LocalSetupCompositionMode.TRAINING))
+            context: SelfOwnedLocalSecurityContext): AndroidSelfOwnedMasterOpenResult {
             val publications = when (val read = context.readOriginalBusinessPublications()) {
                 is LocalCompanyAuthorityResult.Value -> read.value
                 is LocalCompanyAuthorityResult.Unavailable -> null
@@ -431,18 +419,10 @@ public class AndroidLocalBranchRuntime private constructor(
                 is LocalCompanyAuthorityResult.Value -> read.value.trust
                 is LocalCompanyAuthorityResult.Unavailable -> null
             }
-            // The same genuine physical/retail stack serves both compositions. Its native
-            // directory and Keystore namespace come from the exact context profile, not a
-            // caller flag, so a training master can never acquire a live spool/catalogue.
-            val composition = AndroidPhysicalCompositionNamespaceV1.of(context.compositionProfile)
-            check((composition.mode == com.ukkera.pos.security.LocalSetupCompositionMode.TRAINING) == trainingComposition)
-            val physical = AndroidOriginalPhysicalJournalExecutionGate.create(application, composition)
-            val retailParticipants: TransactionRetailJournalParticipantsSource =
-                physical as TransactionRetailJournalParticipantsSource
+            val physical = AndroidOriginalPhysicalJournalExecutionGate.create(application)
             val commerce = LocalBranchCommerceRegistry(signatures, UnavailableSalesReturnPolicy,
                 UnavailableSalesRecordingCapacity, UnavailableSalesPhysicalRecordingCapacityV2,
-                retailParticipants = retailParticipants,
-                purchasingPolicyTrust = purchasingPolicyTrust,
+                retailParticipants = physical, purchasingPolicyTrust = purchasingPolicyTrust,
                 nativePublications = publications)
             return AndroidSelfOwnedMasterService.fromOriginalContext(application, context, commerce.commands,
                 commerce.reads, physical = physical, nativeOriginalImports = commerce.nativeOriginalImports,
@@ -451,16 +431,9 @@ public class AndroidLocalBranchRuntime private constructor(
 
         /** Called by the retained platform owner, never by the sign-in form or a serialized body. */
         public suspend fun connectOriginal(application: Application, master: AndroidSelfOwnedMasterService,
-            action: LocalOriginalClientJournalAction,
-            trainingComposition: Boolean = false): AndroidLocalBranchRuntime? {
+            action: LocalOriginalClientJournalAction): AndroidLocalBranchRuntime? {
             currentCoroutineContext().ensureActive()
             val original = master.originalLocalClient()
-            check(trainingComposition == (original.compositionMode ==
-                com.ukkera.pos.security.LocalSetupCompositionMode.TRAINING))
-            val physicalGate = original.physicalRecordingGate() as? AndroidOriginalPhysicalJournalExecutionGate
-            check(physicalGate == null || physicalGate.ownsComposition(original.compositionMode))
-            if (trainingComposition) check(physicalGate != null &&
-                physicalGate.composition.mode == com.ukkera.pos.security.LocalSetupCompositionMode.TRAINING)
             val publications = original.originalBusinessPublications()
             // Physical enrollment never creates/replaces a missing client journal. A missing
             // physical catalogue keeps only that capability unavailable; existing nonphysical

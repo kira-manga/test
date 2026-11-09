@@ -40,16 +40,14 @@ import com.ukkera.pos.security.LocalDevicePairingPhase
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
 import com.ukkera.pos.security.LocalDevicePairingTargetPhase
 import com.ukkera.pos.security.LocalDevicePairingUnsignedRetirement
-import com.ukkera.pos.security.LocalCompositionSdkProfileV1
+import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.types.DomainId
 
 /** Full public transfer review and separate explicit ceremonies, without automatic admission. */
 @Composable
 public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, view: LocalSetupView,
     language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit, modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null, lanPermissionGranted: Boolean = true,
-    onRequestLanPermission: (() -> Unit)? = null) {
-    val profile = controller.compositionProfile
+    onBack: (() -> Unit)? = null) {
     val selected = view.freshDevicePairing
     val retiredChallenge = selected?.retirement?.originalChallenge
     val showRetiredChallenge = retiredChallenge != null && retiredChallenge.challengeDigest != selected?.challenge?.challengeDigest
@@ -60,7 +58,6 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
             LazyColumn(modifier.fillMaxSize().widthIn(max = 960.dp).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item {
-                    LocalSetupCompositionNotice(controller)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         onBack?.let { back -> OutlinedButton(onClick = { controller.lockPresentation(); back() },
                             modifier = Modifier.touchTarget()) { Text(t("Device choices", "خيارات الجهاز")) } }
@@ -83,7 +80,7 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
                     view.problem?.let { Notice(problemText(it), caution = true,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
                     view.nativeProblem?.let { Notice(problemText(it), caution = true) }
-                    LocalSetupLanSection(controller, view, lanPermissionGranted, onRequestLanPermission)
+                    LocalSetupLanSection(controller, view)
                     if (lanClientOwnsTarget) Notice(t(
                         "The retained LAN Client owns this target's transfer attempt. Earlier target pairing actions are disabled. Use the LAN attachment's explicit refresh or close controls.",
                         "يملك عميل الشبكة المحلية المحفوظ محاولة نقل هذا الهدف. تُعطَّل إجراءات اقتران الهدف السابقة. استخدم عناصر تحديث اتصال الشبكة المحلية أو إغلاقه الصريحة."), caution = true)
@@ -103,13 +100,13 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
                             (selected.responseCycle > 0 || selected.retirement != null || selected.continuationAttempted))
                             ReviewField(t("Retained response cycle (0 is initial)", "دورة الاستجابة المحفوظة (صفر هي الأولى)"), selected.responseCycle.toString())
                         if (selected.role == LocalSetupFreshDevicePairingRole.FRESH_TARGET && selected.stage == LocalSetupFreshDevicePairingStage.TARGET_INPUT)
-                            FreshTargetInputs(enabled, profile, controller::reviewFreshDeviceTarget)
+                            FreshTargetInputs(enabled, controller::reviewFreshDeviceTarget)
                         selected.targetInput?.let { input ->
                             SectionHeading(t("Exact local target request", "طلب الهدف المحلي الدقيق"))
                             ScopeDetails(input.scope)
                             ReviewField(t("Requested capability descriptions", "أوصاف الإمكانات المطلوبة"), capabilitiesText(input.capabilities))
                             ReviewField(t("SDK AppId", "معرّف التطبيق في SDK"), input.appId)
-                            if (profile == null || !input.matchesRpcNamespace(profile)) Notice(t(
+                            if (!input.matchesBranchRpcNamespace) Notice(t(
                                 "This retained AppId is not the branch RPC namespace. Its original data is preserved, but a new SDK acquisition is unavailable.",
                                 "معرّف التطبيق المحفوظ ليس معرّف RPC الخاص بالفرع. تُحفظ بياناته الأصلية، لكن الحصول على هوية SDK جديدة غير متاح."), caution = true)
                             ReviewField(t("Private local acquisition name", "اسم الحصول المحلي الخاص"), input.deviceName, code = false)
@@ -133,7 +130,7 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
                         }
                         selected.identity?.let {
                             FreshIdentityDetails(it)
-                            if (it.appId != profile?.appId(it.target.admission.scope)) Notice(t(
+                            if (it.appId != LocalMasterSdkProfileV1.appId(it.target.admission.scope)) Notice(t(
                                 "This historical SDK identity is not compatible with the branch RPC namespace. Original documents remain readable; new pairing effects are unavailable.",
                                 "هوية SDK التاريخية هذه غير متوافقة مع معرّف RPC الخاص بالفرع. تبقى المستندات الأصلية قابلة للقراءة؛ ولا تتاح آثار اقتران جديدة."), caution = true)
                         }
@@ -192,7 +189,7 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
                             }
                             Notice("$name: $result" + (document.byteCount?.let { " ($it ${t("bytes", "بايت")})" } ?: ""))
                         }
-                        FreshPairingActions(controller, selected, enabled, profile)
+                        FreshPairingActions(controller, selected, enabled)
                         Notice(t("Transfer the complete binary document. Identity: up to 16,384 bytes; challenge: up to 2,113,536; response: up to 2,048; retirement: up to 2,187,264. Cancellation or partial transfer is not success. A large valid challenge may still exceed native retained signing capacity; refusal preserves this original without a replacement.",
                             "انقل المستند الثنائي كاملًا. الهوية: حتى 16,384 بايت؛ التحدي: حتى 2,113,536؛ الاستجابة: حتى 2,048؛ الإنهاء: حتى 2,187,264. الإلغاء أو النقل الجزئي ليس نجاحًا. قد يتجاوز تحدٍّ كبير صحيح سعة الحفظ الأصلية اللازمة للتوقيع؛ ويحفظ الرفض هذا الأصل دون بديل."))
                         OutlinedButton(onClick = { controller.recoverFreshDevicePairing(selected.reviewId) }, enabled = enabled,
@@ -231,7 +228,7 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
 }
 
 @Composable
-private fun FreshTargetInputs(enabled: Boolean, profile: LocalCompositionSdkProfileV1?, review: (LocalSetupFreshDeviceTargetInput) -> Unit) {
+private fun FreshTargetInputs(enabled: Boolean, review: (LocalSetupFreshDeviceTargetInput) -> Unit) {
     var organization by remember { mutableStateOf("") }
     var company by remember { mutableStateOf("") }
     var branch by remember { mutableStateOf("") }
@@ -244,7 +241,7 @@ private fun FreshTargetInputs(enabled: Boolean, profile: LocalCompositionSdkProf
             }
         }.getOrNull()
     }
-    val appId = scope?.let { profile?.appId(it)?.value }
+    val appId = scope?.let { LocalMasterSdkProfileV1.appId(it).value }
     val input = remember(scope, appId, name, capabilities) {
         runCatching {
             val codes = if (capabilities.isEmpty()) emptyList() else capabilities.split('\n')
@@ -278,10 +275,10 @@ private fun FreshInput(value: String, change: (String) -> Unit, label: String, e
 }
 
 @Composable
-private fun FreshPairingActions(controller: LocalSetupController, selected: LocalSetupFreshDevicePairingView, enabled: Boolean, profile: LocalCompositionSdkProfileV1?) {
+private fun FreshPairingActions(controller: LocalSetupController, selected: LocalSetupFreshDevicePairingView, enabled: Boolean) {
     val reviewId = selected.reviewId
     val namespaceCompatible = selected.identity?.let {
-        it.appId == profile?.appId(it.target.admission.scope)
+        it.appId == LocalMasterSdkProfileV1.appId(it.target.admission.scope)
     } == true
     when (selected.stage) {
         LocalSetupFreshDevicePairingStage.TARGET_INPUT_REVIEW -> FreshExplicitAction(reviewId, enabled,
@@ -289,7 +286,7 @@ private fun FreshPairingActions(controller: LocalSetupController, selected: Loca
                 "راجعت الفرع والإمكانات ومعرّف التطبيق والاسم الخاص بدقة. هذا هدف فعلي جديد منفصل عن الجهاز الرئيسي الأصلي."),
             t("Retain intent and prepare this new target", "حفظ النية وتحضير هذا الهدف الجديد")) { controller.prepareFreshDeviceTarget(reviewId) }
         LocalSetupFreshDevicePairingStage.TARGET_KEY_READY -> if (selected.targetInput != null) FreshExplicitAction(reviewId,
-            enabled && profile != null && selected.targetInput.matchesRpcNamespace(profile),
+            enabled && selected.targetInput.matchesBranchRpcNamespace,
             t("Acquire only this target's actual original SDK identity with the reviewed AppId and private name. Do not connect or start transport.",
                 "احصل فقط على هوية SDK الفعلية الأصلية لهذا الهدف بمعرّف التطبيق والاسم الخاص اللذين روجعا. لا تصل الجهاز ولا تبدأ النقل."),
             t("Retain intent and acquire original SDK identity", "حفظ النية والحصول على هوية SDK الأصلية")) { controller.acquireFreshDeviceSdkIdentity(reviewId) }

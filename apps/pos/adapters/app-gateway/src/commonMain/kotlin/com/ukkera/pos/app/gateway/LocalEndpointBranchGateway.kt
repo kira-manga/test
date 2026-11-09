@@ -24,8 +24,6 @@ import com.ukkera.pos.app.UnavailableLocalWorkflows
 import com.ukkera.pos.app.LocalWorkflowQuery
 import com.ukkera.pos.app.LocalRetailPhysicalGateway
 import com.ukkera.pos.app.LocalRetailPhysicalDenial
-import com.ukkera.pos.app.LocalSetupClosureUiGateway
-import com.ukkera.pos.app.UnavailableLocalSetupClosure
 import com.ukkera.pos.app.LocalRetailPhysicalLifetime
 import com.ukkera.pos.app.UnavailableLocalRetailPhysical
 import com.ukkera.pos.app.SessionDisplayContext
@@ -102,28 +100,23 @@ public class LocalMasterClientConnection(
     public val retailPhysicalBinding: LocalRetailPhysicalBinding?,
     public val administrationClient: LocalMasterAdministrationClient?,
     public val companyPublications: LocalCompanyBusinessPublications?,
-    /** Native-owner installation identity only; absence keeps setup closure explicitly unavailable. */
-    public val installationId: DomainId? = null,
-    /** Native receipt identity DATA only; the master rechecks it inside every checkpoint write. */
-    public val setupOriginalBinding: com.ukkera.pos.catalog.store.setup.LocalSetupOriginalBindingV1? = null,
     private val currentLifetime: () -> Boolean,
 ) : LocalAuthenticationClientConnection {
     /** Older roots do not acquire company authority by adding an employee UI property. */
     public constructor(endpoint: LocalMasterClient, peer: LocalAuthenticatedPeer, serviceIncarnationId: DomainId,
         installed: LocalWorkflowInstallation, labels: LocalBranchDisplayLabels, retailPhysicalBinding: LocalRetailPhysicalBinding?,
         administrationClient: LocalMasterAdministrationClient?, currentLifetime: () -> Boolean) :
-        this(endpoint, peer, serviceIncarnationId, installed, labels, retailPhysicalBinding, administrationClient, null, null, null, currentLifetime)
+        this(endpoint, peer, serviceIncarnationId, installed, labels, retailPhysicalBinding, administrationClient, null, currentLifetime)
     /** Explicit absent administration for an older root; an interface cast never installs it. */
     public constructor(endpoint: LocalMasterClient, peer: LocalAuthenticatedPeer, serviceIncarnationId: DomainId,
         installed: LocalWorkflowInstallation, labels: LocalBranchDisplayLabels, retailPhysicalBinding: LocalRetailPhysicalBinding?,
-        currentLifetime: () -> Boolean) : this(endpoint, peer, serviceIncarnationId, installed, labels, retailPhysicalBinding, null, null, null, null, currentLifetime)
+        currentLifetime: () -> Boolean) : this(endpoint, peer, serviceIncarnationId, installed, labels, retailPhysicalBinding, null, null, currentLifetime)
     /** Preserve the old constructor/trailing-lambda form; absent native binding stays unavailable. */
     public constructor(endpoint: LocalMasterClient, peer: LocalAuthenticatedPeer, serviceIncarnationId: DomainId,
         installed: LocalWorkflowInstallation, labels: LocalBranchDisplayLabels, currentLifetime: () -> Boolean) :
-        this(endpoint, peer, serviceIncarnationId, installed, labels, null, null, null, null, null, currentLifetime)
+        this(endpoint, peer, serviceIncarnationId, installed, labels, null, null, null, currentLifetime)
 
     init {
-        require(setupOriginalBinding == null || setupOriginalBinding.installationId == installationId)
         require(labels.scope == peer.scope)
         require(retailPhysicalBinding == null || retailPhysicalBinding.endpoint === endpoint)
         require(administrationClient == null || administrationClient === endpoint)
@@ -680,7 +673,6 @@ public class LocalEndpointBranchGateway private constructor(
         override val workflows: LocalWorkflowGateway get() = publishedAttachment.value.workflows
         override val administration: LocalAdministrationUiGateway get() = publishedAttachment.value.administration
         override val companyCatalog: LocalCompanyCatalogGateway get() = publishedAttachment.value.companyCatalog
-        override val setupClosure: LocalSetupClosureUiGateway get() = publishedAttachment.value.setupClosure
         override val retailPhysical: LocalRetailPhysicalGateway get() = publishedAttachment.value.retailPhysical
 
         /** Each adapter captures its own generation; retained references cannot follow refresh. */
@@ -706,14 +698,6 @@ public class LocalEndpointBranchGateway private constructor(
                     LocalEndpointCompanyCatalogGateway(publications, actual.endpoint, actual.journal, source, actual.installed)
                 }
             } ?: UnavailableLocalCompanyCatalog
-            // Setup closure is bound only to the actual full branch connection whose native
-            // owner supplied an installation identity. Directory-only profiles stay unavailable.
-            val setupClosure: LocalSetupClosureUiGateway = business?.let { actual ->
-                actual.fullConnection?.installationId?.let { installation ->
-                    LocalEndpointSetupClosureGateway(actual.endpoint, actual.journal, source,
-                        actual.installed, installation, actual.fullConnection?.setupOriginalBinding)
-                }
-            } ?: UnavailableLocalSetupClosure
             val retailPhysical: LocalRetailPhysicalGateway = business?.takeUnless {
                 it.installed.isCustomerReceiptsOnly || it.installed.isFoodChecksOnly || it.installed.isFoodCashFinancialOnly
             }?.let { actual ->
@@ -1013,12 +997,7 @@ private fun display(policy: ActivatedLocalPolicy, login: LocalLoginIdentifier, l
             hint(SecurityAction.SUPPLIER_ADMINISTRATION, PermissionVerb.ADMINISTER)) add(AppArea.PURCHASING)
         if (hint(SecurityAction.BRANCH_REPORT)) add(AppArea.REPORTS)
         if (hint(SecurityAction.WAREHOUSE_CONFIGURE, PermissionVerb.ADMINISTER) || hint(SecurityAction.TENDER_CONFIGURE, PermissionVerb.ADMINISTER) ||
-            hint(SecurityAction.CASH_CONFIGURE, PermissionVerb.ADMINISTER) ||
-            listOf(SecurityAction.SETUP_RESULT_READ, SecurityAction.SETUP_RESULT_DELIVERY_ACKNOWLEDGE,
-                SecurityAction.SETUP_BUSINESS_GO_LIVE,
-                SecurityAction.SETUP_CHECKPOINTS_READ).any { hint(it) } ||
-            listOf(SecurityAction.SETUP_CONFIGURATION_SETTLE, SecurityAction.SETUP_CATALOG_IMPORT_SETTLE,
-                SecurityAction.SETUP_OPENING_SETTLE).any { hint(it, PermissionVerb.ADMINISTER) }) add(AppArea.SETUP)
+            hint(SecurityAction.CASH_CONFIGURE, PermissionVerb.ADMINISTER)) add(AppArea.SETUP)
         if (administrationAvailable && hint(SecurityAction.LOCAL_ACCOUNT_ADMINISTRATION, PermissionVerb.ADMINISTER)) add(AppArea.PEOPLE)
         if (administrationAvailable && hint(SecurityAction.DEVICE_ADMINISTRATION, PermissionVerb.ADMINISTER)) add(AppArea.DEVICES)
         }

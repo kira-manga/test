@@ -75,7 +75,6 @@ import com.ukkera.pos.app.navigation.NavigationToken
 import com.ukkera.pos.app.navigation.RouteRegistry
 import com.ukkera.pos.app.navigation.SecurityRoot
 import com.ukkera.pos.app.ui.*
-import com.ukkera.pos.security.LocalSetupCompositionMode
 import org.koin.compose.viewmodel.koinViewModel
 import org.koin.core.parameter.parametersOf
 
@@ -113,17 +112,14 @@ fun UkkeraApp(runtime: UkkeraRuntime, onExitRequest: () -> Unit = {}, onLocalSet
                 }
             }, color = Paper) {
                 BoxWithConstraints {
-                    val trainingSurface = presentation.training ||
-                        runtime.dependencies.compositionMode == LocalSetupCompositionMode.TRAINING
                     val expanded = usesSidebar(maxWidth.value, LocalDensity.current.fontScale)
                     Row(Modifier.fillMaxSize()) {
-                        if (expanded && navigation.isWorkspace) Sidebar(runtime, navigation, presentation, token, onExitRequest, trainingSurface)
+                        if (expanded && navigation.isWorkspace) Sidebar(runtime, navigation, presentation, token, onExitRequest)
                         Column(Modifier.weight(1f).fillMaxHeight()) {
-                            Header(runtime, navigation, presentation, token, expanded, onExitRequest, trainingSurface)
-                            if (trainingSurface) {
+                            Header(runtime, navigation, presentation, token, expanded, onExitRequest)
+                            if (presentation.training) {
                                 Surface(color = AmberSurface, modifier = Modifier.fillMaxWidth()) {
-                                    Text(copy(if (presentation.training) Copy.SYNTHETIC_BANNER else Copy.COMPOSITION_TRAINING_BANNER),
-                                        Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
+                                    Text(copy(Copy.SYNTHETIC_BANNER), Modifier.padding(horizontal = 22.dp, vertical = 8.dp),
                                         style = MaterialTheme.typography.bodySmall, color = AmberText)
                                 }
                             }
@@ -156,7 +152,7 @@ fun usesSidebar(widthDp: Float, fontScale: Float): Boolean = widthDp / fontScale
 
 @Composable
 private fun Header(runtime: UkkeraRuntime, state: NavigationState, presentation: RuntimePresentation,
-    token: NavigationToken, expanded: Boolean, exit: () -> Unit, trainingSurface: Boolean) {
+    token: NavigationToken, expanded: Boolean, exit: () -> Unit) {
     Surface(color = Color.White, shadowElevation = 0.5.dp) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -168,7 +164,7 @@ private fun Header(runtime: UkkeraRuntime, state: NavigationState, presentation:
                     if (presentation.training) copy(if (state.root == SecurityRoot.COMPANY_WORKSPACE) Copy.TRAINING_COMPANY_NAME else Copy.TRAINING_BRANCH_NAME)
                     else presentation.display?.branchName ?: presentation.display?.companyName ?: copy(Copy.BRAND)
                 } else copy(Copy.BRAND), style = MaterialTheme.typography.titleMedium)
-                Text(if (trainingSurface) copy(Copy.TRAINING) else copy(Copy.LOCAL_BUILD),
+                Text(if (presentation.training) copy(Copy.TRAINING) else copy(Copy.LOCAL_BUILD),
                     style = MaterialTheme.typography.bodySmall, color = Muted)
             }
             val languageLabel = copy(Copy.LANGUAGE)
@@ -188,7 +184,7 @@ private fun Header(runtime: UkkeraRuntime, state: NavigationState, presentation:
             }
             if (!expanded && state.isWorkspace) {
                 IconButton(onClick = { runtime.navigate(NavigationAction.ExitWorkspace, token, exit) }, modifier = Modifier.touchTarget()) {
-                    PosIcon(Glyph.EXIT, copy(if (trainingSurface) Copy.EXIT_TRAINING else Copy.SIGN_OUT))
+                    PosIcon(Glyph.EXIT, copy(if (presentation.training) Copy.EXIT_TRAINING else Copy.SIGN_OUT))
                 }
             }
         }
@@ -196,8 +192,7 @@ private fun Header(runtime: UkkeraRuntime, state: NavigationState, presentation:
 }
 
 @Composable
-private fun Sidebar(runtime: UkkeraRuntime, state: NavigationState, presentation: RuntimePresentation,
-    token: NavigationToken, exit: () -> Unit, trainingSurface: Boolean) {
+private fun Sidebar(runtime: UkkeraRuntime, state: NavigationState, presentation: RuntimePresentation, token: NavigationToken, exit: () -> Unit) {
     Column(Modifier.width(218.dp).fillMaxHeight().background(Forest).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.padding(vertical = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Surface(color = Color(0xFFE8F3CA), shape = RoundedCornerShape(11.dp)) { PosIcon(Glyph.BAG, modifier = Modifier.padding(10.dp), tint = Forest) }
@@ -227,7 +222,7 @@ private fun Sidebar(runtime: UkkeraRuntime, state: NavigationState, presentation
             modifier = Modifier.fillMaxWidth().touchTarget(), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)) {
             PosIcon(Glyph.EXIT, tint = Color.White)
             Spacer(Modifier.width(8.dp))
-            Text(copy(if (trainingSurface) Copy.EXIT_TRAINING else Copy.SIGN_OUT))
+            Text(copy(if (presentation.training) Copy.EXIT_TRAINING else Copy.SIGN_OUT))
         }
     }
 }
@@ -318,10 +313,6 @@ private fun EntryAdapter(runtime: UkkeraRuntime, route: AppRoute, model: EntryVi
         return
     }
     if (training == null && runtime.navigator.state.value.root == SecurityRoot.BRANCH_WORKSPACE) {
-        if (route == AppRoute.SetupClosure) {
-            LocalSetupClosureScreen(runtime, token, model)
-            return
-        }
         LocalWorkflowScreen(runtime, route, model, token)
         return
     }
@@ -343,7 +334,6 @@ private fun EntryAdapter(runtime: UkkeraRuntime, route: AppRoute, model: EntryVi
         AppRoute.Reports -> ReportsScreen()
         AppRoute.Setup -> SetupScreen(runtime.dependencies.platform) { step -> runtime.navigate(NavigationAction.Push(AppRoute.SetupStep(step)), token) }
         is AppRoute.SetupStep -> SetupStepScreen(route.step, training != null, entryState, model::change)
-        AppRoute.SetupClosure -> LiveUnavailableScreen(AppArea.SETUP)
         AppRoute.Catalog, AppRoute.People, AppRoute.Purchasing, AppRoute.Devices, AppRoute.CompanySettings ->
             CompanyScreen(RouteRegistry.area(route), training)
     }

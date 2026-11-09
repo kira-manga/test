@@ -27,7 +27,6 @@ kotlin {
             api(project(":adapters:sales-store"))
             implementation(libs.serialization.json)
             implementation(libs.coroutines.core)
-            implementation(libs.datetime)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

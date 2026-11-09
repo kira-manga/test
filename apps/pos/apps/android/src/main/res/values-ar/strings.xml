@@ -3,7 +3,4 @@
     <string name="local_master_channel">خدمة الفرع المحلية</string>
     <string name="local_master_title">خدمة فرع عُكّرة المحلية</string>
     <string name="local_master_text">لا تزال ملكية الخدمة المحلية محفوظة. افتح التطبيق لعرض حالة الاتصال أو الاسترداد.</string>
-    <string name="training_master_channel">خدمة تكوين التدريب</string>
-    <string name="training_master_title">تكوين التدريب في عُكّرة</string>
-    <string name="training_master_text">تبقى ملكية التدريب الاصطناعي محفوظة بشكل منفصل عن بيانات الفرع المباشر ونشره.</string>
 </resources>

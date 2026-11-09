@@ -20,7 +20,6 @@ internal class LocalNativeOriginalIntakeEntry(
     private var released = false
     private var cleanupUncertain = false
     val allocationId get() = client.receipt.binding.allocationId
-    internal fun pinsJournal(journal: LocalPhysicalJournal): Boolean = master === journal || client === journal
 
     fun recheck(): PhysicalRecordingNativeCheck {
         if (released || cleanupUncertain || denial.denied || lease.invocation.denied) return PhysicalRecordingNativeCheck.HELD

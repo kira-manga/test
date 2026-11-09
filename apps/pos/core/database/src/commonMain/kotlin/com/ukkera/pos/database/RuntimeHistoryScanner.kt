@@ -238,9 +238,6 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         RuntimeBusinessHistoryJoin(session, producer, stockCodec, coldReplay?.index, coldReplay,
             receiptMembershipBuilder, receiptMembershipMemory.takeIf { coldReplay == null }) else null
     private var authenticationReplay: RuntimeOriginalAuthenticationReplay? = null
-    // ROLE_TRANSITION events transfer their full event reservation to coldScanMemory before
-    // decoding; these immutable evidence copies share that cumulative retained allowance.
-    private val masterLifecycleEvidence = linkedMapOf<Long, RuntimeMasterLifecycleEvidenceV1>()
     private var censusOriginalAccountDigest: PayloadDigest? = null
     // Older controller protocol only. New native chronological seeds never borrow this credential.
     private var censusOriginalAccount: ProtectedLocalAccount? = null
@@ -361,31 +358,6 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             expectedPlaintext = null
             charge(item.bytes.size.toLong())
             val value = decodeProtected(expected, item.bytes)
-            if (expected.pass == NativeHistoryReadPassV2.LINEAGE_IMAGE && expected.table == RuntimeHistoryTableV2.AUTH_EVENT &&
-                requireNotNull(lineage).eventHeader?.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION) {
-                val event = value as? LocalAuthEvent ?: malformed()
-                val audit = event.lifecycle
-                val intent = try {
-                    SelfOwnedNativeHistoryWireV2.decodeIntent(requireNotNull(requireNotNull(lineage).capsule).intent)
-                } catch (_: Exception) { malformed() }
-                val evidence = masterLifecycleEvidence[requireNotNull(lineage).row.sequence]
-                    ?: malformed()
-                historyShapeV2(event.kind == LocalAuthEventKind.MASTER_LIFECYCLE &&
-                    evidence.matchesEvent(event) &&
-                    event.targetId == coordinates.installationId && event.operatorId != null &&
-                    event.sessionId != null && event.accountRevision != null && event.contentDigest != null &&
-                    audit != null && audit.installationId == event.targetId &&
-                    audit.deviceId != null && audit.sessionGeneration != null &&
-                    audit.admissionRevision != null && audit.issuerContextId != null &&
-                    audit.coordinatesDigest == lifecycleCoordinatesDigest(coordinates) &&
-                    audit.requestDigest == lifecycleRequestDigest(coordinates,
-                        LocalMasterLifecycleRequest(event.eventId, audit.action)) &&
-                    audit.requestDigest == event.contentDigest &&
-                    intent.purposeTag == RuntimeWritePurposeV2.ROLE_TRANSITION.tag &&
-                    intent.originalRequestId == event.eventId && intent.originalActorId == event.operatorId &&
-                    intent.originalRequestDigest == event.contentDigest && intent.originalOperationId == null &&
-                    intent.resources.isEmpty())
-            }
             if (expected.pass == NativeHistoryReadPassV2.CENSUS) {
                 captureOriginalAuthenticationCensus(value, item.bytes)
                 employees.census(expected.binding, item.bytes, value)
@@ -841,8 +813,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 (header.changeCount == RuntimeAdministrationCancellationEvidenceV1.MAX_IMAGES &&
                     header.purpose in setOf(RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION, RuntimeWritePurposeV2.DEVICE_ADMINISTRATION)) ||
                 (header.changeCount in RuntimeDeviceRevocationEvidenceV2.MIN_IMAGES..RuntimeDeviceRevocationEvidenceV2.MAX_IMAGES &&
-                    header.purpose == RuntimeWritePurposeV2.DEVICE_ADMINISTRATION) ||
-                (header.changeCount == 1 && header.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION))
+                    header.purpose == RuntimeWritePurposeV2.DEVICE_ADMINISTRATION))
                 authorizationMutations += value.copy(key = value.key.copyOf())
             if (business?.enabled == true && (header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY &&
                 header.changeCount in 1..RuntimeBusinessHistoryJoin.MAX_VERSIONS ||
@@ -943,9 +914,6 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             val approvalRetirement = boundApprovalRetirement(header, capsule, decoded)
             val approvedCommand = boundApprovedCommand(header, capsule, decoded)
             val serialPublication = boundSerialPublicationRequest(header, capsule, decoded)
-            val masterLifecycle = if (RuntimeMasterLifecycleEvidenceCodec.hasProfile(capsule.facts))
-                RuntimeMasterLifecycleEvidenceCodec.decode(capsule.facts) else null
-            historyShapeV2(masterLifecycle == null || header.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION)
             native.finalDeadlineDecisions.singleOrNull { it.child.historySequence == header.sequence }?.let { decision ->
                 val child = NativeHistoryRecordedHeadV2(header.sequence, commitment.digest, header.installationGenesisDigest,
                     header.commandEpoch, header.commandSequence, header.commandDigest, header.roleCommitment, header.recoveryCommitment)
@@ -1262,27 +1230,6 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                                 header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
                         }
                     }
-                } else if (header.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION) {
-                    // Explicit current-authority lifecycle audit. The exact history evidence
-                    // must exist and join the original/request/actor plus the genuine
-                    // historical session/account/policy cut. Non-null metadata alone is not proof.
-                    val evidence = masterLifecycle ?: malformed()
-                    historyShapeV2(header.changeCount == 1 && authorizationMutations.size == 1 &&
-                        authorizationMutations[0].tableTag == RuntimeHistoryTableV2.AUTH_EVENT.tag &&
-                        authorizationMutations[0].mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag &&
-                        decoded.originalActorId == evidence.actorId && decoded.originalOperationId == null &&
-                        decoded.originalRequestId == evidence.eventId &&
-                        decoded.originalRequestDigest == evidence.requestDigest &&
-                        decoded.resources.isEmpty() && evidence.scope == scope &&
-                        evidence.installationId == coordinates.installationId &&
-                        evidence.coordinatesDigest == lifecycleCoordinatesDigest(coordinates))
-                    val lifecycleEvent = evidence.event()
-                    val audit = checkNotNull(lifecycleEvent.lifecycle)
-                    val authorized = if (evidence.actorId == coordinates.firstActorId)
-                        authenticationReplay?.lifecycle(lifecycleEvent, audit) == true
-                    else employees.lifecycle(lifecycleEvent, audit)
-                    historyShapeV2(authorized)
-                    masterLifecycleEvidence[header.sequence] = evidence
                 } else {
                     val command = if (RuntimeCommandAuthorizationEvidenceCodec.hasProfile(capsule.facts)) {
                         val decodedCommand = coldOrdinary ?: coldPaymentRejection ?: RuntimeCommandAuthorizationEvidenceCodec.decode(capsule.facts)
@@ -3473,7 +3420,6 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         event?.clear(); event = null
         lineage?.clear(); lineage = null
         authenticationReplay?.clear(); authenticationReplay = null
-        masterLifecycleEvidence.clear()
         employees.clear(); policies.clear(); deviceAdmissions.clear(); approvals.clear(); serialPublications.clear()
         earlierOriginal = null
         protectedFinalRequestKeys.clear()

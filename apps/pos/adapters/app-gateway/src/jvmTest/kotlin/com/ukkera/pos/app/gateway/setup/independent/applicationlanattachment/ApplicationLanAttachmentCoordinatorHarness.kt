@@ -51,7 +51,6 @@ internal class ApplicationLanAttachmentCoordinatorHarness(test: TestScope) {
     private var retirementResult: Deferred<Unit>? = null
 
     private val services: LocalSetupNativeServices = object : LocalSetupNativeServices {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
         override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult = forbidden("provisioner.open")
         override suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult {
             events.record(if (preparation) "forbidden.target.create" else "setup.target.open-existing")
@@ -304,7 +303,6 @@ internal class ApplicationLanMaster(private val data: FreshDevicePairingWorkflow
 
 internal class ApplicationLanFreshTarget(private val data: FreshDevicePairingWorkflowData,
     private val events: ApplicationLanEvents) : LocalSetupFreshDeviceTarget {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
     var reference = data.keyReference()
     var possession: LocalDevicePairingPossession? = null
     var originalFailure = false

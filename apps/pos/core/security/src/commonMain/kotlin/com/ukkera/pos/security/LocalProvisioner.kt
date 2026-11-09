@@ -18,52 +18,11 @@ public class LocalProvisionerPendingAction internal constructor(
     public val organizationId: DomainId,
     public val companyId: DomainId,
     public val allocation: SelfOwnedAllocationCoordinatesV1?,
-    /** Actual installed target for this original action; platform is explicit. */
-    public val installedTarget: SelfOwnedInstalledTargetBindingV1,
+    public val target: SelfOwnedTargetDescriptorV1,
     internal val boot: Int,
     internal val expiresElapsedMillis: Long,
 ) {
-    /** Legacy Android V1 producer bridge; the exact descriptor is retained, not rebuilt. */
-    internal constructor(
-        owner: Any,
-        originalId: DomainId,
-        kind: LocalProvisionerActionKind,
-        companyName: String,
-        responsiblePersonName: String,
-        installerLogin: String,
-        branchName: String?,
-        rootFingerprint: String?,
-        protection: SelfOwnedKeyProtectionV1,
-        organizationId: DomainId,
-        companyId: DomainId,
-        allocation: SelfOwnedAllocationCoordinatesV1?,
-        target: SelfOwnedTargetDescriptorV1,
-        boot: Int,
-        expiresElapsedMillis: Long,
-    ) : this(owner, originalId, kind, companyName, responsiblePersonName, installerLogin, branchName,
-        rootFingerprint, protection, organizationId, companyId, allocation,
-        SelfOwnedInstalledTargetBindingV1.android(target), boot, expiresElapsedMillis)
-
-    /**
-     * Android-only legacy projection. Windows/macOS original actions must use [installedTarget];
-     * asking this action for an Android descriptor is refused rather than fabricating fields.
-     */
-    public val target: SelfOwnedTargetDescriptorV1
-        get() = installedTarget.androidTarget
-            ?: throw IllegalStateException("legacy Android action target is unavailable")
-
     override fun toString(): String = "LocalProvisionerPendingActionV1([REDACTED])"
-}
-
-/**
- * Additive platform-native original preparation result. It carries the existing V1 root/delegation
- * documents plus the existing V2 signed preparation; holding it is never native custody or
- * installation authority. The Android V1 [LocalProvisionerGrant] is unchanged.
- */
-public sealed interface SelfOwnedNativePreparationResultV2 {
-    public class Retained(public val packet: SelfOwnedPreparationPacketV2) : SelfOwnedNativePreparationResultV2
-    public data class Unavailable(public val reason: SelfOwnedInstallationFailureV1) :
-        SelfOwnedNativePreparationResultV2
 }
 
 public class LocalProvisionerCompanyView internal constructor(
@@ -132,19 +91,6 @@ public interface LocalProvisioner {
     public suspend fun issueOriginalPreparation(action: LocalProvisionerPendingAction,
         installerLogin: String, secret: CharArray): LocalProvisionerGrant
     public suspend fun recoverOriginalPreparation(): LocalProvisionerGrant
-    /**
-     * Additive original preparation for a native Windows/macOS producer. The default is a bounded
-     * refusal for implementations that only provide the unchanged Android V1 grant; it never
-     * fabricates a target or treats DATA as custody. A concrete native producer overrides this.
-     */
-    public suspend fun issueOriginalNativePreparationV2(action: LocalProvisionerPendingAction,
-        installerLogin: String, secret: CharArray): SelfOwnedNativePreparationResultV2 {
-        secret.fill('\u0000')
-        return SelfOwnedNativePreparationResultV2.Unavailable(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
-    }
-    /** Recovery of the same additive native original preparation; default is a refusal. */
-    public suspend fun recoverOriginalNativePreparationV2(): SelfOwnedNativePreparationResultV2 =
-        SelfOwnedNativePreparationResultV2.Unavailable(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
     /** Denial-only and durable. It neither deletes old grants/data nor authorizes an installation. */
     public suspend fun withdrawNewIssuance(): LocalProvisionerWithdrawal
     /** Immediate bounded denial only; not durable withdrawal or proof that native handles closed. */

@@ -2,15 +2,11 @@ package com.ukkera.pos.app.gateway
 
 import com.ukkera.pos.app.*
 import com.ukkera.pos.catalog.store.*
-import com.ukkera.pos.catalog.store.setup.LocalSetupCheckpointCodecV1
-import com.ukkera.pos.catalog.store.setup.LocalSetupCheckpointProfileV1
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.MutationReply
 import com.ukkera.pos.database.MutationRequest
 import com.ukkera.pos.database.ReadReply
 import com.ukkera.pos.database.StoredBytes
-import com.ukkera.pos.database.setup.LocalSetupResultCodecV1
-import com.ukkera.pos.database.setup.LocalSetupResultProfileV1
 import com.ukkera.pos.inventory.store.LocalStockRelationalCommandsV2
 import com.ukkera.pos.inventory.store.LocalStockRelationalCommand
 import com.ukkera.pos.inventory.store.LocalStockRelationalProfileV2
@@ -172,20 +168,6 @@ internal val documentaryActions: Set<LocalAction> = setOf(LocalAction.PURCHASING
 internal val documentaryKeys: Set<CommandKey> = setOf(LocalPurchasingDocumentProfileV1.BEGIN, LocalPurchasingDocumentProfileV1.CHUNK, LocalPurchasingDocumentProfileV1.COMPLETE)
 
 internal fun normalizeLocalRequest(key: CommandKey, body: StoredBytes): StoredBytes = when (key) {
-    LocalSetupResultProfileV1.ACKNOWLEDGE, LocalSetupResultProfileV1.GO_LIVE ->
-        LocalSetupResultCodecV1.encodeRequest(LocalSetupResultCodecV1.decodeRequest(body).installationId)
-    LocalSetupCheckpointProfileV1.CONFIGURE ->
-        LocalSetupCheckpointCodecV1.encodeConfigurationRequest(LocalSetupCheckpointCodecV1.decodeConfigurationRequest(body))
-    LocalSetupCheckpointProfileV1.CATALOG_IMPORT_ROW ->
-        LocalSetupCheckpointCodecV1.encodeCatalogImportRowRequest(LocalSetupCheckpointCodecV1.decodeCatalogImportRowRequest(body))
-    LocalSetupCheckpointProfileV1.COMPLETE_CATALOG_IMPORT ->
-        LocalSetupCheckpointCodecV1.encodeCompleteCatalogImportRequest(LocalSetupCheckpointCodecV1.decodeCompleteCatalogImportRequest(body))
-    LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW ->
-        LocalSetupCheckpointCodecV1.encodeOpeningStockRowRequest(LocalSetupCheckpointCodecV1.decodeOpeningStockRowRequest(body))
-    LocalSetupCheckpointProfileV1.OPENING_FLOAT_ROW ->
-        LocalSetupCheckpointCodecV1.encodeOpeningFloatRowRequest(LocalSetupCheckpointCodecV1.decodeOpeningFloatRowRequest(body))
-    LocalSetupCheckpointProfileV1.COMPLETE_OPENING ->
-        LocalSetupCheckpointCodecV1.encodeCompleteOpeningRequest(LocalSetupCheckpointCodecV1.decodeCompleteOpeningRequest(body))
     LocalReturnStockProfileV1.COMMAND -> LocalReturnStockCodecV1.normalize(body)
     LocalFoodTableAssignmentProfileV1.COMMAND -> LocalFoodTableAssignmentCodecV1.encode(LocalFoodTableAssignmentCodecV1.decode(body))
     LocalSerialRegistrationProfileV1.ACTIVATE -> LocalSerialRegistrationCodecV1.encode(LocalSerialRegistrationCodecV1.decode(body))
@@ -231,30 +213,6 @@ internal fun normalizeLocalRequest(key: CommandKey, body: StoredBytes): StoredBy
 }
 
 internal fun actionMatches(action: LocalAction, request: MutationRequest): Boolean = when (request.command) {
-    LocalSetupResultProfileV1.ACKNOWLEDGE -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_RESULT_ACKNOWLEDGE &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupResultProfileV1.GO_LIVE -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_BUSINESS_GO_LIVE &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.CONFIGURE -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_CONFIGURATION_RECORD &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.CATALOG_IMPORT_ROW -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_CATALOG_IMPORT_ROW &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.COMPLETE_CATALOG_IMPORT -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_CATALOG_IMPORT_COMPLETE &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_OPENING_STOCK_ROW &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.OPENING_FLOAT_ROW -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_OPENING_FLOAT_ROW &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
-    LocalSetupCheckpointProfileV1.COMPLETE_OPENING -> request.actionApprovalId == null &&
-        action == LocalAction.SETUP_OPENING_COMPLETE &&
-        normalizeLocalRequest(request.command, request.payload) == request.payload
     LocalReturnStockProfileV1.COMMAND -> request.actionApprovalId == null && action == LocalAction.RETURN_STOCK_POST &&
         LocalReturnStockCodecV1.normalize(request.payload) == request.payload
     LocalFoodTableAssignmentProfileV1.COMMAND -> request.actionApprovalId == null && action == LocalAction.FOOD_ASSIGN_TABLE &&

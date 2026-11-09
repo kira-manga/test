@@ -152,12 +152,6 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     val returnStockDispositionRejectionMutationCount: Long get() = entries.sumOf { it.replay?.returnStockDispositionRejectionMutationCount ?: 0L }
     fun count(table: RuntimeHistoryTableV2): Long = entries.sumOf { it.replay?.count(table) ?: 0L }
 
-    /** Exact historical employee lifecycle authority join at this event cut. */
-    internal fun lifecycle(event: LocalAuthEvent, audit: LocalMasterLifecycleAudit): Boolean {
-        val replay = event.operatorId?.let { byActor[it]?.replay } ?: return false
-        return replay.lifecycle(event, audit)
-    }
-
     init {
         earlierReplayTarget?.requireSameSession(session)
         historyShapeV2(entries.size <= LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS && bySequence.size == entries.size && byActor.size == entries.size &&
@@ -827,7 +821,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         val cut = checkNotNull(native.parent)
         val writer = evidence.provenance.currentWriter
         val domain = RuntimeBusinessHistoryJoin.supportedColdNativeOriginalDomain(evidence) ?: malformed()
-        val binding = original.nativeOriginalBinding.copyWireBytes()
+        val binding = original.originalBinding.copyWireBytes()
         try {
             historyShapeV2(evidence.scope == scope && evidence.provenance.scope == scope &&
                 evidence.producer.command == domain.command && evidence.provenance.nativeOriginal.domainProfile == domain.domainProfile &&

@@ -32,7 +32,7 @@ public enum class LocalSetupConnectionPhase { DETACHED, CONNECTING, ATTACHED, UN
 /** Both real entry journeys remain available; selecting a route creates no company/account. */
 @Composable
 public fun LocalEntryScreen(language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit,
-    onSetup: () -> Unit, onEmployee: () -> Unit, onTrainingEmployee: (() -> Unit)? = null) {
+    onSetup: () -> Unit, onEmployee: () -> Unit) {
     EntryLayout(language, onLanguageChange) {
         SectionHeading(entryText(language, "Ukkera POS · Local", "عُكّرة · نقطة البيع المحلية"))
         Notice(entryText(language,
@@ -50,15 +50,6 @@ public fun LocalEntryScreen(language: AppLanguage, onLanguageChange: (AppLanguag
         Notice(entryText(language,
             "An enrolled device and a connected local branch service are required for employee work. This build does not substitute a demonstration for an unavailable service.",
             "يتطلب عمل الموظف جهازًا مسجلًا وخدمة فرع محلية متصلة. لا يستبدل هذا الإصدار الخدمة غير المتاحة بعرض تجريبي."))
-        if (onTrainingEmployee != null) {
-            OutlinedButton(onClick = onTrainingEmployee, modifier = Modifier.fillMaxWidth().touchTarget()) {
-                Text(entryText(language, "Training composition sign-in",
-                    "دخول تكوين التدريب"))
-            }
-            Notice(entryText(language,
-                "This opens the separate SYNTHETIC TRAINING composition with its own native root, session and journals. It is not live and cannot publish into live.",
-                "يفتح هذا تكوين التدريب الاصطناعي المنفصل بجذره وجلسته ويومياته الخاصة. وهو ليس مباشرًا ولا يمكن نشره في المباشر."), caution = true)
-        }
     }
 }
 

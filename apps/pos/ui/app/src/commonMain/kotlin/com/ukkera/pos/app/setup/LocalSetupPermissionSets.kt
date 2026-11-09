@@ -140,8 +140,5 @@ private val setupPermissionSets = listOf(
         "الإدارة المحلية: الموظفون وقبول الأجهزة", listOf(
             Permission(SecurityAction.LOCAL_ACCOUNT_ADMINISTRATION, PermissionVerb.ADMINISTER),
             Permission(SecurityAction.DEVICE_ADMINISTRATION, PermissionVerb.ADMINISTER),
-            // Explicit local-master STOP/RESUME authority is separate from account/device
-            // administration and is never added automatically.
-            Permission(SecurityAction.MASTER_LIFECYCLE, PermissionVerb.ADMINISTER),
         )),
 )

@@ -1143,7 +1143,7 @@ internal class RuntimeBusinessHistoryJoin(
                 RuntimeHistoryTableV2.fromTag(it.tableTag) !in TABLES }) return false
         evidence.validate()
         val writer = evidence.provenance.currentWriter
-        val binding = session.original.nativeOriginalBinding.copyWireBytes()
+        val binding = session.original.originalBinding.copyWireBytes()
         try { historyShapeV2(evidence.scope == scope && evidence.producer.originalActorId == coordinates.firstActorId &&
             writer.installationId == coordinates.installationId && writer.masterDeviceId == coordinates.deviceId &&
             writer.assignmentId == coordinates.assignmentId && writer.epoch == epoch && writer.runtimeProfile == SelfOwnedNativeHistoryWireV2.PROFILE &&
@@ -1181,7 +1181,7 @@ internal class RuntimeBusinessHistoryJoin(
         evidence.validate()
         val producer = evidence.producer
         val writer = evidence.provenance.currentWriter
-        val binding = session.original.nativeOriginalBinding.copyWireBytes()
+        val binding = session.original.originalBinding.copyWireBytes()
         try { historyShapeV2(evidence.scope == scope && writer.installationId == coordinates.installationId &&
             writer.masterDeviceId == coordinates.deviceId && writer.assignmentId == coordinates.assignmentId && writer.epoch == epoch &&
             writer.runtimeProfile == SelfOwnedNativeHistoryWireV2.PROFILE && writer.runtimeBindingCommitment == sha256(binding) &&
@@ -1298,7 +1298,7 @@ internal class RuntimeBusinessHistoryJoin(
             captured
         } else null
         val writer = evidence.provenance.currentWriter
-        val binding = session.original.nativeOriginalBinding.copyWireBytes()
+        val binding = session.original.originalBinding.copyWireBytes()
         try { historyShapeV2(evidence.scope == scope && writer.installationId == coordinates.installationId &&
             writer.masterDeviceId == coordinates.deviceId && writer.assignmentId == coordinates.assignmentId && writer.epoch == epoch &&
             writer.runtimeProfile == SelfOwnedNativeHistoryWireV2.PROFILE && writer.runtimeBindingCommitment == sha256(binding) &&
@@ -1787,26 +1787,6 @@ internal class RuntimeBusinessHistoryJoin(
                 }
             }
         } finally { nativeOperation.result.fill(0); nativeJournal.envelope.fill(0) }
-    }
-
-    suspend fun matchesOriginalSetup(command: RuntimeHistoricalCommand, installationId: DomainId,
-        originalRequestId: DomainId, issuedAttemptId: DomainId, attemptSequence: Long,
-        definitionDigest: PayloadDigest, genesisDigest: PayloadDigest, receiptDigest: PayloadDigest): Boolean {
-        requireActive(command)
-        val native = session.original.record
-        val sdkOriginal = native.masterSdkOriginal
-        if (sdkOriginal != null && sdkOriginal.compositionProfile.mode !=
-            com.ukkera.pos.security.LocalSetupCompositionMode.LIVE) return false
-        // Legacy native formats predate SDK-original retention. Modern records must retain it.
-        if (sdkOriginal == null && native.recordFormat >=
-            SelfOwnedNativeHistoryWireV2.MASTER_SDK_ORIGINAL_RECORD_FORMAT) return false
-        val receipt = native.receipt ?: return false
-        val definition = native.definition ?: return false
-        return receipt.core.allocation.coordinates.scope == scope &&
-            receipt.core.allocation.coordinates.installationId == installationId &&
-            receipt.core.originalRequestId == originalRequestId && receipt.core.issuedAttemptId == issuedAttemptId &&
-            receipt.core.attemptSequence == attemptSequence && receipt.core.definitionDigest == definitionDigest &&
-            definition.definitionDigest == definitionDigest && receipt.genesis == genesisDigest && receipt.digest == receiptDigest
     }
 
     suspend fun requireActive(command: RuntimeHistoricalCommand) {

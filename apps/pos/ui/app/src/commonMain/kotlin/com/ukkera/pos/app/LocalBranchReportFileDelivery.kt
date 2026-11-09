@@ -110,7 +110,7 @@ internal class LocalReportCommitStart(private val gate: LocalReportCommitGate, p
 enum class LocalBranchReportFilePhase { SELECTED, SPOOLED, PUBLICATION_ATTEMPTED, PUBLISHED, CANCELLED, OUTCOME_UNKNOWN }
 
 @Serializable
-enum class LocalBranchReportFileDestinationKind { DESKTOP_LOCAL_FILE, ANDROID_LOCAL_DOCUMENT, IOS_LOCAL_DOCUMENT }
+enum class LocalBranchReportFileDestinationKind { DESKTOP_LOCAL_FILE, ANDROID_LOCAL_DOCUMENT }
 
 @Serializable
 enum class LocalBranchReportAuditSlot { BEGIN, FINISH, RECOVER_PUBLISHED }

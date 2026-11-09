@@ -395,12 +395,11 @@ internal class AndroidLocalCompanyDevicePairings(
         val master = native.masterSdkOriginal ?: refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         // anchor's genuine authenticated read already compared full canonical allocation
         // bytes with current native keys/binding and both actual application participants.
-        val namespace = owner.compositionProfile.appId(native.allocation.coordinates.scope)
+        val namespace = LocalMasterSdkProfileV1.appId(native.allocation.coordinates.scope)
         if (master.allocation.digest != native.allocation.digest ||
             master.allocation.originalNativeBindingDigest != native.allocation.originalNativeBindingDigest ||
             !master.nativeApplication.same(environment.target) || !master.nativeApplication.same(owner.materialAtOpen.target) ||
-            master.compositionProfile != owner.compositionProfile || master.appId != namespace)
-            refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            master.appId != namespace) refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         if (requested.request.scope != native.allocation.coordinates.scope || sdk.appId != master.appId || sdk.appId != namespace)
             refuse(SelfOwnedInstallationFailureV1.CONFLICT)
         requested.masterSdkOriginal?.let {

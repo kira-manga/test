@@ -35,8 +35,6 @@ sealed interface AppRoute : NavKey {
     @Serializable @SerialName("setup-step.v1") data class SetupStep(val step: Int) : AppRoute {
         init { require(step in 0..7) }
     }
-    /** Protected installed setup ACK/checkpoint/go-live closure; no route field is authority. */
-    @Serializable @SerialName("setup-closure.v1") data object SetupClosure : AppRoute
     @Serializable @SerialName("catalog.v1") data object Catalog : AppRoute
     @Serializable @SerialName("people.v1") data object People : AppRoute
     @Serializable @SerialName("purchasing.v1") data object Purchasing : AppRoute
@@ -55,7 +53,7 @@ object RouteRegistry {
         AppRoute.Drawer -> AppArea.DRAWER
         AppRoute.Stock -> AppArea.STOCK
         AppRoute.Reports -> AppArea.REPORTS
-        AppRoute.Setup, is AppRoute.SetupStep, AppRoute.SetupClosure -> AppArea.SETUP
+        AppRoute.Setup, is AppRoute.SetupStep -> AppArea.SETUP
         AppRoute.Catalog -> AppArea.CATALOG
         AppRoute.People -> AppArea.PEOPLE
         AppRoute.Purchasing -> AppArea.PURCHASING

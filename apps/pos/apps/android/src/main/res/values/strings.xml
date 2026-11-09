@@ -3,9 +3,6 @@
     <string name="local_master_channel">Local branch service</string>
     <string name="local_master_title">Ukkera local branch service</string>
     <string name="local_master_text">Local service ownership is retained. Open the app to view connection or recovery status.</string>
-    <string name="training_master_channel">Training composition service</string>
-    <string name="training_master_title">Ukkera training composition</string>
-    <string name="training_master_text">Synthetic training ownership is retained separately from live branch data and publication.</string>
     <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>

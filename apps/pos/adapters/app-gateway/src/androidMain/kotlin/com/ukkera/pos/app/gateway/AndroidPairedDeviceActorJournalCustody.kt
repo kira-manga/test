@@ -97,8 +97,6 @@ internal class AndroidPairedDeviceActorJournalCustody private constructor(
     val action: LocalPairedDeviceCredentialJournalAction,
     val original: PairedDeviceActorAllocationRecord,
 ) {
-    val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-        get() = ledger.nativeOriginal.approvedOriginal.masterSdkOriginal.compositionProfile
     val identity: LocalClientIdentity get() = current.identity
     val journalId: DomainId get() = original.journalId
     val keyId: DomainId get() = original.keyId

@@ -1,5 +1,4 @@
 plugins {
-    alias(libs.plugins.cryptography) apply false
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.serialization) apply false
     alias(libs.plugins.android.kmp.library) apply false

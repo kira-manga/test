@@ -307,9 +307,7 @@ private suspend fun checkoutCommitDeadline(delta: Long) {
             checkoutCommitted(reply)
             assertFinalShape(j.retained(request), true)
         } else {
-            // Successor freeze qa/pos/freezes/deadline-result-correction-v2: proven full-ownership
-            // deadline rollback is a typed rejection, not storage uncertainty.
-            checkoutDeferred(reply, DeferredReason.PRECONDITION_EXPIRED)
+            checkoutDeferred(reply, DeferredReason.STORAGE_UNCERTAIN)
             assertEquals(before, j.fixture.databaseState())
             j.reopen()
             assertEquals(before, j.fixture.databaseState())

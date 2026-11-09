@@ -17,9 +17,6 @@ internal class RoomSelfOwnedMasterComposition(
         LocalAuthenticatedPeerSource(rpcPeers::capture),
         maximumConcurrentAuthentication=1), rpcSessionFence)
     internal val initializer: RoomSelfOwnedBranchInitializer = sameSecurity.originalBranchInitializer(owner)
-    /** Same owner/security as the operational endpoint; no endpoint is created for this ingress. */
-    internal val authentication: com.ukkera.pos.security.LocalAuthenticationService = sameSecurity.authentication
-    internal val lifecycle: com.ukkera.pos.security.LocalMasterLifecycleService = sameSecurity.originalLifecycle(owner)
     private var kernel: AtomicMasterStore?=null
     private var operationalEndpoint: LocalMasterEndpoint?=null
     private var employeeEnrollments: RoomSelfOwnedEmployeeEnrollments?=null
@@ -66,7 +63,7 @@ internal class RoomSelfOwnedMasterComposition(
     internal fun originalRpcPeerRegistration(lifetime: LocalMasterRpcPeerRegistrationLifetime,
         trust: LocalMasterRpcTrust): LocalMasterRpcPeerRegistration {
         check(owner.operational && localPeer.isCurrent())
-        return rpcPeers.bind(lifetime, trust, owner.compositionProfile.appId(owner.originalScope),
+        return rpcPeers.bind(lifetime, trust, LocalMasterSdkProfileV1.appId(owner.originalScope),
             checkNotNull(operationalEndpoint), sameSecurity.principalFactory)
     }
 

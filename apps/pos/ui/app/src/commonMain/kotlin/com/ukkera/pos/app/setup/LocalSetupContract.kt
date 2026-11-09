@@ -20,8 +20,6 @@ import kotlinx.coroutines.flow.StateFlow
  * the branch master. The platform service/root, not this interface, owns physical close.
  */
 public interface LocalSetupController {
-    /** Native stack's exact profile for presentation only; absence enables no pairing effects. */
-    public val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1? get() = null
     public val state: StateFlow<LocalSetupView>
     public fun chooseNewLocalCompany()
     /** Existing-only P1 authority/pre-target recovery, never a creating factory on missing files. */
@@ -130,10 +128,6 @@ public interface LocalSetupController {
     /** Terminal for this attachment lifetime, not an instruction to stop the Master. */
     public fun closeLanAttachment() { }
     public fun refreshOriginalStatus()
-    /** Explicit current-authority intentional STOP; transfers and clears the password buffer. */
-    public fun authenticateAndStopLocalMaster(login: String, password: CharArray) { password.fill('\u0000') }
-    /** Explicit current-authority same-original RESUME; transfers and clears the buffer. */
-    public fun authenticateAndResumeLocalMaster(login: String, password: CharArray) { password.fill('\u0000') }
     public fun lockPresentation()
     public fun resumePresentation()
 }
@@ -205,7 +199,6 @@ public enum class LocalSetupWork {
     RETIRING_UNSIGNED_DEVICE_PAIRING, CONTINUING_UNSIGNED_DEVICE_PAIRING,
     VERIFYING_APPROVED_PAIRING_MASTER,
     STARTING_LAN_HOST, CONNECTING_LAN_CLIENT, READING_LAN_ATTACHMENT, CLOSING_LAN_ATTACHMENT,
-    AUTHENTICATING_LOCAL_MASTER_STOP, AUTHENTICATING_LOCAL_MASTER_RESUME,
 }
 
 public enum class LocalSetupProblem {
@@ -218,7 +211,6 @@ public enum class LocalSetupProblem {
     CLIENT_JOURNAL_UNAVAILABLE,
     AUTOMATIC_REOPEN_STOPPED,
     AUTOMATIC_REOPEN_UNAVAILABLE,
-    STOP_BINDING_UNSUPPORTED,
 }
 
 /** Bounded display projection. Contains no original native action, keys, tokens or secret. */
@@ -340,8 +332,6 @@ public data class LocalSetupView(
     public val firstAccountHeadLogin: String? = null,
     public val definitionReview: LocalSetupDefinitionReview? = null,
     public val problem: LocalSetupProblem? = null,
-    /** A durable STOP is currently in force; only explicit current-authority RESUME clears it. */
-    public val lifecycleStopped: Boolean = false,
     /** Bounded original factory diagnostic when actual cleanup is unobserved; never a permit. */
     public val nativeProblem: LocalSetupProblem? = null,
     /** Connection progress only, not platform qualification or full POS readiness. */
@@ -357,8 +347,6 @@ public data class LocalSetupView(
     public val deviceAdmission: LocalSetupDeviceAdmissionView? = null,
     public val freshDevicePairing: LocalSetupFreshDevicePairingView? = null,
     public val lan: LocalSetupLanView = LocalSetupLanView(),
-    /** An interrupted retained lifecycle request blocks startup; this is no lifecycle authority. */
-    public val lifecycleStopPending: Boolean = false,
 ) {
     override fun toString(): String = "LocalSetupViewV1([REDACTED])"
 }

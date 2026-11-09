@@ -24,7 +24,6 @@ internal class AndroidLocalProvisionerKeys(
     private val work: AndroidOwnedInstallationWork,
 ) {
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null, null) }
-    private val aliasPrefix: String get() = environment.profile.p1AliasPrefix
 
     /** Reads only. An orphan prefixed alias forbids creating a new identity from empty files. */
     fun assertOriginalNamespace() {
@@ -41,7 +40,7 @@ internal class AndroidLocalProvisionerKeys(
         while (aliases.hasMoreElements()) {
             if (++count > 65_536) keyFailure()
             val next = aliases.nextElement()
-            if (next.startsWith(aliasPrefix)) {
+            if (next.startsWith(ALIAS_PREFIX)) {
                 if (next !in allowed || !observed.add(next) || observed.size > (if (company == null) 4 else 7)) keyFailure()
             }
         }
@@ -718,7 +717,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     private fun headAlias(original: LocalCompanyAuthorityBootstrapV1, intent: LocalCompanyHeadKeyIntentV1): String =
-        "$aliasPrefix${original.original.rootId.value}.${intent.role.aliasPart}.${intent.keyId.value}"
+        "$ALIAS_PREFIX${original.original.rootId.value}.${intent.role.aliasPart}.${intent.keyId.value}"
 
     private fun checkedKey(role: SelfOwnedNativeKeyRoleV1): Key {
         val original = requireBootstrap()
@@ -871,7 +870,7 @@ internal class AndroidLocalProvisionerKeys(
         init(key); doFinal(message).also { if (it.size != 32) { it.fill(0); keyFailure() } }
     }
     private fun alias(original: SelfOwnedBootstrapV1, intent: SelfOwnedNativeKeyIntentV1): String =
-        "$aliasPrefix${original.rootId.value}.${intent.role.aliasPart}.${intent.keyId.value}"
+        "$ALIAS_PREFIX${original.rootId.value}.${intent.role.aliasPart}.${intent.keyId.value}"
     private fun algorithm(role: SelfOwnedNativeKeyRoleV1): String = when (role) {
         SelfOwnedNativeKeyRoleV1.ROOT, SelfOwnedNativeKeyRoleV1.ISSUER -> KeyProperties.KEY_ALGORITHM_EC
         SelfOwnedNativeKeyRoleV1.REGISTRY -> KeyProperties.KEY_ALGORITHM_AES
@@ -882,4 +881,5 @@ internal class AndroidLocalProvisionerKeys(
         else -> KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY
     }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
+    companion object { private const val ALIAS_PREFIX = "ukkera.self-owned.p1.v1." }
 }

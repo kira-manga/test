@@ -78,19 +78,10 @@ public object JvmPreallocatedPhysicalJournal {
     public fun openCatalogue(storageRoot: Path, owner: LocalPhysicalCatalogueBinding,
         key: JvmPhysicalSpoolKey): LocalPhysicalCatalogueOpen = openPhysicalCatalogue(owner, files(storageRoot, key))
 
-    private fun files(root: Path, key: JvmPhysicalSpoolKey): PhysicalJournalNativeFilesV1 = object : PhysicalJournalNativeFilesV1 {
-        override fun open(spec: PhysicalNativeFileSpecV1, native: LocalPhysicalSpoolNativeIdentity?,
-            create: Boolean): PhysicalNativeOpenV1 {
-            var directory = root
-            for (segment in spec.segments) directory = directory.resolve(segment)
-            return jvmAcquirePhysicalNative(directory, spec, key, native, create)
-        }
-
-        override fun list(spec: PhysicalNativeFileSpecV1, expectedDirectoryIdentity: String): List<String>? {
-            var directory = root
-            for (segment in spec.segments) directory = directory.resolve(segment)
-            return jvmListPhysicalNative(directory, expectedDirectoryIdentity)
-        }
+    private fun files(root: Path, key: JvmPhysicalSpoolKey): PhysicalJournalNativeFilesV1 = PhysicalJournalNativeFilesV1 { spec, native, create ->
+        var directory = root
+        for (segment in spec.segments) directory = directory.resolve(segment)
+        jvmAcquirePhysicalNative(directory, spec, key, native, create)
     }
 }
 
@@ -119,15 +110,14 @@ private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSp
         val capturedDirectory = jvmSpoolDirectoryAttributes(secure)
         check(jvmSpoolFileIdentity(beforeDirectory) == jvmSpoolFileIdentity(capturedDirectory))
         // POSIX may release this process's locks when ANY descriptor for that inode closes.
-        // Refuse a second local owner BEFORE it can open/close the already locked file. Generation
-        // files intentionally share one installed leaf, so include the canonical filename.
-        val owner = JvmPhysicalSpoolProcessOwner.acquire(jvmSpoolFileIdentity(capturedDirectory) + ":" + spec.filename)
+        // Refuse a second local owner BEFORE it can open/close the already locked file.
+        val owner = JvmPhysicalSpoolProcessOwner.acquire(jvmSpoolFileIdentity(capturedDirectory))
         processOwner = owner
-        jvmSpoolEntries(secure, spec, create)
+        jvmSpoolEntries(secure, empty = create, filename = spec.layout.filename)
         val openedDirectoryChannel = FileChannel.open(directory,
             setOf<OpenOption>(StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS))
         directoryChannel = openedDirectoryChannel
-        val relative = directory.fileSystem.getPath(spec.filename)
+        val relative = directory.fileSystem.getPath(spec.layout.filename)
         val beforeFile = if (create) null else jvmSpoolNamedFile(secure, relative)
         val options = mutableSetOf<OpenOption>(StandardOpenOption.READ, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)
         if (create) options += StandardOpenOption.CREATE_NEW
@@ -146,7 +136,7 @@ private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSp
             namespace?.identity ?: jvmSpoolFileIdentity(capturedDirectory), jvmSpoolFileIdentity(capturedFile),
             jvmSpoolOwnerIdentity(directory), cipher.identity)
         val owned = JvmPhysicalSpoolFile(directory, secure, openedDirectoryChannel, channel, lock,
-            owner, native, initializing = create, layout = spec.layout, namespace = namespace, filename = spec.filename)
+            owner, native, initializing = create, layout = spec.layout, namespace = namespace)
         nativeFile = owned
         if (expected != null) check(expected == native)
         result = PhysicalNativeOpenV1.Opened(PhysicalNativeOwnedFileV1(native, owned, cipher))
@@ -204,13 +194,12 @@ private class JvmPhysicalSpoolFile(
     private var initializing: Boolean,
     private val layout: PhysicalNativeLayoutV1,
     private val namespace: JvmPhysicalJournalNamespace?,
-    private val filename: String,
 ) : PhysicalSpoolFile {
     private val mutex = ReentrantLock()
     private val closed = AtomicBoolean(false)
     private val retired = AtomicBoolean(false)
     private val processId = ProcessHandle.current().pid()
-    private val relative = directory.fileSystem.getPath(filename)
+    private val relative = directory.fileSystem.getPath(layout.filename)
     private var cleanupResult: LocalPhysicalSpoolClose? = null
     private val leaseDenials = ConcurrentHashMap<PhysicalSpoolLease, () -> Unit>()
 
@@ -315,7 +304,7 @@ private class JvmPhysicalSpoolFile(
         check(namedFile.size() == size && absoluteFile.size() == size)
         if (initializing) check(size in 0L..layout.bytes.toLong())
         else check(size == layout.bytes.toLong())
-        jvmSpoolEntries(directoryStream, layout, filename, create = false)
+        jvmSpoolEntries(directoryStream, empty = false, filename = layout.filename)
     }
 
     override fun capture(onRetirement: () -> Unit): PhysicalSpoolLease? {
@@ -479,54 +468,16 @@ private fun jvmSpoolAncestors(directory: Path, ownerUid: Long) {
     }
 }
 
-private fun jvmSpoolEntries(directory: SecureDirectoryStream<Path>, spec: PhysicalNativeFileSpecV1, create: Boolean) {
-    jvmSpoolEntries(directory, spec.layout, spec.filename, create)
-}
-
-/**
- * The leaf contains only canonical files for this closed layout. Generation files are append-only:
- * create may see older generations but never the target or a newer generation; open must see the
- * exact target. Unknown names, duplicates and non-canonical suffixes are held, never ignored.
- */
-private fun jvmSpoolEntries(directory: SecureDirectoryStream<Path>, layout: PhysicalNativeLayoutV1,
-    filename: String, create: Boolean) {
-    val target = layout.generationOf(filename) ?: error("physical.spool.filename")
+private fun jvmSpoolEntries(directory: SecureDirectoryStream<Path>, empty: Boolean, filename: String = JVM_PHYSICAL_SPOOL_FILE) {
     // A DirectoryStream has only one iterator; open a new anchored stream for each bounded scan.
     directory.newDirectoryStream(Path.of("."), LinkOption.NOFOLLOW_LINKS).use { entries ->
         var count = 0
-        var targetSeen = false
         for (entry in entries) {
-            val name = entry.fileName.toString()
-            check(++count <= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-            val generation = layout.generationOf(name) ?: error("physical.spool.entry")
-            if (name == filename) targetSeen = true
-            if (create) check(generation < target)
+            check(!empty && ++count == 1 && entry.fileName.toString() == filename)
         }
-        check(if (create) !targetSeen else targetSeen)
+        check(count == if (empty) 0 else 1)
     }
 }
-
-/** Bounded no-follow listing of the already installed leaf; every selected file is reauthenticated. */
-private fun jvmListPhysicalNative(directory: Path, expectedDirectoryIdentity: String): List<String>? = try {
-    check(!Thread.currentThread().isInterrupted && directory.isAbsolute && directory.normalize() == directory &&
-        directory.fileSystem === FileSystems.getDefault())
-    val before = jvmSpoolDirectory(directory)
-    jvmSpoolAncestors(directory, jvmSpoolUnixNumber(directory, "uid"))
-    val namespace = JvmPhysicalJournalNamespace.capture(directory)
-    check(namespace.identity == expectedDirectoryIdentity)
-    val names = mutableListOf<String>()
-    Files.newDirectoryStream(directory).use { opened ->
-        val entries = opened as? SecureDirectoryStream<Path> ?: error("physical.spool.secure_directory")
-        check(jvmSpoolFileIdentity(jvmSpoolDirectoryAttributes(entries)) == jvmSpoolFileIdentity(before))
-        for (entry in entries) {
-            check(names.size < LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-            names += entry.fileName.toString()
-        }
-        namespace.requireCurrent()
-        check(jvmSpoolFileIdentity(jvmSpoolDirectory(directory)) == jvmSpoolFileIdentity(before))
-    }
-    names
-} catch (_: Exception) { null }
 
 private inline fun jvmSpoolCleanup(block: () -> Unit): Boolean = try { block(); true } catch (_: Exception) { false }
 

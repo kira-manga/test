@@ -22,7 +22,7 @@ import java.util.concurrent.atomic.AtomicReference
 public object AndroidSelfOwnedEnrollmentSource {
     /** Explicit preparation acquisition; may create the original empty P1 namespace. */
     public suspend fun open(application: Application): LocalProvisionerOpenResult =
-        openNativeOwner(application, existingOriginal = false, profile = SelfOwnedNativeProfileV1.LIVE)
+        openNativeOwner(application, existingOriginal = false)
 
     /**
      * Existing original P1 only. Missing ancestry, directory, lock or bootstrap is unresolved,
@@ -31,21 +31,10 @@ public object AndroidSelfOwnedEnrollmentSource {
      * Resume/issuance still needs its own explicit operation on the returned original owner.
      */
     public suspend fun openOriginal(application: Application): LocalProvisionerOpenResult =
-        openNativeOwner(application, existingOriginal = true, profile = SelfOwnedNativeProfileV1.LIVE)
+        openNativeOwner(application, existingOriginal = true)
 
-    /** Explicit training-slot preparation; separate root and key namespace from live. */
-    public suspend fun openTraining(application: Application,
-        slot: LocalTrainingCompositionSlot): LocalProvisionerOpenResult =
-        openNativeOwner(application, existingOriginal = false, profile = SelfOwnedNativeProfileV1.training(slot))
-
-    /** Existing-only training-slot original; never repairs or creates a missing training root. */
-    public suspend fun openTrainingOriginal(application: Application,
-        slot: LocalTrainingCompositionSlot): LocalProvisionerOpenResult =
-        openNativeOwner(application, existingOriginal = true, profile = SelfOwnedNativeProfileV1.training(slot))
-
-    private suspend fun openNativeOwner(application: Application, existingOriginal: Boolean,
-        profile: SelfOwnedNativeProfileV1): LocalProvisionerOpenResult {
-        val lease = AndroidProvisionerProcessLease.acquire(profile)
+    private suspend fun openNativeOwner(application: Application, existingOriginal: Boolean): LocalProvisionerOpenResult {
+        val lease = AndroidProvisionerProcessLease.acquire()
             ?: return LocalProvisionerOpenResult.Unavailable(SelfOwnedInstallationFailureV1.BUSY)
         val work = try { AndroidOwnedInstallationWork(lease) } catch (_: Throwable) {
             // No native namespace was entered and no registry descriptor could have been opened.
@@ -58,9 +47,8 @@ public object AndroidSelfOwnedEnrollmentSource {
             return when (val result = work.run {
                 object : AndroidOwnedTask<AndroidLocalProvisioner> {
                     override fun execute(): AndroidLocalProvisioner {
-                        val environment = if (existingOriginal)
-                            AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work, profile)
-                        else AndroidSelfOwnedEnvironment.capture(application, work, profile)
+                        val environment = if (existingOriginal) AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work)
+                            else AndroidSelfOwnedEnvironment.capture(application, work)
                         // Publish ownership BEFORE any open can partially acquire descriptors.
                         val registry = AndroidLocalProvisionerRegistry(environment, work)
                         retainedRegistry.set(registry)
@@ -89,46 +77,24 @@ public object AndroidSelfOwnedEnrollmentSource {
     }
 }
 
-/**
- * Process exclusion is additional to the retained cross-process kernel registry lock. One
- * lease exists per exact native root pair, so an independent LIVE/TRAINING/other-slot root is
- * not blocked merely because another composition is open in this process. The same original's
- * root pair still admits at most one owner, and release remains tied to its actual close.
- */
-internal class AndroidProvisionerProcessLease private constructor(
-    private val root: RootKey,
-) {
+/** Process exclusion is additional to the retained cross-process kernel registry lock. */
+internal class AndroidProvisionerProcessLease private constructor() {
     private var released = false
 
     fun releaseAfterActualClose() { release() }
     fun releaseUnusedBeforeNativeOpen() { release() }
 
     private fun release() = synchronized(gate) {
-        check(!released && current[root] === this)
+        check(!released && current === this)
         released = true
-        current.remove(root)
+        current = null
     }
-
-    private data class RootKey(
-        val targetDirectoryName: String,
-        val provisionerDirectoryName: String,
-    )
 
     companion object {
         private val gate = Any()
-        private val current = mutableMapOf<RootKey, AndroidProvisionerProcessLease>()
-
-        /** The lease follows the exact fixed native roots, never a caller-selected path. */
-        fun acquire(profile: SelfOwnedNativeProfileV1): AndroidProvisionerProcessLease? =
-            acquire(RootKey(profile.targetDirectoryName, profile.provisionerDirectoryName))
-
-        /** Existing LIVE target callers cannot select a training root through this entry. */
-        fun acquire(): AndroidProvisionerProcessLease? = acquire(SelfOwnedNativeProfileV1.LIVE)
-
-        private fun acquire(root: RootKey): AndroidProvisionerProcessLease? = synchronized(gate) {
-            if (current.containsKey(root)) null else AndroidProvisionerProcessLease(root).also {
-                current[root] = it
-            }
+        private var current: AndroidProvisionerProcessLease? = null
+        fun acquire(): AndroidProvisionerProcessLease? = synchronized(gate) {
+            if (current != null) null else AndroidProvisionerProcessLease().also { current = it }
         }
     }
 }
@@ -139,7 +105,6 @@ internal class AndroidSelfOwnedEnvironment private constructor(
     private val captured: Observation,
     private val work: AndroidOwnedInstallationWork,
     private val observationKind: DirectoryObservation,
-    val profile: SelfOwnedNativeProfileV1,
 ) {
     private enum class DirectoryObservation { PREPARATION, EXISTING_ORIGINAL }
 
@@ -162,7 +127,7 @@ internal class AndroidSelfOwnedEnvironment private constructor(
     fun currentProvisionerVolumeUuid(): String {
         requireCurrent()
         val volume = AndroidNativeStorageVolume.uuidForPath(application,
-            File(noBackupDirectory, profile.provisionerDirectoryName)).toString()
+            File(noBackupDirectory, "ukkera-self-owned-provisioner-v1")).toString()
         requireCurrent()
         return volume
     }
@@ -191,11 +156,10 @@ internal class AndroidSelfOwnedEnvironment private constructor(
     )
 
     companion object {
-        fun capture(application: Application, work: AndroidOwnedInstallationWork,
-            profile: SelfOwnedNativeProfileV1): AndroidSelfOwnedEnvironment {
+        fun capture(application: Application, work: AndroidOwnedInstallationWork): AndroidSelfOwnedEnvironment {
             work.requireActive()
             return AndroidSelfOwnedEnvironment(application, observe(application, DirectoryObservation.PREPARATION),
-                work, DirectoryObservation.PREPARATION, profile).also { it.requireCurrent() }
+                work, DirectoryObservation.PREPARATION).also { it.requireCurrent() }
         }
 
         /**
@@ -204,12 +168,11 @@ internal class AndroidSelfOwnedEnvironment private constructor(
          * framework directory getter, search for a replacement root, or repair the directory.
          */
         fun captureExistingOriginal(application: Application,
-            work: AndroidOwnedInstallationWork,
-            profile: SelfOwnedNativeProfileV1): AndroidSelfOwnedEnvironment {
+            work: AndroidOwnedInstallationWork): AndroidSelfOwnedEnvironment {
             work.requireActive()
             return AndroidSelfOwnedEnvironment(application,
                 observe(application, DirectoryObservation.EXISTING_ORIGINAL), work,
-                DirectoryObservation.EXISTING_ORIGINAL, profile).also { it.requireCurrent() }
+                DirectoryObservation.EXISTING_ORIGINAL).also { it.requireCurrent() }
         }
 
         private fun existingDirectories(data: File, noBackup: File, uid: Int): ExistingDirectories {

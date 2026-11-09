@@ -13,7 +13,6 @@ import kotlin.coroutines.CoroutineContext
 public class SelfOwnedNativeHistoryCustody internal constructor(
     internal val controller: SelfOwnedNativeHistoryController,
 ) {
-    public val compositionProfile: LocalCompositionSdkProfileV1 get() = controller.compositionProfile
     public suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot = controller.snapshotOriginal()
     public suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession = controller.openOriginalReadOnly()
 
@@ -140,17 +139,10 @@ public class OriginalNativeHistorySnapshot internal constructor(
     internal val ownerIdentity: Any,
     internal val cutIdentity: Any,
     public val lifetimeId: DomainId,
-    originalBinding: SelfOwnedNativeOriginalBinding,
+    public val originalBinding: SelfOwnedNativeBindingV1,
     public val record: NativeHistoryAnchorRecordV2,
     public val recordDigest: PayloadDigest,
 ) {
-    public val nativeOriginalBinding: SelfOwnedNativeOriginalBinding = originalBinding
-
-    /** Legacy Android-only projection. A native V2 binding is never represented as Android. */
-    public val originalBinding: SelfOwnedNativeBindingV1
-        get() = nativeOriginalBinding as? SelfOwnedNativeBindingV1
-            ?: error("This original has a platform-native V2 binding")
-
     override fun toString(): String = "OriginalNativeHistorySnapshotV2([REDACTED])"
 }
 
@@ -273,7 +265,6 @@ public class OriginalAttemptRetirement internal constructor(
 
 /** Security-module implementation seam, never a supplied accepting database callback. */
 internal interface SelfOwnedNativeHistoryController {
-    val compositionProfile: LocalCompositionSdkProfileV1
     suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot
     suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession
     suspend fun openReceiptMembershipData(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeReceiptMembershipData =

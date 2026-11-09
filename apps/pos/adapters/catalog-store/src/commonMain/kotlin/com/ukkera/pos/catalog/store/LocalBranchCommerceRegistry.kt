@@ -20,10 +20,6 @@ import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.database.StoredBytes
 import com.ukkera.pos.database.StreamedSourceObservationV2
-import com.ukkera.pos.database.setup.LocalSetupAcknowledgementServices
-import com.ukkera.pos.database.setup.LocalSetupResultHistoryProducer
-import com.ukkera.pos.catalog.store.setup.LocalSetupCheckpointHistoryProducer
-import com.ukkera.pos.catalog.store.setup.LocalSetupCheckpointServices
 import com.ukkera.pos.inventory.store.LocalStockHandlers
 import com.ukkera.pos.inventory.store.LocalStockRepository
 import com.ukkera.pos.inventory.store.LocalStockHistoryProducer
@@ -147,13 +143,6 @@ public class LocalBranchCommerceRegistry(
         purchaseOrderReader = purchasingAuthority,
         relationalCompositeVerifiers = LocalSalesHandlers.normalizedStockCompositeVerifiers(normalizedQuotes, foodSource, tenderPolicies),
         relationalAuthority = stockAuthority, documentaryCodecV2 = arrivalAuthorityV2)
-    // Explicit setup-result commands/read and the durable configuration/import/opening
-    // checkpoints that back their go-live prerequisites. Registration creates no grant,
-    // readiness or native custody; the master kernel still derives current authority and
-    // original binding. Every settled prerequisite additionally verifies the exact retained
-    // catalog/stock/cash operation/result/effect identity, so unrelated rows are never used.
-    private val setupCheckpoints = LocalSetupCheckpointServices(signatures)
-    private val setupResults = LocalSetupAcknowledgementServices(setupCheckpoints.prerequisites)
     private val supplierSettlement = LocalSupplierSettlementServices(stock, retailParticipants)
     // Retains only actual native-issued policy envelopes. Activation does not qualify
     // documentary receipt/product selectors or supply the separate arrival authority.
@@ -173,8 +162,7 @@ public class LocalBranchCommerceRegistry(
         LocalPurchasingInvoiceCaptureHistoryProducerV2(PurchasingInvoiceCaptureCatalogAuthorityV2(signatures, nativePublications)),
         LocalPurchasingCapturedMatchHistoryProducerV2(stock),
         supplierSettlement.history, purchasingPolicies.history, catalogReleases.history, serialRegistrations.history, openingSupplierObligations.history, branchActivities.history,
-        returnRightsPolicies.history, documentaryIntake.history, LocalSetupResultHistoryProducer(setupCheckpoints.prerequisites),
-        LocalSetupCheckpointHistoryProducer(signatures),
+        returnRightsPolicies.history, documentaryIntake.history,
         LocalUnpricedArrivalHistoryProducerV2(stock, LocalCatalogUnpricedArrivalOriginalSourcesV2(configuration, purchasingPolicyTrust, nativePublications)))
     private val supervisorReviewHistory = LocalSupervisorReviewHistoryProducer(tenderPolicies)
     /** The actual registry's signature-backed configuration and complete installed stock/
@@ -218,8 +206,7 @@ public class LocalBranchCommerceRegistry(
             stockHandlers.commands +
             LocalSalesHandlers.normalizedStockCommands(stock, stockAuthority, normalizedQuotes, foodSource, tenderPolicies, foodCheckRefusals) +
             purchasing.commands + documentaryIntake.commands + supplierSettlement.commands + purchasingPolicies.commands + catalogReleases.commands + serialRegistrations.commands + openingSupplierObligations.commands +
-            branchActivities.commands + returnRightsPolicies.commands + arrivals.commands + arrivalsV2.commands +
-            setupCheckpoints.commands + setupResults.commands + LocalSalesHandlers.commands(stock, quoteSource, configuration, returnPolicy,
+            branchActivities.commands + returnRightsPolicies.commands + arrivals.commands + arrivalsV2.commands + LocalSalesHandlers.commands(stock, quoteSource, configuration, returnPolicy,
                 recordingCapacity, physicalRecordingCapacity, returnCaseSource, tenderPolicies)
     private val queryHandlers: List<MasterReadHandler> =
         listOf(configuration.readHandler(), LocalSupplierReadHandlerV2(), LocalPricingReadHandler(signatures), LocalCountSurplusApprovalReadHandler(stock),
@@ -236,8 +223,7 @@ public class LocalBranchCommerceRegistry(
             LocalJournalFinancialReadHandler(stock, tenderPolicies)) +
             LocalSalesHandlers.foodHandoffReads(stock, tenderPolicies) + stockHandlers.reads + normalizedStock.reads +
             purchasing.reads + documentaryIntake.reads + supplierSettlement.reads + purchasingPolicies.reads + catalogReleases.reads + serialRegistrations.reads + openingSupplierObligations.reads +
-            branchActivities.reads + returnRightsPolicies.reads + arrivals.reads + arrivalsV2.reads +
-            setupCheckpoints.reads + setupResults.reads + LocalSalesHandlers.reads(stock, foodSource, tenderPolicies)
+            branchActivities.reads + returnRightsPolicies.reads + arrivals.reads + arrivalsV2.reads + LocalSalesHandlers.reads(stock, foodSource, tenderPolicies)
 
     // R2 discovery/review and v2 handoff effects use the real same-loan protected recipient
     // source and genuine full preparation/financial proof. Registration is not independent

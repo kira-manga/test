@@ -778,7 +778,6 @@ internal class EntryState {
 internal class EntryViewModel(val entryId: Long, val resources: EntryState, private val entryScope: Scope) : ViewModel() {
     private var localController: LocalWorkflowController? = null
     private var administrationController: LocalAdministrationController? = null
-    private var setupClosureController: LocalSetupClosureController? = null
     private var workflowContinuation: LocalWorkflowContinuation? = null
     private var administrationContinuation: LocalAdministrationWorkspace? = null
     private var localOwner: UiRootScope? = null
@@ -817,17 +816,6 @@ internal class EntryViewModel(val entryId: Long, val resources: EntryState, priv
             administrationController = it; administrationContinuation = null
         }
     }
-    fun setupClosure(runtime: UkkeraRuntime, token: NavigationToken,
-        attachmentKey: LocalSessionAttachmentKey? = runtime.presentation.value.localAttachment): LocalSetupClosureController? {
-        if (entryScope.closed) return null
-        val session = runtime.localSessionFor(token) ?: return null
-        register(runtime.rootScope)
-        setupClosureController?.let { return it }
-        if (!runtime.ownsLocalAttachment(session, token, attachmentKey)) return null
-        return LocalSetupClosureController(runtime, session, token, viewModelScope).also {
-            setupClosureController = it
-        }
-    }
     private fun register(owner: UiRootScope) {
         if (localOwner === owner) return
         localOwner?.unregister(this)
@@ -841,7 +829,6 @@ internal class EntryViewModel(val entryId: Long, val resources: EntryState, priv
             administrationController?.let { administrationContinuation = it.retireForAttachment() }
             administrationController = null
         }
-        cleanup.attempt { setupClosureController?.deactivate(); setupClosureController = null }
         if (retainGeneral) {
             cleanup.attempt { companyCatalogDrafts.retireAttachment() }
             cleanup.attempt { foodConfigurationDrafts.retireAttachment() }
@@ -900,7 +887,6 @@ internal class EntryViewModel(val entryId: Long, val resources: EntryState, priv
         val cleanup = LocalSessionCleanup()
         cleanup.attempt { localController?.close(); localController = null }
         cleanup.attempt { administrationController?.close(); administrationController = null }
-        cleanup.attempt { setupClosureController?.deactivate(); setupClosureController = null }
         workflowContinuation = null
         administrationContinuation = null
         cleanup.attempt { clearLocalConfigurationDrafts() }

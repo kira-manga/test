@@ -28,7 +28,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     internal lateinit var coroutineContext: CoroutineContext
         private set
     internal val originalParent: NativeHistoryRecordedHeadV2 get() = checkNotNull(native.original.record.parent)
-    internal val originalBinding: SelfOwnedNativeOriginalBinding get() = native.original.nativeOriginalBinding
+    internal val originalBinding: SelfOwnedNativeBindingV1 get() = native.original.originalBinding
     internal val originalInstallationId: DomainId get() = native.original.record.allocation.coordinates.installationId
     internal val originalAuthority: AuthorityIdentity get() = native.original.record.allocation.coordinates.let {
         AuthorityIdentity(it.assignmentId, it.deviceId, checkNotNull(native.original.record.definition).definition.authorityEpoch)
@@ -64,7 +64,6 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     private var serialPublicationCapture: RuntimeSerialPublicationRequestCapture? = null
     private var serialPublicationEvidence: RuntimeSerialPublicationRequestEvidenceV1? = null
     private var serialPublicationOrigin: NativeSerialPrivateRequestCapsuleV1? = null
-    private var masterLifecycleEvidence: RuntimeMasterLifecycleEvidenceV1? = null
     private var approvalUseCapture: RuntimeActionApprovalUseCapture? = null
     private var sessionRevocationCapture: RuntimeSessionRevocationHistoryCapture? = null
     private var sessionRevocationEvidence: RuntimeSessionRevocationHistoryEvidence? = null
@@ -583,34 +582,6 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         } finally { expected.fill(0) }
     }
 
-    /** Attach exact history evidence before the protected lifecycle event image is inserted. */
-    internal fun captureMasterLifecycleEvidence(value: RuntimeMasterLifecycleEvidenceV1) {
-        body(); requireNoApprovalRetirement()
-        check(masterLifecycleEvidence == null && securityTransaction != null && writerActor == value.actorId &&
-            operationId == null && resources.isEmpty() && definitionBytes == null && factBytes == null &&
-            authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
-            sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
-            deviceRevocationCapture == null && deviceRevocationEvidence == null &&
-            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
-            employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null &&
-            employeePolicyActivationNative == null && deviceAdmissionNative == null &&
-            approvalIssuanceCapture == null && approvalIssuanceEvidence == null &&
-            approvalRetirementCapture == null && approvalRetirementEvidence == null &&
-            approvalUseCapture == null && throttleEvidence == null && nativeOriginalCapture == null &&
-            serialPublicationCapture == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
-            installationReceipt == null && originalInvocation == null && finalDeadline == null && !finalDeadlineCaptured)
-        value.validate()
-        check(value.scope == coordinates.scope && value.installationId == coordinates.installationId)
-        masterLifecycleEvidence = value
-        purpose = RuntimeWritePurposeV2.ROLE_TRANSITION
-        actorId = value.actorId
-        requestId = value.eventId
-        requestDigest = value.requestDigest
-    }
-
     /** Enumerate only the current actor's actual retained origins, never ordinary SQL rows
      * or inferred native publications. Every selected capsule must pass its exact row join. */
     internal suspend fun serialPublicationOrigins(actor: DomainId): List<RuntimeSerialPublicationRequestEvidenceV1> {
@@ -1123,8 +1094,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         check(authenticationCapture == null && sessionRevocationCapture == null && administrationCancellationCapture == null &&
             deviceRevocationCapture == null && additionalDeviceRevocationCapture == null &&
             employeeProvisioningCapture == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
-            approvalIssuanceCapture == null && approvalRetirementCapture == null && serialPublicationCapture == null &&
-            masterLifecycleEvidence == null) // Never retain a partial protected decision.
+            approvalIssuanceCapture == null && approvalRetirementCapture == null && serialPublicationCapture == null) // Never retain a partial protected decision.
         originalInvocation?.let { check(!it.denied) }
         val changes = scalar("SELECT count(*) FROM runtime_history_capture_v2")
         historyCapacityV2(changes in 0L..RuntimeHistoryProfileV2.MAX_CHANGES.toLong())
@@ -1135,8 +1105,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                 additionalDeviceRevocationEvidence == null &&
                 employeeProvisioningEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
                 employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && approvalIssuanceCapture == null && approvalIssuanceEvidence == null &&
-                approvalRetirementEvidence == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
-                masterLifecycleEvidence == null)
+                approvalRetirementEvidence == null && serialPublicationEvidence == null && serialPublicationOrigin == null)
             approvalUseCapture?.let { check(it.images.isEmpty() && it.consumed == null && it.event == null && it.consumedAt == null) }
             authenticationEvidence?.let { check(it.images.isEmpty() && it.denial != null) }
             execute("DELETE FROM runtime_history_write_frame_v2")
@@ -1177,7 +1146,6 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         val approvalIssuance = approvalIssuanceEvidence
         val approvalRetirement = approvalRetirementEvidence
         val serialPublication = serialPublicationEvidence
-        val masterLifecycle = masterLifecycleEvidence
         val approvedCommand = commandAuthorization?.takeIf { it.actionApprovalId != null }?.let { command ->
             val bytes = RuntimeCommandAuthorizationEvidenceCodec.encode(command)
             try { RuntimeApprovedCommandEvidenceV1(commandEvidence = bytes.decodeToString(throwOnInvalidSequence = true),
@@ -1226,23 +1194,6 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             commandAuthorization == null && authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null && definitionBytes == null && factBytes == null &&
-            branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
-            PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
-            RuntimeHistoryCodecV2.roleCommitment(branch) == originalParent.roleCommitment &&
-            RuntimeHistoryCodecV2.recoveryCommitment(branch) == originalParent.recoveryCommitment)
-        if (masterLifecycle != null) check(purpose == RuntimeWritePurposeV2.ROLE_TRANSITION &&
-            masterLifecycle.scope == coordinates.scope && masterLifecycle.actorId == actorId &&
-            masterLifecycle.eventId == requestId && masterLifecycle.requestDigest == requestDigest &&
-            masterLifecycle.installationId == coordinates.installationId &&
-            masterLifecycle.coordinatesDigest == lifecycleCoordinatesDigest(coordinates) &&
-            changes == 1L && operationId == null && resources.isEmpty() && factBytes == null &&
-            approvalIssuance == null && approvalRetirement == null && approvalUseCapture == null && !approvalAttemptCompletion &&
-            throttleEvidence == null && serialPublication == null && serialPublicationOrigin == null &&
-            commandAuthorization == null && authentication == null && sessionRevocation == null &&
-            administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null &&
-            employeePolicyActivationNative == null && deviceAdmissionNative == null &&
-            nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null &&
             branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
             PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
             RuntimeHistoryCodecV2.roleCommitment(branch) == originalParent.roleCommitment &&
@@ -1515,7 +1466,6 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                 else if (approvalIssuance != null) RuntimeActionApprovalEvidenceCodec.encode(approvalIssuance)
                 else if (approvalRetirement != null) RuntimeActionApprovalRetirementEvidenceCodec.encode(approvalRetirement)
                 else if (serialPublication != null) RuntimeSerialPublicationRequestEvidenceCodec.encode(serialPublication)
-                else if (masterLifecycle != null) RuntimeMasterLifecycleEvidenceCodec.encode(masterLifecycle)
                 else if (throttleOnly) RuntimeThrottleEvidenceCodec.encode(checkNotNull(throttle))
                 else if (approvedCommand != null) RuntimeActionApprovalEvidenceCodec.encode(approvedCommand)
                 else if (commandAuthorization != null) RuntimeCommandAuthorizationEvidenceCodec.encode(commandAuthorization)

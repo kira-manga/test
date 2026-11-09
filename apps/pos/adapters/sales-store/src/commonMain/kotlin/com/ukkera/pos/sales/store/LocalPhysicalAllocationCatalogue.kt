@@ -110,125 +110,132 @@ public sealed interface LocalPhysicalJournalOpen {
 
 internal class PhysicalCatalogueRoot(val owner: LocalPhysicalCatalogueBinding,
     val anchor: LocalPhysicalSpoolNativeIdentity, val catalogue: LocalPhysicalSpoolNativeIdentity,
-    val headerDigest: PayloadDigest, val generation: Int = 0,
-    val predecessor: PayloadDigest? = null) {
-    init {
-        require(generation in 0 until LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-        require((generation == 0) == (predecessor == null))
-    }
+    val headerDigest: PayloadDigest) {
     val header: ByteArray = catalogueHeader(owner, anchor, catalogue)
     val planDigest: PayloadDigest = sha256(header)
     val anchorBinding: PayloadDigest = catalogueAnchorBinding(owner, anchor)
-    val bytes: ByteArray = if (generation == 0) journalFrame(listOf(
-        journalText("physical.journal-first/catalogue-root-v1"), journalOwnerBytes(owner),
-        journalNativeBytes(anchor), journalNativeBytes(catalogue), journalText(headerDigest.value), header),
-        LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES)
-    else journalFrame(listOf(
-        journalText("physical.journal-first/catalogue-root-v1"), journalOwnerBytes(owner),
-        journalNativeBytes(anchor), journalNativeBytes(catalogue), journalText(headerDigest.value), header,
-        journalText(generation.toString()), journalText(requireNotNull(predecessor).value)),
-        LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES)
-    val rootDigest: PayloadDigest = sha256(bytes)
+    val bytes: ByteArray = journalFrame(listOf(journalText("physical.journal-first/catalogue-root-v1"),
+        journalOwnerBytes(owner), journalNativeBytes(anchor), journalNativeBytes(catalogue),
+        journalText(headerDigest.value), header), LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES)
 }
 
 /**
- * One immutable 128-entry catalogue generation. Legacy generation zero keeps its exact filenames
- * and bytes. A successor is a new immutable anchor/catalogue/journal file in the SAME installed
- * role leaf directories; no older catalogue, receipt, slot or original is rewritten or reused.
+ * Actual fixed native catalogue + separately authenticated expected-receipt anchor. No SQL writes,
+ * scans/adoption of orphan journals, key generation, reset or reclaim. Blocking worker-only API.
+ *
+ * All 128 catalogue entries and the anchor are physically initialized before publication. Each
+ * journal's one fixed file is allocated before its immutable catalogue entry is published. A cut
+ * between file initialization and entry publication leaves an unavailable orphan, not vacancy.
+ * The separately installed private directories/key and native supervisor remain real obligations.
+ * Valid joint rollback is NOT detected by AEAD; authorized/uncertain restore must quarantine.
  */
-internal class PhysicalCatalogueGeneration(
-    val owner: LocalPhysicalCatalogueBinding,
-    val root: PhysicalCatalogueRoot,
-    val anchor: PhysicalNativeOwnedFileV1,
-    val catalogue: PhysicalNativeOwnedFileV1,
+public class LocalPhysicalAllocationCatalogue internal constructor(
+    public val binding: LocalPhysicalCatalogueBinding,
+    private val root: PhysicalCatalogueRoot,
+    private val anchor: PhysicalNativeOwnedFileV1,
+    private val catalogue: PhysicalNativeOwnedFileV1,
+    private val nativeFiles: PhysicalJournalNativeFilesV1,
 ) {
-    val generation: Int get() = root.generation
+    /** Cached actual native observation, safe to read without IO; not current-custody evidence. */
+    public val storageProfile: LocalPhysicalSpoolStorageProfileV1 = root.catalogue.profile
     private var expectedFrames: List<PayloadDigest>? = null
     private val usedNonces: MutableSet<String> = mutableSetOf()
 
-    fun establish() {
-        val result = anchor.file.access {
-            verifyAnchor()
-            when (val inner = catalogue.file.access {
-                readEntries()
-                catalogue.file.force()
-                verifyCatalogueHeader()
-            }) {
-                is PhysicalSpoolAccess.Value -> Unit
-                else -> error("physical.catalogue.open")
-            }
-            anchor.file.force()
-            verifyAnchor()
-            true
-        }
-        check(result is PhysicalSpoolAccess.Value)
-    }
-
-    fun access(block: () -> LocalPhysicalJournalOpen): LocalPhysicalJournalOpen = when (val outer = anchor.file.access {
-        verifyAnchor()
-        val result = catalogue.file.access { val value = block(); verifyCatalogueHeader(); value }
-        verifyAnchor()
-        result
-    }) {
-        is PhysicalSpoolAccess.Value -> when (val inner = outer.value) {
-            is PhysicalSpoolAccess.Value -> inner.value
-            PhysicalSpoolAccess.Busy -> LocalPhysicalJournalOpen.Busy
-            PhysicalSpoolAccess.Held -> LocalPhysicalJournalOpen.Held
-        }
-        PhysicalSpoolAccess.Busy -> LocalPhysicalJournalOpen.Busy
-        PhysicalSpoolAccess.Held -> LocalPhysicalJournalOpen.Held
-    }
-
-    fun readEntries(): List<LocalPhysicalJournalReceipt?> {
-        verifyCatalogueHeader()
-        val digests = mutableListOf(root.headerDigest)
-        val nonces = mutableSetOf<String>()
-        catalogue.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { nonces.add(physicalSpoolNonceIdentity(it)) }
-        val entries = List(LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) { slot ->
-            val index = slot + 1
-            catalogue.file.read(index * LocalPhysicalJournalFormatV1.CELL_BYTES, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
-                val digest = sha256(encrypted)
-                expectedFrames?.let { check(it[index] == digest) }
-                digests += digest
-                check(nonces.add(physicalSpoolNonceIdentity(encrypted)))
-                val bytes = journalOpen(catalogue.cipher, "catalogue", root.planDigest, index,
-                    LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, root.headerDigest, encrypted)
-                bytes?.withSpoolBytes { journalReadReceipt(it, owner).also { receipt -> check(receipt.binding.slotIndex == slot) } }
-            }
-        }
-        check(entries.filterNotNull().map { it.binding.allocationId }.distinct().size == entries.count { it != null })
-        if (expectedFrames == null) expectedFrames = digests.toList()
-        usedNonces.addAll(nonces)
-        return entries
-    }
-
-    fun readExpectedReceipt(allocationId: DomainId): LocalPhysicalJournalReceipt? =
-        readEntries().filterNotNull().singleOrNull { it.binding.allocationId == allocationId }
-
-    fun publish(index: Int, receipt: LocalPhysicalJournalReceipt) {
-        val cellIndex = index + 1
-        val bytes = journalReceiptBytes(receipt)
+    /** Fresh allocation only; a repeated ID must use explicit protected-catalogue recovery. */
+    public fun allocate(requirement: LocalPhysicalJournalRequirementV1,
+        domain: LocalPhysicalJournalDomain): LocalPhysicalJournalOpen {
+        if (!validJournalInput {
+            require(domain.domainProfile == requirement.domainProfile && domain.command == requirement.command &&
+                requirement.scope == binding.scope && binding.deviceId ==
+                (if (binding.role == LocalPhysicalSpoolRole.MASTER) requirement.masterDeviceId else requirement.clientDeviceId))
+            domain.validateRequirement(requirement)
+        })
+            return LocalPhysicalJournalOpen.IdentityConflict
+        val allocation = if (binding.role == LocalPhysicalSpoolRole.MASTER) requirement.masterAllocationId else requirement.clientAllocationId
+        var owned: PhysicalNativeOwnedFileV1? = null
+        var transferred = false
+        var answer: LocalPhysicalJournalOpen = LocalPhysicalJournalOpen.Held
         try {
-            journalSeal(catalogue.cipher, "catalogue", root.planDigest, cellIndex,
-                LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, root.headerDigest, bytes).withSpoolBytes { encrypted ->
-                check(usedNonces.add(physicalSpoolNonceIdentity(encrypted)))
-                val digest = sha256(encrypted)
-                catalogue.file.overwrite(cellIndex * LocalPhysicalJournalFormatV1.CELL_BYTES, encrypted)
-                catalogue.file.force()
-                val previous = expectedFrames ?: error("physical.catalogue.unopened")
-                expectedFrames = previous.mapIndexed { i, old -> if (i == cellIndex) digest else old }
+            answer = access {
+                val entries = readEntries()
+                if (entries.any { it?.binding?.allocationId == allocation }) return@access LocalPhysicalJournalOpen.IdentityConflict
+                val index = entries.indexOfFirst { it == null }
+                if (index < 0) return@access LocalPhysicalJournalOpen.Exhausted
+                val journalBinding = LocalPhysicalJournalBinding(requirement, binding, index, allocation)
+                when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.JOURNAL, index), null, true)) {
+                    PhysicalNativeOpenV1.Busy -> return@access LocalPhysicalJournalOpen.Busy
+                    PhysicalNativeOpenV1.Held -> return@access LocalPhysicalJournalOpen.Held
+                    is PhysicalNativeOpenV1.Opened -> owned = opened.owned
+                }
+                val native = owned ?: error("physical.catalogue.native")
+                val journal = initializePhysicalJournal(this, journalBinding, native, domain)
+                val cellIndex = index + 1
+                val bytes = journalReceiptBytes(journal.receipt)
+                try {
+                    journalSeal(catalogue.cipher, "catalogue", root.planDigest, cellIndex,
+                        LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, root.headerDigest, bytes).withSpoolBytes { encrypted ->
+                        check(usedNonces.add(physicalSpoolNonceIdentity(encrypted)))
+                        val digest = sha256(encrypted)
+                        catalogue.file.overwrite(cellIndex * LocalPhysicalJournalFormatV1.CELL_BYTES, encrypted)
+                        catalogue.file.force()
+                        val previous = expectedFrames ?: error("physical.catalogue.unopened")
+                        expectedFrames = previous.mapIndexed { i, old -> if (i == cellIndex) digest else old }
+                    }
+                    val retained = readEntries()[index] ?: error("physical.catalogue.publication")
+                    check(journalReceiptBytes(retained).contentEquals(bytes))
+                    journal.markPublished()
+                    LocalPhysicalJournalOpen.Opened(journal)
+                } finally { bytes.fill(0) }
             }
-        } finally { bytes.fill(0) }
+            transferred = answer is LocalPhysicalJournalOpen.Opened
+        } catch (_: Exception) {
+            answer = LocalPhysicalJournalOpen.Held
+        } finally {
+            if (!transferred && closeCatalogueNativeFile(owned?.file) == LocalPhysicalSpoolClose.HELD) answer = LocalPhysicalJournalOpen.Held
+        }
+        return answer
     }
 
-    fun close(): LocalPhysicalSpoolClose {
+    /** Exact original receipt comes from the AEAD catalogue; never from the candidate journal. */
+    public fun openExisting(allocationId: DomainId, domain: LocalPhysicalJournalDomain): LocalPhysicalJournalOpen {
+        var owned: PhysicalNativeOwnedFileV1? = null
+        var transferred = false
+        var answer: LocalPhysicalJournalOpen = LocalPhysicalJournalOpen.Held
+        try {
+            answer = access {
+                val receipt = readEntries().singleOrNull { it?.binding?.allocationId == allocationId }
+                    ?: return@access LocalPhysicalJournalOpen.Held
+                domain.validateRequirement(receipt.binding.requirement)
+                when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.JOURNAL,
+                    receipt.binding.slotIndex), receipt.nativeIdentity, false)) {
+                    PhysicalNativeOpenV1.Busy -> return@access LocalPhysicalJournalOpen.Busy
+                    PhysicalNativeOpenV1.Held -> return@access LocalPhysicalJournalOpen.Held
+                    is PhysicalNativeOpenV1.Opened -> owned = opened.owned
+                }
+                val journal = reopenPhysicalJournal(this, receipt, owned ?: error("physical.catalogue.native"), domain)
+                journal.markPublished()
+                LocalPhysicalJournalOpen.Opened(journal)
+            }
+            transferred = answer is LocalPhysicalJournalOpen.Opened
+        } catch (_: Exception) {
+            answer = LocalPhysicalJournalOpen.Held
+        } finally {
+            if (!transferred && closeCatalogueNativeFile(owned?.file) == LocalPhysicalSpoolClose.HELD) answer = LocalPhysicalJournalOpen.Held
+        }
+        return answer
+    }
+
+    /** No eviction: native close retains descriptors/process claims while invocation leases exist. */
+    public fun close(): LocalPhysicalSpoolClose {
         val first = closeCatalogueNativeFile(catalogue.file)
         val second = closeCatalogueNativeFile(anchor.file)
         return if (first == LocalPhysicalSpoolClose.CLOSED && second == LocalPhysicalSpoolClose.CLOSED)
             LocalPhysicalSpoolClose.CLOSED else LocalPhysicalSpoolClose.HELD
     }
 
-    fun capture(onRetirement: () -> Unit): List<PhysicalSpoolLease>? {
+    internal fun capture(onRetirement: () -> Unit): List<PhysicalSpoolLease>? {
+        // These two file.capture calls return single leases. Allocate both reference slots
+        // before either capture; no collection flattening or list growth can lose a lease.
         val leases = ArrayList<PhysicalSpoolLease>(2)
         var transferred = false
         try {
@@ -259,191 +266,35 @@ internal class PhysicalCatalogueGeneration(
         }
     }
 
-    fun verifyAnchor() {
-        anchor.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
-            val body = journalOpen(anchor.cipher, "catalogue-anchor", root.anchorBinding, 0,
-                LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, null, encrypted) ?: error("physical.catalogue.anchor")
-            body.withSpoolBytes { check(it.contentEquals(root.bytes)) }
-        }
-    }
-
-    fun verifyCatalogueHeader() {
-        catalogue.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
-            check(sha256(encrypted) == root.headerDigest)
-            val body = journalOpen(catalogue.cipher, "catalogue", root.planDigest, 0,
-                LocalPhysicalJournalFormatV1.MAX_HEADER_BYTES, null, encrypted) ?: error("physical.catalogue.header")
-            body.withSpoolBytes { check(it.contentEquals(root.header)) }
-        }
-    }
-}
-
-internal class LocalPhysicalCatalogueNativeCensus(
-    val anchorFilenames: Set<String>,
-    val catalogueFilenames: Set<String>,
-    val journalFilenames: Map<Int, Set<String>>,
-)
-
-/**
- * Actual fixed native catalogue family + separately authenticated expected-receipt anchor. No SQL
- * writes, scans/adoption of orphan journals, key generation, reset or reclaim. Blocking worker-only
- * API.
- *
- * Generation zero is the original 128-entry catalogue. When its 128 immutable entries are used,
- * one bounded successor generation is created from new immutable files in the same installed role
- * leaf directories. Old generations stay readable and are never reused, reset or erased. This is
- * a finite append-only successor, NOT sustained disk/worker capacity; [MAX_CATALOGUE_GENERATIONS]
- * bounds the family. The separately installed private directories/key and native supervisor
- * remain real obligations. Valid joint rollback is NOT detected by AEAD;
- * authorized/uncertain restore must quarantine.
- */
-public class LocalPhysicalAllocationCatalogue internal constructor(
-    public val binding: LocalPhysicalCatalogueBinding,
-    private val nativeFiles: PhysicalJournalNativeFilesV1,
-    private val generations: MutableList<PhysicalCatalogueGeneration>,
-) {
-    private var activeIndex: Int = generations.lastIndex
-    private val allocationGenerations = LinkedHashMap<DomainId, PhysicalCatalogueGeneration>()
-
-    init {
-        require(generations.isNotEmpty() && generations.first().generation == 0)
-        for (generation in generations) {
-            for (receipt in generation.readEntries().filterNotNull()) {
-                check(allocationGenerations.put(receipt.binding.allocationId, generation) == null)
-                    { "physical.catalogue.duplicate_allocation" }
-            }
-        }
-    }
-
-    /** Cached actual native observation, safe to read without IO; not current-custody evidence. */
-    public val storageProfile: LocalPhysicalSpoolStorageProfileV1 = generations.first().root.catalogue.profile
-
-    private val active: PhysicalCatalogueGeneration get() = generations[activeIndex]
-
-    /** Fresh allocation only; a repeated ID must use explicit protected-catalogue recovery. */
-    public fun allocate(requirement: LocalPhysicalJournalRequirementV1,
-        domain: LocalPhysicalJournalDomain): LocalPhysicalJournalOpen {
-        if (!validJournalInput {
-            require(domain.domainProfile == requirement.domainProfile && domain.command == requirement.command &&
-                requirement.scope == binding.scope && binding.deviceId ==
-                (if (binding.role == LocalPhysicalSpoolRole.MASTER) requirement.masterDeviceId else requirement.clientDeviceId))
-            domain.validateRequirement(requirement)
-        })
-            return LocalPhysicalJournalOpen.IdentityConflict
-        val allocation = if (binding.role == LocalPhysicalSpoolRole.MASTER) requirement.masterAllocationId else requirement.clientAllocationId
-        if (allocationGenerations.containsKey(allocation)) return LocalPhysicalJournalOpen.IdentityConflict
-        when (ensureActiveCapacity()) {
-            null -> return LocalPhysicalJournalOpen.Held
-            false -> return LocalPhysicalJournalOpen.Exhausted
-            true -> Unit
-        }
-        var owned: PhysicalNativeOwnedFileV1? = null
-        var transferred = false
-        var answer: LocalPhysicalJournalOpen = LocalPhysicalJournalOpen.Held
-        try {
-            val selected = active
-            answer = selected.access {
-                if (allocationGenerations.containsKey(allocation)) return@access LocalPhysicalJournalOpen.IdentityConflict
-                val entries = selected.readEntries()
-                if (entries.any { it?.binding?.allocationId == allocation }) return@access LocalPhysicalJournalOpen.IdentityConflict
-                val index = entries.indexOfFirst { it == null }
-                if (index < 0) return@access LocalPhysicalJournalOpen.Held
-                val journalBinding = LocalPhysicalJournalBinding(requirement, binding, index, allocation)
-                when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.JOURNAL,
-                    index, selected.generation), null, true)) {
-                    PhysicalNativeOpenV1.Busy -> return@access LocalPhysicalJournalOpen.Busy
-                    PhysicalNativeOpenV1.Held -> return@access LocalPhysicalJournalOpen.Held
-                    is PhysicalNativeOpenV1.Opened -> owned = opened.owned
-                }
-                val native = owned ?: error("physical.catalogue.native")
-                val journal = initializePhysicalJournal(this, journalBinding, native, domain)
-                selected.publish(index, journal.receipt)
-                val retained = selected.readEntries()[index] ?: error("physical.catalogue.publication")
-                check(journalReceiptBytes(retained).contentEquals(journalReceiptBytes(journal.receipt)))
-                allocationGenerations[allocation] = selected
-                journal.markPublished()
-                LocalPhysicalJournalOpen.Opened(journal)
-            }
-            transferred = answer is LocalPhysicalJournalOpen.Opened
-        } catch (_: Exception) {
-            answer = LocalPhysicalJournalOpen.Held
-        } finally {
-            if (!transferred && closeCatalogueNativeFile(owned?.file) == LocalPhysicalSpoolClose.HELD) answer = LocalPhysicalJournalOpen.Held
-        }
-        return answer
-    }
-
-    /** Exact original receipt comes from the AEAD catalogue family; never from the candidate journal. */
-    public fun openExisting(allocationId: DomainId, domain: LocalPhysicalJournalDomain): LocalPhysicalJournalOpen {
-        val generation = allocationGenerations[allocationId] ?: return LocalPhysicalJournalOpen.Held
-        var owned: PhysicalNativeOwnedFileV1? = null
-        var transferred = false
-        var answer: LocalPhysicalJournalOpen = LocalPhysicalJournalOpen.Held
-        try {
-            answer = generation.access {
-                val receipt = generation.readExpectedReceipt(allocationId) ?: return@access LocalPhysicalJournalOpen.Held
-                domain.validateRequirement(receipt.binding.requirement)
-                when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.JOURNAL,
-                    receipt.binding.slotIndex, generation.generation), receipt.nativeIdentity, false)) {
-                    PhysicalNativeOpenV1.Busy -> return@access LocalPhysicalJournalOpen.Busy
-                    PhysicalNativeOpenV1.Held -> return@access LocalPhysicalJournalOpen.Held
-                    is PhysicalNativeOpenV1.Opened -> owned = opened.owned
-                }
-                val journal = reopenPhysicalJournal(this, receipt, owned ?: error("physical.catalogue.native"), domain)
-                journal.markPublished()
-                LocalPhysicalJournalOpen.Opened(journal)
-            }
-            transferred = answer is LocalPhysicalJournalOpen.Opened
-        } catch (_: Exception) {
-            answer = LocalPhysicalJournalOpen.Held
-        } finally {
-            if (!transferred && closeCatalogueNativeFile(owned?.file) == LocalPhysicalSpoolClose.HELD) answer = LocalPhysicalJournalOpen.Held
-        }
-        return answer
-    }
-
-    /** No eviction: native close retains descriptors/process claims while invocation leases exist. */
-    public fun close(): LocalPhysicalSpoolClose {
-        var complete = true
-        for (generation in generations) {
-            if (generation.close() != LocalPhysicalSpoolClose.CLOSED) complete = false
-        }
-        return if (complete) LocalPhysicalSpoolClose.CLOSED else LocalPhysicalSpoolClose.HELD
-    }
-
-    internal fun capture(onRetirement: () -> Unit): List<PhysicalSpoolLease>? {
-        var transferred = false
-        val leases = ArrayList<PhysicalSpoolLease>(generations.size * 2)
-        try {
-            for (generation in generations) {
-                val captured = generation.capture(onRetirement) ?: error("physical.catalogue.lease")
-                leases.addAll(captured)
-            }
-            transferred = true
-            return leases.toList()
-        } finally {
-            if (!transferred) {
-                try { onRetirement() } finally {
-                    check(releasePhysicalSpoolLeases(leases)) { "physical.catalogue.lease_cleanup" }
-                }
-            }
-        }
-    }
-
     /** Authenticated bounded existing selectors for the installed restart pump; never a UI read. */
-    internal fun retainedAllocationSelectors(): List<DomainId>? = allocationGenerations.keys.toList()
+    internal fun retainedAllocationSelectors(): List<DomainId>? {
+        val outer = anchor.file.access {
+            verifyAnchor()
+            val inner = catalogue.file.access {
+                val ids = readEntries().filterNotNull().map { it.binding.allocationId }
+                catalogue.file.force()
+                verifyCatalogueHeader()
+                ids
+            }
+            verifyAnchor()
+            inner
+        }
+        if (outer !is PhysicalSpoolAccess.Value) return null
+        val inner = outer.value
+        return if (inner is PhysicalSpoolAccess.Value) inner.value.toList() else null
+    }
 
     /** Service-owned exact lookup only. No journal scan/adoption, allocation, or learned receipt. */
     internal fun readExpectedReceipt(allocationId: DomainId): LocalPhysicalJournalReceipt? {
-        val generation = allocationGenerations[allocationId] ?: return null
-        val outer = generation.anchor.file.access {
-            generation.verifyAnchor()
-            val inner = generation.catalogue.file.access {
-                val receipt = generation.readExpectedReceipt(allocationId)
-                generation.catalogue.file.force()
-                generation.verifyCatalogueHeader()
+        val outer = anchor.file.access {
+            verifyAnchor()
+            val inner = catalogue.file.access {
+                val receipt = readEntries().filterNotNull().singleOrNull { it.binding.allocationId == allocationId }
+                catalogue.file.force()
+                verifyCatalogueHeader()
                 receipt
             }
-            generation.verifyAnchor()
+            verifyAnchor()
             inner
         }
         if (outer !is PhysicalSpoolAccess.Value) return null
@@ -453,110 +304,77 @@ public class LocalPhysicalAllocationCatalogue internal constructor(
         }
     }
 
-    internal fun nativeFileCensus(): LocalPhysicalCatalogueNativeCensus {
-        val anchors = mutableSetOf<String>()
-        val catalogues = mutableSetOf<String>()
-        val journals = mutableMapOf<Int, MutableSet<String>>()
-        for (generation in generations) {
-            val generationFiles = generation.readEntries()
-            anchors += PhysicalNativeLayoutV1.ANCHOR.generationFilename(generation.generation)
-            catalogues += PhysicalNativeLayoutV1.CATALOGUE.generationFilename(generation.generation)
-            for (receipt in generationFiles.filterNotNull()) {
-                journals.getOrPut(receipt.binding.slotIndex) { mutableSetOf() } +=
-                    PhysicalNativeLayoutV1.JOURNAL.generationFilename(generation.generation)
-            }
-        }
-        return LocalPhysicalCatalogueNativeCensus(anchors.toSet(), catalogues.toSet(),
-            journals.mapValues { it.value.toSet() })
-    }
-
     internal fun establish() {
-        for (generation in generations) {
-            val result = generation.anchor.file.access {
-                generation.verifyAnchor()
-                when (val inner = generation.catalogue.file.access {
-                    generation.readEntries()
-                    generation.catalogue.file.force()
-                    generation.verifyCatalogueHeader()
-                }) {
-                    is PhysicalSpoolAccess.Value -> Unit
-                    else -> error("physical.catalogue.open")
-                }
-                generation.anchor.file.force()
-                generation.verifyAnchor()
-            }
-            check(result is PhysicalSpoolAccess.Value)
-        }
-    }
-
-    /**
-     * True when the active generation has a vacant slot. False only when the bounded family is
-     * exhausted. Null means a successor could not be created/established certainly; dependent
-     * work stays HELD rather than adopting a torn generation or reusing an old entry.
-     */
-    private fun ensureActiveCapacity(): Boolean? {
-        val selected = active
-        val outer = generations.first().anchor.file.access {
-            generations.first().verifyAnchor()
-            val free = when (val inner = selected.catalogue.file.access {
-                selected.readEntries().any { it == null }
+        val result = anchor.file.access {
+            verifyAnchor()
+            when (val inner = catalogue.file.access {
+                readEntries()
+                catalogue.file.force()
+                readEntries()
+                verifyCatalogueHeader()
             }) {
-                is PhysicalSpoolAccess.Value -> inner.value
-                PhysicalSpoolAccess.Busy -> null
-                PhysicalSpoolAccess.Held -> null
+                is PhysicalSpoolAccess.Value -> Unit
+                else -> error("physical.catalogue.open")
             }
-            val answer = when (free) {
-                null -> null
-                true -> true
-                false -> if (generations.size >= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS) false
-                    else createSuccessor(selected)?.let { successor ->
-                        generations += successor
-                        activeIndex = generations.lastIndex
-                        true
-                    }
-            }
-            generations.first().verifyAnchor()
-            answer
+            anchor.file.force()
+            verifyAnchor()
         }
-        if (outer !is PhysicalSpoolAccess.Value) return null
-        return outer.value
+        check(result is PhysicalSpoolAccess.Value)
     }
 
-    private fun createSuccessor(previous: PhysicalCatalogueGeneration): PhysicalCatalogueGeneration? {
-        val nextGeneration = previous.generation + 1
-        if (nextGeneration >= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS) return null
-        var anchor: PhysicalNativeOwnedFileV1? = null
-        var catalogue: PhysicalNativeOwnedFileV1? = null
-        var transferred = false
-        try {
-            when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.ANCHOR,
-                generation = nextGeneration), null, true)) {
-                PhysicalNativeOpenV1.Busy -> return null
-                PhysicalNativeOpenV1.Held -> return null
-                is PhysicalNativeOpenV1.Opened -> anchor = opened.owned
-            }
-            when (val opened = nativeFiles.open(physicalJournalNativeSpec(binding, PhysicalNativeLayoutV1.CATALOGUE,
-                generation = nextGeneration), null, true)) {
-                PhysicalNativeOpenV1.Busy -> return null
-                PhysicalNativeOpenV1.Held -> return null
-                is PhysicalNativeOpenV1.Opened -> catalogue = opened.owned
-            }
-            val a = anchor ?: error("physical.catalogue.anchor")
-            val c = catalogue ?: error("physical.catalogue.file")
-            check(c.native.cryptographyIdentity == a.native.cryptographyIdentity && c.native.profile == a.native.profile)
-            val root = initializeCatalogue(binding, a, c, nextGeneration, previous.root.rootDigest)
-            val value = PhysicalCatalogueGeneration(binding, root, a, c)
-            value.establish()
-            transferred = true
-            return value
-        } catch (_: Exception) {
-            return null
-        } finally {
-            if (!transferred) {
-                closeCatalogueNativeFile(catalogue?.file)
-                closeCatalogueNativeFile(anchor?.file)
+    private fun access(block: () -> LocalPhysicalJournalOpen): LocalPhysicalJournalOpen = when (val outer = anchor.file.access {
+        verifyAnchor()
+        val result = catalogue.file.access { val value = block(); verifyCatalogueHeader(); value }
+        verifyAnchor()
+        result
+    }) {
+        is PhysicalSpoolAccess.Value -> when (val inner = outer.value) {
+            is PhysicalSpoolAccess.Value -> inner.value
+            PhysicalSpoolAccess.Busy -> LocalPhysicalJournalOpen.Busy
+            PhysicalSpoolAccess.Held -> LocalPhysicalJournalOpen.Held
+        }
+        PhysicalSpoolAccess.Busy -> LocalPhysicalJournalOpen.Busy
+        PhysicalSpoolAccess.Held -> LocalPhysicalJournalOpen.Held
+    }
+
+    private fun verifyAnchor() {
+        anchor.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
+            val body = journalOpen(anchor.cipher, "catalogue-anchor", root.anchorBinding, 0,
+                LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, null, encrypted) ?: error("physical.catalogue.anchor")
+            body.withSpoolBytes { check(it.contentEquals(root.bytes)) }
+        }
+    }
+
+    private fun verifyCatalogueHeader() {
+        catalogue.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
+            check(sha256(encrypted) == root.headerDigest)
+            val body = journalOpen(catalogue.cipher, "catalogue", root.planDigest, 0,
+                LocalPhysicalJournalFormatV1.MAX_HEADER_BYTES, null, encrypted) ?: error("physical.catalogue.header")
+            body.withSpoolBytes { check(it.contentEquals(root.header)) }
+        }
+    }
+
+    private fun readEntries(): List<LocalPhysicalJournalReceipt?> {
+        verifyCatalogueHeader()
+        val digests = mutableListOf(root.headerDigest)
+        val nonces = mutableSetOf<String>()
+        catalogue.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { nonces.add(physicalSpoolNonceIdentity(it)) }
+        val entries = List(LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) { slot ->
+            val index = slot + 1
+            catalogue.file.read(index * LocalPhysicalJournalFormatV1.CELL_BYTES, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
+                val digest = sha256(encrypted)
+                expectedFrames?.let { check(it[index] == digest) }
+                digests += digest
+                check(nonces.add(physicalSpoolNonceIdentity(encrypted)))
+                val bytes = journalOpen(catalogue.cipher, "catalogue", root.planDigest, index,
+                    LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, root.headerDigest, encrypted)
+                bytes?.withSpoolBytes { journalReadReceipt(it, binding).also { receipt -> check(receipt.binding.slotIndex == slot) } }
             }
         }
+        check(entries.filterNotNull().map { it.binding.allocationId }.distinct().size == entries.count { it != null })
+        if (expectedFrames == null) expectedFrames = digests.toList()
+        usedNonces.addAll(nonces)
+        return entries
     }
 
     override fun toString(): String = "LocalPhysicalAllocationCatalogueV1([REDACTED])"
@@ -573,7 +391,6 @@ private fun acquirePhysicalCatalogue(owner: LocalPhysicalCatalogueBinding, files
     var anchor: PhysicalNativeOwnedFileV1? = null
     var catalogue: PhysicalNativeOwnedFileV1? = null
     var transferred = false
-    val generations = mutableListOf<PhysicalCatalogueGeneration>()
     var result: LocalPhysicalCatalogueOpen = LocalPhysicalCatalogueOpen.Held
     try {
         // Do not return from this function before cleanup has had the final word. A busy
@@ -595,7 +412,6 @@ private fun acquirePhysicalCatalogue(owner: LocalPhysicalCatalogueBinding, files
                     }
                 }
                 root = (decoded as? PhysicalSpoolAccess.Value)?.value ?: error("physical.catalogue.anchor")
-                check(root.generation == 0)
             }
             when (val opened = files.open(physicalJournalNativeSpec(owner, PhysicalNativeLayoutV1.CATALOGUE), root?.catalogue, create)) {
                 PhysicalNativeOpenV1.Busy -> return@acquire LocalPhysicalCatalogueOpen.Busy
@@ -605,10 +421,7 @@ private fun acquirePhysicalCatalogue(owner: LocalPhysicalCatalogueBinding, files
             val c = catalogue ?: error("physical.catalogue.file")
             check(c.native.cryptographyIdentity == a.native.cryptographyIdentity && c.native.profile == a.native.profile)
             if (create) root = initializeCatalogue(owner, a, c)
-            // Register each opened generation before discovery can acquire another owner.
-            generations += PhysicalCatalogueGeneration(owner, root ?: error("physical.catalogue.root"), a, c)
-            if (!create) discoverSuccessors(owner, files, generations)
-            val value = LocalPhysicalAllocationCatalogue(owner, files, generations)
+            val value = LocalPhysicalAllocationCatalogue(owner, root ?: error("physical.catalogue.root"), a, c, files)
             value.establish()
             LocalPhysicalCatalogueOpen.Opened(value)
         }
@@ -617,93 +430,20 @@ private fun acquirePhysicalCatalogue(owner: LocalPhysicalCatalogueBinding, files
         result = LocalPhysicalCatalogueOpen.Held
     } finally {
         if (!transferred) {
-            var complete = true
-            // Discovery may have transferred several successors before a later generation fails.
-            // Their native owners must participate in cleanup even though no family was returned.
-            for (generation in generations.asReversed()) {
-                if (generation.close() != LocalPhysicalSpoolClose.CLOSED) complete = false
-            }
-            if (generations.isEmpty()) {
-                val c = closeCatalogueNativeFile(catalogue?.file)
-                val a = closeCatalogueNativeFile(anchor?.file)
-                if (c == LocalPhysicalSpoolClose.HELD || a == LocalPhysicalSpoolClose.HELD) complete = false
-            }
-            if (!complete) result = LocalPhysicalCatalogueOpen.Held
+            val c = closeCatalogueNativeFile(catalogue?.file)
+            val a = closeCatalogueNativeFile(anchor?.file)
+            if (c == LocalPhysicalSpoolClose.HELD || a == LocalPhysicalSpoolClose.HELD) result = LocalPhysicalCatalogueOpen.Held
         }
     }
     return result
 }
 
-private fun discoverSuccessors(owner: LocalPhysicalCatalogueBinding, files: PhysicalJournalNativeFilesV1,
-    generations: MutableList<PhysicalCatalogueGeneration>) {
-    val catalogueNames = files.list(physicalJournalNativeSpec(owner, PhysicalNativeLayoutV1.CATALOGUE),
-        generations.first().root.catalogue.directoryIdentity)
-        ?: error("physical.catalogue.census")
-    val anchorNames = files.list(physicalJournalNativeSpec(owner, PhysicalNativeLayoutV1.ANCHOR),
-        generations.first().root.anchor.directoryIdentity)
-        ?: error("physical.catalogue.census")
-    check(catalogueNames.size <= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS &&
-        anchorNames.size <= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-    val catalogueGenerations = catalogueNames.map { PhysicalNativeLayoutV1.CATALOGUE.generationOf(it) ?: error("physical.catalogue.census") }
-    val anchorGenerations = anchorNames.map { PhysicalNativeLayoutV1.ANCHOR.generationOf(it) ?: error("physical.catalogue.census") }
-    val generationsObserved = catalogueGenerations.toSet()
-    check(generationsObserved == anchorGenerations.toSet() &&
-        generationsObserved.size == catalogueGenerations.size && generationsObserved.size == anchorGenerations.size)
-    check(generationsObserved.contains(0))
-    val maximum = generationsObserved.max()
-    check(generationsObserved == (0..maximum).toSet() &&
-        maximum < LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-    var previous = generations.single()
-    for (generationIndex in 1..maximum) {
-        var anchor: PhysicalNativeOwnedFileV1? = null
-        var catalogue: PhysicalNativeOwnedFileV1? = null
-        var transferred = false
-        try {
-            when (val opened = files.open(physicalJournalNativeSpec(owner, PhysicalNativeLayoutV1.ANCHOR,
-                generation = generationIndex), null, false)) {
-                PhysicalNativeOpenV1.Busy -> error("physical.catalogue.census")
-                PhysicalNativeOpenV1.Held -> error("physical.catalogue.census")
-                is PhysicalNativeOpenV1.Opened -> anchor = opened.owned
-            }
-            val a = anchor ?: error("physical.catalogue.anchor")
-            val root = a.file.access {
-                a.file.read(0, LocalPhysicalJournalFormatV1.CELL_BYTES).withSpoolBytes { encrypted ->
-                    val bytes = journalOpen(a.cipher, "catalogue-anchor", catalogueAnchorBinding(owner, a.native), 0,
-                        LocalPhysicalJournalFormatV1.MAX_CATALOGUE_ENTRY_BYTES, null, encrypted) ?: error("physical.catalogue.anchor")
-                    bytes.withSpoolBytes { readCatalogueRoot(owner, a.native, it) }
-                }
-            }
-            val decoded = (root as? PhysicalSpoolAccess.Value)?.value ?: error("physical.catalogue.anchor")
-            check(decoded.generation == generationIndex && decoded.predecessor == previous.root.rootDigest)
-            when (val opened = files.open(physicalJournalNativeSpec(owner, PhysicalNativeLayoutV1.CATALOGUE,
-                generation = generationIndex), decoded.catalogue, false)) {
-                PhysicalNativeOpenV1.Busy -> error("physical.catalogue.census")
-                PhysicalNativeOpenV1.Held -> error("physical.catalogue.census")
-                is PhysicalNativeOpenV1.Opened -> catalogue = opened.owned
-            }
-            val c = catalogue ?: error("physical.catalogue.file")
-            check(c.native.cryptographyIdentity == a.native.cryptographyIdentity && c.native.profile == a.native.profile)
-            val value = PhysicalCatalogueGeneration(owner, decoded, a, c)
-            value.establish()
-            generations += value
-            previous = value
-            transferred = true
-        } finally {
-            if (!transferred) {
-                closeCatalogueNativeFile(catalogue?.file)
-                closeCatalogueNativeFile(anchor?.file)
-            }
-        }
-    }
-}
-
 private fun initializeCatalogue(owner: LocalPhysicalCatalogueBinding, anchor: PhysicalNativeOwnedFileV1,
-    catalogue: PhysicalNativeOwnedFileV1, generation: Int = 0,
-    predecessor: PayloadDigest? = null): PhysicalCatalogueRoot {
+    catalogue: PhysicalNativeOwnedFileV1): PhysicalCatalogueRoot {
     val header = catalogueHeader(owner, anchor.native, catalogue.native)
     val digest = sha256(header)
     val first = journalSeal(catalogue.cipher, "catalogue", digest, 0, LocalPhysicalJournalFormatV1.MAX_HEADER_BYTES, null, header)
-    val root = PhysicalCatalogueRoot(owner, anchor.native, catalogue.native, sha256(first), generation, predecessor)
+    val root = PhysicalCatalogueRoot(owner, anchor.native, catalogue.native, sha256(first))
     val all = ByteArray(LocalPhysicalJournalFormatV1.CATALOGUE_BYTES)
     try {
         first.copyInto(all)
@@ -738,22 +478,16 @@ internal fun catalogueAnchorBinding(owner: LocalPhysicalCatalogueBinding,
 
 internal fun readCatalogueRoot(owner: LocalPhysicalCatalogueBinding, nativeAnchor: LocalPhysicalSpoolNativeIdentity,
     bytes: ByteArray): PhysicalCatalogueRoot {
-    val first = journalInt(bytes, 0)
-    check(first == 6 || first == 8)
-    val fields = journalFields(bytes, first)
+    val fields = journalFields(bytes, 6)
     var root: PhysicalCatalogueRoot? = null
     var transferred = false
     try {
         check(journalString(fields[0]) == "physical.journal-first/catalogue-root-v1" &&
             journalOwnerBytes(owner).withSpoolBytes { fields[1].contentEquals(it) })
         check(journalReadNative(fields[2]) == nativeAnchor)
-        val generation = if (first == 8) journalNonnegativeInt(journalString(fields[6])) else 0
-        val predecessor = if (first == 8) PayloadDigest(journalString(fields[7])) else null
-        val value = PhysicalCatalogueRoot(owner, nativeAnchor, journalReadNative(fields[3]),
-            PayloadDigest(journalString(fields[4])), generation, predecessor)
+        val value = PhysicalCatalogueRoot(owner, nativeAnchor, journalReadNative(fields[3]), PayloadDigest(journalString(fields[4])))
         root = value
         check(fields[5].contentEquals(value.header) && bytes.contentEquals(value.bytes))
-        check((first == 8) == (generation != 0))
         transferred = true
         return value
     } finally {

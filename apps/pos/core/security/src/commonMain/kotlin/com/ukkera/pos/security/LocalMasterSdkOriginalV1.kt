@@ -6,19 +6,17 @@ import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.core.PeerId
 
 /** Stable branch-wide transport namespace. This public DATA grants no admission or permissions. */
-public object LocalMasterSdkProfileV1 : LocalCompositionSdkProfileV1 {
+public object LocalMasterSdkProfileV1 {
     public const val PURPOSE: String = "ORIGINAL_NATIVE_MASTER_SDK_X25519_IDENTITY_V1"
     public const val MAXIMUM_ORIGINAL_BYTES: Int = 16 * 1024
 
-    override val mode: LocalSetupCompositionMode get() = LocalSetupCompositionMode.LIVE
-
     /** All peers of the branch use this exact namespace, not a device/acquisition identifier. */
-    override fun appId(scope: BranchScope): AppId = AppId(
+    public fun appId(scope: BranchScope): AppId = AppId(
         "ukkera-pos.rpc.branch.v1:${scope.organizationId.value}:${scope.companyId.value}:${scope.branchId.value}",
     )
 
     /** Initial label only; once acquired the exact retained name is used for reconstruction. */
-    override fun deviceName(deviceId: DomainId): String = "Master ${deviceId.value}"
+    public fun deviceName(deviceId: DomainId): String = "Master ${deviceId.value}"
 }
 
 /**
@@ -39,7 +37,6 @@ public class LocalMasterSdkOriginalV1 private constructor(canonical: ByteArray) 
     public val fingerprint: PeerFingerprint get() = value.fingerprint
     public val pairingQr: String get() = value.pairingQr
     public val exactDeviceName: String get() = value.exactDeviceName
-    public val compositionProfile: LocalCompositionSdkProfileV1 get() = value.compositionProfile
     public val descriptorDigest: PayloadDigest = sha256(bytes)
 
     public fun matchesSdkTransportIdentity(actualAppId: AppId, actualPeerId: PeerId,
@@ -84,20 +81,12 @@ private class MasterSdkOriginalFieldsV1(
     val pairingQr: String,
     val exactDeviceName: String,
 ) {
-    val compositionProfile: LocalCompositionSdkProfileV1
-
     init {
         val c = allocation.coordinates
         require(originalAcquisitionId !in listOf(c.allocationId, c.scope.organizationId, c.scope.companyId,
             c.scope.branchId, c.installationId, c.assignmentId, c.deviceId, c.storageInstanceId,
             c.storageKeyId, c.pepperKeyId, c.targetSigningKeyId, c.firstActorId))
-        compositionProfile = when {
-            appId == LocalMasterSdkProfileV1.appId(c.scope) -> LocalMasterSdkProfileV1
-            else -> LocalTrainingSdkProfileV1.forAppId(appId, c.scope)
-                ?: throw IllegalArgumentException("Master SDK AppId is neither the live nor a training composition namespace")
-        }
-        // The exact retained device label is original data. The profile's name is used only
-        // for initial acquisition; enforcing it here would reject valid retained LIVE labels.
+        require(appId == LocalMasterSdkProfileV1.appId(c.scope))
         LocalDevicePairingProfileV2.validateAcquisitionText(appId.value)
         LocalDevicePairingProfileV2.validateAcquisitionText(exactDeviceName)
         requireAuthenticatedSdkTransportText(peerId, fingerprint, pairingQr)

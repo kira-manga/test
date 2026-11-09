@@ -334,11 +334,6 @@ internal class PhysicalInstructionPublicationRegistry(
                         // session, grant, stock or already-observed physical instruction.
                         resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.eventId)
                     }
-                    LocalAuthEventKind.MASTER_LIFECYCLE -> {
-                        // Explicit lifecycle audit only; STOP/RESUME changes runtime ownership,
-                        // not this employee's account, grants, stock or physical instructions.
-                        resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.eventId)
-                    }
                     LocalAuthEventKind.ACTION_APPROVAL_RETIRED -> {
                         // The retired approval alone is fenced. Its original unresolved operation
                         // and any observed physical evidence remain owned by their original keys.

@@ -31,7 +31,6 @@ public class AndroidOriginalLocalClient internal constructor(
     private val service: AndroidSelfOwnedMasterService,
     public val peer: LocalAuthenticatedPeer,
     public val serviceIncarnationId: DomainId,
-    public val compositionMode: com.ukkera.pos.security.LocalSetupCompositionMode,
     public val material: SelfOwnedNativeMaterialView,
     public val receipt: LocalBranchInstallationReceiptV2,
     public val companyName: String,
@@ -218,8 +217,6 @@ public class AndroidSelfOwnedMasterService private constructor(
     private var roomOwner: RoomRuntimeHistoryOwner?=null
     private var composition: RoomSelfOwnedMasterComposition?=null
     private var peer: LocalAuthenticatedPeer?=null
-    // Set only after full native-history admission or a successful native ACK completion.
-    // Immutable saved result DATA survives later runtime admission/activation failure.
     private var installedReceipt: LocalBranchInstallationReceiptV2?=null
     private val serviceIncarnationId = DomainId.random()
     @Volatile private var originalClient: AndroidOriginalLocalClient? = null
@@ -267,8 +264,7 @@ public class AndroidSelfOwnedMasterService private constructor(
                 installed.targetSigningKeyId == coordinates.targetSigningKeyId && installed.firstActorId == coordinates.firstActorId)
             return synchronized(lifecycleGate) {
                 check(life.value == LocalMasterLifecycleMode.OPERATIONAL && closing.get() == null && actualPeer.isCurrent())
-                AndroidOriginalLocalClient(this, actualPeer, serviceIncarnationId,
-                    custody.compositionProfile.mode, originalMaterial, receipt,
+                AndroidOriginalLocalClient(this, actualPeer, serviceIncarnationId, originalMaterial, receipt,
                     company.companyName, endpoint, endpoint, handlers.map { it.key }.toSet(), reads.map { it.key }.toSet())
                     .also { originalClient = it }
             }
@@ -1099,70 +1095,6 @@ public class AndroidSelfOwnedMasterService private constructor(
             LocalMasterRetirement { retire() },watchdog,Dispatchers.Default,physical,imports,stockProjection,historyProducer)
     }
 
-    /**
-     * Narrow current-authority lifecycle ingress. It authenticates through the SAME already
-     * constructed protected store/peer/environment as this original composition, then commits
-     * STOP/RESUME in that store's serialized revocation transaction. Authentication is a fresh
-     * password sign-in with an explicit same-device move, so an already active session cannot
-     * silently reuse cached grants; the prior local session is revoked and retained in history.
-     * RESUME is admitted only on
-     * the installation-only held owner before any operational endpoint exists; STOP only on the
-     * live operational owner. No handler, client, RPC bind or business intake is opened here.
-     */
-    public suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult =
-        authenticateLifecycle(login, password, request, heldStopRecovery = false)
-
-    /** Explicit original STOP recovery on the endpoint-free, installation-only owner. */
-    public suspend fun authenticateAndRecoverLifecycleStop(login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult {
-        if (request.action != LocalMasterLifecycleAction.STOP)
-            return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.WRONG_STATE)
-        return authenticateLifecycle(login, password, request, heldStopRecovery = true)
-    }
-
-    private suspend fun authenticateLifecycle(login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest, heldStopRecovery: Boolean): LocalMasterLifecycleResult {
-        currentCoroutineContext().ensureActive()
-        if (password.size !in 4..1024) return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
-        val held = request.action == LocalMasterLifecycleAction.RESUME || heldStopRecovery
-        val required = if (held) LocalMasterLifecycleMode.INSTALLED_RUNTIME_HELD
-            else LocalMasterLifecycleMode.OPERATIONAL
-        if (held != installationOnly)
-            return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.WRONG_STATE)
-        if (life.value != required || closing.get() != null) return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.WRONG_STATE)
-        val composed = composition ?: return LocalMasterLifecycleResult.Unavailable
-        val actualPeer = peer ?: return LocalMasterLifecycleResult.Unavailable
-        if (!actualPeer.isCurrent()) return LocalMasterLifecycleResult.Unavailable
-        if (!installationSlot.tryAcquire()) return LocalMasterLifecycleResult.Busy
-        var tokens: LocalSessionTokens? = null
-        try {
-            // Recheck the same native peer/state after admitted work starts; a UI/thread race
-            // cannot carry a stale pre-wait observation into the protected transaction.
-            if (life.value != required || closing.get() != null || !actualPeer.isCurrent())
-                return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.WRONG_STATE)
-            val owner = roomOwner ?: return LocalMasterLifecycleResult.Unavailable
-            if (!sameCoordinates(originalMaterial.coordinates, owner.originalRecord.record.allocation.coordinates))
-                return LocalMasterLifecycleResult.Unavailable
-            when (val authenticated = composed.authentication.signIn(actualPeer.connectionId, login, password,
-                explicitDeviceMove = true)) {
-                is LocalAuthenticationResult.Authenticated -> tokens = authenticated.tokens
-                is LocalAuthenticationResult.Denied -> return if (authenticated.reason == LocalAuthenticationDenial.SERVICE_BUSY)
-                    LocalMasterLifecycleResult.Busy
-                else LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
-                LocalAuthenticationResult.Unavailable -> return LocalMasterLifecycleResult.Unavailable
-                LocalAuthenticationResult.StorageUncertain -> return LocalMasterLifecycleResult.StorageUncertain
-            }
-            val result = composed.lifecycle.apply(
-                LocalGatewayCredentials(actualPeer.connectionId, checkNotNull(tokens).access), request)
-            currentCoroutineContext().ensureActive()
-            return if (!actualPeer.isCurrent()) LocalMasterLifecycleResult.Unavailable else result
-        } finally {
-            tokens?.destroy()
-            installationSlot.release()
-        }
-    }
-
     /** Original-only setup inspection. Missing history never becomes a new installation. */
     public suspend fun readOriginalSetup(): LocalOriginalInstallationSetup {
         currentCoroutineContext().ensureActive()
@@ -1170,69 +1102,15 @@ public class AndroidSelfOwnedMasterService private constructor(
         // Wait cancellably for the actual slot release, then recheck native state.
         installationSlot.acquire()
         try {
-            check(closing.get()==null && life.value in setOf(LocalMasterLifecycleMode.ALLOCATION_ONLY,
-                LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING,LocalMasterLifecycleMode.INSTALLED_RUNTIME_HELD,
-                LocalMasterLifecycleMode.OPERATIONAL,LocalMasterLifecycleMode.POLICY_HELD))
+            check(life.value in setOf(LocalMasterLifecycleMode.ALLOCATION_ONLY,
+                LocalMasterLifecycleMode.INSTALLED_RUNTIME_HELD,LocalMasterLifecycleMode.OPERATIONAL,
+                LocalMasterLifecycleMode.POLICY_HELD))
             val original=custody.snapshotOriginal()
             val company=custody.readOriginalCompanyAuthority()
             val c=original.record.allocation.coordinates
             check(company.organizationId==c.scope.organizationId && company.companyId==c.scope.companyId)
-            val receipt = if (life.value==LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING) {
-                val record=original.record
-                check(record.pending==null && record.parent!=null && record.firstChild!=null &&
-                    record.attempt?.phase==NativeHistoryAttemptPhaseV2.COMPLETED)
-                checkNotNull(record.receipt)
-            } else installedReceipt
-            check(closing.get()==null)
-            return LocalOriginalInstallationSetup(company,original.record.definition,receipt)
+            return LocalOriginalInstallationSetup(company,original.record.definition,installedReceipt)
         } finally { installationSlot.release() }
-    }
-
-    /**
-     * Read-only observation of the custody-bound original ACK. Pending and failed runtime
-     * admission do not hide a native receipt. This neither continues ACK nor admits history,
-     * opens Room, creates an owner or publishes an endpoint.
-     */
-    public suspend fun readOriginalAcknowledgement(): LocalOriginalAcknowledgementRead {
-        currentCoroutineContext().ensureActive()
-        if (closing.get()!=null) return LocalOriginalAcknowledgementRead.Unresolved
-        if (!installationSlot.tryAcquire()) return LocalOriginalAcknowledgementRead.Busy
-        return try { observeOriginalAcknowledgement() } finally { installationSlot.release() }
-    }
-
-    /** Wait only for the retained owner's current work to release its slot, then observe ACK
-     * data. Cancelling this caller neither cancels native work nor submits an ACK. There is no
-     * timeout-to-failure inference, replacement attempt, owner acquisition or SQL replay. */
-    public suspend fun awaitOriginalAcknowledgement(): LocalOriginalAcknowledgementRead {
-        currentCoroutineContext().ensureActive()
-        if (closing.get()!=null) return LocalOriginalAcknowledgementRead.Unresolved
-        installationSlot.acquire()
-        return try { observeOriginalAcknowledgement() } finally { installationSlot.release() }
-    }
-
-    /** The installation slot is held by the caller throughout the native observation. */
-    private suspend fun observeOriginalAcknowledgement(): LocalOriginalAcknowledgementRead {
-        try {
-            if (closing.get()!=null) return LocalOriginalAcknowledgementRead.Unresolved
-            installedReceipt?.let { receipt ->
-                return LocalOriginalAcknowledgementRead.Observed(
-                    LocalOriginalAcknowledgementStatus.CONFIRMED,receipt)
-            }
-            val record=custody.snapshotOriginal().record
-            val receipt=record.receipt ?: return LocalOriginalAcknowledgementRead.Unresolved
-            if (record.parent==null || record.firstChild==null ||
-                record.attempt?.phase!=NativeHistoryAttemptPhaseV2.COMPLETED || closing.get()!=null)
-                return LocalOriginalAcknowledgementRead.Unresolved
-            val status=if (record.issuerAcknowledgement!=null) LocalOriginalAcknowledgementStatus.CONFIRMED
-                else if (record.pending==null) LocalOriginalAcknowledgementStatus.PENDING
-                else return LocalOriginalAcknowledgementRead.Unresolved
-            currentCoroutineContext().ensureActive()
-            return LocalOriginalAcknowledgementRead.Observed(status,receipt)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            return LocalOriginalAcknowledgementRead.Unresolved
-        }
     }
 
     /**
@@ -1266,20 +1144,7 @@ public class AndroidSelfOwnedMasterService private constructor(
     /** One bounded clean installation work item. Input secrets are copied only after admission.
      * Cancellation abandons this wait, not the retained native attempt/actual SQL outcome. */
     public suspend fun installOriginal(definition: LocalBranchInstallationDefinitionV2,headLogin: String,
-        headSecret: CharArray,firstEmployeePassword: CharArray): LocalMasterInstallationOutcome =
-        submitOriginalInstallation(definition,headLogin,headSecret,firstEmployeePassword,acknowledge=true)
-
-    /** Explicit two-stage installation: settle the genuine original SQL/native transaction,
-     * retain its completion on this owner and stop before issuer acknowledgement. No business
-     * endpoint is activated. Read the pending result or continue it through
-     * [resumeOriginalAcknowledgement]; never resubmit the installation under another identity.
-     * Caller cancellation abandons delivery only, as with [installOriginal]. */
-    public suspend fun settleOriginal(definition: LocalBranchInstallationDefinitionV2,headLogin: String,
-        headSecret: CharArray,firstEmployeePassword: CharArray): LocalMasterInstallationOutcome =
-        submitOriginalInstallation(definition,headLogin,headSecret,firstEmployeePassword,acknowledge=false)
-
-    private suspend fun submitOriginalInstallation(definition: LocalBranchInstallationDefinitionV2,headLogin: String,
-        headSecret: CharArray,firstEmployeePassword: CharArray,acknowledge: Boolean): LocalMasterInstallationOutcome {
+        headSecret: CharArray,firstEmployeePassword: CharArray): LocalMasterInstallationOutcome {
         currentCoroutineContext().ensureActive()
         if(headLogin.length !in 1..128 || headSecret.size !in 4..1024 || firstEmployeePassword.size !in 4..1024 ||
             life.value!=LocalMasterLifecycleMode.ALLOCATION_ONLY) return LocalMasterInstallationOutcome.Unresolved
@@ -1303,19 +1168,8 @@ public class AndroidSelfOwnedMasterService private constructor(
                         prepared=approved
                         val owner=AndroidRuntimeHistoryStartup.openFirst(application,custody)
                         val composed=compose(owner)
-                        if (acknowledge) {
-                            val receipt=composed.initializer.initialize(approved)
-                            response.complete(completeInstallation(composed,receipt))
-                        } else {
-                            val receipt=composed.initializer.settle(approved)
-                            check(composed.owner.hasUnacknowledgedOriginalInstallation &&
-                                composed.owner.originalRecord.record.receipt?.digest==receipt.digest)
-                            val pending=life.compareAndSet(LocalMasterLifecycleMode.INSTALLING,
-                                LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING)
-                            response.complete(if (pending && closing.get()==null)
-                                LocalMasterInstallationOutcome.AcknowledgementPending
-                                else LocalMasterInstallationOutcome.Unresolved)
-                        }
+                        val receipt=composed.initializer.initialize(approved)
+                        response.complete(completeInstallation(composed,receipt))
                     } catch(failure: Throwable) {
                         response.complete(originalInstallationFailure())
                     } finally {
@@ -1337,9 +1191,8 @@ public class AndroidSelfOwnedMasterService private constructor(
      * Abandoning the caller does not cancel the native ACK job or release its custody. */
     public suspend fun resumeOriginalAcknowledgement(): LocalMasterInstallationOutcome {
         currentCoroutineContext().ensureActive()
-        if(life.value==LocalMasterLifecycleMode.INSTALLING) return LocalMasterInstallationOutcome.Busy
         if(life.value!=LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING)
-            return readCompletedOriginalAcknowledgement()
+            return LocalMasterInstallationOutcome.Unresolved
         if(!installationSlot.tryAcquire()) return LocalMasterInstallationOutcome.Busy
         var launched=false
         try {
@@ -1371,43 +1224,11 @@ public class AndroidSelfOwnedMasterService private constructor(
         } finally { if(!launched) installationSlot.release() }
     }
 
-    /** Repeated completion observes the saved native original; it never issues another ACK. */
-    private suspend fun readCompletedOriginalAcknowledgement(): LocalMasterInstallationOutcome {
-        val completedModes=setOf(LocalMasterLifecycleMode.INSTALLED_RUNTIME_HELD,
-            LocalMasterLifecycleMode.OPERATIONAL,LocalMasterLifecycleMode.POLICY_HELD,
-            LocalMasterLifecycleMode.UNRESOLVED)
-        if(life.value !in completedModes || closing.get()!=null)
-            return LocalMasterInstallationOutcome.Unresolved
-        if(!installationSlot.tryAcquire()) return LocalMasterInstallationOutcome.Busy
-        try {
-            if(life.value !in completedModes || closing.get()!=null)
-                return LocalMasterInstallationOutcome.Unresolved
-            // Runtime admission may have denied further DATA reads after the ACK succeeded.
-            // Return that retained immutable completion, without claiming current admission.
-            if(life.value==LocalMasterLifecycleMode.UNRESOLVED) installedReceipt?.let { receipt ->
-                if(closing.get()==null) return LocalMasterInstallationOutcome.Installed(receipt)
-            }
-            val receipt=observeConfirmedOriginalReceipt() ?: return LocalMasterInstallationOutcome.Unresolved
-            if(life.value !in completedModes || closing.get()!=null)
-                return LocalMasterInstallationOutcome.Unresolved
-            currentCoroutineContext().ensureActive()
-            return LocalMasterInstallationOutcome.Installed(receipt)
-        } catch(cancelled: CancellationException) {
-            throw cancelled
-        } catch(_: Exception) {
-            return LocalMasterInstallationOutcome.Unresolved
-        } finally { installationSlot.release() }
-    }
-
     private suspend fun finishReopenedAcknowledgement(): LocalMasterInstallationOutcome {
         val recovered=checkNotNull(reopenedAcknowledgement)
         check(composition==null && roomOwner==null)
         custody.acknowledgeOriginalInstallation() // Native's retained original capability only.
-        // This native call returned only after the exact original issuer ACK was retained.
-        // Capture its immutable receipt BEFORE history/Room admission can deny native DATA.
-        installedReceipt=checkNotNull(recovered.record.receipt)
-        // Retain the original anchor until admission has completed. A post-ACK admission
-        // failure must still be able to observe the confirmed native result on this owner.
+        reopenedAcknowledgement=null
         // ACK changes the native digest. Never open Room using the PRE-ACK scan/admission.
         // Re-traverse the original database, close/reobserve, and only then open one pool.
         val selected=AndroidRuntimeHistoryStartup.select(application,custody,historyProducer,stockProjection)
@@ -1415,8 +1236,6 @@ public class AndroidSelfOwnedMasterService private constructor(
         val composed=compose(selected.owner)
         val receipt=checkNotNull(selected.owner.originalRecord.record.receipt)
         check(receipt.digest==recovered.record.receipt?.digest && receipt.genesis==recovered.record.receipt?.genesis)
-        installedReceipt=receipt
-        reopenedAcknowledgement=null
         return completeInstallation(composed,receipt)
     }
 
@@ -1437,40 +1256,13 @@ public class AndroidSelfOwnedMasterService private constructor(
             LocalMasterInstallationOutcome.Installed(receipt) else LocalMasterInstallationOutcome.Unresolved
     }
 
-    /** Called while the installation slot is held. Native ACK fact is independent of admission. */
-    private suspend fun observeConfirmedOriginalReceipt(): LocalBranchInstallationReceiptV2? {
-        val expected=installedReceipt ?: reopenedAcknowledgement?.record?.receipt ?:
-            composition?.owner?.originalRecord?.record?.receipt ?: return null
-        val record=custody.snapshotOriginal().record
-        val receipt=record.receipt ?: return null
-        if(record.pending!=null || record.issuerAcknowledgement==null || record.parent==null ||
-            record.firstChild==null || record.attempt?.phase!=NativeHistoryAttemptPhaseV2.COMPLETED ||
-            receipt.digest!=expected.digest || receipt.genesis!=expected.genesis) return null
-        return receipt
-    }
-
-    private suspend fun originalInstallationFailure(): LocalMasterInstallationOutcome {
-        val confirmed=installedReceipt ?: try { observeConfirmedOriginalReceipt() } catch (_: Exception) { null }
-        if(confirmed!=null) {
-            installedReceipt=confirmed
-            // A partial activation is never available as business ingress. Keep runtime held;
-            // only the native saved result is returned, with no admission/reopen/ACK retry.
-            try { composition?.deny() } catch (_: Exception) { /* Mode still denies publication. */ }
-            life.compareAndSet(LocalMasterLifecycleMode.INSTALLING,LocalMasterLifecycleMode.UNRESOLVED)
-            return if(life.value==LocalMasterLifecycleMode.UNRESOLVED && closing.get()==null)
-                LocalMasterInstallationOutcome.Installed(confirmed) else LocalMasterInstallationOutcome.Unresolved
-        }
+    private fun originalInstallationFailure(): LocalMasterInstallationOutcome {
         val next=if(composition?.owner?.hasUnacknowledgedOriginalInstallation==true || reopenedAcknowledgement!=null)
             LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING else LocalMasterLifecycleMode.UNRESOLVED
         life.compareAndSet(LocalMasterLifecycleMode.INSTALLING,next)
         return if(life.value==LocalMasterLifecycleMode.INSTALLATION_ACK_PENDING)
             LocalMasterInstallationOutcome.AcknowledgementPending else LocalMasterInstallationOutcome.Unresolved
     }
-    private fun sameCoordinates(a: SelfOwnedAllocationCoordinatesV1, b: SelfOwnedAllocationCoordinatesV1): Boolean =
-        a.allocationId == b.allocationId && a.scope == b.scope && a.installationId == b.installationId &&
-            a.assignmentId == b.assignmentId && a.deviceId == b.deviceId && a.storageInstanceId == b.storageInstanceId &&
-            a.storageKeyId == b.storageKeyId && a.pepperKeyId == b.pepperKeyId &&
-            a.targetSigningKeyId == b.targetSigningKeyId && a.firstActorId == b.firstActorId
     /** Host retirement only; not UI locking, SQL fate, native close or lease release. */
     public fun denyNewWork() { retire() }
     private fun retire() {
@@ -1484,9 +1276,6 @@ public class AndroidSelfOwnedMasterService private constructor(
     }
     /** True only after actual retained Host/worker drain, Room close and original P2 close. */
     public suspend fun quiesceAndClose(): Boolean {
-        // Exactly one physical close is issued for this owner. Every later caller joins the
-        // same cached completion and observes its result; it is not a retry and must never
-        // issue another native close or replace a failed/unconfirmed outcome.
         val (completion,startClose)=synchronized(lifecycleGate) {
             val existing=closing.get()
             if(existing!=null) existing to false

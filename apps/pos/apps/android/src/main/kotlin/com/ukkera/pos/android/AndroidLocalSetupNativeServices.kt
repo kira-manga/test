@@ -33,8 +33,6 @@ import com.ukkera.pos.app.gateway.setup.LocalSetupLanHost
 import com.ukkera.pos.app.gateway.setup.LocalSetupLanSettings
 import com.ukkera.pos.app.gateway.setup.LocalSetupMaster
 import com.ukkera.pos.app.gateway.setup.LocalSetupMasterOpenResult
-import com.ukkera.pos.app.gateway.setup.LocalSetupLifecycleMaster
-import com.ukkera.pos.app.gateway.setup.LocalSetupLifecycleOpenResult
 import com.ukkera.pos.app.gateway.setup.LocalSetupNativeServices
 import com.ukkera.pos.app.gateway.setup.validateEndpoint
 import com.ukkera.pos.app.setup.LocalSetupLanEndpoint
@@ -76,14 +74,9 @@ import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
 import com.ukkera.pos.security.LocalDevicePairingMasterTransfer
 import com.ukkera.pos.security.LocalDevicePairingReference
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
-import com.ukkera.pos.security.LocalTrainingCompositionSlot
-import com.ukkera.pos.app.gateway.LocalClientPublication
 import com.ukkera.pos.security.LocalDevicePairingTargetDescriptor
 import com.ukkera.pos.security.LocalDevicePairingTargetReference
 import com.ukkera.pos.security.LocalDevicePairingUnsignedRetirement
-import com.ukkera.pos.security.LocalLoginIdentifier
-import com.ukkera.pos.security.LocalMasterLifecycleRequest
-import com.ukkera.pos.security.LocalMasterLifecycleResult
 import com.ukkera.pos.security.LocalProvisioningStatus
 import com.ukkera.pos.security.LocalProvisionerOpenResult
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
@@ -111,52 +104,26 @@ import kotlinx.coroutines.withContext
  * are retained before acquisition; positive returns are captured before checks or allocations.
  * Unconfirmed acquisition/close therefore cannot release the coordinator's process slot.
  */
-internal class AndroidLocalSetupNativeServices(
-    private val application: Application,
-    private val trainingSlot: LocalTrainingCompositionSlot? = null,
-) : LocalSetupNativeServices {
-    override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1 =
-        trainingSlot?.let { com.ukkera.pos.security.LocalTrainingSdkProfileV1(it) }
-            ?: com.ukkera.pos.security.LocalMasterSdkProfileV1
-    private val publication: LocalClientPublication
-        get() = if (trainingSlot == null) (application as PosApplication).localClient
-        else (application as PosApplication).trainingLocalClient
+internal class AndroidLocalSetupNativeServices(private val application: Application) : LocalSetupNativeServices {
     private var masterTransfer: Master? = null
-    private var lifecycleTransfer: Lifecycle? = null
     private var clientTransfer: Client? = null
     private var freshTargetTransfer: FreshDeviceTarget? = null
 
-    override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult {
-        val slot = trainingSlot
-        return if (slot == null) {
-            if (originalOnly) AndroidSelfOwnedEnrollmentSource.openOriginal(application)
-            else AndroidSelfOwnedEnrollmentSource.open(application)
-        } else if (originalOnly) AndroidSelfOwnedEnrollmentSource.openTrainingOriginal(application, slot)
-        else AndroidSelfOwnedEnrollmentSource.openTraining(application, slot)
-    }
+    override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult =
+        if (originalOnly) AndroidSelfOwnedEnrollmentSource.openOriginal(application)
+        else AndroidSelfOwnedEnrollmentSource.open(application)
 
-    override suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult {
-        val slot = trainingSlot
-        return if (slot == null) {
-            if (preparation) AndroidSelfOwnedInstallationOwner.prepareOriginal(application)
-            else AndroidSelfOwnedInstallationOwner.openOriginal(application)
-        } else if (preparation) AndroidSelfOwnedInstallationOwner.prepareTraining(application, slot)
-        else AndroidSelfOwnedInstallationOwner.openTraining(application, slot)
-    }
+    override suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult =
+        if (preparation) AndroidSelfOwnedInstallationOwner.prepareOriginal(application)
+        else AndroidSelfOwnedInstallationOwner.openOriginal(application)
 
     override suspend fun prepareFreshDeviceTarget(scope: BranchScope, capabilities: Set<String>):
         LocalSetupFreshDeviceTargetOpenResult = acquireFreshDeviceTarget {
-        val slot = trainingSlot
-        if (slot == null) AndroidDevicePairingTarget.prepareNew(application, scope, capabilities)
-        else AndroidDevicePairingTarget.prepareNewForTraining(application, scope, slot, capabilities)
+        AndroidDevicePairingTarget.prepareNew(application, scope, capabilities)
     }
 
     override suspend fun openOriginalFreshDeviceTarget(): LocalSetupFreshDeviceTargetOpenResult =
-        acquireFreshDeviceTarget {
-            val slot = trainingSlot
-            if (slot == null) AndroidDevicePairingTarget.openExisting(application)
-            else AndroidDevicePairingTarget.openExistingForTraining(application, slot)
-        }
+        acquireFreshDeviceTarget { AndroidDevicePairingTarget.openExisting(application) }
 
     private suspend fun acquireFreshDeviceTarget(factory: suspend () -> AndroidDevicePairingTargetOpenResult):
         LocalSetupFreshDeviceTargetOpenResult {
@@ -179,9 +146,7 @@ internal class AndroidLocalSetupNativeServices(
         val holder = Master()
         val opened = LocalSetupMasterOpenResult.Opened(holder)
         masterTransfer = holder // Retain BEFORE the actual factory can transfer native custody.
-        return when (val native = AndroidLocalBranchRuntime.openOriginalMaster(
-            application, context, trainingComposition = trainingSlot != null,
-        )) {
+        return when (val native = AndroidLocalBranchRuntime.openOriginalMaster(application, context)) {
             is AndroidSelfOwnedMasterOpenResult.Opened -> {
                 holder.capture(native.service)
                 opened // No new wrapper or publication between capture and common retention.
@@ -193,34 +158,12 @@ internal class AndroidLocalSetupNativeServices(
     override suspend fun openOriginalReceipt(context: SelfOwnedLocalSecurityContext): LocalMasterInstallationReceiptOpenResult =
         AndroidOriginalInstallationReceiptOwner.attachOriginal(context)
 
-    override suspend fun openInstalledLifecycle(context: SelfOwnedLocalSecurityContext): LocalSetupLifecycleOpenResult {
-        check(lifecycleTransfer == null)
-        val holder = Lifecycle()
-        val opened = LocalSetupLifecycleOpenResult.Opened(holder)
-        lifecycleTransfer = holder // Retain the transfer slot before native custody can move.
-        return try {
-            when (val native = AndroidSelfOwnedMasterService.forOriginalInstallation(application, context)) {
-                is AndroidSelfOwnedMasterOpenResult.Opened -> {
-                    holder.capture(native.service)
-                    opened
-                }
-                is AndroidSelfOwnedMasterOpenResult.Unresolved -> LocalSetupLifecycleOpenResult.Unresolved(native.reason)
-            }
-        } catch (failure: Throwable) {
-            // The factory may have transferred custody before throwing. Never release the
-            // process slot or infer a target-only close; the exact holder remains retained.
-            throw failure
-        }
-    }
-
     override suspend fun connectClient(master: LocalSetupMaster, action: LocalOriginalClientJournalAction): LocalSetupClient? {
         val actual = master as? Master
         check(actual != null && masterTransfer === actual && actual.owner === this && clientTransfer == null)
         val holder = Client()
         clientTransfer = holder
-        val acquired = AndroidLocalBranchRuntime.connectOriginal(
-            application, actual.value, action, trainingComposition = trainingSlot != null,
-        )
+        val acquired = AndroidLocalBranchRuntime.connectOriginal(application, actual.value, action)
         if (acquired == null) {
             clientTransfer = null // The real factory's null path already awaited its journal closes.
             return null
@@ -236,23 +179,22 @@ internal class AndroidLocalSetupNativeServices(
         val actual = client as? Client
         check(actual != null && actual.owner === this && clientTransfer === actual)
         val runtime = actual.value
-        publication.publish(owner, runtime.branchGateway, LocalClientRole.MASTER,
+        (application as PosApplication).localClient.publish(owner, runtime.branchGateway, LocalClientRole.MASTER,
             runtime::isCurrent, runtime::denyNewWork)
     }
 
-    override fun withdrawClient(owner: Any) { publication.withdraw(owner) }
+    override fun withdrawClient(owner: Any): Unit = (application as PosApplication).localClient.withdraw(owner)
 
     override fun publishLanAuthentication(owner: Any, client: LocalSetupLanClient,
         authentication: LocalSetupLanAuthentication) {
         val actual = client as? LanClient
         check(actual != null && freshTargetTransfer?.owns(actual) == true && actual.owns(authentication))
-        publication.publish(owner, authentication.gateway, LocalClientRole.CLIENT,
+        (application as PosApplication).localClient.publish(owner, authentication.gateway, LocalClientRole.CLIENT,
             authentication::isCurrent, authentication::denyNewWork)
     }
 
     override fun retainLanHost(master: LocalSetupMaster, scope: CoroutineScope,
         settings: LocalSetupLanSettings): LocalSetupLanHost {
-        AndroidLocalNetworkPermission.requireGranted(application)
         val actual = master as? Master
         check(actual != null && actual.owner === this && masterTransfer === actual)
         return actual.retainLanHost(scope, settings)
@@ -260,15 +202,12 @@ internal class AndroidLocalSetupNativeServices(
 
     override fun retainLanClient(target: LocalSetupFreshDeviceTarget, scope: CoroutineScope,
         originalPairingActionId: DomainId, settings: LocalSetupLanSettings): LocalSetupLanClient {
-        AndroidLocalNetworkPermission.requireGranted(application)
         val actual = target as? FreshDeviceTarget
         check(actual != null && actual.owner === this && freshTargetTransfer === actual)
         return actual.retainLanClient(scope, originalPairingActionId, settings)
     }
 
     private inner class FreshDeviceTarget : LocalSetupFreshDeviceTarget {
-        override val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1?
-            get() = acquired?.compositionProfile
         val owner: AndroidLocalSetupNativeServices get() = this@AndroidLocalSetupNativeServices
         private val attachmentGate = Any()
         @Volatile private var acquired: AndroidDevicePairingTarget? = null
@@ -387,9 +326,6 @@ internal class AndroidLocalSetupNativeServices(
             headSecret: CharArray, employeePassword: CharArray): LocalMasterInstallationOutcome =
             value.installOriginal(definition, headLogin, headSecret, employeePassword)
         override suspend fun resumeOriginalAcknowledgement(): LocalMasterInstallationOutcome = value.resumeOriginalAcknowledgement()
-        override suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
-            request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult =
-            value.authenticateAndApplyLifecycle(login, password, request)
         override suspend fun readOriginalSetup(): LocalOriginalInstallationSetup = value.readOriginalSetup()
         override fun denyNewWork() {
             synchronized(attachmentGate) {
@@ -404,35 +340,6 @@ internal class AndroidLocalSetupNativeServices(
             synchronized(attachmentGate) { lanHost }?.close()
             val closed = value.quiesceAndClose()
             if (closed) { check(masterTransfer === this); masterTransfer = null }
-            return closed
-        }
-    }
-
-    private inner class Lifecycle : LocalSetupLifecycleMaster {
-        @Volatile private var acquired: AndroidSelfOwnedMasterService? = null
-        private var denied = false
-        private val value: AndroidSelfOwnedMasterService get() = checkNotNull(acquired)
-        fun capture(value: AndroidSelfOwnedMasterService) { acquired = value }
-
-        override val mode: StateFlow<LocalMasterLifecycleMode> get() = value.mode
-
-        override suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
-            request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult {
-            check(!denied && lifecycleTransfer === this) { "Installed lifecycle owner is retired" }
-            return if (request.action == com.ukkera.pos.security.LocalMasterLifecycleAction.STOP)
-                value.authenticateAndRecoverLifecycleStop(login, password, request)
-            else value.authenticateAndApplyLifecycle(login, password, request)
-        }
-
-        override fun denyNewWork() {
-            denied = true
-            acquired?.denyNewWork()
-        }
-
-        override suspend fun quiesceAndClose(): Boolean {
-            denyNewWork()
-            val closed = value.quiesceAndClose()
-            if (closed) { check(lifecycleTransfer === this); lifecycleTransfer = null }
             return closed
         }
     }
@@ -465,7 +372,6 @@ internal class AndroidLocalSetupNativeServices(
                 requireAvailable()
                 acquisition ?: retainedScope.async(start = CoroutineStart.LAZY) {
                     gate.withLock { requireAvailable() }
-                    AndroidLocalNetworkPermission.requireGranted(application)
                     val original = retainedMaster.originalLocalClient()
                     gate.withLock {
                         requireAvailable()
@@ -490,9 +396,7 @@ internal class AndroidLocalSetupNativeServices(
         }
 
         override suspend fun start(): LocalSetupLanEndpoint {
-            AndroidLocalNetworkPermission.requireGranted(application)
             val owner = acquireOwner()
-            AndroidLocalNetworkPermission.requireGranted(application)
             owner.start()
             val endpoint = owner.endpoint()
             currentCoroutineContext().ensureActive()
@@ -581,7 +485,6 @@ internal class AndroidLocalSetupNativeServices(
             retainedScope.coroutineContext[Job]?.isActive == true
 
         override suspend fun connect(endpoint: LocalSetupLanEndpoint) {
-            AndroidLocalNetworkPermission.requireGranted(application)
             currentCoroutineContext().ensureActive()
             val selected = settings.validateEndpoint(endpoint)
             val pending = gate.withLock {
@@ -603,7 +506,6 @@ internal class AndroidLocalSetupNativeServices(
                         credentials = acquired.credentials // Retain before the raw target can transfer/close.
                         check(current() && acquired.credentials.isCurrent())
                     }
-                    AndroidLocalNetworkPermission.requireGranted(application)
                     rpc.connect(selected) // Native readbacks, exact target close, actual SDK negotiation.
                     check(current())
                     val journal = credentials

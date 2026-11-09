@@ -142,7 +142,6 @@ internal enum class Copy(val en: StringResource, val ar: StringResource) {
     MENU(Res.string.menu_en, Res.string.menu_ar),
     TRAINING(Res.string.training_en, Res.string.training_ar),
     SYNTHETIC_BANNER(Res.string.synthetic_banner_en, Res.string.synthetic_banner_ar),
-    COMPOSITION_TRAINING_BANNER(Res.string.composition_training_banner_en, Res.string.composition_training_banner_ar),
     EXIT_TRAINING(Res.string.exit_training_en, Res.string.exit_training_ar),
     SIGN_OUT(Res.string.sign_out_en, Res.string.sign_out_ar),
     TRAINING_BRANCH_NAME(Res.string.training_branch_name_en, Res.string.training_branch_name_ar),

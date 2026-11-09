@@ -41,31 +41,11 @@ internal object LocalAuthenticationCodec {
 
     fun encodeEvent(value: LocalAuthEvent): ByteArray = if (value.kind == LocalAuthEventKind.BRANCH_INSTALLED) {
         LocalBranchInstallationCodec.encodeEvent(value)
-    } else if (value.kind == LocalAuthEventKind.MASTER_LIFECYCLE) {
-        val audit = requireNotNull(value.lifecycle)
-        encode(ProtectedLocalTable.AUTH_EVENT, LifecycleEventWire.serializer(),
-            LifecycleEventWire(LIFECYCLE_PROFILE, value.scope, value.eventId, value.kind, value.targetId,
-                value.operatorId, value.sessionId, value.accountRevision, value.at, value.contentDigest,
-                value.revision, audit.action, audit.installationId, audit.coordinatesDigest,
-                audit.requestDigest, audit.policyRevision, audit.deviceId, audit.sessionGeneration,
-                audit.admissionRevision, audit.issuerContextId))
     } else encode(ProtectedLocalTable.AUTH_EVENT, EventWire.serializer(),
         EventWire(eventProfile(value.kind), value.scope, value.eventId, value.kind, value.targetId, value.operatorId,
             value.sessionId, value.accountRevision, value.at, value.contentDigest, value.revision))
     fun decodeEvent(binding: ProtectedLocalBinding, bytes: ByteArray): LocalAuthEvent =
         if (LocalBranchInstallationCodec.hasProfile(binding, bytes)) LocalBranchInstallationCodec.decodeEvent(binding, bytes)
-        else if (eventSchema(bytes) == LIFECYCLE_PROFILE) decode(
-            binding, bytes, ProtectedLocalTable.AUTH_EVENT, LifecycleEventWire.serializer(), { wire ->
-                require(wire.schema == LIFECYCLE_PROFILE && wire.kind == LocalAuthEventKind.MASTER_LIFECYCLE &&
-                    wire.revision == Revision(0))
-                LocalAuthEvent(wire.scope, wire.eventId, wire.kind, wire.targetId, wire.operatorId, wire.sessionId,
-                    wire.accountRevision, wire.at, wire.contentDigest, lifecycle = LocalMasterLifecycleAudit(
-                        wire.action, wire.installationId, wire.coordinatesDigest, wire.requestDigest,
-                        wire.policyRevision, wire.deviceId, wire.sessionGeneration, wire.admissionRevision,
-                        wire.issuerContextId)).also {
-                    require(binding.key == ProtectedLocalRecordKey.AuthEvent(it.scope, it.eventId) && binding.revision == it.revision)
-                }
-            }, ::encodeEvent)
         else decode(
         binding, bytes, ProtectedLocalTable.AUTH_EVENT, EventWire.serializer(), { wire ->
             require(wire.schema == eventProfile(wire.kind) && wire.revision == Revision(0))
@@ -80,16 +60,7 @@ internal object LocalAuthenticationCodec {
         LocalAuthEventKind.ADMINISTRATION_CANCELLED -> "ukkera.local-auth-event/v2"
         LocalAuthEventKind.ACTION_APPROVAL_RETIRED -> "ukkera.local-action-approval-retirement-event/v1"
         LocalAuthEventKind.SERIAL_PUBLICATION_REQUEST -> "ukkera.local-serial-publication-request-event/v1"
-        LocalAuthEventKind.MASTER_LIFECYCLE -> LIFECYCLE_PROFILE
         else -> "ukkera.local-auth-event/v1"
-    }
-
-    private fun eventSchema(bytes: ByteArray): String = codec {
-        bindingSize(bytes)
-        peekJson.decodeFromString(EventPeek.serializer(), bytes.decodeToString(throwOnInvalidSequence = true)).schema
-    }
-    private fun bindingSize(bytes: ByteArray) {
-        if (bytes.isEmpty() || bytes.size > ProtectedLocalTable.AUTH_EVENT.maximumPlaintextBytes) protectedLocalUnavailable()
     }
 
     fun encodeArchive(value: LocalSessionArchive): ByteArray = encode(ProtectedLocalTable.SESSION_ARCHIVE, ArchiveWire.serializer(),
@@ -103,21 +74,10 @@ internal object LocalAuthenticationCodec {
         }, ::encodeArchive)
 }
 
-private const val LIFECYCLE_PROFILE = "ukkera.local-master-lifecycle-event/v1"
 private val authenticationJson = Json {
     encodeDefaults = true
     explicitNulls = true
     ignoreUnknownKeys = false
-    isLenient = false
-    coerceInputValues = false
-    allowSpecialFloatingPointValues = false
-    allowStructuredMapKeys = false
-    prettyPrint = false
-}
-private val peekJson = Json {
-    encodeDefaults = false
-    explicitNulls = false
-    ignoreUnknownKeys = true
     isLenient = false
     coerceInputValues = false
     allowSpecialFloatingPointValues = false
@@ -163,15 +123,5 @@ private class RefreshWire(val schema: String, val scope: BranchScope, val actorI
 private class EventWire(val schema: String, val scope: BranchScope, val eventId: DomainId, val kind: LocalAuthEventKind,
     val targetId: DomainId, val operatorId: DomainId?, val sessionId: DomainId?, val accountRevision: Revision?,
     val at: MonotonicMoment, val contentDigest: PayloadDigest?, val revision: Revision)
-@Serializable
-private class LifecycleEventWire(val schema: String, val scope: BranchScope, val eventId: DomainId,
-    val kind: LocalAuthEventKind, val targetId: DomainId, val operatorId: DomainId?, val sessionId: DomainId?,
-    val accountRevision: Revision?, val at: MonotonicMoment, val contentDigest: PayloadDigest?,
-    val revision: Revision, val action: LocalMasterLifecycleAction, val installationId: DomainId,
-    val coordinatesDigest: PayloadDigest, val requestDigest: PayloadDigest, val policyRevision: Revision,
-    val deviceId: DomainId?, val sessionGeneration: SessionGeneration?, val admissionRevision: Revision?,
-    val issuerContextId: DomainId?)
-@Serializable
-private class EventPeek(val schema: String)
 @Serializable
 private class ArchiveWire(val schema: String, val session: LocalSessionRecord, val archivedAt: MonotonicMoment, val revision: Revision)

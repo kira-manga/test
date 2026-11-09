@@ -152,15 +152,6 @@ internal class RoomSelfOwnedBranchInitializer(
 ) {
     init { check(store.database===owner.database && source.belongsTo(store)) }
     suspend fun initialize(prepared: RoomSelfOwnedInstallationVerifier): LocalBranchInstallationReceiptV2 {
-        val receipt = settle(prepared)
-        // Only the native completion registry can acknowledge the settled original.
-        owner.acknowledgeInstallation()
-        return receipt
-    }
-
-    /** Commit and settle the original without acknowledging its delivery. The retained owner
-     * remains installation-only until the explicit same-original acknowledgement completes. */
-    suspend fun settle(prepared: RoomSelfOwnedInstallationVerifier): LocalBranchInstallationReceiptV2 {
         try {
             val receipt=store.transaction { transaction ->
                 val commit=prepared.begin(owner)
@@ -188,8 +179,9 @@ internal class RoomSelfOwnedBranchInitializer(
                 transaction.insertOriginalInstallationReceipt(frame,receipt)
                 receipt
             }
-            // The outer Room return includes native child settlement. This receipt is not
-            // evidence that its delivery has been acknowledged or business ingress admitted.
+            // The actual outer Room return/native child settlement preceded this original P1
+            // receipt acknowledgement. Only the same native completion registry can issue it.
+            owner.acknowledgeInstallation()
             return receipt
         } finally { prepared.clear() }
     }

@@ -87,11 +87,6 @@ public class LocalMasterSecurity internal constructor(
         native: LocalCompanyDevicePairings, endpoint: LocalMasterEndpoint): RoomSelfOwnedDeviceAdmissions =
         RoomSelfOwnedDeviceAdmissions(owner, store, source, credentialOperations, native, endpoint)
 
-    /** Narrow pre-start/current lifecycle ingress over the same store, source and peers. */
-    internal fun originalLifecycle(owner: RoomRuntimeHistoryOwner): LocalMasterLifecycleService =
-        RoomLocalMasterLifecycleService(scope, owner.originalRecord.record.allocation.coordinates, store, source, peers,
-            principalFactory)
-
     /**
      * Trusted single-threaded native composition over a genuinely verified installed context.
      * EXACT object identity binds this owner's AEAD, factory-created same-pepper hasher and

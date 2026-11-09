@@ -8,12 +8,14 @@ import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
 import com.ukkera.pos.security.LocalDevicePairingProfileV2
 import com.ukkera.pos.security.LocalDevicePairingSdkOriginal
 import com.ukkera.pos.security.LocalGatewayCredentials
+import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.JournalSequence
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
 import com.ukkera.pos.types.UtcInstant
 import dev.p2pkit.rpc.RpcCallObservation
+import dev.p2pkit.rpc.RpcCallStage
 import dev.p2pkit.rpc.RpcClient
 import dev.p2pkit.rpc.RpcConnectionState
 import dev.p2pkit.rpc.RpcExecutionEvidence
@@ -1034,17 +1036,15 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         val capturedActor = requestingActorId
         val owned = LocalMasterRpcReadRequestV1.capture(credentials, request)
         try {
-            val result = invoke(readProcedure, owned, accept = { true }) { delivered ->
-                when (delivered) {
-                    is RpcReply.Success -> {
-                        requireResponseBinding(delivered.value.requestingActorId == capturedActor)
-                        when (val value = delivered.value.value) {
-                            is LocalMasterRpcReadValueV1.Data -> ReadReply.Data(copyRpcStoredBytes(value.payload), value.branchRevision, value.observedAt)
-                            is LocalMasterRpcReadValueV1.Unavailable -> ReadReply.Unavailable(value.reason)
-                        }
+            val result = when (val delivered = invoke(readProcedure, owned)) {
+                is RpcReply.Success -> {
+                    requireResponseBinding(delivered.value.requestingActorId == capturedActor)
+                    when (val value = delivered.value.value) {
+                        is LocalMasterRpcReadValueV1.Data -> ReadReply.Data(copyRpcStoredBytes(value.payload), value.branchRevision, value.observedAt)
+                        is LocalMasterRpcReadValueV1.Unavailable -> ReadReply.Unavailable(value.reason)
                     }
-                    is RpcReply.ApplicationError -> ReadReply.Unavailable(ReadFailure.STORAGE_UNCERTAIN)
                 }
+                is RpcReply.ApplicationError -> ReadReply.Unavailable(ReadFailure.STORAGE_UNCERTAIN)
             }
             requireCurrentCaller()
             return result
@@ -1055,35 +1055,28 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         credentials: LocalGatewayCredentials,
         request: MutationRequest,
         requestingActorId: DomainId,
-        acceptRecorded: (suspend (MutationReply.Recorded) -> Unit)? = null,
     ): MutationReply {
         requireConnection(credentials)
         val capturedActor = requestingActorId
         val owned = LocalMasterRpcExecuteRequestV1.capture(credentials, request)
         val operationId = owned.request.operationId
         try {
-            val result = invoke(executeProcedure, owned, accept = { result ->
-                if (result is MutationReply.Recorded && acceptRecorded != null) {
-                    acceptRecorded(result); true
-                } else false
-            }) { delivered ->
-                when (delivered) {
-                    is RpcReply.Success -> {
-                        requireResponseBinding(delivered.value.requestingActorId == capturedActor)
-                        when (val value = delivered.value.value) {
-                            is LocalMasterRpcExecuteValueV1.Recorded -> reconstructRecorded(value.recorded, operationId, capturedActor)
-                            is LocalMasterRpcExecuteValueV1.Deferred -> {
-                                requireResponseBinding(value.operationId == operationId)
-                                MutationReply.Deferred(operationId, value.reason)
-                            }
-                            is LocalMasterRpcExecuteValueV1.IdentityConflict -> {
-                                requireResponseBinding(value.operationId == operationId)
-                                MutationReply.IdentityConflict(operationId)
-                            }
+            val result = when (val delivered = invoke(executeProcedure, owned)) {
+                is RpcReply.Success -> {
+                    requireResponseBinding(delivered.value.requestingActorId == capturedActor)
+                    when (val value = delivered.value.value) {
+                        is LocalMasterRpcExecuteValueV1.Recorded -> reconstructRecorded(value.recorded, operationId, capturedActor)
+                        is LocalMasterRpcExecuteValueV1.Deferred -> {
+                            requireResponseBinding(value.operationId == operationId)
+                            MutationReply.Deferred(operationId, value.reason)
+                        }
+                        is LocalMasterRpcExecuteValueV1.IdentityConflict -> {
+                            requireResponseBinding(value.operationId == operationId)
+                            MutationReply.IdentityConflict(operationId)
                         }
                     }
-                    is RpcReply.ApplicationError -> MutationReply.Deferred(operationId, DeferredReason.STORAGE_UNCERTAIN)
                 }
+                is RpcReply.ApplicationError -> MutationReply.Deferred(operationId, DeferredReason.STORAGE_UNCERTAIN)
             }
             requireCurrentCaller()
             return result
@@ -1094,7 +1087,6 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         credentials: LocalGatewayCredentials,
         identity: OperationIdentity,
         requestingActorId: DomainId,
-        acceptRecorded: (suspend (MutationReply.Recorded) -> Unit)? = null,
     ): LookupReply {
         requireConnection(credentials)
         val capturedActor = requestingActorId
@@ -1102,35 +1094,29 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         val capturedIdentity = owned.identity
         val operationId = capturedIdentity.operationId
         try {
-            val result = invoke(lookupProcedure, owned, accept = { result ->
-                if (result is LookupReply.Found && acceptRecorded != null) {
-                    acceptRecorded(result.result); true
-                } else false
-            }) { delivered ->
-                when (delivered) {
-                    is RpcReply.Success -> {
-                        requireResponseBinding(delivered.value.requestingActorId == capturedActor)
-                        when (val value = delivered.value.value) {
-                            is LocalMasterRpcLookupValueV1.Found -> {
-                                requireResponseBinding(value.recorded.replayed)
-                                LookupReply.Found(reconstructRecorded(value.recorded, operationId, capturedIdentity.originalActorId))
-                            }
-                            is LocalMasterRpcLookupValueV1.AbsentAtCurrentWriter -> {
-                                requireResponseBinding(value.operationId == operationId)
-                                LookupReply.AbsentAtCurrentWriter(operationId)
-                            }
-                            is LocalMasterRpcLookupValueV1.Deferred -> {
-                                requireResponseBinding(value.operationId == operationId)
-                                LookupReply.Deferred(operationId, value.reason)
-                            }
-                            is LocalMasterRpcLookupValueV1.IdentityConflict -> {
-                                requireResponseBinding(value.operationId == operationId)
-                                LookupReply.IdentityConflict(operationId)
-                            }
+            val result = when (val delivered = invoke(lookupProcedure, owned)) {
+                is RpcReply.Success -> {
+                    requireResponseBinding(delivered.value.requestingActorId == capturedActor)
+                    when (val value = delivered.value.value) {
+                        is LocalMasterRpcLookupValueV1.Found -> {
+                            requireResponseBinding(value.recorded.replayed)
+                            LookupReply.Found(reconstructRecorded(value.recorded, operationId, capturedIdentity.originalActorId))
+                        }
+                        is LocalMasterRpcLookupValueV1.AbsentAtCurrentWriter -> {
+                            requireResponseBinding(value.operationId == operationId)
+                            LookupReply.AbsentAtCurrentWriter(operationId)
+                        }
+                        is LocalMasterRpcLookupValueV1.Deferred -> {
+                            requireResponseBinding(value.operationId == operationId)
+                            LookupReply.Deferred(operationId, value.reason)
+                        }
+                        is LocalMasterRpcLookupValueV1.IdentityConflict -> {
+                            requireResponseBinding(value.operationId == operationId)
+                            LookupReply.IdentityConflict(operationId)
                         }
                     }
-                    is RpcReply.ApplicationError -> LookupReply.Deferred(operationId, DeferredReason.STORAGE_UNCERTAIN)
                 }
+                is RpcReply.ApplicationError -> LookupReply.Deferred(operationId, DeferredReason.STORAGE_UNCERTAIN)
             }
             requireCurrentCaller()
             return result
@@ -1146,43 +1132,22 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         check(isCurrent()) { "Original Master Client loan is unavailable" }
     }
 
-    private suspend fun <Q : LocalMasterRpcOwnedRequestV1, R, T : Any> invoke(
+    private suspend fun <Q : LocalMasterRpcOwnedRequestV1, R> invoke(
         procedure: RpcProcedure<Q, R, LocalMasterClientRpcErrorV1>,
         request: Q,
-        accept: suspend (T) -> Boolean,
-        decode: (RpcReply<R, LocalMasterClientRpcErrorV1>) -> T,
-    ): T {
+    ): RpcReply<R, LocalMasterClientRpcErrorV1> {
         requireCurrentCaller()
         val observation = RpcCallObservation()
-        // The official callback has no deferred public ACK token. A call without a real
-        // durable consumer deliberately rejects Receipt, then returns only its validated DATA.
-        // This exact per-call sentinel cannot swallow another call's acceptance failure.
-        val withheld = ReceiptWithheld()
-        var selected: T? = null
-        try {
-            client.callWithAcceptance(procedure, request, observation = observation,
-                retry = RpcRetry.RecoverOnly(maxAttempts = 1)) { offered ->
-                requireCurrentCaller()
-                val observed = observation.progress.value
-                requireResponseBinding(observed.requestId == offered.details.requestId.value &&
-                    observed.peerFingerprint == approvedMaster.masterSdkOriginal.fingerprint.value &&
-                    offered.hostFingerprint == approvedMaster.masterSdkOriginal.fingerprint &&
-                    offered.procedureName == procedure.name && offered.procedureVersion == procedure.version &&
-                    offered.hostIncarnation.isNotBlank() &&
-                    observed.executionEvidence == RpcExecutionEvidence.HandlerFinished)
-                val result = decode(offered.details.reply)
-                selected = result
-                if (!accept(result)) throw withheld
-                requireCurrentCaller()
-            }
-        } catch (failure: ReceiptWithheld) {
-            if (failure !== withheld) throw failure
-        }
+        val delivered = client.callWithObservation(procedure, request, observation, retry = RpcRetry.RecoverOnly(maxAttempts = 1))
         requireCurrentCaller()
-        return checkNotNull(selected) { "Master business reply unavailable" }
+        val observed = observation.progress.value
+        requireResponseBinding(observed.requestId == delivered.requestId.value &&
+            observed.peerFingerprint == approvedMaster.masterSdkOriginal.fingerprint.value &&
+            observed.executionEvidence == RpcExecutionEvidence.HandlerFinished &&
+            observed.stage == if (delivered.reply is RpcReply.Success) RpcCallStage.Succeeded else RpcCallStage.BusinessError)
+        // Correlation follows native owner qualification; it supplies no writer/absence proof.
+        return delivered.reply
     }
-
-    private class ReceiptWithheld : Exception()
 
     private fun reconstructRecorded(value: LocalMasterRpcRecordedV1, operationId: OperationId, originalActorId: DomainId): MutationReply.Recorded {
         requireResponseBinding(value.operationId == operationId && value.originalActorId == originalActorId &&
@@ -1230,7 +1195,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
                 approvedMaster.targetKeyId == target.keyId && master.allocation.coordinates.scope == scope) {
                 "Approved Master target scope differs"
             }
-            val appId = master.compositionProfile.appId(scope)
+            val appId = LocalMasterSdkProfileV1.appId(scope)
             require(sdk.appId == appId && master.appId == appId) { "Approved Master AppId differs" }
             require(master.originalAcquisitionId != sdk.originalAcquisitionId &&
                 master.originalAcquisitionId != sdk.originalPreparationId && master.peerId != sdk.peerId &&

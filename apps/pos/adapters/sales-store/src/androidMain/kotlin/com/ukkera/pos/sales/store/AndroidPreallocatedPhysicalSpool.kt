@@ -81,45 +81,27 @@ public object AndroidPreallocatedPhysicalSpool {
  */
 public object AndroidPreallocatedPhysicalJournal {
     public fun createCatalogue(context: Context, owner: LocalPhysicalCatalogueBinding,
-        expectedKeySecurity: AndroidPhysicalSpoolKeySecurity,
-        composition: AndroidPhysicalCompositionNamespaceV1 = AndroidPhysicalCompositionNamespaceV1.LIVE): LocalPhysicalCatalogueOpen =
-        createPhysicalCatalogue(owner, files(context, expectedKeySecurity, owner, composition))
+        expectedKeySecurity: AndroidPhysicalSpoolKeySecurity): LocalPhysicalCatalogueOpen =
+        createPhysicalCatalogue(owner, files(context, expectedKeySecurity, owner))
 
     public fun openCatalogue(context: Context, owner: LocalPhysicalCatalogueBinding,
-        expectedKeySecurity: AndroidPhysicalSpoolKeySecurity,
-        composition: AndroidPhysicalCompositionNamespaceV1 = AndroidPhysicalCompositionNamespaceV1.LIVE): LocalPhysicalCatalogueOpen =
-        openPhysicalCatalogue(owner, files(context, expectedKeySecurity, owner, composition))
+        expectedKeySecurity: AndroidPhysicalSpoolKeySecurity): LocalPhysicalCatalogueOpen =
+        openPhysicalCatalogue(owner, files(context, expectedKeySecurity, owner))
 
     private fun files(context: Context, expected: AndroidPhysicalSpoolKeySecurity,
-        owner: LocalPhysicalCatalogueBinding,
-        composition: AndroidPhysicalCompositionNamespaceV1): PhysicalJournalNativeFilesV1 {
-        val original = AndroidPhysicalCatalogueProvenance(owner, composition)
-        return object : PhysicalJournalNativeFilesV1 {
-            override fun open(spec: PhysicalNativeFileSpecV1, native: LocalPhysicalSpoolNativeIdentity?,
-                create: Boolean): PhysicalNativeOpenV1 =
-                androidAcquirePhysicalNative(context, spec.withJournalDirectory(composition.journalDirectoryName),
-                    expected, native, create, catalogueOriginal = original, composition = composition)
-
-            override fun list(spec: PhysicalNativeFileSpecV1, expectedDirectoryIdentity: String): List<String>? =
-                androidListPhysicalNative(context, spec.withJournalDirectory(composition.journalDirectoryName),
-                    original, composition, expectedDirectoryIdentity)
+        owner: LocalPhysicalCatalogueBinding): PhysicalJournalNativeFilesV1 {
+        val original = AndroidPhysicalCatalogueProvenance(owner)
+        return PhysicalJournalNativeFilesV1 { spec, native, create ->
+            androidAcquirePhysicalNative(context, spec, expected, native, create, catalogueOriginal = original)
         }
     }
-}
-
-/** Common catalogue code keeps the stable logical `physical-journal-v1` prefix; this adapter
- * only redirects the native container to the already-bound live/training composition root. */
-private fun PhysicalNativeFileSpecV1.withJournalDirectory(directoryName: String): PhysicalNativeFileSpecV1 {
-    check(layout != PhysicalNativeLayoutV1.LEGACY && segments.firstOrNull() == "physical-journal-v1")
-    return PhysicalNativeFileSpecV1(installationId, keyId, listOf(directoryName) + segments.drop(1), layout, generation)
 }
 
 private fun androidAcquirePhysicalNative(context: Context, spec: PhysicalNativeFileSpecV1,
     expectedKeySecurity: AndroidPhysicalSpoolKeySecurity,
     expected: LocalPhysicalSpoolNativeIdentity?, create: Boolean,
     catalogueOriginal: AndroidPhysicalCatalogueProvenance? = null,
-    legacyOriginal: LocalPhysicalSpoolReceipt? = null,
-    composition: AndroidPhysicalCompositionNamespaceV1 = AndroidPhysicalCompositionNamespaceV1.LIVE): PhysicalNativeOpenV1 {
+    legacyOriginal: LocalPhysicalSpoolReceipt? = null): PhysicalNativeOpenV1 {
     if (Build.VERSION.SDK_INT < AndroidPreallocatedPhysicalSpool.MIN_API_LEVEL) return PhysicalNativeOpenV1.Held
     var directoryDescriptor: FileDescriptor? = null
     var fileDescriptor: FileDescriptor? = null
@@ -144,9 +126,8 @@ private fun androidAcquirePhysicalNative(context: Context, spec: PhysicalNativeF
             if (spec.layout == PhysicalNativeLayoutV1.LEGACY) ANDROID_PHYSICAL_SPOOL_NAMESPACE else "android-journal-namespace/v1")
         if (expected != null) check(expected.directoryIdentity == namespace.identity)
         val directory = namespace.allocationDirectory.file
-        androidSpoolEntries(directory, spec, create)
-        val cipher = AndroidPhysicalSpoolCipher(spec.installationId, spec.keyId, expectedKeySecurity,
-            composition.keyAliasPrefix)
+        androidSpoolEntries(directory, empty = create, filename = spec.layout.filename)
+        val cipher = AndroidPhysicalSpoolCipher(spec.installationId, spec.keyId, expectedKeySecurity)
         val directoryFd = AndroidNativeFiles.open(directory.path,
             OsConstants.O_RDONLY or OsConstants.O_NONBLOCK or OsConstants.O_NOFOLLOW, 0)
         directoryDescriptor = directoryFd
@@ -154,11 +135,9 @@ private fun androidAcquirePhysicalNative(context: Context, spec: PhysicalNativeF
         namespace.allocationDirectory.requireSame(capturedDirectory, processUid)
         namespace.requireCurrent(application, processUid)
         // Prevent a second local open/close from dropping this process's existing POSIX lock.
-        // Generation files intentionally share one installed leaf, so the claim is per directory
-        // AND canonical filename rather than per directory alone.
-        val processClaim = AndroidPhysicalSpoolProcessOwner.acquire(androidSpoolIdentity(capturedDirectory) + ":" + spec.filename)
+        val processClaim = AndroidPhysicalSpoolProcessOwner.acquire(androidSpoolIdentity(capturedDirectory))
         processOwner = processClaim
-        val file = File(directory, spec.filename)
+        val file = File(directory, spec.layout.filename)
         val beforeFile = if (create) null else Os.lstat(file.path)
         var flags = OsConstants.O_RDWR or OsConstants.O_NOFOLLOW
         if (create) flags = flags or OsConstants.O_CREAT or OsConstants.O_EXCL
@@ -181,7 +160,7 @@ private fun androidAcquirePhysicalNative(context: Context, spec: PhysicalNativeF
         val observed = LocalPhysicalSpoolNativeIdentity(LocalPhysicalSpoolStorageProfileV1.ANDROID_API30_APP_PRIVATE_FALLOCATE_V1,
             namespace.identity, androidSpoolIdentity(capturedFile), androidSpoolOwner(capturedDirectory), cipher.identity)
         val owned = AndroidPhysicalSpoolFile(application, userManager, namespace, directoryFd, openedFd,
-            owner, lock, processClaim, observed, initializing = create, layout = spec.layout, filename = spec.filename)
+            owner, lock, processClaim, observed, initializing = create, layout = spec.layout)
         nativeFile = owned
         // The actual namespace/file owner remains captured before any proof read. Only the
         // public original cryptography identity may retain its authenticated OS provenance.
@@ -222,11 +201,8 @@ private fun androidAcquirePhysicalNative(context: Context, spec: PhysicalNativeF
 private class AndroidPhysicalAnchorProof(val native: LocalPhysicalSpoolNativeIdentity,
     val catalogue: LocalPhysicalSpoolNativeIdentity)
 
-private class AndroidPhysicalCatalogueProvenance(
-    val owner: LocalPhysicalCatalogueBinding,
-    private val composition: AndroidPhysicalCompositionNamespaceV1,
-) {
-    private val anchors = mutableMapOf<Int, AndroidPhysicalAnchorProof>()
+private class AndroidPhysicalCatalogueProvenance(val owner: LocalPhysicalCatalogueBinding) {
+    private var anchor: AndroidPhysicalAnchorProof? = null
 
     fun requireSpec(spec: PhysicalNativeFileSpecV1) {
         check(spec.installationId == owner.installationId && spec.keyId == owner.keyId)
@@ -235,18 +211,14 @@ private class AndroidPhysicalCatalogueProvenance(
             check(leaf.startsWith("slot-") && leaf.length == 8)
             leaf.substring(5).toInt()
         } else null
-        val expected = physicalJournalNativeSpec(owner, spec.layout, slot, spec.generation).segments
-        check(spec.segments.firstOrNull() == composition.journalDirectoryName &&
-            spec.segments.drop(1) == expected.drop(1))
+        check(spec.segments == physicalJournalNativeSpec(owner, spec.layout, slot).segments)
     }
 
-    fun retain(generation: Int, proof: AndroidPhysicalAnchorProof) {
-        check(anchors.put(generation, proof) == null)
-    }
+    fun retain(proof: AndroidPhysicalAnchorProof) { check(anchor == null); anchor = proof }
 
     fun requireDerived(spec: PhysicalNativeFileSpecV1, native: LocalPhysicalSpoolNativeIdentity) {
         requireSpec(spec)
-        val original = checkNotNull(anchors[spec.generation])
+        val original = checkNotNull(anchor)
         check(native.profile == original.native.profile &&
             native.cryptographyIdentity == original.native.cryptographyIdentity)
         if (spec.layout == PhysicalNativeLayoutV1.CATALOGUE) check(native == original.catalogue)
@@ -279,7 +251,7 @@ private fun androidOriginalPhysicalIdentity(spec: PhysicalNativeFileSpecV1,
         }
         val authenticated = (proof as? PhysicalSpoolAccess.Value)?.value ?: error("physical.spool.original_anchor")
         if (authenticated.native != observed) cipher.retainOriginalIdentity(authenticated.native.cryptographyIdentity)
-        original.retain(spec.generation, authenticated)
+        original.retain(authenticated)
         return authenticated.native
     }
     if (older != null && expected != null && expected.cryptographyIdentity == older) {
@@ -356,7 +328,6 @@ private class AndroidPhysicalSpoolFile(
     private val native: LocalPhysicalSpoolNativeIdentity,
     private var initializing: Boolean,
     private val layout: PhysicalNativeLayoutV1,
-    private val filename: String,
 ) : PhysicalSpoolFile {
     private val mutex = ReentrantLock()
     private val closed = AtomicBoolean(false)
@@ -364,7 +335,7 @@ private class AndroidPhysicalSpoolFile(
     private val processId = Process.myPid()
     private val processUid = Process.myUid()
     private val directory = namespace.allocationDirectory.file
-    private val file = File(directory, filename)
+    private val file = File(directory, layout.filename)
     private var cleanupResult: LocalPhysicalSpoolClose? = null
     private var closureUncertain = false
     private val leaseDenials = ConcurrentHashMap<PhysicalSpoolLease, () -> Unit>()
@@ -479,7 +450,7 @@ private class AndroidPhysicalSpoolFile(
         if (initializing) check(heldFile.st_size in 0L..layout.bytes.toLong())
         else check(heldFile.st_size == layout.bytes.toLong() &&
             heldFile.st_blocks >= layout.bytes / 512L)
-        androidSpoolEntries(directory, layout, filename, create = false)
+        androidSpoolEntries(directory, empty = false, filename = layout.filename)
     }
 
     override fun capture(onRetirement: () -> Unit): PhysicalSpoolLease? {
@@ -544,9 +515,8 @@ private class AndroidPhysicalSpoolCipher(
     installationId: DomainId,
     keyId: DomainId,
     private val expectedSecurity: AndroidPhysicalSpoolKeySecurity,
-    aliasPrefix: String,
 ) : PhysicalSpoolCipher {
-    private val alias = "$aliasPrefix/${installationId.value}/storage/${keyId.value}"
+    private val alias = "ukkera.local.v1/${installationId.value}/storage/${keyId.value}"
     private val provider = Security.getProvider(ANDROID_PHYSICAL_SPOOL_CIPHER_PROVIDER)
         ?: error("physical.spool.crypto_provider")
     private val keyClass = loadExistingKey().javaClass.name
@@ -757,58 +727,11 @@ private fun androidSpoolPrivateFile(stat: StructStat, uid: Int) {
 private fun androidSpoolIdentity(stat: StructStat): String = "dev=${stat.st_dev};ino=${stat.st_ino}"
 private fun androidSpoolOwner(stat: StructStat): String = "uid=${stat.st_uid};gid=${stat.st_gid}"
 
-private fun androidSpoolEntries(directory: File, spec: PhysicalNativeFileSpecV1, create: Boolean) {
-    androidSpoolEntries(directory, spec.layout, spec.filename, create)
-}
-
-/**
- * The leaf contains only canonical files for this closed layout. Generation files are append-only:
- * create may see older generations but never the target or a newer generation; open must see the
- * exact target. Unknown names, duplicates and non-canonical suffixes are held, never ignored.
- */
-private fun androidSpoolEntries(directory: File, layout: PhysicalNativeLayoutV1, filename: String, create: Boolean) {
-    val target = layout.generationOf(filename) ?: error("physical.spool.filename")
+private fun androidSpoolEntries(directory: File, empty: Boolean, filename: String = ANDROID_PHYSICAL_SPOOL_FILE) {
     AndroidNativeFiles.openDirectory(directory.path).use { cursor ->
-        var count = 0
-        var targetSeen = false
-        while (true) {
-            val name = cursor.nextName() ?: break
-            check(++count <= LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-            val generation = layout.generationOf(name) ?: error("physical.spool.entry")
-            if (name == filename) targetSeen = true
-            if (create) check(generation < target)
-        }
-        check(if (create) !targetSeen else targetSeen)
+        if (empty) check(cursor.nextName() == null)
+        else check(cursor.nextName() == filename && cursor.nextName() == null)
     }
-}
-
-/** Bounded no-follow listing of the already installed leaf; every selected file is reauthenticated. */
-private fun androidListPhysicalNative(context: Context, spec: PhysicalNativeFileSpecV1,
-    catalogueOriginal: AndroidPhysicalCatalogueProvenance,
-    composition: AndroidPhysicalCompositionNamespaceV1, expectedDirectoryIdentity: String): List<String>? {
-    if (Build.VERSION.SDK_INT < AndroidPreallocatedPhysicalSpool.MIN_API_LEVEL) return null
-    return try {
-        check(!Thread.currentThread().isInterrupted)
-        catalogueOriginal.requireSpec(spec)
-        val application = context.applicationContext as? Application ?: error("physical.spool.application")
-        val processUid = Process.myUid()
-        check(application.applicationContext === application && !application.isDeviceProtectedStorage &&
-            application.applicationInfo.uid == processUid)
-        check(application.getSystemService(UserManager::class.java)?.isUserUnlocked == true)
-        val namespace = androidSpoolNamespace(application, spec.segments, processUid, "android-journal-namespace/v1")
-        check(namespace.identity == expectedDirectoryIdentity)
-        val directory = namespace.allocationDirectory.file
-        val names = mutableListOf<String>()
-        AndroidNativeFiles.openDirectory(directory.path).use { cursor ->
-            while (true) {
-                val name = cursor.nextName() ?: break
-                check(names.size < LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS)
-                names += name
-            }
-        }
-        namespace.requireCurrent(application, processUid)
-        names
-    } catch (_: Exception) { null }
 }
 
 private inline fun androidSpoolCleanup(block: () -> Unit): Boolean = try { block(); true } catch (_: Exception) { false }

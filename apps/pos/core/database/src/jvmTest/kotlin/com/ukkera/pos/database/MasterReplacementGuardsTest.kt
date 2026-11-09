@@ -472,7 +472,8 @@ class MasterReplacementGuardsTest {
         cleanReferences(connection)
     }
 
-    private fun current(path: Path): LegacyV4MasterDatabase = buildLegacyV4MasterRoom(path)
+    private fun current(path: Path): MasterRoomDatabase = buildMasterRoom(
+        Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize))
 
     /** Copying this closed EMPTY synthetic schema is test setup, not a recovery/custody protocol. */
     private suspend fun withTemplate(legacy: Boolean = false, block: (Path) -> Unit) {

@@ -52,8 +52,6 @@ public class AndroidDevicePairingTarget private constructor(
     private val work: AndroidOwnedInstallationWork,
 ) {
     private val denied = AtomicBoolean(false)
-    /** Fixed composition profile binding of this actual native target; descriptive DATA only. */
-    public val compositionProfile: LocalCompositionSdkProfileV1 get() = native.compositionProfile
     private class CredentialCustodyIssue {
         val custody = AtomicReference<AndroidPairedDeviceCredentialJournalCustody?>(null)
         val settled = CompletableDeferred<Unit>()
@@ -226,23 +224,13 @@ public class AndroidDevicePairingTarget private constructor(
          * Scope/capabilities describe requested DATA, not ownership or permission grants. */
         public suspend fun prepareNew(application: Application, scope: BranchScope,
             capabilities: Set<String> = emptySet()): AndroidDevicePairingTargetOpenResult =
-            acquire(application, scope, capabilities, SelfOwnedNativeProfileV1.LIVE)
-        /** Fixed training-slot preparation; neither a caller-selected path nor a live namespace. */
-        public suspend fun prepareNewForTraining(application: Application, scope: BranchScope,
-            slot: LocalTrainingCompositionSlot,
-            capabilities: Set<String> = emptySet()): AndroidDevicePairingTargetOpenResult =
-            acquire(application, scope, capabilities, SelfOwnedNativeProfileV1.training(slot))
+            acquire(application, scope, capabilities)
         /** Existing-only, including partial original read/review. Never creates missing
          * directories/locks/keys, adopts orphan aliases, or retries UNKNOWN generation/sign. */
         public suspend fun openExisting(application: Application): AndroidDevicePairingTargetOpenResult =
-            acquire(application, null, emptySet(), SelfOwnedNativeProfileV1.LIVE)
-        /** Existing-only training-slot target; a different slot/mode directory is never adopted. */
-        public suspend fun openExistingForTraining(application: Application,
-            slot: LocalTrainingCompositionSlot): AndroidDevicePairingTargetOpenResult =
-            acquire(application, null, emptySet(), SelfOwnedNativeProfileV1.training(slot))
-        private suspend fun acquire(application: Application, scope: BranchScope?, capabilities: Set<String>,
-            profile: SelfOwnedNativeProfileV1): AndroidDevicePairingTargetOpenResult {
-            val lease = AndroidProvisionerProcessLease.acquire(profile)
+            acquire(application, null, emptySet())
+        private suspend fun acquire(application: Application, scope: BranchScope?, capabilities: Set<String>): AndroidDevicePairingTargetOpenResult {
+            val lease = AndroidProvisionerProcessLease.acquire()
                 ?: return AndroidDevicePairingTargetOpenResult.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
             val work = try { AndroidOwnedInstallationWork(lease) } catch (_: Throwable) {
                 lease.releaseUnusedBeforeNativeOpen()
@@ -251,7 +239,7 @@ public class AndroidDevicePairingTarget private constructor(
             val retained = AtomicReference<AndroidDevicePairingTargetNative?>(null)
             var delivered = false
             try {
-                val native = AndroidDevicePairingTargetNative(application, work, profile)
+                val native = AndroidDevicePairingTargetNative(application, work)
                 retained.set(native) // Partial resource owner is retained BEFORE native IO.
                 return when (val result = work.run {
                     val copied = capabilities.toList().sorted()
@@ -286,9 +274,7 @@ public class AndroidDevicePairingTarget private constructor(
 /** Dedicated directory/alias and this actual process lease/watchdog; no second executor.
  * Immutable forced files form a one-shot sequence, not a repairing/replacement registry.
  * An unfinished intent is reviewable DATA but never permission to try its sign again. */
-private class AndroidDevicePairingTargetNative(private val application: Application,
-    private val work: AndroidOwnedInstallationWork, private val profile: SelfOwnedNativeProfileV1) {
-    val compositionProfile: LocalCompositionSdkProfileV1 get() = profile.sdkProfile
+private class AndroidDevicePairingTargetNative(private val application: Application, private val work: AndroidOwnedInstallationWork) {
     private enum class Phase { NEW, OPENING, OPEN, CLOSE_STARTED, CLOSED }
     private var phase = Phase.NEW
     private var environment: AndroidSelfOwnedEnvironment? = null
@@ -641,7 +627,6 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         val record = try { NativeDevicePairingWireV1.decodeApprovedCertificate(certificate) }
         catch (_: Exception) { selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_INPUT) }
         if (record.body.requested().masterSdkOriginal == null) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
-        requireApprovedMasterProfile(record)
         val index = responseCycleForAction(record.body.originalActionId)
         return withResponseCycle(index) {
             slot().approvedMasterEvidence?.let { evidence ->
@@ -764,13 +749,6 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             evidence.consent, evidence.approvedHead, evidence.rootEndorsement) }
         finally { possession.fill(0) }
     }
-    /** The target imports only a Master original of its own fixed composition profile. */
-    private fun requireApprovedMasterProfile(record: NativeDevicePairingRecordV1) {
-        val master = record.body.requested().masterSdkOriginal
-            ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
-        if (master.compositionProfile != profile.sdkProfile)
-            selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
-    }
     private fun validateApprovedMaster(): LocalDevicePairingApprovedMaster {
         if (slot().approvedMasterImportIntent == null) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         validateApprovedMasterImportIntent()
@@ -780,7 +758,6 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         finally { encoded.fill(0) }
         known(evidence.importIntentDigest == sha256(snapshotBytes(approvedMasterImportIntentName())))
         val record = approvedMasterRecord(evidence)
-        requireApprovedMasterProfile(record)
         val rootAnnouncement = evidence.rootAnnouncement.copyBytes()
         val check = try { NativeDevicePairingApprovedMasterPolicyV1.prepare(record, rootAnnouncement,
             retainedChallenge(), completedPossession()) } finally { rootAnnouncement.fill(0) }
@@ -1088,7 +1065,6 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         try { known(snapshots[SDK_ACQUISITION]?.bytes?.contentEquals(encoded) == true) } finally { encoded.fill(0) }
         val original = checkNotNull(identity)
         known(acquisition.identityDigest == identityDigest() && acquisition.readyDigest == readyDigest() &&
-            acquisition.appId == profile.sdkProfile.appId(original.scope) &&
             acquisition.osBoot >= original.osBoot && acquisition.osBoot <= env().bootCount &&
             (acquisition.osBoot != original.osBoot || acquisition.observedElapsed >= original.observedElapsed) &&
             acquisition.acquisitionId !in retainedTargetIds(responseCycle, includeSdk = false))
@@ -1150,9 +1126,6 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
     }
     private fun requireSdkForNewResponse(challenge: LocalDevicePairingChallenge) {
         val offered = challenge.requested.sdkIdentity
-        val master = challenge.requested.masterSdkOriginal
-        if (master != null && master.compositionProfile != profile.sdkProfile)
-            selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         if (offered == null) {
             if (sdkAcquisition != null) selfOwnedFail(if (sdkReady == null)
                 SelfOwnedInstallationFailureV1.STATE_UNCERTAIN else SelfOwnedInstallationFailureV1.CONFLICT)
@@ -1162,12 +1135,11 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             ensureOriginalSdkOwner()
         }
     }
-    /** New SDK/key effects use this target's fixed original composition profile, never a
-     * supplied label or another mode's namespace. Recovery of already completed original bytes
-     * is validated separately against the same profile. */
+    /** New SDK/key effects use the immutable original branch, never supplied labels.
+     * Recovery/validation of already completed original bytes does not enter this gate. */
     private fun requireSdkBranchNamespaceForNewWork(appId: AppId,
         mismatch: SelfOwnedInstallationFailureV1 = SelfOwnedInstallationFailureV1.CONFLICT) {
-        if (appId != profile.sdkProfile.appId(checkNotNull(identity).scope)) selfOwnedFail(mismatch)
+        if (appId != LocalMasterSdkProfileV1.appId(checkNotNull(identity).scope)) selfOwnedFail(mismatch)
     }
     private fun requireOwnSdkDescriptorData(challenge: LocalDevicePairingChallenge) {
         val offered = challenge.requested.sdkIdentity ?: return
@@ -1241,15 +1213,14 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             sdkAcquisition?.acquisitionId, if (sdkReady != null) sdkIdentityWithoutReentry().descriptorDigest else null)
     }
     private fun keyStore(): KeyStore = checkNotNull(store)
-    private fun aliasPrefix(): String = SelfOwnedCompositionNames.devicePairingAliasPrefix(profile.slot)
-    private fun alias(): String = checkNotNull(identity).let { "${aliasPrefix()}${it.preparationId.value}.${it.keyId.value}" }
+    private fun alias(): String = checkNotNull(identity).let { "$ALIAS_PREFIX${it.preparationId.value}.${it.keyId.value}" }
     private fun assertAliasNamespace() {
         assertBase()
         val expected = identity?.let { alias() }; val aliases = keyStore().aliases(); var count = 0; var seen = false
         while (aliases.hasMoreElements()) {
             if (++count > 65_536) keyFailure()
             val value = aliases.nextElement()
-            if (value.startsWith(aliasPrefix())) {
+            if (value.startsWith(ALIAS_PREFIX)) {
                 if (value != expected || seen) keyFailure()
                 seen = true
             }
@@ -1295,10 +1266,10 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
 
     private fun openNamespace(creating: Boolean) {
         check(phase == Phase.NEW); phase = Phase.OPENING; work.requireActive()
-        if (creating) AndroidSelfOwnedEnvironment.capture(application, work, profile) // Explicit framework ancestry preparation only.
-        val observed = AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work, profile)
+        if (creating) AndroidSelfOwnedEnvironment.capture(application, work) // Explicit framework ancestry preparation only.
+        val observed = AndroidSelfOwnedEnvironment.captureExistingOriginal(application, work)
         environment = observed
-        directory = File(observed.noBackupDirectory, SelfOwnedCompositionNames.devicePairingTargetDirectory(profile.slot))
+        directory = File(observed.noBackupDirectory, DIRECTORY)
         for (path in generateSequence(observed.noBackupDirectory) { it.parentFile }.toList().asReversed()) {
             val value = stamp(Os.lstat(path.path)); requireDirectory(value, owned = false)
             if (path == observed.dataDirectory || path == observed.noBackupDirectory) known(value.uid == observed.uid)
@@ -1356,15 +1327,12 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
      */
     private fun requireFreshNativeRole() {
         env().requireExistingOriginalObservation()
-        for (name in originalMasterNamespaces()) {
+        for (name in ORIGINAL_MASTER_NAMESPACES) {
             if (lstatOrNull(File(env().noBackupDirectory, name)) != null)
                 selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         }
         env().requireExistingOriginalObservation()
     }
-    /** Same-profile original Master namespaces only; live and training slots never cross-block. */
-    private fun originalMasterNamespaces(): List<String> =
-        listOf(profile.targetDirectoryName, profile.provisionerDirectoryName)
     private fun assertBase() {
         known(phase == Phase.OPEN); env().requireExistingOriginalObservation()
         for ((path, expected) in ancestors) known(expected.sameDirectory(stamp(Os.lstat(path.path))))
@@ -1537,8 +1505,11 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
     private fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
     companion object {
-        // Fixed live production values retained in SelfOwnedCompositionNames; training adds
-        // its own fixed slot suffix and never interprets a caller-selected path.
+        const val DIRECTORY = "ukkera-device-pairing-target-v1"
+        // Fixed existing production namespaces owned by AndroidSelfOwnedDatabaseNamespace
+        // and AndroidLocalProvisionerRegistry; never caller-selected or interpreted here.
+        private val ORIGINAL_MASTER_NAMESPACES = listOf("ukkera-self-owned-target-v1", "ukkera-self-owned-provisioner-v1")
+        const val ALIAS_PREFIX = "ukkera.device-pairing.target.v1."
         const val LOCK = "owner.lock"
         const val IDENTITY = "identity.v1"
         const val KEY_INTENT = "key-signing-intent.v1"
@@ -1587,7 +1558,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
 
 private data class TargetNamespace(val path: String, val uid: Int, val volumeUuid: String, val directoryInode: Long, val lockInode: Long) {
     init {
-        require(path.startsWith('/') && SelfOwnedCompositionNames.isDevicePairingTargetPath(path) &&
+        require(path.startsWith('/') && path.endsWith("/${AndroidDevicePairingTargetNative.DIRECTORY}") &&
             path.length in 1..1024 && '\u0000' !in path && path.split('/').none { it == "." || it == ".." })
         selfOwnedUtf16(path)
         require(uid >= 0 && directoryInode > 0 && lockInode > 0 && volumeUuid.length == 36 && volumeUuid.withIndex().all { (index, code) ->

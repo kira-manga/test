@@ -141,8 +141,6 @@ public enum class LocalAuthEventKind {
     ACTION_APPROVAL_RETIRED,
     /** Current protected private-publication access; full immutable request facts stay in history. */
     SERIAL_PUBLICATION_REQUEST,
-    /** Explicit current-authority intentional STOP or same-original RESUME audit. */
-    MASTER_LIFECYCLE,
 }
 
 /** Private durable authentication audit. No password, verifier, secret or bearer is retained. */
@@ -158,24 +156,16 @@ public class LocalAuthEvent(
     public val contentDigest: PayloadDigest?,
     /** Only BRANCH_INSTALLED uses its separately versioned immutable installation profile. */
     public val installation: LocalBranchInstallationRecord? = null,
-    /** Only MASTER_LIFECYCLE uses this separately versioned protected receipt profile. */
-    public val lifecycle: LocalMasterLifecycleAudit? = null,
 ) {
     public val revision: Revision = Revision(0)
     init {
         require((kind == LocalAuthEventKind.BRANCH_INSTALLED) == (installation != null))
-        require((kind == LocalAuthEventKind.MASTER_LIFECYCLE) == (lifecycle != null))
         if (kind == LocalAuthEventKind.ADMINISTRATION_CANCELLED)
             require(operatorId != null && contentDigest != null && accountRevision == null)
         if (kind == LocalAuthEventKind.ACTION_APPROVAL_RETIRED)
             require(operatorId != null && sessionId != null && contentDigest != null && accountRevision != null && eventId != targetId)
         if (kind == LocalAuthEventKind.SERIAL_PUBLICATION_REQUEST)
             require(operatorId != null && sessionId != null && contentDigest != null && accountRevision != null && eventId != targetId)
-        if (kind == LocalAuthEventKind.MASTER_LIFECYCLE)
-            require(operatorId != null && sessionId != null && contentDigest != null && accountRevision != null && eventId != targetId)
-        lifecycle?.let { audit ->
-            require(audit.installationId == targetId && audit.requestDigest == contentDigest)
-        }
         installation?.let { record ->
             val identity = record.request.identity
             require(scope == identity.scope && eventId == identity.installationId && targetId == scope.branchId &&

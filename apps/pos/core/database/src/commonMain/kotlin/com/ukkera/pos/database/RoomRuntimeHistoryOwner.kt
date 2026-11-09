@@ -59,8 +59,6 @@ internal class RoomRuntimeHistoryOwner private constructor(
     private var nativeLease: NativeOriginalRetainedLease? = null
     internal val verifier: RoomRuntimeHistoryVerifier = RoomRuntimeHistoryVerifier(this)
     internal val originalScope: BranchScope get() = original.record.allocation.coordinates.scope
-    internal val compositionProfile: com.ukkera.pos.security.LocalCompositionSdkProfileV1
-        get() = custody.compositionProfile
     internal val originalAuthority: AuthorityIdentity get() = original.record.allocation.coordinates.let {
         AuthorityIdentity(it.assignmentId,it.deviceId,checkNotNull(original.record.definition).definition.authorityEpoch)
     }
@@ -277,8 +275,7 @@ internal class RoomRuntimeHistoryOwner private constructor(
         check(operational && actual.lifetimeId == settled.lifetimeId && actual.recordDigest == settled.recordDigest &&
             actual.record.pending == null && actual.record.masterSdkOriginal?.descriptorDigest == originalSdk.descriptorDigest &&
             originalSdk.allocation.digest == actual.record.allocation.digest &&
-            originalSdk.compositionProfile == compositionProfile &&
-                originalSdk.appId == compositionProfile.appId(originalScope))
+            originalSdk.appId == LocalMasterSdkProfileV1.appId(originalScope))
         currentCoroutineContext().ensureActive()
         originalSdk
     }

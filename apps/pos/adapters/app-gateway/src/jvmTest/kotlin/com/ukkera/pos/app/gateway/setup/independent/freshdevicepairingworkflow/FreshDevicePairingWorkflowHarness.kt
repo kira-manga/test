@@ -323,7 +323,6 @@ private class FreshWorkflowForbiddenStorage(private val world: FreshDevicePairin
 }
 
 private class FreshWorkflowServices(private val harness: FreshDevicePairingWorkflowHarness) : LocalSetupNativeServices {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
     private val world get() = harness.world
     private val isMaster get() = harness.role == LocalSetupFreshDevicePairingRole.ORIGINAL_MASTER
     override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult = world.forbidden("open-provisioner")
@@ -380,7 +379,6 @@ private class FreshWorkflowMaster(private val context: SelfOwnedLocalSecurityCon
 }
 
 private class FreshWorkflowTarget(private val harness: FreshDevicePairingWorkflowHarness) : LocalSetupFreshDeviceTarget {
-    override val compositionProfile = com.ukkera.pos.security.LocalMasterSdkProfileV1
     private val world get() = harness.world
     override suspend fun original(): LocalSetupFreshDeviceTargetResult<LocalDevicePairingTargetReference> {
         world.recordRead("target-original")

@@ -106,16 +106,7 @@ enum class LocalAction(val workflow: LocalWorkflow) {
     /** Capture-only claim entry; the original invoice-record action keeps its old authority. */
     SUPPLIER_INVOICE_CAPTURE(LocalWorkflow.PURCHASING),
     /** Explicit exact matching and payable recognition, separate from original claim capture. */
-    SUPPLIER_INVOICE_MATCH_RECOGNIZE(LocalWorkflow.PURCHASING),
-    /** Installed setup closure grammar. These never install, sign in, start RUN or grant authority. */
-    SETUP_RESULT_ACKNOWLEDGE(LocalWorkflow.SETUP),
-    SETUP_BUSINESS_GO_LIVE(LocalWorkflow.SETUP),
-    SETUP_CONFIGURATION_RECORD(LocalWorkflow.SETUP),
-    SETUP_CATALOG_IMPORT_ROW(LocalWorkflow.SETUP),
-    SETUP_CATALOG_IMPORT_COMPLETE(LocalWorkflow.SETUP),
-    SETUP_OPENING_STOCK_ROW(LocalWorkflow.SETUP),
-    SETUP_OPENING_FLOAT_ROW(LocalWorkflow.SETUP),
-    SETUP_OPENING_COMPLETE(LocalWorkflow.SETUP);
+    SUPPLIER_INVOICE_MATCH_RECOGNIZE(LocalWorkflow.PURCHASING);
     /** Closed shared presentation locations, never an authorization grant. */
     fun canAppearIn(target: LocalWorkflow): Boolean = if (target == LocalWorkflow.KITCHEN)
         this == FOOD_STATION_START || this == FOOD_STATION_READY
@@ -201,8 +192,6 @@ enum class LocalField {
     SUPPLIER_ORDER_REFERENCE, SUPPLIER_ALLOCATION_REFERENCE,
     /** Optional literal directory code, distinct from supplier ID and invoice references. */
     SUPPLIER_REFERENCE,
-    /** Dedicated setup closure binds one exact immutable production request, never raw UI JSON. */
-    SETUP_BODY_DIGEST,
 }
 
 enum class LocalRecordKind {

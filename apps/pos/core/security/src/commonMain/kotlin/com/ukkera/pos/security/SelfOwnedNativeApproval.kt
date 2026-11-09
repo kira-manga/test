@@ -85,7 +85,7 @@ internal data class SelfOwnedNativeBindingBodyV1(
  * Retained original target signature bytes. Parsing/possessing this object alone proves no
  * native custody, Room origin, human approval, complete history or current writer authority.
  */
-public class SelfOwnedNativeBindingV1 internal constructor(body: ByteArray, signature: ByteArray) : SelfOwnedNativeOriginalBinding {
+public class SelfOwnedNativeBindingV1 internal constructor(body: ByteArray, signature: ByteArray) {
     private val bodyValue: SelfOwnedOctetsV1
     private val signatureValue: SelfOwnedOctetsV1
     init {
@@ -94,7 +94,7 @@ public class SelfOwnedNativeBindingV1 internal constructor(body: ByteArray, sign
         bodyValue = SelfOwnedOctetsV1(body)
         signatureValue = SelfOwnedOctetsV1(signature)
     }
-    override fun copyWireBytes(): ByteArray = SelfOwnedNativeInstallationWireV1.encodeBinding(this)
+    public fun copyWireBytes(): ByteArray = SelfOwnedNativeInstallationWireV1.encodeBinding(this)
     internal fun body(): ByteArray = bodyValue.copyBytes()
     internal fun signature(): ByteArray = signatureValue.copyBytes()
     override fun toString(): String = "SelfOwnedNativeBindingV1([REDACTED])"
