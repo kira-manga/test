@@ -1,0 +1,66 @@
+name: POS Windows ordinary-account SDK store (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of the snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  ordinary-account-security:
+    if: github.repository == 'kira-manga/test'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Record exact source and validate executor syntax
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory native-security-output | Out-Null
+          if ((Get-Content SOURCE-REVISION.txt -Raw).Trim() -cne $env:EXPECTED_SOURCE_REVISION) { throw 'Source revision mismatch' }
+          Copy-Item SOURCE-REVISION.txt native-security-output/SOURCE-REVISION.txt
+          git rev-parse HEAD | Set-Content native-security-output/HARNESS-REVISION.txt
+          "run=$env:GITHUB_RUN_ID`nattempt=$env:GITHUB_RUN_ATTEMPT`nrepository=$env:GITHUB_REPOSITORY" | Set-Content native-security-output/workflow.txt
+          $tokens = $null
+          $errors = $null
+          [Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/pos/windows/run-standard-user-identity-store.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -ne 0) { throw 'Executor has PowerShell syntax errors' }
+      - name: Execute unchanged native cases under a fresh standard user
+        shell: pwsh
+        run: ./scripts/pos/windows/run-standard-user-identity-store.ps1
+      - name: Require ordinary token and all ten native cases without skips
+        if: always()
+        shell: python
+        run: |
+          import json, pathlib, xml.etree.ElementTree as ET
+          out = pathlib.Path('native-security-output')
+          profile = json.loads((out / 'ordinary-account/profile.json').read_text(encoding='utf-8-sig'))
+          assert profile['administrative_token'] is False
+          assert profile['local_app_data_owner_adjusted'] is False
+          assert profile['local_app_data_owner_matches'] is True
+          paths = list(pathlib.Path('apps/pos/core/security/build/test-results/jvmTest').glob('TEST-*WindowsDpapiSecureIdentityStoreNativeTest.xml'))
+          assert len(paths) == 1, 'Missing native result XML'
+          root = ET.parse(paths[0]).getroot()
+          counts = {key:int(root.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
+          (out / 'summary.json').write_text(json.dumps({'profile':'fresh genuine standard user','counts':counts,'scope':'SDK store only; no original/Master/client, other-user ACL, cross-process or power-loss acceptance'}, indent=2) + '\n')
+          assert tuple(counts.values()) == (10, 0, 0, 0), counts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-windows-standard-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-security-output
+            apps/pos/core/security/build/test-results/jvmTest
+            apps/pos/core/security/build/reports/tests/jvmTest
+          retention-days: 14
