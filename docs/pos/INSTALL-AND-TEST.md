@@ -20,7 +20,7 @@ package signing.
 | Windows x64 | [MSI artifact, run 42689314277](https://github.com/kira-manga/test/actions/runs/42689314277/artifacts/13707405198) | `UkkeraPOS-0.1.0.msi`, source `35441670`; includes the Windows namespace serialization and DPAPI envelope fixes |
 | macOS Apple Silicon | [ARM64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13701379955) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
 | macOS Intel | [x64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13703125856) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42680343828](https://github.com/kira-manga/test/actions/runs/42680343828/artifacts/13706096880) | `UkkeraPos-simulator.app.zip`, source `038c115e`; tested on iPhone 17 Pro Simulator, iOS 26.5, Xcode 26.6 |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42680343828](https://github.com/kira-manga/test/actions/runs/42680343828/artifacts/13706096880) | `UkkeraPos-simulator.app.zip`, source `038c115e`; startup tested on iPhone 17 Pro and iPad Pro 13-inch (M5) Simulators, iOS 26.5, Xcode 26.6 |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
@@ -91,7 +91,10 @@ captured pre/post-restart identity comparison are not established.
 
 Hosted package verification extracted the MSI, inspected the executable and ran
 its packaged `--smoke-exit` path. That is bounded startup evidence, not installed
-full setup or service qualification.
+full setup or service qualification. Separately, all ten native SDK-store methods
+passed against real HKCU/DPAPI on a disposable hosted administrative account, with
+the temporary directory owner restored and DACL unchanged. This does not qualify
+an ordinary nonadministrator installation profile or cross-process contention.
 
 ## macOS
 
@@ -122,7 +125,10 @@ xcrun simctl launch booted com.ukkera.pos.local
 Use an explicit simulator UDID instead of `booted` if more than one is running.
 This app ZIP targets the ARM64 iOS Simulator; it is not an iPhone/iPad IPA and
 cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
-versions and iPad presentation remain unverified.
+versions remain unverified. A separate exact-artifact startup check passed on an
+iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
+five seconds and the entry screen rendered. Interactions, rotation, accessibility
+and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and
 foreground the app, close and relaunch it. The security policy deliberately
@@ -140,7 +146,11 @@ No signing material is included in the repository or artifacts.
 With authorized signing access on a Mac:
 
 1. Open `apps/pos/apps/ios/UkkeraPos.xcodeproj` at the chosen tested source revision.
-   Use JDK 21; the checked-in Xcode framework script builds the shared code.
+   Use JDK 21; the checked-in Xcode framework script builds the shared code. The
+   current project references a single exact Keychain group using the authorized
+   profile’s App ID prefix plus bundle ID. The downloadable unsigned archives
+   predate this explicit entitlement configuration; rebuild from the current PR81
+   source for the signed test. No Team ID/prefix or wildcard group is guessed.
 2. Select scheme **UkkeraPos**, select the connected iPhone/iPad, and select the
    authorized Team under Signing & Capabilities. Retain the bundle ID. Let Xcode
    create/select the matching development profile through the owner's account.
@@ -154,6 +164,21 @@ With authorized signing access on a Mac:
 The simulator app, Swift linking and unsigned device archives are already built.
 The owner must provide signing access for a physical installation; a signing
 certificate alone does not resolve the remaining native production composition.
+
+## Synthetic screen and basket rehearsal
+
+Where the entry screen offers **Open training workspace**, it opens the bounded
+in-memory sample workspace without a production sign-in. Try product/category
+search, add and remove sample basket items, and clear the basket. Switch between
+English and Arabic, then leave and reopen training; record the actual result.
+**Explore company training** similarly opens a synthetic company view. These
+buttons do not create a company, employee, admission or production session.
+
+The sample products span grocery, bakery, café, kitchen and clothing. Basket
+amounts are illustrative sample totals; this rehearsal does not reserve stock,
+print a fiscal receipt, take payment or retain a durable business result. No live
+backend is required. Hosted startup checks did not click through this rehearsal,
+so these are hands-on test instructions rather than a passing interaction claim.
 
 ## Manual result checklist
 

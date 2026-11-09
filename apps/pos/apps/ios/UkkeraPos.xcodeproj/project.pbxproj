@@ -7,8 +7,9 @@
         A10000000000000000000001 = {isa = PBXBuildFile; fileRef = A10000000000000000000002; };
         A10000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UkkeraPosApp.swift; sourceTree = "<group>"; };
         A10000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+        A10000000000000000000016 = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = UkkeraPos.entitlements; sourceTree = "<group>"; };
         A10000000000000000000004 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = UkkeraPos.app; sourceTree = BUILT_PRODUCTS_DIR; };
-        A10000000000000000000005 = {isa = PBXGroup; children = (A10000000000000000000002, A10000000000000000000003, A10000000000000000000006); sourceTree = "<group>"; };
+        A10000000000000000000005 = {isa = PBXGroup; children = (A10000000000000000000002, A10000000000000000000003, A10000000000000000000016, A10000000000000000000006); sourceTree = "<group>"; };
         A10000000000000000000006 = {isa = PBXGroup; children = (A10000000000000000000004); name = Products; sourceTree = "<group>"; };
         A10000000000000000000007 = {
             isa = PBXProject;
@@ -67,6 +68,7 @@
             name = Debug;
             buildSettings = {
                 CODE_SIGN_STYLE = Automatic;
+                CODE_SIGN_ENTITLEMENTS = UkkeraPos.entitlements;
                 ENABLE_USER_SCRIPT_SANDBOXING = NO;
                 FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../ui/app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)");
                 GENERATE_INFOPLIST_FILE = NO;
@@ -87,6 +89,7 @@
             name = Release;
             buildSettings = {
                 CODE_SIGN_STYLE = Automatic;
+                CODE_SIGN_ENTITLEMENTS = UkkeraPos.entitlements;
                 ENABLE_USER_SCRIPT_SANDBOXING = NO;
                 FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/../../ui/app/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)");
                 GENERATE_INFOPLIST_FILE = NO;

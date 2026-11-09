@@ -22,6 +22,22 @@ The underlying direct framework tasks are
 `:ui:app:linkReleaseFrameworkIosArm64`. `adapters:local-master-host` is JVM-only
 and has no iOS compilation task; do not add it to an Apple target list.
 
+## Signing configuration prepared for the owner
+
+Both Debug and Release reference `UkkeraPos.entitlements`, which requests exactly
+`$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)` as the Keychain access group.
+Xcode resolves the actual App ID prefix from the authorized signing profile; no
+Team ID, prefix, signing identity, certificate or provisioning profile is guessed
+or committed. The prefix is not asserted to be a literal Team ID. No wildcard or
+other application group is granted. The native P1 observer must still verify its
+exact expected group and existing marker; this configuration does not create a
+marker, prove custody or authorize a Master.
+
+Select the authorized Team/profile in Xcode and keep the existing bundle ID
+`com.ukkera.pos.local`. Xcode/code signing must reject a profile that does not
+permit the exact group. Unsigned archives and simulator execution cannot qualify
+that entitlement or prove the positive native boundary.
+
 ## Toolchain: validate what is installed
 
 Do not assume Xcode **26.4** exists. Use the actual selected developer directory

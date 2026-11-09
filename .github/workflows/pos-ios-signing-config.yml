@@ -1,0 +1,60 @@
+name: POS iOS signing configuration (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of this snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  signing-config:
+    if: github.repository == 'kira-manga/test'
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Resolve both configurations using real Xcode
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p signing-config-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt signing-config-output/SOURCE-REVISION.txt
+          git rev-parse HEAD > signing-config-output/HARNESS-REVISION.txt
+          printf 'repository=%s\nrun=%s\nattempt=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > signing-config-output/workflow.txt
+          xcodebuild -version > signing-config-output/xcode.txt
+          plutil -lint apps/pos/apps/ios/UkkeraPos.entitlements > signing-config-output/plist.txt
+          for config in Debug Release; do
+            xcodebuild -project apps/pos/apps/ios/UkkeraPos.xcodeproj -scheme UkkeraPos \
+              -configuration "$config" -sdk iphoneos -showBuildSettings -json \
+              CODE_SIGNING_ALLOWED=NO > "$RUNNER_TEMP/pos-ios-settings-$config.json"
+          done
+          python3 - <<'PY'
+          import json, os, pathlib, plistlib
+          out = pathlib.Path('signing-config-output')
+          entitlement = pathlib.Path('apps/pos/apps/ios/UkkeraPos.entitlements')
+          expected = {'keychain-access-groups':['$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)']}
+          assert plistlib.loads(entitlement.read_bytes()) == expected
+          configs = {}
+          for config in ('Debug','Release'):
+              rows = json.loads((pathlib.Path(os.environ['RUNNER_TEMP']) / f'pos-ios-settings-{config}.json').read_text())
+              settings = next(row['buildSettings'] for row in rows if row['target'] == 'UkkeraPos')
+              assert settings['CODE_SIGN_ENTITLEMENTS'] == 'UkkeraPos.entitlements'
+              assert settings['PRODUCT_BUNDLE_IDENTIFIER'] == 'com.ukkera.pos.local'
+              assert settings['CODE_SIGN_STYLE'] == 'Automatic'
+              assert settings['TARGETED_DEVICE_FAMILY'] == '1,2'
+              assert (pathlib.Path(settings['SRCROOT']) / settings['CODE_SIGN_ENTITLEMENTS']).is_file()
+              configs[config] = {key:settings.get(key,'') for key in ('CODE_SIGN_ENTITLEMENTS','PRODUCT_BUNDLE_IDENTIFIER','CODE_SIGN_STYLE','TARGETED_DEVICE_FAMILY')}
+          (out / 'settings.json').write_text(json.dumps({'result':'PASS','configurations':configs,'entitlements':expected,'limits':'Configuration only; no signing, profile, native Keychain execution or app build'},indent=2)+'\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-ios-signing-config-${{ github.run_id }}-${{ github.run_attempt }}
+          path: signing-config-output
+          retention-days: 14

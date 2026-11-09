@@ -27,13 +27,21 @@ done < <(find scripts/pos -type f -name '*.py' -print0)
 echo "== xml/plist/project =="
 command -v xmllint >/dev/null 2>&1 || fail "xmllint is required"
 xmllint --noout apps/pos/apps/ios/Info.plist
+xmllint --noout apps/pos/apps/ios/UkkeraPos.entitlements
 xmllint --noout apps/pos/apps/ios/UkkeraPos.xcodeproj/xcshareddata/xcschemes/UkkeraPos.xcscheme
 
 python3 - <<'PY'
 import re
+import plistlib
 from pathlib import Path
 
 project = Path("apps/pos/apps/ios/UkkeraPos.xcodeproj/project.pbxproj").read_text()
+entitlements = plistlib.loads(Path("apps/pos/apps/ios/UkkeraPos.entitlements").read_bytes())
+if entitlements != {"keychain-access-groups": ["$(AppIdentifierPrefix)$(PRODUCT_BUNDLE_IDENTIFIER)"]}:
+    raise SystemExit("iOS entitlements must contain only the exact profile-prefix + bundle Keychain group")
+if project.count("CODE_SIGN_ENTITLEMENTS = UkkeraPos.entitlements;") != 2:
+    raise SystemExit("both iOS configurations must reference the exact Keychain entitlements file")
+
 if project.count("{") != project.count("}"):
     raise SystemExit("project.pbxproj has unbalanced braces")
 target_ids = re.findall(r"^\s*([A-F0-9]{24}) = \{\n\s*isa = PBXNativeTarget;", project, re.M)
