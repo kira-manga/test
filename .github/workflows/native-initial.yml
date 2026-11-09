@@ -32,7 +32,7 @@ jobs:
           java -version
       - name: Compile, link and test real Apple targets
         shell: bash
-        run: ./gradlew --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' :core:security:iosSimulatorArm64Test :adapters:app-gateway:compileKotlinIosSimulatorArm64 :core:database:compileKotlinIosSimulatorArm64 :ui:app:linkDebugFrameworkIosSimulatorArm64 --console=plain 2>&1 | tee native-apple.log
+        run: ./gradlew --no-daemon --max-workers=2 '-Pkotlin.compiler.execution.strategy=in-process' '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' :core:security:iosSimulatorArm64Test :adapters:app-gateway:compileKotlinIosSimulatorArm64 :core:database:compileKotlinIosSimulatorArm64 :ui:app:linkDebugFrameworkIosSimulatorArm64 --console=plain 2>&1 | tee native-apple.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -61,7 +61,7 @@ jobs:
       - name: Compile real Windows targets
         shell: pwsh
         run: |
-          ./gradlew.bat --no-daemon --max-workers=2 -Pkotlin.compiler.execution.strategy=in-process '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' :core:security:compileKotlinJvm :apps:desktop:compileKotlin --console=plain 2>&1 | Tee-Object native-windows.log
+          ./gradlew.bat --no-daemon --max-workers=2 '-Pkotlin.compiler.execution.strategy=in-process' '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' :core:security:compileKotlinJvm :apps:desktop:compileKotlin --console=plain 2>&1 | Tee-Object native-windows.log
           exit $LASTEXITCODE
       - uses: actions/upload-artifact@v4
         if: always()
