@@ -155,6 +155,8 @@ case "${POS_NATIVE_SLICE_GROUP:-io}" in
     status=$?
     set -e
     "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    # These existing tags emit static source locations/errno only, never native data.
+    "${ADB[@]}" logcat -d -s UkkeraNativeOwner:I UkkeraEnrollment:W '*:S' > "$OUT/native-owner-log.txt"
     # Read only selected synthetic evidence on the gated fresh emulator.
     # Raw app-private evidence stays in runner temp and is never uploaded.
     "${ADB[@]}" root > "$OUT/evidence-adb-context.txt" 2>&1 || true
