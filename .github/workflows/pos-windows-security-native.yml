@@ -41,7 +41,7 @@ jobs:
           git rev-parse HEAD > native-security-output/HARNESS-REVISION.txt
           printf 'run=%s\nattempt=%s\nrepository=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_REPOSITORY" > native-security-output/workflow.txt
           java -version 2> native-security-output/java.txt
-      - name: Execute only frozen genuine Windows SDK store cases
+      - name: Prepare toolchain without changing native test expectations
         shell: bash
         run: |
           set -euo pipefail
@@ -49,9 +49,52 @@ jobs:
           ./gradlew --no-daemon --max-workers=2 \
             '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
             -Pkotlin.compiler.execution.strategy=in-process \
-            :core:security:jvmTest \
-            --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' \
-            --console=plain 2>&1 | tee ../../native-security-output/gradle.txt
+            :core:security:compileTestKotlinJvm --console=plain
+      - name: Execute frozen cases in an ordinary disposable user profile
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Hosted runneradmin is elevated and its pre-created profile has a different owner.
+          # Use a genuine non-administrator profile; production owner checks stay unchanged.
+          $nativeUser = 'posnative' + $env:GITHUB_RUN_ATTEMPT
+          $nativePassword = [Guid]::NewGuid().ToString('N') + 'aA9!'
+          $securePassword = ConvertTo-SecureString $nativePassword -AsPlainText -Force
+          $account = New-LocalUser -Name $nativeUser -Password $securePassword -AccountNeverExpires
+          $nativeCredential = [PSCredential]::new("$env:COMPUTERNAME\$nativeUser", $securePassword)
+          $nativeSid = $account.SID.Value
+          $nativeHome = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
+          New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
+          & icacls.exe $env:GITHUB_WORKSPACE /grant "${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Workspace permission preparation failed' }
+          & icacls.exe $nativeHome /grant "${nativeSid}:(OI)(CI)F" /T /Q | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Disposable Gradle directory preparation failed' }
+          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'native-security-output\execute-native.ps1'
+          @'
+          $ErrorActionPreference = 'Stop'
+          $profileRoot = [Environment]::GetFolderPath('UserProfile')
+          $env:TEMP = Join-Path $profileRoot 'AppData\Local\Temp'
+          $env:TMP = $env:TEMP
+          New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
+          $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
+          $localData = [Environment]::GetFolderPath('LocalApplicationData')
+          $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $isAdmin = ([Security.Principal.WindowsPrincipal]::new($currentUser)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          if ($isAdmin) { throw 'Native qualification requires the ordinary disposable account' }
+          "administrative_token=$isAdmin`nprofile_owner=$((Get-Acl $localData).Owner)" | Set-Content native-security-output\profile.txt
+          Set-Location apps\pos
+          & .\gradlew.bat --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' -Pkotlin.compiler.execution.strategy=in-process :core:security:jvmTest --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' --console=plain *> ..\..\native-security-output\gradle.txt
+          exit $LASTEXITCODE
+          '@ | Set-Content -Path $scriptPath
+          try {
+            $nativeProcess = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $nativeCredential -LoadUserProfile -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -Wait -PassThru
+            Get-Content native-security-output\gradle.txt -Tail 100 -ErrorAction SilentlyContinue
+            if ($nativeProcess.ExitCode -ne 0) { throw "Native store tests exited $($nativeProcess.ExitCode)" }
+          } finally {
+            Remove-LocalUser -Name $nativeUser
+            $nativePassword = $null
+            $securePassword = $null
+            $nativeCredential = $null
+          }
       - name: Require all ten native cases, no skips
         shell: python
         run: |
