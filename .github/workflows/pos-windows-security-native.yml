@@ -62,20 +62,6 @@ jobs:
           $account = New-LocalUser -Name $nativeUser -Password $securePassword -AccountNeverExpires
           $nativeCredential = [PSCredential]::new("$env:COMPUTERNAME\$nativeUser", $securePassword)
           $nativeSid = $account.SID.Value
-          # CreateProcessWithLogon loads a hive but does not complete first-logon
-          # shell initialization on this runner image. Use the supported profile API.
-          Add-Type -TypeDefinition @'
-          using System;
-          using System.Text;
-          using System.Runtime.InteropServices;
-          public static class PosDisposableProfile {
-            [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
-            public static extern int CreateProfile(string sid, string name, StringBuilder path, uint length);
-          }
-          '@
-          $createdProfilePath = [Text.StringBuilder]::new(1024)
-          $profileResult = [PosDisposableProfile]::CreateProfile($nativeSid, $nativeUser, $createdProfilePath, 1024)
-          if ($profileResult -ne 0) { throw ('Windows profile creation failed: 0x{0:X8}' -f $profileResult) }
           $nativeHome = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
           New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
           & icacls.exe $env:GITHUB_WORKSPACE /grant "*${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
@@ -100,10 +86,22 @@ jobs:
           $env:TMP = $env:TEMP
           New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
           $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
-          # A new noninteractive profile has not run Explorer's folder initialization.
-          # Ask Windows to create its own known folder, then let production validate it.
+          # This disposable noninteractive profile has no Explorer first-logon setup.
+          # Configure only its LocalAppData through the public shell API. Production
+          # still resolves the real known folder and verifies its owner and ACLs.
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class PosDisposableKnownFolder {
+            [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+            public static extern int SHSetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, string path);
+          }
+          '@
+          $localFolderId = [Guid]'F1B32785-6FBA-4FCF-9D55-7B8E7F157091'
+          $folderResult = [PosDisposableKnownFolder]::SHSetKnownFolderPath([ref]$localFolderId, 0, [IntPtr]::Zero, $env:LOCALAPPDATA)
+          if ($folderResult -ne 0) { throw ('Disposable known-folder setup failed: 0x{0:X8}' -f $folderResult) }
           $localData = [Environment]::GetFolderPath('LocalApplicationData', 'Create')
-          if ([string]::IsNullOrWhiteSpace($localData)) { throw 'Windows did not initialize the disposable known folder' }
+          if ([string]::IsNullOrWhiteSpace($localData)) { throw 'Windows did not resolve the disposable known folder' }
           $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
           $isAdmin = ([Security.Principal.WindowsPrincipal]::new($currentUser)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
           if ($isAdmin) { throw 'Native qualification requires the ordinary disposable account' }
