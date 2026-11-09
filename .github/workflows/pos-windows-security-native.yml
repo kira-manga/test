@@ -62,6 +62,20 @@ jobs:
           $account = New-LocalUser -Name $nativeUser -Password $securePassword -AccountNeverExpires
           $nativeCredential = [PSCredential]::new("$env:COMPUTERNAME\$nativeUser", $securePassword)
           $nativeSid = $account.SID.Value
+          # CreateProcessWithLogon loads a hive but does not complete first-logon
+          # shell initialization on this runner image. Use the supported profile API.
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Text;
+          using System.Runtime.InteropServices;
+          public static class PosDisposableProfile {
+            [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+            public static extern int CreateProfile(string sid, string name, StringBuilder path, uint length);
+          }
+          '@
+          $createdProfilePath = [Text.StringBuilder]::new(1024)
+          $profileResult = [PosDisposableProfile]::CreateProfile($nativeSid, $nativeUser, $createdProfilePath, 1024)
+          if ($profileResult -ne 0) { throw ('Windows profile creation failed: 0x{0:X8}' -f $profileResult) }
           $nativeHome = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
           New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
           & icacls.exe $env:GITHUB_WORKSPACE /grant "*${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
