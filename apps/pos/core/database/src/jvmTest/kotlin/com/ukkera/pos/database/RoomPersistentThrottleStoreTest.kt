@@ -293,8 +293,13 @@ class RoomPersistentThrottleStoreTest {
             val before = fixture.rawBuckets()
             fixture.database.useWriterConnection { connection ->
                 connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
-                    assertEquals(ThrottleDenial.STORE_UNAVAILABLE,
-                        assertIs<ThrottleReservation.Denied>(attempt.reserve(fixture.now(1001))).reason)
+                    // DBO-005: database-outcome-classification-correction-v1.
+                    val error = assertFailsWith<RoomLocalStorageUncertain> {
+                        attempt.reserve(fixture.now(1001))
+                    }
+                    assertEquals("Local security storage outcome uncertain", error.message)
+                    assertNull(error.cause)
+                    assertTrue(error.suppressedExceptions.isEmpty())
                 }
             }
             assertEquals(before, fixture.rawBuckets())

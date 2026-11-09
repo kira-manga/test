@@ -86,7 +86,10 @@ jobs:
           $env:TMP = $env:TEMP
           New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
           $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
-          $localData = [Environment]::GetFolderPath('LocalApplicationData')
+          # A new noninteractive profile has not run Explorer's folder initialization.
+          # Ask Windows to create its own known folder, then let production validate it.
+          $localData = [Environment]::GetFolderPath('LocalApplicationData', 'Create')
+          if ([string]::IsNullOrWhiteSpace($localData)) { throw 'Windows did not initialize the disposable known folder' }
           $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
           $isAdmin = ([Security.Principal.WindowsPrincipal]::new($currentUser)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
           if ($isAdmin) { throw 'Native qualification requires the ordinary disposable account' }

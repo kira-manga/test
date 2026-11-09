@@ -55,21 +55,23 @@ class RoomLocalAccessIssuanceStoreTest {
         } finally { f.close() }
     }
 
+    // Successor oracle: database-outcome-classification-correction-v1.
     @Test fun duplicateInsertCannotExtendOrRebindEvenAnIdenticalExistingSession() = runTest {
         withCurrentFixture { f ->
             val before = f.snapshot()
             for (replacement in listOf(f.issuance(), f.issuance(duration = 3000),
                 f.issuance(actorId = testId(9740)), f.issuance(generation = 6), f.issuance(issuerContextId = testId(9741)))) {
-                assertIssuanceStorageUnavailable { f.protectedStore.transaction { it.insertIssuance(replacement) } }
+                assertIssuanceStorageUncertain { f.protectedStore.transaction { it.insertIssuance(replacement) } }
                 assertEquals(before, f.snapshot())
             }
         }
     }
 
+    // Successor oracle: database-outcome-classification-correction-v1.
     @Test fun caughtDuplicateInsertPoisonsTheTransactionAndRollsBackAnEarlierDistinctIssuance() = runTest {
         withCurrentFixture { f ->
             val before = f.snapshot(); var caught = false
-            assertIssuanceStorageUnavailable {
+            assertIssuanceStorageUncertain {
                 f.protectedStore.transaction { tx ->
                     tx.insertIssuance(f.issuance(sessionId = testId(9742)))
                     try { tx.insertIssuance(f.issuance()) } catch (_: IllegalStateException) { caught = true }
@@ -111,6 +113,7 @@ class RoomLocalAccessIssuanceStoreTest {
         }
     }
 
+    // Successor oracle: database-outcome-classification-correction-v1.
     @Test fun implicitRowidConflictsCannotDeleteAnotherIssuanceThroughAnyAliasOrScope() = runTest {
         for (victimRowid in listOf(1L, 0L, -1L, -7L)) {
             val f = LocalAuthorizationStoreFixture()
@@ -147,7 +150,7 @@ class RoomLocalAccessIssuanceStoreTest {
                 if (victimRowid == -1L) {
                     // SQLite's omitted NEW.rowid sentinel is -1. A deliberately raw -1 row is
                     // outside the normal Room insert path: conservative refusal beats deletion.
-                    assertIssuanceStorageUnavailable { f.protectedStore.transaction { it.insertIssuance(f.issuance(sessionId = testId(9782))) } }
+                    assertIssuanceStorageUncertain { f.protectedStore.transaction { it.insertIssuance(f.issuance(sessionId = testId(9782))) } }
                     assertEquals(before, f.snapshot())
                 } else {
                     f.protectedStore.transaction { it.insertIssuance(f.issuance(sessionId = testId(9782))) }
@@ -157,10 +160,11 @@ class RoomLocalAccessIssuanceStoreTest {
         }
     }
 
+    // Successor oracle: database-outcome-classification-correction-v1.
     @Test fun issuanceForeignKeyRequiresAnExistingBranchAndDoesNotProvisionIt() = runTest {
         withCurrentFixture { f ->
             val otherScope = TEST_SCOPE.copy(branchId = testId(9743)); val before = f.snapshot()
-            assertIssuanceStorageUnavailable { f.protectedStore.transaction { it.insertIssuance(f.issuance(scope = otherScope)) } }
+            assertIssuanceStorageUncertain { f.protectedStore.transaction { it.insertIssuance(f.issuance(scope = otherScope)) } }
             assertEquals(before, f.snapshot())
         }
     }
@@ -303,6 +307,13 @@ private const val ISSUANCE_TABLE = "protected_local_access_issuance"
 private suspend fun executeIssuanceSql(f: LocalAuthorizationStoreFixture, sql: String) = f.database.useWriterConnection { connection ->
     requireDurableWriter(connection)
     connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) { usePrepared(sql) { it.step() } }
+}
+
+private suspend fun assertIssuanceStorageUncertain(block: suspend () -> Any?) {
+    val error = assertFailsWith<RoomLocalStorageUncertain> { block() }
+    assertEquals("Local security storage outcome uncertain", error.message)
+    assertNull(error.cause)
+    assertTrue(error.suppressedExceptions.isEmpty())
 }
 
 private suspend fun assertIssuanceStorageUnavailable(block: suspend () -> Any?) {
