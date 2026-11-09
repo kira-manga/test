@@ -1,0 +1,16 @@
+{
+  "source_revision": "afc7f369c866f1e74581c683fdb7a336beb24e9e",
+  "runtime_tests_source_revision": "896c1c17bdf7d20f39003d5981cdf98515f85d03",
+  "signer_certificate_sha256": "54f974f83a806bd08dfebd647615e31c3c11866ba9f81a78774aee544dc9e08f",
+  "limits": "Source revisions are build provenance, not native or owner acceptance.",
+  "app": {
+    "filename": "ukkera-pos-testing.apk",
+    "sha256": "773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7",
+    "bytes": 34202286
+  },
+  "runtime_tests": {
+    "filename": "ukkera-pos-runtime-tests.apk",
+    "sha256": "f57c5ae141cf417711ce1af1ad9b27de7b37a8cc1fc94511ed2539ebb6f7f743",
+    "bytes": 5034308
+  }
+}

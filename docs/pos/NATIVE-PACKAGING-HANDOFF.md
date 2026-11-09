@@ -327,3 +327,28 @@ A successful package is not a passing owner test. The iOS smoke and desktop
       physical-device claim.
 - [ ] Hand the simulator app, DMGs/MSI and diagnostics to the owner test campaign
       separately; record actual launch/install outcomes and remaining scope.
+
+## Android frozen native I/O qualification inputs
+
+`pos-android-native-io.yml` consumes a staged application/instrumentation pair in
+`testing-inputs/` in the auxiliary snapshot. The source tree does not contain APKs
+or private signing material. Generate both APKs with the retained local-testing
+signer, then stage only their public bytes and provenance:
+
+```sh
+python3 scripts/pos/android/stage-native-io-inputs.py \
+  --app-artifact-directory apps/pos/apps/android/build/outputs/local-testing-signed \
+  --runtime-tests-apk apps/pos/apps/android-runtime-tests/build/outputs/apk/localTesting/android-runtime-tests-localTesting.apk \
+  --runtime-tests-source-revision <full-revision-used-for-instrumentation-build> \
+  --apksigner <sdk>/build-tools/<version>/apksigner \
+  --out <auxiliary-checkout>/testing-inputs
+```
+
+Dispatch with `apk_source_revision` equal to the full application source revision
+in `apk-pair.json`. The manifest records the instrumentation revision separately;
+the workflow validates the requested application revision, both file hashes and
+sizes, the exact signer, and the actual emulator SDK before installation. It
+retains both APKs, manifests, instrumentation output and native/crash logs,
+including failed instrumentation runs. API 24, 35 and 37 use the same unchanged
+N18/N19/N20 methods. These three native file-I/O slices do not qualify original
+identity, keys, setup, business operations or owner acceptance.
