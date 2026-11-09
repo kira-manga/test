@@ -1,43 +1,46 @@
-# Genuine HKCU/DPAPI qualification on a disposable hosted Windows account.
-# Only a fresh synthetic directory and the account's temporary known-folder mapping
-# are configured. No production guard, registry value, or historical input changes.
+# Genuine HKCU/DPAPI qualification on the disposable hosted Windows account.
+# Normalize only the owner of that account's existing LocalAppData directory for
+# this run, then restore it. No DACL, production guard, registry data or test oracle changes.
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_REPOSITORY -ne 'kira-manga/test' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
     throw 'This executor requires the authorized disposable GitHub-hosted runner'
 }
-Add-Type -TypeDefinition @'
-using System;
-using System.Runtime.InteropServices;
-public static class PosNativeKnownFolder {
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
-    public static extern int SHSetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, string path);
+$localFolder = [Environment]::GetFolderPath('LocalApplicationData')
+if ([string]::IsNullOrWhiteSpace($localFolder)) { throw 'Hosted account has no genuine LocalAppData' }
+$folder = Get-Item -LiteralPath $localFolder
+if (-not $folder.PSIsContainer -or ($folder.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+    throw 'Hosted LocalAppData must be an existing ordinary directory'
 }
-'@
-$folderId = [Guid]'F1B32785-6FBA-4FCF-9D55-7B8E7F157091'
-$originalFolder = [Environment]::GetFolderPath('LocalApplicationData')
-if ([string]::IsNullOrWhiteSpace($originalFolder)) { throw 'Hosted account has no genuine LocalAppData' }
-$fixtureRoot = Join-Path $originalFolder ('ukkera-pos-wdpapi-profile-' + $env:GITHUB_RUN_ID)
-if (Test-Path $fixtureRoot) { throw 'Preserve an existing fixture; do not reuse its state' }
-New-Item -ItemType Directory -Path $fixtureRoot | Out-Null
 $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$security = [Security.AccessControl.DirectorySecurity]::new()
-$security.SetOwner($currentIdentity.User)
-$security.SetAccessRuleProtection($true, $false)
-$security.AddAccessRule([Security.AccessControl.FileSystemAccessRule]::new(
-    $currentIdentity.User, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
-Set-Acl -LiteralPath $fixtureRoot -AclObject $security
-$originalEnvironmentFolder = $env:LOCALAPPDATA
-$mapped = $false
+$originalAcl = Get-Acl -LiteralPath $localFolder
+$originalOwner = $originalAcl.GetOwner([Security.Principal.SecurityIdentifier])
+$originalDacl = $originalAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access)
+$ownerChanged = $false
 try {
-    $result = [PosNativeKnownFolder]::SHSetKnownFolderPath([ref]$folderId, 0, [IntPtr]::Zero, $fixtureRoot)
-    if ($result -ne 0) { throw ('Temporary known-folder setup failed: 0x{0:X8}' -f $result) }
-    $mapped = $true
-    $env:LOCALAPPDATA = $fixtureRoot
+    if ($originalOwner.Value -ne $currentIdentity.User.Value) {
+        # Hosted admin profiles may have Administrators as owner. The production
+        # guard correctly refuses those profiles. Configure this disposable account
+        # explicitly; do not relax the guard or rewrite/redirect a known folder.
+        $ownerOnly = [Security.AccessControl.DirectorySecurity]::new()
+        $ownerOnly.SetOwner($currentIdentity.User)
+        Set-Acl -LiteralPath $localFolder -AclObject $ownerOnly
+        $ownerChanged = $true
+    }
+    $configuredAcl = Get-Acl -LiteralPath $localFolder
+    if ($configuredAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $currentIdentity.User.Value) {
+        throw 'Disposable LocalAppData owner was not configured for the actual account'
+    }
+    if ($configuredAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -cne $originalDacl) {
+        throw 'LocalAppData DACL changed unexpectedly'
+    }
     $isAdmin = ([Security.Principal.WindowsPrincipal]::new($currentIdentity)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     @"
 execution_context=disposable hosted current-user account
 administrative_token=$isAdmin
-local_app_data=OS-known-folder mapping to exact synthetic user-owned directory
+local_app_data=existing genuine OS-known-folder path
+fixture_setup=directory owner only, nonrecursive, restored after execution
+owner_adjusted=$ownerChanged
+dacl=unchanged
 owner_checks=production checks unchanged
 scope=no ordinary-nonadministrator-profile or ACL/other-user qualification
 "@ | Set-Content native-security-output\profile.txt
@@ -48,13 +51,21 @@ scope=no ordinary-nonadministrator-profile or ACL/other-user qualification
     } finally { Pop-Location }
     Get-Content native-security-output\gradle.txt -Tail 100
     if ($nativeStatus -ne 0) { throw "Native store tests exited $nativeStatus" }
+} catch {
+    # A failed precheck is still retained even when Gradle never starts.
+    $_.Exception.Message | Set-Content native-security-output\failure.txt
+    throw
 } finally {
-    $env:LOCALAPPDATA = $originalEnvironmentFolder
-    if ($mapped) {
-        $restore = [PosNativeKnownFolder]::SHSetKnownFolderPath([ref]$folderId, 0, [IntPtr]::Zero, $originalFolder)
-        if ($restore -ne 0) { throw ('Known-folder restoration failed: 0x{0:X8}' -f $restore) }
-        'original known-folder mapping restored' | Set-Content native-security-output\profile-restoration.txt
+    if ($ownerChanged) {
+        $restoreOwner = [Security.AccessControl.DirectorySecurity]::new()
+        $restoreOwner.SetOwner($originalOwner)
+        Set-Acl -LiteralPath $localFolder -AclObject $restoreOwner
+        $restoredAcl = Get-Acl -LiteralPath $localFolder
+        if ($restoredAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $originalOwner.Value -or
+            $restoredAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -cne $originalDacl) {
+            throw 'LocalAppData owner/DACL restoration did not match the original'
+        }
     }
-    # Leave exact synthetic files on this disposable runner for diagnostics until
-    # runner destruction. They are not uploaded. The test deletes its exact values.
+    'original directory owner and unchanged DACL verified' | Set-Content native-security-output\profile-restoration.txt
+    # No raw store files are uploaded. Tests remove their exact synthetic values.
 }
