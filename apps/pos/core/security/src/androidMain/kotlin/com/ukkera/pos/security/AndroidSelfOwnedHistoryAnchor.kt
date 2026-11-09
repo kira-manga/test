@@ -637,18 +637,26 @@ internal class AndroidSelfOwnedHistoryAnchor(
         }
         val plaintext = SelfOwnedNativeHistoryWireV2.encodeRecord(next)
         val aad = SelfOwnedNativeHistoryWireV2.envelopeAad(next.allocation)
-        val nonce = AndroidP256Primitives.randomBytes(12)
-        var ciphertext: ByteArray? = null; var signature: ByteArray? = null; var envelope: ByteArray? = null
+        var nonce: ByteArray? = null; var ciphertext: ByteArray? = null
+        var signature: ByteArray? = null; var envelope: ByteArray? = null
         try {
             guard()
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, material.storageKey(), GCMParameterSpec(128, nonce)); cipher.updateAAD(aad)
+            // The original key requires randomized encryption. AndroidKeyStore must
+            // generate the IV; a caller-selected IV is refused even when random.
+            cipher.init(Cipher.ENCRYPT_MODE, material.storageKey())
+            val actualNonce = cipher.iv ?: uncertain()
+            nonce = actualNonce
+            val parameters = cipher.parameters?.getParameterSpec(GCMParameterSpec::class.java) ?: uncertain()
+            known(actualNonce.size == 12 && parameters.tLen == 128 && parameters.iv.contentEquals(actualNonce))
+            cipher.updateAAD(aad)
             val encrypted = cipher.doFinal(plaintext); ciphertext = encrypted
-            val signed = signing.signHistoryEnvelope(next.allocation, aad, nonce, encrypted,initialization); signature = signed
-            val encoded = SelfOwnedNativeHistoryWireV2.encodeEnvelope(nonce, encrypted, signed); envelope = encoded
+            known(encrypted.size == plaintext.size + 16)
+            val signed = signing.signHistoryEnvelope(next.allocation, aad, actualNonce, encrypted,initialization); signature = signed
+            val encoded = SelfOwnedNativeHistoryWireV2.encodeEnvelope(actualNonce, encrypted, signed); envelope = encoded
             namespace.retainHistoryAnchorBytes(encoded)
             if (initialization != null) requireOriginalMasterSdkAssociation(next, next.allocation, initialization)
-        } finally { plaintext.fill(0); aad.fill(0); nonce.fill(0); ciphertext?.fill(0); signature?.fill(0); envelope?.fill(0) }
+        } finally { plaintext.fill(0); aad.fill(0); nonce?.fill(0); ciphertext?.fill(0); signature?.fill(0); envelope?.fill(0) }
     }
 
     private fun next(old: NativeHistoryAnchorRecordV2, definition: LocalBranchInstallationSnapshotV2? = old.definition,

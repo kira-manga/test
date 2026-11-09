@@ -47,8 +47,48 @@ try {
     if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'Native profile qualification requires a nonadministrator token'
     }
-    $profile = [Environment]::GetFolderPath('UserProfile')
-    $local = [Environment]::GetFolderPath('LocalApplicationData')
+    # Start-Process can inherit the administrator's environment even with a
+    # loaded ordinary profile. Resolve this token's real OS profile first; never
+    # redirect a known folder or reuse the parent's LOCALAPPDATA value.
+    $nativeTemp = Join-Path $PSScriptRoot 'native-temp'
+    New-Item -ItemType Directory -Path $nativeTemp -Force | Out-Null
+    $env:TEMP = $nativeTemp
+    $env:TMP = $nativeTemp
+    Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class PosOrdinaryProfile {
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool GetUserProfileDirectoryW(IntPtr token, StringBuilder path, ref uint size);
+    [DllImport("shell32.dll", ExactSpelling = true)]
+    private static extern int SHGetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, out IntPtr path);
+    [DllImport("ole32.dll", ExactSpelling = true)]
+    private static extern void CoTaskMemFree(IntPtr path);
+    public static string Profile(IntPtr token) {
+        var path = new StringBuilder(32768);
+        uint size = (uint)path.Capacity;
+        if (!GetUserProfileDirectoryW(token, path, ref size))
+            throw new InvalidOperationException("OS profile lookup failed: " + Marshal.GetLastWin32Error());
+        return path.ToString();
+    }
+    public static string Known(string id, IntPtr token) {
+        var folder = new Guid(id);
+        IntPtr path;
+        int status = SHGetKnownFolderPath(ref folder, 0, token, out path);
+        try {
+            if (status < 0 || path == IntPtr.Zero)
+                throw new InvalidOperationException("OS known-folder lookup failed: " + status);
+            return Marshal.PtrToStringUni(path);
+        } finally { if (path != IntPtr.Zero) CoTaskMemFree(path); }
+    }
+}
+"@
+    $profile = [PosOrdinaryProfile]::Profile($identity.Token)
+    $env:USERPROFILE = $profile
+    $local = [PosOrdinaryProfile]::Known('F1B32785-6FBA-4FCF-9D55-7B8E7F157091', $identity.Token)
+    $env:LOCALAPPDATA = $local
+    $env:APPDATA = [PosOrdinaryProfile]::Known('3EB685DB-65F9-4CF6-A03A-E3EF65729F3D', $identity.Token)
     if ([string]::IsNullOrWhiteSpace($profile) -or [string]::IsNullOrWhiteSpace($local)) {
         throw 'Ordinary account OS-known folders are unavailable'
     }
