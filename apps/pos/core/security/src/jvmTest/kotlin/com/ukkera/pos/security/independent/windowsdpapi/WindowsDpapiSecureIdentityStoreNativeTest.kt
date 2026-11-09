@@ -441,7 +441,13 @@ class WindowsDpapiSecureIdentityStoreNativeTest {
                 if (${'$'}null -eq ${'$'}value) { Write-Output 'HKCU_ABSENT'; exit 0 }
                 if (-not (${'$'}value -is [byte[]])) { throw 'The exact HKCU value is not REG_BINARY' }
                 ${'$'}entropy = [Convert]::FromBase64String('${Base64.getEncoder().encodeToString(entropy)}')
-                ${'$'}plain = [System.Security.Cryptography.ProtectedData]::Unprotect(${'$'}value, ${'$'}entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
+                # The frozen outer envelope is asserted independently below in Kotlin.
+                # DPAPI receives its ciphertext field, not the application header.
+                ${'$'}headerLength = ${OUTER_MAGIC.size + 4 + 32 + 4}
+                if (${'$'}value.Length -le ${'$'}headerLength) { throw 'The exact HKCU outer envelope is truncated' }
+                ${'$'}cipher = New-Object byte[] (${'$'}value.Length - ${'$'}headerLength)
+                [Array]::Copy(${'$'}value, ${'$'}headerLength, ${'$'}cipher, 0, ${'$'}cipher.Length)
+                ${'$'}plain = [System.Security.Cryptography.ProtectedData]::Unprotect(${'$'}cipher, ${'$'}entropy, [System.Security.Cryptography.DataProtectionScope]::CurrentUser)
                 Write-Output 'HKCU_PRESENT'
                 Write-Output ('VALUE=' + [Convert]::ToBase64String(${'$'}value))
                 Write-Output ('PLAIN=' + [Convert]::ToBase64String(${'$'}plain))
