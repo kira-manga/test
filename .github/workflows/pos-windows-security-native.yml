@@ -64,9 +64,9 @@ jobs:
           $nativeSid = $account.SID.Value
           $nativeHome = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
           New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
-          & icacls.exe $env:GITHUB_WORKSPACE /grant "${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
+          & icacls.exe $env:GITHUB_WORKSPACE /grant "*${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Workspace permission preparation failed' }
-          & icacls.exe $nativeHome /grant "${nativeSid}:(OI)(CI)F" /T /Q | Out-Null
+          & icacls.exe $nativeHome /grant "*${nativeSid}:(OI)(CI)F" /T /Q | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Disposable Gradle directory preparation failed' }
           $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'native-security-output\execute-native.ps1'
           @'
