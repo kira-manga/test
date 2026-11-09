@@ -1353,12 +1353,18 @@ public object NativeHistoryOwnedSqlV2 {
         }
     }
 
+    // Private TEMP-spool metadata is distinct from every captured application column.
+    // OUTBOX/JOURNAL_FRAGMENT already contain an application column named ordinal.
+    public const val IMAGE_ORDINAL_COLUMN: String = "__rh_ordinal"
+    public const val IMAGE_SIDE_COLUMN: String = "__rh_side"
+    public const val IMAGE_ROW_ID_COLUMN: String = "__rh_rowid"
     public val captureObjects: Map<String,Object> = buildMap {
         for(table in NativeHistoryTableV2.entries.filter { it.application }) {
             val columns=NativeHistoryPhysicalReadProfileV2.columns(table)
             val spool="__rh_image_${table.tag}"
-            put(spool,Object("table",spool,"CREATE TEMP TABLE `$spool` (`ordinal` INTEGER NOT NULL, `side` INTEGER NOT NULL, `rid` INTEGER NOT NULL, "+
-                columns.joinToString(", ") { "`${it.name}` ${it.type.name}" }+", PRIMARY KEY(`ordinal`, `side`))"))
+            check(columns.none { it.name in setOf(IMAGE_ORDINAL_COLUMN, IMAGE_SIDE_COLUMN, IMAGE_ROW_ID_COLUMN) })
+            put(spool,Object("table",spool,"CREATE TEMP TABLE `$spool` (`$IMAGE_ORDINAL_COLUMN` INTEGER NOT NULL, `$IMAGE_SIDE_COLUMN` INTEGER NOT NULL, `$IMAGE_ROW_ID_COLUMN` INTEGER NOT NULL, "+
+                columns.joinToString(", ") { "`${it.name}` ${it.type.name}" }+", PRIMARY KEY(`$IMAGE_ORDINAL_COLUMN`, `$IMAGE_SIDE_COLUMN`))"))
             put("sqlite_autoindex_${spool}_1",Object("index",spool,null))
             for((operation,tag) in listOf("INSERT" to 1,"UPDATE" to 2,"DELETE" to 3)) {
                 if(table.immutable && operation!="INSERT") continue

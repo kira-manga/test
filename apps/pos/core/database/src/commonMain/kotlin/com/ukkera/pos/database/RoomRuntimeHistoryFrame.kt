@@ -1663,19 +1663,23 @@ internal class RoomRuntimeHistoryFrame internal constructor(
      * Unique (ordinal,side) in the native-owned spool plus exact one-row reads below make
      * these counts a crosswalk, not a count-only completeness claim. */
     private suspend fun requireImageCensus() {
+        val ordinalColumn = NativeHistoryOwnedSqlV2.IMAGE_ORDINAL_COLUMN
+        val sideColumn = NativeHistoryOwnedSqlV2.IMAGE_SIDE_COLUMN
+        val rowIdColumn = NativeHistoryOwnedSqlV2.IMAGE_ROW_ID_COLUMN
         for (table in RuntimeHistoryTableV2.entries.filter { it.application }) {
             val expected=scalar("SELECT COALESCE(sum((beforeRowId IS NOT NULL)+(afterRowId IS NOT NULL)),0) " +
                 "FROM runtime_history_capture_v2 WHERE tableTag=${table.tag}")
             check(scalar("SELECT count(*) FROM temp.`__rh_image_${table.tag}`")==expected)
             check(scalar("SELECT count(*) FROM temp.`__rh_image_${table.tag}` AS i " +
-                "LEFT JOIN runtime_history_capture_v2 AS c ON c.captureOrdinal=i.ordinal AND c.tableTag=${table.tag} " +
-                "WHERE c.captureOrdinal IS NULL OR typeof(i.ordinal)!='integer' OR typeof(i.side)!='integer' OR typeof(i.rid)!='integer' " +
-                "OR i.side NOT IN (0,1) OR (i.side=0 AND (c.beforeRowId IS NULL OR i.rid!=c.beforeRowId)) " +
-                "OR (i.side=1 AND (c.afterRowId IS NULL OR i.rid!=c.afterRowId))")==0L)
+                "LEFT JOIN runtime_history_capture_v2 AS c ON c.captureOrdinal=i.`$ordinalColumn` AND c.tableTag=${table.tag} " +
+                "WHERE c.captureOrdinal IS NULL OR typeof(i.`$ordinalColumn`)!='integer' OR typeof(i.`$sideColumn`)!='integer' OR typeof(i.`$rowIdColumn`)!='integer' " +
+                "OR i.`$sideColumn` NOT IN (0,1) OR (i.`$sideColumn`=0 AND (c.beforeRowId IS NULL OR i.`$rowIdColumn`!=c.beforeRowId)) " +
+                "OR (i.`$sideColumn`=1 AND (c.afterRowId IS NULL OR i.`$rowIdColumn`!=c.afterRowId))")==0L)
         }
     }
     private suspend fun readImage(table: RuntimeHistoryTableV2, ordinal: Long, side: Int): NativeHistoryPhysicalRowV2 =
-        readPhysicalRow(table, "rid", " FROM temp.`__rh_image_${table.tag}` WHERE ordinal=? AND side=?", listOf(ordinal, side))
+        readPhysicalRow(table, "`${NativeHistoryOwnedSqlV2.IMAGE_ROW_ID_COLUMN}`",
+            " FROM temp.`__rh_image_${table.tag}` WHERE `${NativeHistoryOwnedSqlV2.IMAGE_ORDINAL_COLUMN}`=? AND `${NativeHistoryOwnedSqlV2.IMAGE_SIDE_COLUMN}`=?", listOf(ordinal, side))
     private suspend fun readRetirementRow(retirementId: DomainId): NativeHistoryPhysicalRowV2 =
         readPhysicalRow(RuntimeHistoryTableV2.AUTH_EVENT, "rowid", " FROM protected_local_auth_event WHERE scope=? AND eventId=?",
             listOf(scopeKey, retirementId.value))
