@@ -381,7 +381,9 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                         }
                 }
                 roomCoroutines.bindForeground(this, actual)
+                roomCoroutines.traceStage("foreground-before-start")
                 actual.start(); actual.join()
+                roomCoroutines.traceStage("foreground-joined")
                 roomCoroutines.finishInvocation(this)
                 val value = checkNotNull(bodyResult) { "Owned Room body did not actually return" }
                 val dispose = synchronized(gate) {

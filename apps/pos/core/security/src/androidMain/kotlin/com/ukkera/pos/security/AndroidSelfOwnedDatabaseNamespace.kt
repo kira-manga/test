@@ -583,6 +583,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
     private var frameInvocation: Any? = null
 
     override public fun open(fileName: String): SQLiteConnection {
+        coroutines.traceStage("driver-open-before-actor")
         val actor = coroutines.sqlActor()
         check(actor.kind == AndroidOwnedRoomCoroutines.Kind.FOREGROUND)
         work.requireActive()
@@ -638,7 +639,10 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
         fun openNative() {
             check(raw == null)
             val driver = BundledSQLiteDriver(); check(!driver.hasConnectionPool)
+            coroutines.traceStage("bundled-driver-open-before")
+            work.requireActive()
             raw = driver.open(databasePath, SQLITE_OPEN_READWRITE or SQLITE_OPEN_NOFOLLOW)
+            coroutines.traceStage("bundled-driver-open-returned")
             val current = anchor.snapshotOriginal().record.database
             current?.let { check(namespace.observeRoomDatabaseIdentity(databasePath, it.roomIdentityHash) == it) }
         }
@@ -647,6 +651,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
             return checkNotNull(raw).inTransaction()
         }
         override fun prepare(sql: String): SQLiteStatement {
+            if (!ready) coroutines.traceStage("initial-sql-prepare-before-actor")
             val actor = coroutines.sqlActor()
             check(!closeStarted && !actuallyClosed)
             val actualSql = if (!ready && sql == "PRAGMA temp_store = MEMORY") "PRAGMA temp_store = FILE" else sql
@@ -740,6 +745,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
                 return current
             }
             override fun step(): Boolean {
+                if (!ready) coroutines.traceStage("initial-sql-step-before-actor")
                 val current = actor()
                 authorize(current, sql, submitting = true)
                 if (current.kind == AndroidOwnedRoomCoroutines.Kind.NATIVE)

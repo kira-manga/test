@@ -1,7 +1,10 @@
 package com.ukkera.pos.security
 
+import android.util.Log
+
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.ContinuationInterceptor
 import kotlin.coroutines.CoroutineContext
@@ -41,6 +44,24 @@ internal class AndroidOwnedRoomCoroutines(
     internal class ThreadState internal constructor(val previous: Entry?, val entered: Entry?)
     private class Ticket(val actor: Actor?, val job: Job?)
 
+    // Diagnostic budget only. It never selects an actor, admits SQL or establishes custody.
+    private val diagnosticSteps = AtomicInteger()
+    internal fun traceStage(phase: String, context: CoroutineContext? = null) {
+        val step = diagnosticSteps.getAndUpdate { if (it < 192) it + 1 else it }
+        if (step >= 192) return
+        try {
+            val locations = Throwable().stackTrace.filter {
+                it.className.startsWith("com.ukkera.pos.") &&
+                    it.className != AndroidOwnedRoomCoroutines::class.java.name
+            }.take(4).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
+            val actual = context?.get(Job)
+            Log.i("UkkeraNativeOwner", "Owned Room stage: step=$step; phase=$phase; " +
+                "jobType=${actual?.javaClass?.name ?: "none"}; " +
+                "ownedDispatcher=${context?.get(ContinuationInterceptor) === dispatcher}; " +
+                "controlToken=${context?.let(work::roomToken) != null}; $locations")
+        } catch (_: Throwable) { /* Best effort static metadata only, never authority. */ }
+    }
+
     private val gate = Any()
     private val parent = SupervisorJob(ownerJob)
     private val uncertain = AtomicBoolean(false)
@@ -68,6 +89,7 @@ internal class AndroidOwnedRoomCoroutines(
         // Also intercept first launches and already-cancelled resumptions. No inline bypass.
         override fun isDispatchNeeded(context: CoroutineContext): Boolean = true
         override fun dispatch(context: CoroutineContext, block: Runnable) {
+            traceStage("dispatch-before-classification", context)
             var failure: Throwable? = null
             val ticket = synchronized(gate) {
                 val actor = try { actorLocked(context) } catch (caught: Throwable) { failure = caught; null }
@@ -123,6 +145,7 @@ internal class AndroidOwnedRoomCoroutines(
     }
 
     fun queryContext(): CoroutineContext {
+        traceStage("builder-query-context")
         val control = requireControl()
         work.requireActive()
         synchronized(gate) {
@@ -135,6 +158,7 @@ internal class AndroidOwnedRoomCoroutines(
     }
 
     fun afterActualBuilder() {
+        traceStage("builder-returned")
         requireControl(); work.requireActive()
         synchronized(gate) {
             check(builderStarted && !builderReturned && !stopping)
@@ -147,6 +171,7 @@ internal class AndroidOwnedRoomCoroutines(
     /** Called by the private invocation element as well as the native query element. These
      * callbacks MUST NOT throw into coroutines' thread-context machinery. */
     fun enter(context: CoroutineContext, query: Boolean): ThreadState {
+        traceStage(if (query) "query-context-enter" else "control-context-enter", context)
         val local = if (query) queryThread else controlThread
         val previous = local.get()
         var entered: Entry? = null
@@ -239,6 +264,7 @@ internal class AndroidOwnedRoomCoroutines(
 
     /** Called OUTSIDE the actual outer query context; retains this exact original deadline. */
     suspend fun drainBeforeNative() {
+        traceStage("drain-before-native")
         val current = requireControl()
         check(currentCoroutineContext()[Job] === current.actor.root && queryThread.get() == null)
         synchronized(gate) { captureRootsLocked(); fenced = true; quiet = false }
