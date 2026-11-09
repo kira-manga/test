@@ -57,7 +57,7 @@ normal package workflow:
 
 ```sh
 # macOS local check; expected to be unsigned.
-hdiutil attach UkkeraPOS-0.1.0.dmg -nobrowse -readonly
+hdiutil attach UkkeraPOS-1.0.0.dmg -nobrowse -readonly
 cp -R /Volumes/UkkeraPOS/UkkeraPOS.app /Applications/
 # First launch: right-click Open (or use the owner's signed build later).
 # Optional bounded smoke:

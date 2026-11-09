@@ -387,8 +387,9 @@ public object SelfOwnedInstalledIdentityV2 {
             return SelfOwnedInstalledIdentityResultV2.Refused(discrimination)
         }
         if (factory == SelfOwnedInstalledIdentityFactoryV2.IOS_ACTIVE_APP) {
-            // P1 is PENDING_LEAD_OWNER_CONFIRMATION. No schema flag, caller policy Boolean or
-            // accepting fallback can enable identity-bearing iOS acceptance.
+            // This historical V2 factory retains its frozen pending-policy refusal.
+            // The approved additive iOS boundary separately requires current native evidence;
+            // no schema flag, caller Boolean or fallback enables this historical factory.
             return SelfOwnedInstalledIdentityResultV2.Refused(
                 SelfOwnedInstalledIdentityRefusalV2.REFUSE_POLICY_PENDING,
             )

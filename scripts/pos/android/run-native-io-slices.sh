@@ -7,6 +7,38 @@ APP_APK="$1"
 TEST_APK="$2"
 OUT="$3"
 PAIR_MANIFEST="$4"
+[[ ! -e "$OUT/instrumentation.txt" && ! -e "$OUT/provenance.json" ]] || { echo 'Preserve the existing result; use a new output directory.' >&2; exit 2; }
+mkdir -p "$OUT"
+PHASE=precheck
+retain_outcome() {
+  local status=$?
+  if [[ "$status" -ne 0 ]]; then
+    printf 'FAIL: phase=%s exit_status=%s\n' "$PHASE" "$status" > "$OUT/failure.txt"
+  fi
+}
+trap retain_outcome EXIT
+python3 - "$OUT/provenance.json" <<'PYPROVENANCE'
+import json, os, pathlib, subprocess, sys
+
+def revision():
+    try:
+        return subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True, stderr=subprocess.DEVNULL).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return 'unavailable'
+
+source_file = pathlib.Path('SOURCE-REVISION.txt')
+record = {
+    'harness_revision': revision(),
+    'snapshot_source_revision': source_file.read_text().strip() if source_file.is_file() else 'unavailable',
+    'expected_apk_source_revision': os.environ.get('POS_EXPECTED_APK_SOURCE', ''),
+    'expected_android_sdk': os.environ.get('POS_EXPECTED_ANDROID_API', ''),
+    'repository': os.environ.get('GITHUB_REPOSITORY', ''),
+    'workflow': os.environ.get('GITHUB_WORKFLOW', ''),
+    'run_id': os.environ.get('GITHUB_RUN_ID', ''),
+    'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', ''),
+}
+pathlib.Path(sys.argv[1]).write_text(json.dumps(record, indent=2) + '\n')
+PYPROVENANCE
 [[ -f "$PAIR_MANIFEST" ]] || { echo "APK pair manifest is required." >&2; exit 2; }
 [[ "${POS_EXPECTED_ANDROID_API:-}" =~ ^[0-9]+$ ]] || { echo "Expected Android SDK is required." >&2; exit 2; }
 [[ "${POS_EXPECTED_APK_SOURCE:-}" =~ ^[0-9a-f]{40}$ ]] || { echo "Expected APK source revision is required." >&2; exit 2; }
@@ -20,8 +52,6 @@ fi
 [[ "$SERIAL" == emulator-* && "$SERIAL" != *$'\n'* ]] || { echo 'Select exactly one emulator with ANDROID_SERIAL.' >&2; exit 2; }
 ADB=(adb -s "$SERIAL")
 [[ "$("${ADB[@]}" shell getprop ro.kernel.qemu | tr -d '\r')" == 1 ]] || { echo 'Native slices require an emulator.' >&2; exit 2; }
-[[ ! -e "$OUT/instrumentation.txt" ]] || { echo 'Preserve the existing result; use a new output directory.' >&2; exit 2; }
-mkdir -p "$OUT"
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 APKSIGNER="${APKSIGNER:-}"
 if [[ -z "$APKSIGNER" ]]; then
@@ -29,6 +59,7 @@ if [[ -z "$APKSIGNER" ]]; then
   APKSIGNER="$(find "$SDK/build-tools" -mindepth 2 -maxdepth 2 -name apksigner -type f | sort -V | tail -1)"
 fi
 [[ -x "$APKSIGNER" ]]
+PHASE=signature
 "$APKSIGNER" verify --verbose --print-certs "$APP_APK" > "$OUT/app-signature.txt"
 "$APKSIGNER" verify --verbose --print-certs "$TEST_APK" > "$OUT/test-signature.txt"
 APP_CERT="$(python3 - "$OUT/app-signature.txt" "$OUT/test-signature.txt" <<'PYCERT'
@@ -44,6 +75,7 @@ assert certs[0] == certs[1], 'Application and test signer differ'
 print(certs[0])
 PYCERT
 )"
+PHASE=input-manifest
 python3 - "$PAIR_MANIFEST" "$APP_APK" "$TEST_APK" "$APP_CERT" <<'PYMANIFEST'
 import hashlib, json, os, pathlib, sys
 manifest_path, app_path, test_path, cert = sys.argv[1:]
@@ -60,11 +92,13 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 "${ADB[@]}" shell getprop ro.build.version.sdk > "$OUT/api-level.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
+PHASE=install
 "${ADB[@]}" install -r "$APP_APK"
 "${ADB[@]}" install -r "$TEST_APK"
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing > "$OUT/app-package.txt"
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing.test > "$OUT/test-package.txt"
 "${ADB[@]}" logcat -c
+PHASE=instrumentation
 set +e
 "${ADB[@]}" shell am instrument -w -r \
   -e class com.ukkera.pos.android.independent.androidapi24v1.AndroidApi24V1NativeIoSlicesTest \

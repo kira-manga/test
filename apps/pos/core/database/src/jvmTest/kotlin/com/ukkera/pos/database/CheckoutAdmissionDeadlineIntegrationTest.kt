@@ -115,7 +115,9 @@ private suspend fun checkoutAdmissionDeadline(stage: CheckoutAdmissionStage, com
                 assertOneAdmissionRecord(before, j.fixture.databaseState(), label)
                 committed
             } else {
-                checkoutDeferred(reply, DeferredReason.STORAGE_UNCERTAIN)
+                // Successor freeze qa/pos/freezes/deadline-result-correction-v2: proven full-ownership
+                // deadline rollback is a typed rejection, not storage uncertainty.
+                checkoutDeferred(reply, DeferredReason.PRECONDITION_EXPIRED)
                 // Exact cells in ALL seven tables, including branch head, original result, audit and
                 // upload, must roll back. Neither an intent nor a planner's Held effect may survive.
                 assertEquals(before, j.fixture.databaseState(), label)

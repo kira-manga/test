@@ -141,16 +141,30 @@ public class WindowsDpapiSecureIdentityStore private constructor(
             plain.fill(0)
         }
         try {
-            val readback = WindowsSecureIdentityNative.writeRegistryValue(key, target.valueName, cipher)
+            check(cipher.size in 1..MAX_CIPHERTEXT_BYTES) { "Windows identity ciphertext length is invalid" }
+            // Registry values retain the same namespace-bound outer format read by decodeStored.
+            // DPAPI authenticates the inner namespace and payload with the namespace entropy.
+            val stored = ByteBuffer.allocate(OUTER_HEADER_SIZE + cipher.size)
+                .put(OUTER_MAGIC)
+                .putInt(FORMAT_VERSION)
+                .put(target.digest)
+                .putInt(cipher.size)
+                .put(cipher)
+                .array()
             try {
-                val winner = decodeStored(readback, target)
-                if (!MessageDigest.isEqual(snapshot, winner)) {
-                    winner.fill(0)
-                    error("Windows identity creation readback differs")
+                val readback = WindowsSecureIdentityNative.writeRegistryValue(key, target.valueName, stored)
+                try {
+                    val winner = decodeStored(readback, target)
+                    if (!MessageDigest.isEqual(snapshot, winner)) {
+                        winner.fill(0)
+                        error("Windows identity creation readback differs")
+                    }
+                    return winner
+                } finally {
+                    readback.fill(0)
                 }
-                return winner
             } finally {
-                readback.fill(0)
+                stored.fill(0)
             }
         } finally {
             cipher.fill(0)

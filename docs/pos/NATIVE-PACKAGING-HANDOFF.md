@@ -203,7 +203,7 @@ permission to disable security.
 ### Desktop
 
 ```text
-UkkeraPOS-0.1.0.dmg or UkkeraPOS-0.1.0.msi   unsigned local test package
+UkkeraPOS-1.0.0.dmg or UkkeraPOS-0.1.0.msi   unsigned local test package
 diagnostics/                                  Gradle/package/signing/version logs
 SHA256SUMS, manifest.json                     file hashes + source/toolchain metadata
 README-ARTIFACTS.txt                          warning and contents
@@ -239,7 +239,7 @@ Expected: visibly unconfigured bootstrap; no fake login or business data.
 ### macOS DMG
 
 ```sh
-hdiutil attach UkkeraPOS-0.1.0.dmg -nobrowse -readonly
+hdiutil attach UkkeraPOS-1.0.0.dmg -nobrowse -readonly
 # Copy UkkeraPOS.app out of the mounted volume for a local check.
 # Gatekeeper warning is expected because the package is unsigned.
 /Applications/UkkeraPOS.app/Contents/MacOS/UkkeraPOS --smoke-exit

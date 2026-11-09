@@ -160,7 +160,9 @@ class RoomCurrentLocalAuthorizationAtomicityTest {
             })
             val reply = assertIs<MutationReply.Deferred>(kernel.execute(localAuthorizationPrincipal(),
                 f.request(input = CounterInput(deadline = deadline))))
-            assertEquals(DeferredReason.STORAGE_UNCERTAIN, reply.reason)
+            // Successor freeze qa/pos/freezes/deadline-result-correction-v2: proven full-ownership
+            // deadline rollback is a typed rejection, not storage uncertainty.
+            assertEquals(DeferredReason.PRECONDITION_EXPIRED, reply.reason)
             assertTrue(finalReadReached); assertEquals(before, f.snapshot())
         }
     }

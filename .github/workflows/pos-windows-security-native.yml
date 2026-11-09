@@ -1,0 +1,73 @@
+name: POS Windows SDK identity store (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of the snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  windows-security:
+    if: github.repository == 'kira-manga/test'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-windows-security-${{ runner.os }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-desktop-${{ runner.os }}-x64-
+      - name: Record exact source and native environment
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-security-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt native-security-output/SOURCE-REVISION.txt
+          git rev-parse HEAD > native-security-output/HARNESS-REVISION.txt
+          printf 'run=%s\nattempt=%s\nrepository=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_REPOSITORY" > native-security-output/workflow.txt
+          java -version 2> native-security-output/java.txt
+      - name: Execute only frozen genuine Windows SDK store cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/pos
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :core:security:jvmTest \
+            --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' \
+            --console=plain 2>&1 | tee ../../native-security-output/gradle.txt
+      - name: Require all ten native cases, no skips
+        shell: python
+        run: |
+          import pathlib, xml.etree.ElementTree as ET
+          paths = list(pathlib.Path('apps/pos/core/security/build/test-results/jvmTest').glob('TEST-*WindowsDpapiSecureIdentityStoreNativeTest.xml'))
+          assert len(paths) == 1, 'Missing native result XML'
+          root = ET.parse(paths[0]).getroot()
+          counts = tuple(int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped'))
+          assert counts == (10, 0, 0, 0), counts
+          pathlib.Path('native-security-output/summary.txt').write_text('PASS: 10 genuine Windows SDK store tests; no native original/Master/client, cross-process or power-loss acceptance.\n')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-windows-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-security-output
+            apps/pos/core/security/build/test-results/jvmTest
+            apps/pos/core/security/build/reports/tests/jvmTest
+          retention-days: 14

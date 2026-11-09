@@ -394,7 +394,9 @@ class StoreRecoveryAdversarialTest {
                 }
             })
             val unknown = assertIs<MutationReply.Deferred>(slowCommit.execute(principal, request))
-            assertEquals(DeferredReason.STORAGE_UNCERTAIN, unknown.reason)
+            // Successor freeze qa/pos/freezes/deadline-result-correction-v2: proven full-ownership
+            // deadline rollback is a typed rejection, not storage uncertainty.
+            assertEquals(DeferredReason.PRECONDITION_EXPIRED, unknown.reason)
             f.assertNoCommandRows()
             f.assertCounterAbsent(testId(601))
             assertIs<LookupReply.AbsentAtCurrentWriter>(f.store().lookup(principal, f.identity(request)))
