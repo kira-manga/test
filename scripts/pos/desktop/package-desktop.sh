@@ -191,6 +191,10 @@ trap cleanup EXIT
 
 finalize_artifacts() {
   BUILD_STATUS="${BUILD_STATUS:-unknown}"
+  if [[ -d "$POS_ROOT/apps/desktop/build/compose/logs" ]]; then
+    mkdir -p "$DIAG/compose-tool-logs"
+    cp -R "$POS_ROOT/apps/desktop/build/compose/logs/." "$DIAG/compose-tool-logs/" || true
+  fi
   mkdir -p "$OUT_DIR/diagnostics"
   cp -R "$DIAG/." "$OUT_DIR/diagnostics/" 2>/dev/null || true
   "$PYTHON" "$SANITIZER" --root "$OUT_DIR/diagnostics" || true
@@ -404,7 +408,6 @@ cat > "$DIAG/summary.txt" <<EOF
 - Source revision: $SOURCE_REVISION
 - Hashes: \`SHA256SUMS\`, metadata: \`manifest.json\`
 EOF
-cp "$DIAG/summary.txt" "$OUT_DIR/diagnostics/summary.txt"
 BUILD_STATUS="success"
 finalize_artifacts
 echo "Artifacts ready in $OUT_DIR"

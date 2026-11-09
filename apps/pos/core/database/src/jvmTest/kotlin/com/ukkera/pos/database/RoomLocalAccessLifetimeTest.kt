@@ -192,8 +192,15 @@ private fun runCleanupProbe(path: Path, variant: String) {
     val classpath = requireNotNull(System.getProperty("ukkera.test.runtime.classpath"))
     val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
     val log = path.resolveSibling("cleanup-$variant.log")
-    val process = ProcessBuilder(java, "-Xmx128m", "-ea", "-cp", classpath,
+    val process = ProcessBuilder(java, "-Xmx128m", "-XX:ActiveProcessorCount=2",
+        "-Djava.io.tmpdir=${System.getProperty("java.io.tmpdir")}", "-ea", "-cp", classpath,
         LocalAccessCleanupProbe::class.java.name, path.toString(), variant)
+        .apply {
+            // The resource gate injects launcher options through this variable. Keep this
+            // child's explicit limits and temp root, without a launcher banner polluting
+            // the unchanged exact post-assertion witness on the merged output stream.
+            environment().remove("JAVA_TOOL_OPTIONS")
+        }
         .redirectErrorStream(true).redirectOutput(log.toFile()).start()
     try {
         assertTrue(process.waitFor(30, TimeUnit.SECONDS), "Synthetic cleanup probe timed out: $variant")

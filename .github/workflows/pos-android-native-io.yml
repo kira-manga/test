@@ -1,0 +1,55 @@
+name: POS Android frozen native I/O slices (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      apk_source_revision:
+        description: 'Exact primary source revision recorded in the staged APK pair'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  native-io:
+    if: github.repository == 'kira-manga/test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        api: ['24', '35', '37.0']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Enable disposable hosted emulator
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POS_DISPOSABLE_ANDROID: 'true'
+          POS_EXPECTED_ANDROID_API: ${{ matrix.api == '37.0' && '37' || matrix.api }}
+          POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: bash scripts/pos/android/run-native-io-slices.sh testing-inputs/ukkera-pos-testing.apk testing-inputs/ukkera-pos-runtime-tests.apk native-io-output testing-inputs/apk-pair.json
+      - name: Retain exact inputs and native results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-android-native-io-api${{ matrix.api }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-io-output
+            testing-inputs/ukkera-pos-testing.apk
+            testing-inputs/ukkera-pos-runtime-tests.apk
+            testing-inputs/artifact.json
+            testing-inputs/apk-pair.json
+          retention-days: 14

@@ -331,13 +331,23 @@ if [[ "$SIMULATOR_SMOKE" == "1" ]]; then
   echo "Installing and launching $BUNDLE_ID..."
   xcrun simctl install "$SIM_UDID" "$SIM_APP" > "$DIAG/simulator-install.txt" 2>&1
   xcrun simctl launch "$SIM_UDID" "$BUNDLE_ID" > "$DIAG/simulator-launch.txt" 2>&1
+  LAUNCH_PID="$(awk -v bundle="$BUNDLE_ID:" '$1 == bundle && $2 ~ /^[0-9]+$/ {print $2}' "$DIAG/simulator-launch.txt")"
+  [[ "$LAUNCH_PID" =~ ^[0-9]+$ && "$LAUNCH_PID" -gt 0 ]] || fail "simctl launch did not return one app PID."
+  printf '%s\n' "$LAUNCH_PID" > "$DIAG/simulator-launch-pid.txt"
+  # A launchd label can survive a crashed process. Observe the actual launch PID after
+  # a bounded startup interval rather than accepting the registered label alone.
+  sleep 5
   PROCESS_OK=0
   attempt=0
   while [[ "$attempt" -lt 15 ]]; do
     xcrun simctl spawn "$SIM_UDID" launchctl list > "$DIAG/simulator-processes.txt" 2>&1 || true
     xcrun simctl spawn "$SIM_UDID" ps -A -o pid=,comm= > "$DIAG/simulator-ps.txt" 2>&1 || true
-    if grep -q "UkkeraPos" "$DIAG/simulator-ps.txt"; then PROCESS_OK=1; break; fi
-    if grep -q "$BUNDLE_ID" "$DIAG/simulator-processes.txt"; then PROCESS_OK=1; break; fi
+    if awk -v pid="$LAUNCH_PID" '$1 == pid { found=1 } END { exit !found }' "$DIAG/simulator-ps.txt"; then
+      PROCESS_OK=1; break
+    fi
+    if awk -v pid="$LAUNCH_PID" -v bundle="$BUNDLE_ID" '$1 == pid && index($3,bundle) { found=1 } END { exit !found }' "$DIAG/simulator-processes.txt"; then
+      PROCESS_OK=1; break
+    fi
     attempt=$((attempt + 1))
     sleep 2
   done

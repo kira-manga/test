@@ -186,7 +186,7 @@ The simulator smoke test:
 1. creates a disposable iPhone simulator;
 2. builds the Xcode app (which runs the Gradle framework phase);
 3. installs and launches `com.ukkera.pos.local`;
-4. polls for up to 30 seconds and checks the process remains registered;
+4. requires the exact launch PID to remain visible after a 5-second startup interval, polling for up to 30 seconds;
 5. captures a screenshot and app log;
 6. terminates, shuts down and deletes the simulator.
 
