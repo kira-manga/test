@@ -218,6 +218,9 @@ launcher for at most 60 seconds.
 
 ## 5. Install and test handoff
 
+Use [the dated installation checklist](INSTALL-AND-TEST.md) for verified artifact
+links, package hashes, Android instructions and exact readiness limits.
+
 ### iOS Simulator
 
 ```sh
@@ -251,8 +254,8 @@ build with the owner's identity instead.
 ### Windows MSI
 
 ```bat
-msiexec /i UkkeraPOS-0.1.0.msi /qn
-"%LOCALAPPDATA%\UkkeraPOS\UkkeraPOS.exe" --smoke-exit
+msiexec /i UkkeraPOS-0.1.0.msi
+REM Launch UkkeraPOS from its installed Start menu shortcut.
 ```
 
 The MSI is per-user and unsigned; SmartScreen may warn. Uninstall through
@@ -287,9 +290,10 @@ A successful package is not a passing owner test. The iOS smoke and desktop
 
 ## 7. Known risks and blockers to report, not hide
 
-1. **No native run by this author.** The Linux authoring host cannot compile,
-   link, launch or sign Apple targets or build Windows MSI/macOS DMG. All results
-   must come from the macOS/Windows runners or the owner's hosts.
+1. **Source-specific native results.** Hosted Windows/macOS package startup and
+   the Apple simulator/unsigned device archive builds have now run. The Linux
+   authoring host is not their execution environment. See the dated checklist
+   and qualification record for the actual run/source/artifact bindings.
 2. **Xcode/Kotlin compatibility.** The runner may install Xcode 26.6, while
    Kotlin 2.4.21/Compose 1.12.2 may have a toolchain-specific issue. The script
    records and reports the actual Xcode; do not silently pin or fake 26.4.

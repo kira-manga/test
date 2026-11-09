@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Create a disposable iPhone simulator for the POS launch smoke test."""
+"""Create a disposable iPhone or iPad simulator for the POS launch smoke test."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -25,6 +26,10 @@ def version_key(value: str):
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--family", choices=("iphone", "ipad"), default="iphone")
+    arguments = parser.parse_args()
+    device_prefix = "iPad" if arguments.family == "ipad" else "iPhone"
     runtimes = [
         item
         for item in simctl_json("list", "runtimes", "--json").get("runtimes", [])
@@ -36,14 +41,14 @@ def main() -> int:
         return 2
 
     device_types = simctl_json("list", "devicetypes", "--json").get("devicetypes", [])
-    iphones = [item for item in device_types if item.get("name", "").startswith("iPhone")]
-    if not iphones:
-        print("error: no iPhone simulator device type is installed", file=sys.stderr)
+    devices = [item for item in device_types if item.get("name", "").startswith(device_prefix)]
+    if not devices:
+        print(f"error: no {device_prefix} simulator device type is installed", file=sys.stderr)
         return 2
-    iphones.sort(key=lambda item: version_key(item.get("identifier", "")), reverse=True)
+    devices.sort(key=lambda item: version_key(item.get("identifier", "")), reverse=True)
 
     runtime = runtimes[0]
-    device_type = iphones[0]
+    device_type = devices[0]
     name = f"UkkeraPOS CI {os.getpid()}"
     try:
         udid = subprocess.check_output(

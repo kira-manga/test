@@ -1,0 +1,36 @@
+name: POS iPad existing-artifact smoke (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary revision of this harness snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+  actions: read
+jobs:
+  ipad-smoke:
+    if: github.repository == 'kira-manga/test'
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: pos-ios-native-42680343828-1
+          run-id: 42680343828
+          github-token: ${{ github.token }}
+          path: simulator-input
+      - name: Launch the exact verified simulator build on an iPad
+        env:
+          EXPECTED_HARNESS_SOURCE: ${{ inputs.source_revision }}
+        run: scripts/pos/ios/run-ipad-artifact-smoke.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-ipad-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ipad-smoke-output
+          retention-days: 14
