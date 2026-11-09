@@ -11,6 +11,30 @@ PAIR_MANIFEST="$4"
 [[ ! -e "$OUT/instrumentation.txt" && ! -e "$OUT/provenance.json" ]] || { echo 'Preserve the existing result; use a new output directory.' >&2; exit 2; }
 mkdir -p "$OUT"
 PHASE=precheck
+# Android 30+ exposes retained OS exit causes. Keep only numeric/reason fields;
+# descriptions, traces and paths never enter the uploaded diagnostic summary.
+collect_process_exit() {
+  python3 - "$OUT/process-exit.json" "${ADB[@]}" <<'PYEXIT'
+import json,pathlib,re,subprocess,sys
+record={'package':'com.ukkera.pos.local.testing','records':[]}
+try:
+    result=subprocess.run(sys.argv[2:]+['shell','dumpsys','activity','exit-info',record['package']],
+        capture_output=True,text=True,timeout=30)
+    record['command_exit_status']=result.returncode
+    for block in re.split(r'ApplicationExitInfo\s+#\d+:',result.stdout)[1:17]:
+        item={}
+        for key in ('pid','reason','subreason','status','importance','pss','rss'):
+            match=re.search(r'\b'+key+r'=(\d+)\b',block)
+            if match: item[key]=int(match.group(1))
+        match=re.search(r'\breason=\d+\s*\(([A-Z_]+)\)',block)
+        if match: item['reason_name']=match.group(1)
+        if item: record['records'].append(item)
+    record['observation']='OS_EXIT_RECORDS' if record['records'] else 'NO_PARSED_EXIT_RECORDS'
+except (OSError,subprocess.SubprocessError):
+    record['observation']='OS_EXIT_QUERY_UNAVAILABLE'
+pathlib.Path(sys.argv[1]).write_text(json.dumps(record,indent=2)+'\n')
+PYEXIT
+}
 retain_outcome() {
   local status=$?
   if [[ "$status" -ne 0 ]]; then
@@ -155,6 +179,7 @@ case "${POS_NATIVE_SLICE_GROUP:-io}" in
     status=$?
     set -e
     "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    collect_process_exit
     # These existing tags emit static source locations/errno only, never native data.
     "${ADB[@]}" logcat -d -s UkkeraNativeOwner:I UkkeraEnrollment:W '*:S' > "$OUT/native-owner-log.txt"
     # Read only selected synthetic evidence on the gated fresh emulator.
@@ -205,6 +230,7 @@ PYACKPASS
     status=$?
     set -e
     "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    collect_process_exit
     "${ADB[@]}" logcat -d -s UkkeraNativeOwner:I UkkeraEnrollment:W '*:S' > "$OUT/native-owner-log.txt"
     "${ADB[@]}" root > "$OUT/evidence-adb-context.txt" 2>&1 || true
     timeout 90s "${ADB[@]}" wait-for-device

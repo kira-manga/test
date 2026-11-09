@@ -6,6 +6,12 @@ on:
         description: Exact primary app source recorded in the retained APK pair
         required: true
         type: string
+      api_level:
+        description: Fresh emulator API for the unchanged selected ACK segment
+        required: true
+        type: choice
+        default: '35'
+        options: ['24', '35', '37.0']
       segment:
         description: Existing frozen selector; select one for acquisition diagnostics
         required: true
@@ -38,10 +44,10 @@ jobs:
           POS_DISPOSABLE_ANDROID: 'true'
           POS_NATIVE_SLICE_GROUP: ack
           POS_NATIVE_ACK_SEGMENT: ${{ matrix.segment }}
-          POS_EXPECTED_ANDROID_API: '35'
+          POS_EXPECTED_ANDROID_API: ${{ inputs.api_level == '37.0' && '37' || inputs.api_level }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
-          api-level: 35
+          api-level: ${{ inputs.api_level }}
           target: google_apis
           arch: x86_64
           ram-size: 2048M
@@ -53,7 +59,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-android-ack-${{ matrix.segment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pos-android-ack-api${{ inputs.api_level }}-${{ matrix.segment }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             native-ack-output
             testing-inputs/ukkera-pos-testing.apk
