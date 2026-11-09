@@ -34,6 +34,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Tracked-only source export failed' }
     Expand-Archive -LiteralPath $archive -DestinationPath $workRoot
     Remove-Item -LiteralPath $archive
+    # Pass only public toolchain locations to the new logon's native environment.
+    [ordered]@{ java_home=$env:JAVA_HOME; android_home=$env:ANDROID_HOME; android_sdk_root=$env:ANDROID_SDK_ROOT } |
+        ConvertTo-Json | Set-Content (Join-Path $workRoot 'toolchain.json')
     $child = Join-Path $workRoot 'run-frozen-store.ps1'
     @'
 param([Parameter(Mandatory=$true)][string]$ExpectedSid)
@@ -110,6 +113,11 @@ public static class PosOrdinaryProfile {
         production_owner_and_dacl_checks='unchanged'
         credentials_logged=$false
     } | ConvertTo-Json | Set-Content (Join-Path $out 'profile.json')
+    $toolchain = Get-Content (Join-Path $PSScriptRoot 'toolchain.json') -Raw | ConvertFrom-Json
+    $env:JAVA_HOME = $toolchain.java_home
+    $env:PATH = (Join-Path $env:JAVA_HOME 'bin') + ';' + $env:PATH
+    $env:ANDROID_HOME = $toolchain.android_home
+    $env:ANDROID_SDK_ROOT = $toolchain.android_sdk_root
     $env:GRADLE_USER_HOME = Join-Path $profile '.gradle'
     Set-Location (Join-Path $PSScriptRoot 'apps/pos')
     & .\gradlew.bat --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' '-Pkotlin.compiler.execution.strategy=in-process' :core:security:jvmTest --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' --console=plain *> (Join-Path $out 'gradle.txt')
@@ -122,9 +130,63 @@ public static class PosOrdinaryProfile {
 }
 '@ | Set-Content -LiteralPath $child
     if ((Get-Service -Name seclogon).Status -ne 'Running') { Start-Service -Name seclogon }
-    $credential = [Management.Automation.PSCredential]::new(($env:COMPUTERNAME + '\' + $account), $password)
+    # NULL environment plus LOGON_WITH_PROFILE constructs the new user's native
+    # environment/profile. Do not inherit the hosted administrator's shell paths.
+    Add-Type -TypeDefinition @"
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Text;
+public static class PosOrdinaryLogon {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    private struct StartupInfo {
+        public int cb;
+        public string reserved, desktop, title;
+        public int x, y, xSize, ySize, xCountChars, yCountChars, fillAttribute, flags;
+        public short showWindow, reserved2Size;
+        public IntPtr reserved2, stdin, stdout, stderr;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessInfo { public IntPtr process, thread; public uint processId, threadId; }
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CreateProcessWithLogonW(string user, string domain, IntPtr password,
+        uint logonFlags, string app, StringBuilder command, uint creationFlags,
+        IntPtr environment, string directory, ref StartupInfo startup, out ProcessInfo process);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+    private static string Quote(string text) {
+        if (text.Contains("\"") || text.EndsWith("\\"))
+            throw new InvalidOperationException("Unsupported native command argument");
+        return "\"" + text + "\"";
+    }
+    public static Process Launch(string user, string domain, SecureString password,
+        string executable, string script, string sid, string directory) {
+        var startup = new StartupInfo();
+        startup.cb = Marshal.SizeOf(typeof(StartupInfo));
+        var info = new ProcessInfo();
+        IntPtr secret = Marshal.SecureStringToGlobalAllocUnicode(password);
+        try {
+            var command = new StringBuilder(Quote(executable) +
+                " -NoLogo -NoProfile -NonInteractive -File " + Quote(script) + " -ExpectedSid " + Quote(sid));
+            if (!CreateProcessWithLogonW(user, domain, secret, 1, executable,
+                command, 0, IntPtr.Zero, directory, ref startup, out info))
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Ordinary native logon failed");
+            var process = Process.GetProcessById((int)info.processId);
+            var handle = process.Handle;
+            return process;
+        } finally {
+            Marshal.ZeroFreeGlobalAllocUnicode(secret);
+            if (info.thread != IntPtr.Zero) CloseHandle(info.thread);
+            if (info.process != IntPtr.Zero) CloseHandle(info.process);
+        }
+    }
+}
+"@
     $hostExecutable = (Get-Process -Id $PID).Path
-    $process = Start-Process -FilePath $hostExecutable -Credential $credential -LoadUserProfile -WorkingDirectory $workRoot -ArgumentList @('-NoLogo', '-NoProfile', '-NonInteractive', '-File', $child, '-ExpectedSid', $sid) -PassThru
+    $process = [PosOrdinaryLogon]::Launch($account, $env:COMPUTERNAME, $password, $hostExecutable, $child, $sid, $workRoot)
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) { throw "Ordinary-account native execution exited $($process.ExitCode)" }
 } catch {

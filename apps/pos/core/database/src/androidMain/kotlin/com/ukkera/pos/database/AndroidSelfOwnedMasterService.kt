@@ -1317,6 +1317,17 @@ public class AndroidSelfOwnedMasterService private constructor(
                                 else LocalMasterInstallationOutcome.Unresolved)
                         }
                     } catch(failure: Throwable) {
+                        // Only bounded static source locations. Throwable messages/arguments can
+                        // contain secrets or protected records and must never enter diagnostics.
+                        try {
+                            val locations=failure.stackTrace.filter {
+                                it.className.startsWith("com.ukkera.pos.")
+                            }.take(6).joinToString(" <- ") {
+                                "${it.className}.${it.methodName}:${it.lineNumber}"
+                            }
+                            android.util.Log.w("UkkeraNativeOwner",
+                                "Original installation refused: ${failure.javaClass.simpleName}; $locations")
+                        } catch (_: Throwable) { /* Diagnostics never affect the retained outcome. */ }
                         response.complete(originalInstallationFailure())
                     } finally {
                         ownedHead.fill('\u0000'); ownedPassword.fill('\u0000'); prepared?.clear(); installationSlot.release()
