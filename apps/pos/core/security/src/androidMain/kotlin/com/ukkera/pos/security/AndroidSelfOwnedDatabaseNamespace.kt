@@ -623,7 +623,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
         if (closed) return
         coroutines.requireActualClose()
         try { connection?.close(); closed = true }
-        catch (failure: Throwable) { coroutines.fault(); throw failure }
+        catch (failure: Throwable) { coroutines.fault(failure); throw failure }
     }
 
     private class Transaction(val actor: AndroidOwnedRoomCoroutines.Actor,
@@ -659,7 +659,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
             authorize(actor, kind, submitting = false)
             return try {
                 OwnedStatement(checkNotNull(raw).prepare(actualSql), kind).also { statements += it }
-            } catch (failure: Throwable) { coroutines.fault(); throw failure }
+            } catch (failure: Throwable) { coroutines.fault(failure); throw failure }
         }
         override fun close() {
             if (actuallyClosed) return
@@ -669,7 +669,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
             try {
                 statements.toList().forEach { it.closeFromConnection() }
                 checkNotNull(raw).close(); raw = null; actuallyClosed = true
-            } catch (failure: Throwable) { coroutines.fault(); throw failure }
+            } catch (failure: Throwable) { coroutines.fault(failure); throw failure }
         }
         fun requireNoLiveSteppedStatements() {
             check(transaction == null && statements.none { it.stepped && !it.resetAfterStep })
@@ -802,7 +802,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
             override fun reset() {
                 actor(claim = false)
                 try { delegate.reset(); resetAfterStep = true; useActor = null }
-                catch (failure: Throwable) { coroutines.fault(); throw failure }
+                catch (failure: Throwable) { coroutines.fault(failure); throw failure }
             }
             override fun close() {
                 if (closedStatement) return
@@ -816,7 +816,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
                 if (closing) { coroutines.fault(); error("Original statement close uncertain") }
                 closing = true
                 try { delegate.close(); closedStatement = true; statements.remove(this); useActor = null }
-                catch (failure: Throwable) { coroutines.fault(); throw failure }
+                catch (failure: Throwable) { coroutines.fault(failure); throw failure }
             }
         }
     }

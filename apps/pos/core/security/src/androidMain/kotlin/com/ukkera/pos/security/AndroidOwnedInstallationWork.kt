@@ -430,7 +430,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         }
 
         fun failUnknown(failure: Throwable) {
-            roomCoroutines.fault()
+            roomCoroutines.fault(failure)
             result.complete(Result.failure(failure))
             finished.completeExceptionally(failure)
             // No slot release, disarm, native close or replacement after uncertain custody.

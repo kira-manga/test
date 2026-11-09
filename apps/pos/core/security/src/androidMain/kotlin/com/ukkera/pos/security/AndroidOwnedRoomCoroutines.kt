@@ -46,7 +46,12 @@ internal class AndroidOwnedRoomCoroutines(
 
     // Diagnostic budget only. It never selects an actor, admits SQL or establishes custody.
     private val diagnosticSteps = AtomicInteger()
+    private val initialSqlDiagnosticSteps = AtomicInteger()
     internal fun traceStage(phase: String, context: CoroutineContext? = null) {
+        // Hundreds of schema statements must not consume observations needed for the
+        // subsequent context/drain/settlement transition. This is diagnostic sampling only.
+        if (phase.startsWith("initial-sql-") &&
+            initialSqlDiagnosticSteps.getAndUpdate { if (it < 8) it + 1 else it } >= 8) return
         val step = diagnosticSteps.getAndUpdate { if (it < 192) it + 1 else it }
         if (step >= 192) return
         try {
@@ -95,7 +100,7 @@ internal class AndroidOwnedRoomCoroutines(
                 val actor = try { actorLocked(context) } catch (caught: Throwable) { failure = caught; null }
                 Ticket(actor, context[Job]).also { tickets += it }
             }
-            if (failure != null) fault()
+            failure?.let { fault(it) }
             try {
                 Dispatchers.IO.dispatch(context, Runnable {
                     val old = dispatchThread.get()
@@ -109,7 +114,7 @@ internal class AndroidOwnedRoomCoroutines(
                 })
             } catch (caught: Throwable) {
                 // A throwing executor does not prove that it did not enqueue. Retain the ticket.
-                fault(); throw caught
+                fault(caught); throw caught
             }
         }
     }
@@ -118,7 +123,7 @@ internal class AndroidOwnedRoomCoroutines(
         override fun restoreThreadContext(context: CoroutineContext, oldState: ThreadState) = leave(oldState, query = true)
     }
     private object QueryKey : CoroutineContext.Key<ThreadContextElement<ThreadState>>
-    private val failures = CoroutineExceptionHandler { _, _ -> fault() }
+    private val failures = CoroutineExceptionHandler { _, failure -> fault(failure) }
 
     fun beginInvocation(token: Any) {
         work.requireWatchedRoom(token)
@@ -184,7 +189,7 @@ internal class AndroidOwnedRoomCoroutines(
                 entered = Entry(actor, actual, query).also { entries += it }
             }
             local.set(entered)
-        } catch (_: Throwable) { local.set(null); fault() }
+        } catch (failure: Throwable) { local.set(null); fault(failure) }
         return ThreadState(previous, entered)
     }
 
@@ -195,7 +200,7 @@ internal class AndroidOwnedRoomCoroutines(
             // The encompassing dispatch ticket signals after its complete restore tail. An
             // undispatched entry without such a ticket must supply its own completion signal.
             if (dispatchThread.get() == null) pulse()
-        } catch (_: Throwable) { fault() }
+        } catch (failure: Throwable) { fault(failure) }
     }
 
     private fun actorLocked(context: CoroutineContext): Actor {
@@ -421,8 +426,17 @@ internal class AndroidOwnedRoomCoroutines(
         }
     }
 
-    fun fault() {
+    fun fault(failure: Throwable? = null) {
         if (uncertain.compareAndSet(false, true)) {
+            // One static observation, independent of the stage budget. No messages, SQL,
+            // values, resource identities or native data. The original watchdog stays armed.
+            try {
+                val observed = failure ?: Throwable()
+                val locations = observed.stackTrace.filter {
+                    it.className.startsWith("com.ukkera.pos.")
+                }.take(6).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
+                Log.w("UkkeraNativeOwner", "Owned Room custody fault: type=${observed.javaClass.simpleName}; $locations")
+            } catch (_: Throwable) { /* Diagnostic failure cannot skip exclusion. */ }
             // Denial/exclusion only, never proof of death and never a lease-release path.
             work.nativeClosureUnknown()
             parent.cancel()
