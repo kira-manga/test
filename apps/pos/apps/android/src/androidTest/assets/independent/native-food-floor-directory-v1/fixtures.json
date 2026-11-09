@@ -1,0 +1,1637 @@
+{
+  "fixtureVersion": "native-food-floor-directory.1.0-draft",
+  "status": "NOT_RUN_NOT_FROZEN",
+  "scope": "Bounded Android original-allocation native directory supplement for #29/#59; whole FFD acceptance remains NOT_RUN",
+  "representation": "Semantic public request/response inputs; kind discriminates DTO variants and is not a canonical wire field; no raw native/history oracle",
+  "sources": [
+    "LOCAL-NATIVE-FLOOR-QUALIFICATION.md",
+    "LOCAL-FOOD-FLOOR-DIRECTORY.md",
+    "food-floor-directory/fixtures.json BASE and mutationValues as explicitly assigned requirements-derived reference"
+  ],
+  "nativeIdentityBinding": {
+    "mode": "OBSERVE_ORIGINAL_ALLOCATION_AND_RETAIN_EXACTLY",
+    "fixedOrganizationCompanyBranchEmployeeDeviceIds": null,
+    "scope": {
+      "organizationId": "$native.originalAllocation.organizationId",
+      "companyId": "$native.originalAllocation.companyId",
+      "branchId": "$native.originalAllocation.branchId"
+    },
+    "employeeId": "$native.originalAuthenticatedBranchEmployeeId",
+    "deviceId": "$native.originalInstalledAdmittedDeviceId",
+    "setupActor": "$native.originalSetupActorWhereExposed",
+    "policyAssociation": "$native.currentExplicitAuthorizedOriginalGrantActivation",
+    "preconditions": [
+      "Actual original local company enrollment, branch issuance and native installation; no arbitrary identity import/reset/rekey",
+      "Actual original account/enrollment workflow installs explicit FLOOR_CONFIGURE/ADMINISTER at exercised targets and FLOOR_READ/PERFORM in observed branch",
+      "Actual active employee/current session/admitted device and activated policy observed through protected production binding",
+      "Private synthetic protection/credential material stays outside public fixtures and execution uploads"
+    ],
+    "requiredRelations": [
+      "Original allocation scope == installed scope == fresh authenticated effective scope == every protected production request/response association",
+      "All seed/mutation/retry/recovery actor associations == the actual original configurator employee; company person/device/service never substitute it",
+      "After native reopen, scope/installation/employee/device == exact pre-close values; authenticate afresh rather than reuse an old cache/bearer",
+      "Every outcome is associated with its actual original application operation ID, including lookup/retry; a bare DTO is insufficient proof"
+    ],
+    "missingObservationOutcome": "BLOCKED, never substitution or passing default",
+    "wireAndHistoryBinding": "UNBOUND N-B01/N-B02/N-B03/N-B04"
+  },
+  "publicBindings": {
+    "command": "LocalFoodFloorProfileV1.COMMAND",
+    "request": "LocalFoodFloorConfigurationRequestV1.Floor(expectedRevision,floor) or .Table(expectedRevision,table)",
+    "read": "LocalFoodFloorReadCodecV1.QUERY with LocalFoodFloorQueryV1.Floors/Tables/Table",
+    "result": "LocalConfigurationResultV1(code,id,revision)",
+    "protectedProductionAssociation": "Captured effective native scope/employee/device/policy and actual submitted/recovered operation ID; not added to definition DTOs"
+  },
+  "base": {
+    "alias": "BASE",
+    "configured": true,
+    "sequence": [
+      "F-A revisions 1..7",
+      "F-B revisions 1..3",
+      "T-010 revisions 1..11",
+      "T-020 revisions 1..2",
+      "T-030 revisions 1..5"
+    ],
+    "seedOperationIdRule": "d3000000-0000-4000-8000-{serial encoded as 12 lowercase hexadecimal digits}; serial starts listed per definition and increments once per version",
+    "seedNameRule": "Each nonfinal version uses exact English Seed {alias} v{revision}, Arabic empty; the final version uses the listed literal definition names",
+    "seedProducerRule": "Execute every listed command through actual original-authorized production configuration producer, retain actual operation/actor/result/prior-source association; no injected rows/history",
+    "floors": [
+      {
+        "alias": "F-A",
+        "definition": {
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Dining 10",
+            "arabic": "صالة ١٠"
+          },
+          "layoutOrder": 700,
+          "active": true
+        },
+        "storageRevision": "7"
+      },
+      {
+        "alias": "F-B",
+        "definition": {
+          "id": "f1000000-0000-4000-8000-000000000020",
+          "names": {
+            "english": "Terrace 02",
+            "arabic": "شرفة ٠٢"
+          },
+          "layoutOrder": 100,
+          "active": false
+        },
+        "storageRevision": "3"
+      }
+    ],
+    "tables": [
+      {
+        "alias": "T-010",
+        "definition": {
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Table 002",
+            "arabic": "طاولة ٠٠٢"
+          },
+          "layoutOrder": 9000,
+          "active": true,
+          "floorId": "f1000000-0000-4000-8000-000000000010"
+        },
+        "storageRevision": "11"
+      },
+      {
+        "alias": "T-020",
+        "definition": {
+          "id": "a2000000-0000-4000-8000-000000000020",
+          "names": {
+            "english": "",
+            "arabic": "طاولة الشرفة"
+          },
+          "layoutOrder": 3,
+          "active": false,
+          "floorId": "f1000000-0000-4000-8000-000000000020"
+        },
+        "storageRevision": "2"
+      },
+      {
+        "alias": "T-030",
+        "definition": {
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "names": {
+            "english": "007",
+            "arabic": ""
+          },
+          "layoutOrder": 0,
+          "active": false,
+          "floorId": "f1000000-0000-4000-8000-000000000010"
+        },
+        "storageRevision": "5"
+      }
+    ],
+    "expectedCounts": {
+      "retainedFloors": 2,
+      "retainedTables": 3,
+      "actualSuccessfulProducerCommands": 28,
+      "logicalSuccessfulVersionsResults": 28,
+      "physicalHistoryRowCount": "UNBOUND N-B03"
+    },
+    "seedCommands": [
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000001",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": null,
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v1",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "1"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000002",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "1",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v2",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "2"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000003",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "2",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v3",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "3"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000004",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "3",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v4",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "4"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000005",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "4",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v5",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "5"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000006",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "5",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed F-A v6",
+              "arabic": ""
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "6"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000007",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "6",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Dining 10",
+              "arabic": "صالة ١٠"
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "7"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000065",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": null,
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Seed F-B v1",
+              "arabic": ""
+            },
+            "layoutOrder": 100,
+            "active": false
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000020",
+          "revision": "1"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000066",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "1",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Seed F-B v2",
+              "arabic": ""
+            },
+            "layoutOrder": 100,
+            "active": false
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000020",
+          "revision": "2"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000067",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "2",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Terrace 02",
+              "arabic": "شرفة ٠٢"
+            },
+            "layoutOrder": 100,
+            "active": false
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000020",
+          "revision": "3"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000c9",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": null,
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v1",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "1"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000ca",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "1",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v2",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "2"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000cb",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "2",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v3",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "3"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000cc",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "3",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v4",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "4"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000cd",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "4",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v5",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "5"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000ce",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "5",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v6",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "6"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000cf",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "6",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v7",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "7"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000d0",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "7",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v8",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "8"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000d1",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "8",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v9",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "9"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000d2",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "9",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Seed T-010 v10",
+              "arabic": ""
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "10"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-0000000000d3",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "10",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Table 002",
+              "arabic": "طاولة ٠٠٢"
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "11"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-00000000012d",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": null,
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Seed T-020 v1",
+              "arabic": ""
+            },
+            "layoutOrder": 3,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000020"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000020",
+          "revision": "1"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-00000000012e",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "1",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "",
+              "arabic": "طاولة الشرفة"
+            },
+            "layoutOrder": 3,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000020"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000020",
+          "revision": "2"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000191",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": null,
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000030",
+            "names": {
+              "english": "Seed T-030 v1",
+              "arabic": ""
+            },
+            "layoutOrder": 0,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "revision": "1"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000192",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "1",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000030",
+            "names": {
+              "english": "Seed T-030 v2",
+              "arabic": ""
+            },
+            "layoutOrder": 0,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "revision": "2"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000193",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "2",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000030",
+            "names": {
+              "english": "Seed T-030 v3",
+              "arabic": ""
+            },
+            "layoutOrder": 0,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "revision": "3"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000194",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "3",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000030",
+            "names": {
+              "english": "Seed T-030 v4",
+              "arabic": ""
+            },
+            "layoutOrder": 0,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "revision": "4"
+        }
+      },
+      {
+        "operationId": "d3000000-0000-4000-8000-000000000195",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "4",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000030",
+            "names": {
+              "english": "007",
+              "arabic": ""
+            },
+            "layoutOrder": 0,
+            "active": false,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000030",
+          "revision": "5"
+        }
+      }
+    ],
+    "immediateProtectedReadback": "After each seed, obtain actual current selected definition/revision through protected Floors(null,20) for a floor, or Table(id) with current exact parent for a table; compare to that command definition and expected saved revision"
+  },
+  "initialEmptyQuery": {
+    "query": {
+      "kind": "Floors",
+      "after": null,
+      "limit": 20
+    },
+    "expected": {
+      "query": {
+        "kind": "Floors",
+        "after": null,
+        "limit": 20
+      },
+      "configured": false,
+      "floors": [],
+      "tables": [],
+      "floor": null,
+      "nextAfter": null
+    }
+  },
+  "reads": [
+    {
+      "id": "NFFD-002-Q01",
+      "query": {
+        "kind": "Floors",
+        "after": null,
+        "limit": 20
+      },
+      "expected": {
+        "query": {
+          "kind": "Floors",
+          "after": null,
+          "limit": 20
+        },
+        "configured": true,
+        "floors": [
+          {
+            "definition": {
+              "id": "f1000000-0000-4000-8000-000000000010",
+              "names": {
+                "english": "Dining 10",
+                "arabic": "صالة ١٠"
+              },
+              "layoutOrder": 700,
+              "active": true
+            },
+            "storageRevision": "7"
+          },
+          {
+            "definition": {
+              "id": "f1000000-0000-4000-8000-000000000020",
+              "names": {
+                "english": "Terrace 02",
+                "arabic": "شرفة ٠٢"
+              },
+              "layoutOrder": 100,
+              "active": false
+            },
+            "storageRevision": "3"
+          }
+        ],
+        "tables": [],
+        "floor": null,
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q02",
+      "query": {
+        "kind": "Floors",
+        "after": null,
+        "limit": 1
+      },
+      "expected": {
+        "query": {
+          "kind": "Floors",
+          "after": null,
+          "limit": 1
+        },
+        "configured": true,
+        "floors": [
+          {
+            "definition": {
+              "id": "f1000000-0000-4000-8000-000000000010",
+              "names": {
+                "english": "Dining 10",
+                "arabic": "صالة ١٠"
+              },
+              "layoutOrder": 700,
+              "active": true
+            },
+            "storageRevision": "7"
+          }
+        ],
+        "tables": [],
+        "floor": null,
+        "nextAfter": "f1000000-0000-4000-8000-000000000010"
+      }
+    },
+    {
+      "id": "NFFD-002-Q03",
+      "query": {
+        "kind": "Floors",
+        "after": "f1000000-0000-4000-8000-000000000010",
+        "limit": 1
+      },
+      "expected": {
+        "query": {
+          "kind": "Floors",
+          "after": "f1000000-0000-4000-8000-000000000010",
+          "limit": 1
+        },
+        "configured": true,
+        "floors": [
+          {
+            "definition": {
+              "id": "f1000000-0000-4000-8000-000000000020",
+              "names": {
+                "english": "Terrace 02",
+                "arabic": "شرفة ٠٢"
+              },
+              "layoutOrder": 100,
+              "active": false
+            },
+            "storageRevision": "3"
+          }
+        ],
+        "tables": [],
+        "floor": null,
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q04",
+      "query": {
+        "kind": "Tables",
+        "floorId": "f1000000-0000-4000-8000-000000000010",
+        "after": null,
+        "limit": 20
+      },
+      "expected": {
+        "query": {
+          "kind": "Tables",
+          "floorId": "f1000000-0000-4000-8000-000000000010",
+          "after": null,
+          "limit": 20
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000010",
+              "names": {
+                "english": "Table 002",
+                "arabic": "طاولة ٠٠٢"
+              },
+              "layoutOrder": 9000,
+              "active": true,
+              "floorId": "f1000000-0000-4000-8000-000000000010"
+            },
+            "storageRevision": "11"
+          },
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000030",
+              "names": {
+                "english": "007",
+                "arabic": ""
+              },
+              "layoutOrder": 0,
+              "active": false,
+              "floorId": "f1000000-0000-4000-8000-000000000010"
+            },
+            "storageRevision": "5"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Dining 10",
+              "arabic": "صالة ١٠"
+            },
+            "layoutOrder": 700,
+            "active": true
+          },
+          "storageRevision": "7"
+        },
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q05",
+      "query": {
+        "kind": "Tables",
+        "floorId": "f1000000-0000-4000-8000-000000000020",
+        "after": null,
+        "limit": 20
+      },
+      "expected": {
+        "query": {
+          "kind": "Tables",
+          "floorId": "f1000000-0000-4000-8000-000000000020",
+          "after": null,
+          "limit": 20
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000020",
+              "names": {
+                "english": "",
+                "arabic": "طاولة الشرفة"
+              },
+              "layoutOrder": 3,
+              "active": false,
+              "floorId": "f1000000-0000-4000-8000-000000000020"
+            },
+            "storageRevision": "2"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Terrace 02",
+              "arabic": "شرفة ٠٢"
+            },
+            "layoutOrder": 100,
+            "active": false
+          },
+          "storageRevision": "3"
+        },
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q06",
+      "query": {
+        "kind": "Tables",
+        "floorId": "f1000000-0000-4000-8000-000000000010",
+        "after": null,
+        "limit": 1
+      },
+      "expected": {
+        "query": {
+          "kind": "Tables",
+          "floorId": "f1000000-0000-4000-8000-000000000010",
+          "after": null,
+          "limit": 1
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000010",
+              "names": {
+                "english": "Table 002",
+                "arabic": "طاولة ٠٠٢"
+              },
+              "layoutOrder": 9000,
+              "active": true,
+              "floorId": "f1000000-0000-4000-8000-000000000010"
+            },
+            "storageRevision": "11"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Dining 10",
+              "arabic": "صالة ١٠"
+            },
+            "layoutOrder": 700,
+            "active": true
+          },
+          "storageRevision": "7"
+        },
+        "nextAfter": "a2000000-0000-4000-8000-000000000010"
+      }
+    },
+    {
+      "id": "NFFD-002-Q07",
+      "query": {
+        "kind": "Tables",
+        "floorId": "f1000000-0000-4000-8000-000000000010",
+        "after": "a2000000-0000-4000-8000-000000000010",
+        "limit": 1
+      },
+      "expected": {
+        "query": {
+          "kind": "Tables",
+          "floorId": "f1000000-0000-4000-8000-000000000010",
+          "after": "a2000000-0000-4000-8000-000000000010",
+          "limit": 1
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000030",
+              "names": {
+                "english": "007",
+                "arabic": ""
+              },
+              "layoutOrder": 0,
+              "active": false,
+              "floorId": "f1000000-0000-4000-8000-000000000010"
+            },
+            "storageRevision": "5"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Dining 10",
+              "arabic": "صالة ١٠"
+            },
+            "layoutOrder": 700,
+            "active": true
+          },
+          "storageRevision": "7"
+        },
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q08",
+      "query": {
+        "kind": "Table",
+        "tableId": "a2000000-0000-4000-8000-000000000010"
+      },
+      "expected": {
+        "query": {
+          "kind": "Table",
+          "tableId": "a2000000-0000-4000-8000-000000000010"
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000010",
+              "names": {
+                "english": "Table 002",
+                "arabic": "طاولة ٠٠٢"
+              },
+              "layoutOrder": 9000,
+              "active": true,
+              "floorId": "f1000000-0000-4000-8000-000000000010"
+            },
+            "storageRevision": "11"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Dining 10",
+              "arabic": "صالة ١٠"
+            },
+            "layoutOrder": 700,
+            "active": true
+          },
+          "storageRevision": "7"
+        },
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q09",
+      "query": {
+        "kind": "Table",
+        "tableId": "a2000000-0000-4000-8000-000000000020"
+      },
+      "expected": {
+        "query": {
+          "kind": "Table",
+          "tableId": "a2000000-0000-4000-8000-000000000020"
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [
+          {
+            "definition": {
+              "id": "a2000000-0000-4000-8000-000000000020",
+              "names": {
+                "english": "",
+                "arabic": "طاولة الشرفة"
+              },
+              "layoutOrder": 3,
+              "active": false,
+              "floorId": "f1000000-0000-4000-8000-000000000020"
+            },
+            "storageRevision": "2"
+          }
+        ],
+        "floor": {
+          "definition": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Terrace 02",
+              "arabic": "شرفة ٠٢"
+            },
+            "layoutOrder": 100,
+            "active": false
+          },
+          "storageRevision": "3"
+        },
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q10",
+      "query": {
+        "kind": "Table",
+        "tableId": "a2000000-0000-4000-8000-000000000098"
+      },
+      "expected": {
+        "query": {
+          "kind": "Table",
+          "tableId": "a2000000-0000-4000-8000-000000000098"
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [],
+        "floor": null,
+        "nextAfter": null
+      }
+    },
+    {
+      "id": "NFFD-002-Q11",
+      "query": {
+        "kind": "Tables",
+        "floorId": "f1000000-0000-4000-8000-000000000098",
+        "after": null,
+        "limit": 20
+      },
+      "expected": {
+        "query": {
+          "kind": "Tables",
+          "floorId": "f1000000-0000-4000-8000-000000000098",
+          "after": null,
+          "limit": 20
+        },
+        "configured": true,
+        "floors": [],
+        "tables": [],
+        "floor": null,
+        "nextAfter": null
+      }
+    }
+  ],
+  "cas": {
+    "caseId": "NFFD-003",
+    "status": "NOT_RUN",
+    "commands": [
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000bb9",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "7",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Configured Update",
+              "arabic": "تحديث الإعداد"
+            },
+            "layoutOrder": 700,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "8"
+        }
+      },
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000bba",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "7",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Floor Version A",
+              "arabic": "صالة النسخة أ"
+            },
+            "layoutOrder": 8,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.stale",
+          "id": null,
+          "revision": null
+        }
+      },
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000bbb",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "11",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Configured Update",
+              "arabic": "تحديث الإعداد"
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "revision": "12"
+        }
+      },
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000bbc",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "11",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Floor Version A",
+              "arabic": "صالة النسخة أ"
+            },
+            "layoutOrder": 8,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.stale",
+          "id": null,
+          "revision": null
+        }
+      }
+    ],
+    "capture": {
+      "floor": {
+        "id": "f1000000-0000-4000-8000-000000000010",
+        "storageRevision": "7"
+      },
+      "table": {
+        "id": "a2000000-0000-4000-8000-000000000010",
+        "storageRevision": "11"
+      }
+    },
+    "expectedRevisionVectorsAfterEachCommand": [
+      {
+        "F-A": "8",
+        "F-B": "3",
+        "T-010": "11",
+        "T-020": "2",
+        "T-030": "5"
+      },
+      {
+        "F-A": "8",
+        "F-B": "3",
+        "T-010": "11",
+        "T-020": "2",
+        "T-030": "5"
+      },
+      {
+        "F-A": "8",
+        "F-B": "3",
+        "T-010": "12",
+        "T-020": "2",
+        "T-030": "5"
+      },
+      {
+        "F-A": "8",
+        "F-B": "3",
+        "T-010": "12",
+        "T-020": "2",
+        "T-030": "5"
+      }
+    ],
+    "expectedLogicalSuccessfulCountsAfterEachCommand": [
+      29,
+      29,
+      30,
+      30
+    ],
+    "expectedFinalChangedDefinitions": [
+      {
+        "definition": {
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Configured Update",
+            "arabic": "تحديث الإعداد"
+          },
+          "layoutOrder": 700,
+          "active": true
+        },
+        "storageRevision": "8"
+      },
+      {
+        "definition": {
+          "id": "a2000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Configured Update",
+            "arabic": "تحديث الإعداد"
+          },
+          "layoutOrder": 9000,
+          "active": true,
+          "floorId": "f1000000-0000-4000-8000-000000000010"
+        },
+        "storageRevision": "12"
+      }
+    ],
+    "unchangedAliases": [
+      "F-B",
+      "T-020",
+      "T-030"
+    ],
+    "retainedFloors": 2,
+    "retainedTables": 3,
+    "eachStaleNoEffect": "DIRECTORY_UNCHANGED after prior successful state; normal retained rejection allowed; no success version/configuration effect"
+  },
+  "fixedParent": {
+    "caseId": "NFFD-004",
+    "status": "NOT_RUN",
+    "commands": [
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000fa1",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "3",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000020",
+            "names": {
+              "english": "Terrace 02",
+              "arabic": "شرفة ٠٢"
+            },
+            "layoutOrder": 100,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000020",
+          "revision": "4"
+        }
+      },
+      {
+        "operationId": "d5000000-0000-4000-8000-000000000fa2",
+        "request": {
+          "kind": "Table",
+          "expectedRevision": "11",
+          "table": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Configured Update",
+              "arabic": "تحديث الإعداد"
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000020"
+          }
+        },
+        "expectedResult": {
+          "code": "food.table.floor_changed",
+          "id": null,
+          "revision": null
+        }
+      }
+    ],
+    "expectedFinalRevisions": {
+      "F-A": "7",
+      "F-B": "4",
+      "T-010": "11",
+      "T-020": "2",
+      "T-030": "5"
+    },
+    "expectedEnabledFloorB": {
+      "definition": {
+        "id": "f1000000-0000-4000-8000-000000000020",
+        "names": {
+          "english": "Terrace 02",
+          "arabic": "شرفة ٠٢"
+        },
+        "layoutOrder": 100,
+        "active": true
+      },
+      "storageRevision": "4"
+    },
+    "expectedRejectedTableDetail": {
+      "query": {
+        "kind": "Table",
+        "tableId": "a2000000-0000-4000-8000-000000000010"
+      },
+      "configured": true,
+      "floors": [],
+      "tables": [
+        {
+          "definition": {
+            "id": "a2000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Table 002",
+              "arabic": "طاولة ٠٠٢"
+            },
+            "layoutOrder": 9000,
+            "active": true,
+            "floorId": "f1000000-0000-4000-8000-000000000010"
+          },
+          "storageRevision": "11"
+        }
+      ],
+      "floor": {
+        "definition": {
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Dining 10",
+            "arabic": "صالة ١٠"
+          },
+          "layoutOrder": 700,
+          "active": true
+        },
+        "storageRevision": "7"
+      },
+      "nextAfter": null
+    },
+    "retainedFloors": 2,
+    "retainedTables": 3,
+    "logicalSuccessfulVersionsResults": 29,
+    "rejectionNoEffect": "DIRECTORY_UNCHANGED after the successful F-B enable; original T-010 id/parent/names/active/layout/revision retained"
+  },
+  "recovery": {
+    "caseId": "NFFD-005",
+    "status": "NOT_RUN",
+    "commands": [
+      {
+        "operationId": "d5000000-0000-4000-8000-000000001389",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "7",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Floor Version A",
+              "arabic": "صالة النسخة أ"
+            },
+            "layoutOrder": 8,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "8"
+        }
+      },
+      {
+        "operationId": "d5000000-0000-4000-8000-00000000138a",
+        "request": {
+          "kind": "Floor",
+          "expectedRevision": "8",
+          "floor": {
+            "id": "f1000000-0000-4000-8000-000000000010",
+            "names": {
+              "english": "Floor Version B",
+              "arabic": "صالة النسخة ب"
+            },
+            "layoutOrder": 9,
+            "active": true
+          }
+        },
+        "expectedResult": {
+          "code": "food.floor.saved",
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "revision": "9"
+        }
+      }
+    ],
+    "relativeSequence": [
+      "Confirm actual A commit and original operation/actor/input/result association at F-A revision 8",
+      "Confirm actual B commit at F-A revision 9; fresh protected readback shows B fields",
+      "Observe actual native runtime/store close completion and old-instance/private-session retirement",
+      "Observe a new native runtime opening the same original durable installation and scope",
+      "Observe fresh local authentication of the original active employee/admitted device with current explicit grants",
+      "Authorized original-result lookup for exact original A operation ID",
+      "Identical retry using exact original A operation ID and semantic request",
+      "Fresh protected current directory readback"
+    ],
+    "postReopenOriginalResultLookup": {
+      "semanticAction": "AuthorizedOriginalResultLookup",
+      "operationId": "d5000000-0000-4000-8000-000000001389",
+      "expectedResult": {
+        "code": "food.floor.saved",
+        "id": "f1000000-0000-4000-8000-000000000010",
+        "revision": "8"
+      },
+      "protocolShape": "UNBOUND N-B02"
+    },
+    "postReopenIdenticalRetry": {
+      "operationId": "d5000000-0000-4000-8000-000000001389",
+      "request": {
+        "kind": "Floor",
+        "expectedRevision": "7",
+        "floor": {
+          "id": "f1000000-0000-4000-8000-000000000010",
+          "names": {
+            "english": "Floor Version A",
+            "arabic": "صالة النسخة أ"
+          },
+          "layoutOrder": 8,
+          "active": true
+        }
+      },
+      "expectedResult": {
+        "code": "food.floor.saved",
+        "id": "f1000000-0000-4000-8000-000000000010",
+        "revision": "8"
+      }
+    },
+    "expectedCurrentFloor": {
+      "definition": {
+        "id": "f1000000-0000-4000-8000-000000000010",
+        "names": {
+          "english": "Floor Version B",
+          "arabic": "صالة النسخة ب"
+        },
+        "layoutOrder": 9,
+        "active": true
+      },
+      "storageRevision": "9"
+    },
+    "expectedFinalRevisions": {
+      "F-A": "9",
+      "F-B": "3",
+      "T-010": "11",
+      "T-020": "2",
+      "T-030": "5"
+    },
+    "expectedCurrentScopeEmployeeDevice": "Exactly the observed original pre-close values; fresh authentication is actual, not reused credentials/cache",
+    "retainedFloors": 2,
+    "retainedTables": 3,
+    "logicalSuccessfulVersionsResults": 30,
+    "postReopenLookupRetrySuccessfulVersionDelta": 0,
+    "postReopenLookupRetryConfigurationEffectDelta": 0,
+    "lostReplyProcessKillPowerLossRestoreQualification": "NOT_RUN, outside this bounded ordinary close/reopen assertion"
+  },
+  "supplementalOperationIdRule": "d5000000-0000-4000-8000-{case number * 1000 + within-case mutation number encoded as 12 lowercase hexadecimal digits}",
+  "directoryNoEffectOracle": "All current definitions/revisions/relationships and earlier successful associations unchanged; no retained ID or successful transition/configuration effect added; rejection result may be retained",
+  "wholeCaseNoBusinessEffectObligation": {
+    "status": "UNBOUND_NOT_RUN N-B05; original sentinels/assertions unchanged, not replaced by directory-only readback",
+    "drawerCashMinor": "100000",
+    "breadUnits": "10",
+    "meatGrams": "1500",
+    "zeroRequiredDeltas": [
+      "bill amounts",
+      "ownership transfers",
+      "kitchen issues",
+      "stock movements",
+      "payments",
+      "drawer movements",
+      "receipts"
+    ],
+    "originalSentinelSource": "food-floor-directory/fixtures.json operationalSentinels; no setup or passing evidence claimed here"
+  },
+  "openBindings": [
+    "N-B01",
+    "N-B02",
+    "N-B03",
+    "N-B04",
+    "N-B05",
+    "N-B06",
+    "N-B07"
+  ],
+  "allCaseStatuses": {
+    "NFFD-001": "NOT_RUN",
+    "NFFD-002": "NOT_RUN",
+    "NFFD-003": "NOT_RUN",
+    "NFFD-004": "NOT_RUN",
+    "NFFD-005": "NOT_RUN"
+  },
+  "wholeFfdAcceptanceStatus": "NOT_RUN_UNQUALIFIED"
+}

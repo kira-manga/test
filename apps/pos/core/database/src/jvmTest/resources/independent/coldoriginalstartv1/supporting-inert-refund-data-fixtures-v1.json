@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "design_version": "supporting-inert-refund-data-v1",
+  "additive_to": "retail-cash-refund-original-v1 and independent inert-original-DATA v1",
+  "execution_status": "UNRUN",
+  "layer": "non-device supporting inert refund DATA comparison only",
+  "fixture_warning": "Opaque synthetic descriptor DATA, not native proof, original certificates, credentials, authenticated principals or accepted payout evidence. MATCH is agreement only; no monetary/native/COS/CRF qualification.",
+  "reference_id": "D-REFUND-A",
+  "reference_descriptor": {
+    "original_actor_descriptor": "ACTOR-REFUND-original",
+    "original_operation_descriptor": "6ed06000-0300-4000-8000-000000000003",
+    "original_command_descriptor": "same-branch-retail-cash-refund-original-command-R",
+    "original_source_descriptor": {
+      "origin_label": "opaque-original-refund-origin-R",
+      "branch_id": "6ed06000-0000-4000-8000-000000000003",
+      "original_record_label": "opaque-original-refund-source-R",
+      "original_cut_label": "opaque-original-refund-before-cut-R",
+      "original_sale_id": "6ed06000-0100-4000-8000-000000000002",
+      "original_receipt_label": "opaque-original-sale-receipt-F",
+      "accepted_return_document_id": "6ed06000-0300-4000-8000-000000000001",
+      "refund_obligation_id": "6ed06000-0300-4000-8000-000000000002",
+      "original_cash_refund_allocation_label": "opaque-original-cash-refund-allocation-R"
+    },
+    "captured_start_descriptor": {
+      "instruction_label": "opaque-original-refund-instruction-R",
+      "original_actor_label": "ACTOR-REFUND-original",
+      "original_device_label": "DEVICE-REFUND-original",
+      "original_presentation_label": "opaque-original-refund-presentation-R",
+      "document_id": "6ed06000-0300-4000-8000-000000000001",
+      "document_version_label": "opaque-original-refund-payable-version-R",
+      "refund_obligation_id": "6ed06000-0300-4000-8000-000000000002",
+      "amount_minor": "6000",
+      "currency": "EGP",
+      "tender": "CASH",
+      "paying_drawer_id": "6ed06000-0300-4000-8000-000000000004",
+      "paying_cash_session_id": "6ed06000-0300-4000-8000-000000000005"
+    },
+    "captured_certificate_descriptor": "opaque-original-refund-certificate-descriptor-R",
+    "captured_requirement_descriptor": "opaque-original-refund-requirement-descriptor-R",
+    "captured_outcome_descriptor": {
+      "outcome_label": "opaque-original-refund-outcome-R",
+      "classification": "SUCCESS",
+      "cash_paid_minor": "6000",
+      "net_cash_effect_minor": "-6000"
+    }
+  },
+  "identical_candidate": {
+    "id": "D-REFUND-A-COPY",
+    "construction": "Separate complete identical copy preserving every original bound field and nested value",
+    "expected": "MATCH"
+  },
+  "top_level_one_field_changes": [
+    {"id": "R-T01", "field": "original_actor_descriptor", "replacement": "different-original-refund-actor", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T02", "field": "original_operation_descriptor", "replacement": "6ed06000-0400-4000-8000-000000000003", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T03", "field": "original_command_descriptor", "replacement": "different-original-refund-command", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T04", "field": "original_source_descriptor", "replacement": {"origin_label": "different-original-origin", "branch_id": "6ed06000-0000-4000-8000-000000000003", "original_record_label": "opaque-original-refund-source-R", "original_cut_label": "opaque-original-refund-before-cut-R", "original_sale_id": "6ed06000-0100-4000-8000-000000000002", "original_receipt_label": "opaque-original-sale-receipt-F", "accepted_return_document_id": "6ed06000-0300-4000-8000-000000000001", "refund_obligation_id": "6ed06000-0300-4000-8000-000000000002", "original_cash_refund_allocation_label": "opaque-original-cash-refund-allocation-R"}, "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T05", "field": "captured_start_descriptor", "replacement": {"instruction_label": "different-original-refund-instruction", "original_actor_label": "ACTOR-REFUND-original", "original_device_label": "DEVICE-REFUND-original", "original_presentation_label": "opaque-original-refund-presentation-R", "document_id": "6ed06000-0300-4000-8000-000000000001", "document_version_label": "opaque-original-refund-payable-version-R", "refund_obligation_id": "6ed06000-0300-4000-8000-000000000002", "amount_minor": "6000", "currency": "EGP", "tender": "CASH", "paying_drawer_id": "6ed06000-0300-4000-8000-000000000004", "paying_cash_session_id": "6ed06000-0300-4000-8000-000000000005"}, "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T06", "field": "captured_certificate_descriptor", "replacement": "different-original-refund-certificate-descriptor", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T07", "field": "captured_requirement_descriptor", "replacement": "different-original-refund-requirement-descriptor", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-T08", "field": "captured_outcome_descriptor", "replacement": {"outcome_label": "opaque-original-refund-outcome-R", "classification": "NOT_PERFORMED", "cash_paid_minor": "0", "net_cash_effect_minor": "0"}, "expected": "DOES_NOT_MATCH"}
+  ],
+  "nested_one_field_changes": [
+    {"id": "R-N01", "field": "original_source_descriptor.origin_label", "replacement": "different-original-origin", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N02", "field": "original_source_descriptor.branch_id", "replacement": "6ed06000-0000-4000-8000-000000000004", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N03", "field": "original_source_descriptor.original_record_label", "replacement": "different-original-source-record", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N04", "field": "original_source_descriptor.original_cut_label", "replacement": "different-later-cut", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N05", "field": "original_source_descriptor.original_sale_id", "replacement": "6ed06000-0200-4000-8000-000000000002", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N06", "field": "original_source_descriptor.original_receipt_label", "replacement": "different-original-receipt", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N07", "field": "original_source_descriptor.accepted_return_document_id", "replacement": "6ed06000-0400-4000-8000-000000000001", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N08", "field": "original_source_descriptor.refund_obligation_id", "replacement": "6ed06000-0400-4000-8000-000000000002", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N09", "field": "original_source_descriptor.original_cash_refund_allocation_label", "replacement": "different-original-refund-allocation", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N10", "field": "captured_start_descriptor.instruction_label", "replacement": "different-original-refund-instruction", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N11", "field": "captured_start_descriptor.original_actor_label", "replacement": "different-original-payer", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N12", "field": "captured_start_descriptor.original_device_label", "replacement": "different-claimed-original-device", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N13", "field": "captured_start_descriptor.original_presentation_label", "replacement": "different-presentation", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N14", "field": "captured_start_descriptor.document_id", "replacement": "6ed06000-0400-4000-8000-000000000001", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N15", "field": "captured_start_descriptor.document_version_label", "replacement": "different-refund-payable-version", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N16", "field": "captured_start_descriptor.refund_obligation_id", "replacement": "6ed06000-0400-4000-8000-000000000002", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N17", "field": "captured_start_descriptor.amount_minor", "replacement": "6001", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N18", "field": "captured_start_descriptor.currency", "replacement": "USD", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N19", "field": "captured_start_descriptor.tender", "replacement": "EXTERNAL_CARD", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N20", "field": "captured_start_descriptor.paying_drawer_id", "replacement": "6ed06000-0400-4000-8000-000000000004", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N21", "field": "captured_start_descriptor.paying_cash_session_id", "replacement": "6ed06000-0400-4000-8000-000000000005", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N22", "field": "captured_outcome_descriptor.outcome_label", "replacement": "different-original-refund-outcome", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N23", "field": "captured_outcome_descriptor.classification", "replacement": "NOT_PERFORMED", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N24", "field": "captured_outcome_descriptor.cash_paid_minor", "replacement": "6001", "expected": "DOES_NOT_MATCH"},
+    {"id": "R-N25", "field": "captured_outcome_descriptor.net_cash_effect_minor", "replacement": "-6001", "expected": "DOES_NOT_MATCH"}
+  ],
+  "comparison_effect_expectation": {
+    "creates_current_principal": false,
+    "creates_session_approval_or_admission": false,
+    "creates_dispatch_permit": false,
+    "consumes_original_native_action": false,
+    "publishes_new_physical_refund_instruction": false,
+    "executes_business_operation": false,
+    "applies_refund_or_stock_or_liability_effect": false,
+    "native_settlement_or_current_closure_proven": false,
+    "full_CRF_or_monetary_acceptance_proven": false
+  },
+  "result_labels": "MATCH and DOES_NOT_MATCH are inert comparison classifications, not production result codes or accepting native proof."
+}

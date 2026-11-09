@@ -1,0 +1,584 @@
+diff --git a/library/p2p-core/SCOPED-DISCLOSURE.md b/library/p2p-core/SCOPED-DISCLOSURE.md
+index 3b347380cc1a39fed08dc29f5033a1fff4c04856..8b92516cb39f70799b5eff4c0ee8b1005f3e4223 100644
+--- a/library/p2p-core/SCOPED-DISCLOSURE.md
++++ b/library/p2p-core/SCOPED-DISCLOSURE.md
+@@ -186,14 +186,14 @@ The regression sources cover primitive authority ordering/bounds, paused
+ precommit and send-mutex cases, first-epoch/rearm/terminal integration, real
+ protocol multichunk old-target behavior, and JVM thread races. These are
+ in-memory/source regression checks, not physical-device or native-buffer proof.
+-Four additional `ScopedRpcSdkIntegrationTest` cases and their test-only core-test
+-to RPC-main dependency are preserved in Ukkera's separate, unapplied SDK-test
+-overlay. Both JVM and Android test sources compiled, but neither runtime suite
+-could execute because strict locks reject three new dependency memberships.
+-The base candidate does not contain or count those four tests. No partial lock
+-rewrite, shadow source, friend-path or unlocked-classpath workaround is used.
+-The complete supported lock/API maintenance workflow and an actual integration
+-test run remain required; a source-reviewed overlay is not executed evidence.
++The four `ScopedRpcSdkIntegrationTest` cases use a test-only core-test to RPC-main
++dependency to exercise the public scoped-RPC factories against real SDK sessions,
++protocol readers, send queues, and lifetime/publication gates. They cover genuine
++forwarded-claim wrapper refusal, HELLO/invoke/delivery and public call-slot
++ownership, and queued/precommit sealing with no-send evidence. Established trust
++and protocol HELLO state are synthetic: these are not security-handshake, LAN,
++native-backpressure, or device-suspend timing tests. Cleanup assertions observe
++core budget totals and public RPC slot behavior, not private RPC budget counters.
+ Only actual recorded combined build/test results qualify the candidate; source
+ authorship or review alone does not resolve the application-level F13 finding.
+ No native transport changes or Apple cancellation/native-completion guarantees
+diff --git a/library/p2p-core/build.gradle.kts b/library/p2p-core/build.gradle.kts
+index 6ff208d6fff420d22dd0d588fc67aee2825fb91a..fb9343c14fabe7aff6116d8b7935c9b93945f1a6 100644
+--- a/library/p2p-core/build.gradle.kts
++++ b/library/p2p-core/build.gradle.kts
+@@ -151,6 +151,10 @@ kotlin {
+             dependencies {
+                 implementation(kotlin("test"))
+                 implementation(libs.kotlinx.coroutines.test)
++                // LOCAL candidate only: real SDK/public scoped-RPC integration
++                // fixtures. This is core TEST -> RPC MAIN -> core MAIN, never
++                // a production core -> RPC dependency or public test backdoor.
++                implementation(project(":p2p-rpc"))
+             }
+         }
+     }
+@@ -187,6 +191,7 @@ tasks.withType<Test>().configureEach {
+             // Android stub profile to unrelated common/native test suites.
+             includeTestsMatching("*DisclosureLifetimeTest")
+             includeTestsMatching("*SessionScopedDisclosureTest")
++            includeTestsMatching("*ScopedRpcSdkIntegrationTest")
+             isFailOnNoMatchingTests = true
+         }
+     }
+diff --git a/library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/internal/ScopedRpcSdkIntegrationTest.kt b/library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/internal/ScopedRpcSdkIntegrationTest.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..52d08c84f6659c97ef2410a983956d1bd6345128
+--- /dev/null
++++ b/library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/internal/ScopedRpcSdkIntegrationTest.kt
+@@ -0,0 +1,528 @@
++package dev.p2pkit.core.internal
++
++import dev.p2pkit.core.ConnectionState
++import dev.p2pkit.core.KeepAliveConfig
++import dev.p2pkit.core.P2pDisclosureTicket
++import dev.p2pkit.core.P2pError
++import dev.p2pkit.core.P2pInitialDisclosureLifetime
++import dev.p2pkit.core.P2pLogger
++import dev.p2pkit.core.P2pMessage
++import dev.p2pkit.core.P2pSession
++import dev.p2pkit.core.P2pSessionProfile
++import dev.p2pkit.core.PayloadBudget
++import dev.p2pkit.core.Peer
++import dev.p2pkit.core.PeerAdmission
++import dev.p2pkit.core.PeerFingerprint
++import dev.p2pkit.core.PeerId
++import dev.p2pkit.core.PeerIdentity
++import dev.p2pkit.core.Platform
++import dev.p2pkit.core.SessionConnectionInfo
++import dev.p2pkit.core.TransportKind
++import dev.p2pkit.core.protocol.DefaultP2pProtocol
++import dev.p2pkit.core.protocol.FrameCodec
++import dev.p2pkit.core.protocol.PacketType
++import dev.p2pkit.core.protocol.ProtocolConstants
++import dev.p2pkit.core.protocol.ProtocolEvent
++import dev.p2pkit.core.protocol.ProtocolFeatures
++import dev.p2pkit.core.protocol.ProtocolSessionState
++import dev.p2pkit.core.testfixtures.FakeConnectionPair
++import dev.p2pkit.core.testfixtures.FakeRawConnection
++import dev.p2pkit.core.transfer.P2pFileOffer
++import dev.p2pkit.rpc.RpcExecutionEvidence
++import dev.p2pkit.rpc.RpcFailure
++import dev.p2pkit.rpc.RpcFailureKind
++import dev.p2pkit.rpc.RpcFailurePhase
++import dev.p2pkit.rpc.RpcReply
++import dev.p2pkit.rpc.RpcRetryAdvice
++import dev.p2pkit.rpc.ScopedRpcBinding
++import dev.p2pkit.rpc.ScopedRpcClientSession
++import dev.p2pkit.rpc.ScopedRpcDelivery
++import dev.p2pkit.rpc.ScopedRpcDisclosureAuthorizer
++import dev.p2pkit.rpc.ScopedRpcDisclosurePhase
++import dev.p2pkit.rpc.ScopedRpcHostSession
++import dev.p2pkit.rpc.ScopedRpcLimits
++import dev.p2pkit.rpc.ScopedRpcProcedure
++import dev.p2pkit.rpc.ScopedRpcRequestContext
++import dev.p2pkit.rpc.ScopedRpcRequestGrant
++import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CompletableDeferred
++import kotlinx.coroutines.CoroutineScope
++import kotlinx.coroutines.Deferred
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.Job
++import kotlinx.coroutines.NonCancellable
++import kotlinx.coroutines.SupervisorJob
++import kotlinx.coroutines.async
++import kotlinx.coroutines.channels.Channel
++import kotlinx.coroutines.flow.MutableSharedFlow
++import kotlinx.coroutines.flow.MutableStateFlow
++import kotlinx.coroutines.flow.SharedFlow
++import kotlinx.coroutines.flow.StateFlow
++import kotlinx.coroutines.flow.collect
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.runBlocking
++import kotlinx.coroutines.test.StandardTestDispatcher
++import kotlinx.coroutines.test.TestScope
++import kotlinx.coroutines.test.runCurrent
++import kotlinx.coroutines.test.runTest
++import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeout
++import kotlinx.coroutines.yield
++import kotlinx.serialization.builtins.serializer
++import kotlin.test.Test
++import kotlin.test.assertEquals
++import kotlin.test.assertFailsWith
++import kotlin.test.assertFalse
++import kotlin.test.assertIs
++import kotlin.test.assertNotNull
++import kotlin.test.assertNull
++import kotlin.test.assertSame
++import kotlin.test.assertTrue
++
++/**
++ * Real SDK/protocol/queue/lifetime and PUBLIC scoped-RPC facades over an in-memory byte pair.
++ * Established secure/trusted HELLO state and fingerprints are synthetic: no security handshake,
++ * LAN/native backpressure, device-suspend timing, or platform-runtime qualification is implied.
++ * Core budget totals and public RPC slot ownership are observed, not private RPC budget counters.
++ */
++@OptIn(ExperimentalCoroutinesApi::class)
++class ScopedRpcSdkIntegrationTest {
++    @Test
++    fun hostFactoryRejectsGenuineForwardedLifetimeBeforeReadingSubstitutedViews() = runTest {
++        assertRefusesForwardedLifetime { session, scope ->
++            ScopedRpcHostSession.create(session, BINDING, scope) {}
++        }
++    }
++
++    @Test
++    fun clientFactoryRejectsGenuineForwardedLifetimeBeforeReadingSubstitutedViews() = runTest {
++        assertRefusesForwardedLifetime { session, scope ->
++            ScopedRpcClientSession.create(session, BINDING, scope) {}
++        }
++    }
++
++    @Test
++    fun publicFacadesNegotiateInvokeAndTransferOneShotDeliveryWithBoundedSlotOwnership() = runTest {
++        val f = Fixture(this)
++        try {
++            openRpc(f, calls = 1, sendQueue = 2)
++            val client = assertNotNull(f.clientRpc)
++            val host = assertNotNull(f.hostRpc)
++            assertSame(f.client.session.peerIdentity, client.peer)
++            assertSame(f.host.session.peerIdentity, host.peer)
++            assertFalse(client.isSealed)
++            assertFalse(host.isSealed)
++            // Only the actual public client's matching HELLO/READY exchange can finish create().
++            assertEquals(1, f.wire.a.dataFrames())
++            assertEquals(1, f.wire.b.dataFrames())
++
++            val first = awaitAtCurrentTime(f.call("first")).getOrThrow()
++            assertEquals(BINDING, first.binding)
++            assertEquals(listOf("first"), f.handled)
++            val received = f.requests.single()
++            assertEquals("first", received.second)
++            assertSame(f.host.session.peerIdentity, received.first.peer)
++            assertEquals(BINDING, received.first.binding)
++            assertEquals(first.requestId, received.first.requestId)
++            assertEquals(PROCEDURE.name, received.first.procedureName)
++            assertEquals(PROCEDURE.version, received.first.procedureVersion)
++            assertEquals(REQUEST_RESPONSE, f.clientPhases)
++            assertEquals(REQUEST_RESPONSE, f.hostPhases)
++
++            // A returned but untaken handle still owns the ONLY public client call slot.
++            val full = failureOf(awaitAtCurrentTime(f.call("must-not-be-sent")))
++            assertEquals(RpcFailureKind.Overloaded, full.kind)
++            assertEquals(RpcFailurePhase.Admission, full.phase)
++            assertEquals(RpcExecutionEvidence.NotSent, full.executionEvidence)
++            assertEquals(listOf("first"), f.handled)
++            assertEquals(2, f.wire.a.dataFrames())
++
++            val taken = assertIs<RpcReply.Success<String>>(first.take(BINDING))
++            assertEquals("reply:first", taken.value)
++            assertEquals(REQUEST_RESPONSE + ScopedRpcDisclosurePhase.Publication, f.clientPhases)
++            assertUnauthorizedTake(first)
++
++            // Successful admission after take, then after discard, observes slot release without
++            // exposing or injecting the facade's private RPC PayloadBudget/engine/link.
++            val second = awaitAtCurrentTime(f.call("second")).getOrThrow()
++            second.discard()
++            second.discard()
++            assertUnauthorizedTake(second)
++            val third = awaitAtCurrentTime(f.call("third")).getOrThrow()
++            assertEquals(listOf("first", "second", "third"), f.handled)
++            assertEquals(3, f.requests.map { it.first.requestId }.toSet().size)
++            assertEquals(4, f.wire.a.dataFrames())
++            assertEquals(4, f.wire.b.dataFrames())
++
++            val publicationChecks = f.clientPhases.count { it == ScopedRpcDisclosurePhase.Publication }
++            client.seal()
++            assertTrue(client.isSealed)
++            assertUnauthorizedTake(third)
++            assertEquals(publicationChecks, f.clientPhases.count { it == ScopedRpcDisclosurePhase.Publication })
++            assertEquals("reply:first", taken.value, "Seal cannot recall an already transferred OLD-context value")
++        } finally {
++            dispose(f)
++        }
++    }
++
++    @Test
++    fun sealRevokesActualQueuedAndPreparingInvokesBeforeCommitWithoutHandlerOrWireDisclosure() = runTest {
++        val f = Fixture(this)
++        try {
++            openRpc(f, calls = 3, sendQueue = 2)
++            val client = assertNotNull(f.clientRpc)
++            runCurrent()
++            val clientBaseline = f.client.budget.retainedBytes.value
++            val hostBaseline = f.host.budget.retainedBytes.value
++            val clientWrites = f.wire.a.writeAttempts
++            val hostWrites = f.wire.b.writeAttempts
++            assertEquals(1, f.wire.a.dataFrames())
++            assertEquals(1, f.wire.b.dataFrames())
++
++            // This existing SDK seam is OUTSIDE its authority gate, after sendMutex/target checks.
++            // Enable only after HELLO so the first real Invoke owns the writer but has not committed.
++            f.beforeClientCommit.enabled = true
++            val preparing = f.call("preparing")
++            runAtCurrentTimeUntil { f.beforeClientCommit.entered.isCompleted }
++            val preparingBytes = f.client.budget.retainedBytes.value
++            assertTrue(preparingBytes > clientBaseline)
++            assertFalse(preparing.isCompleted)
++            val queued = f.call("queued")
++            runCurrent()
++            assertFalse(queued.isCompleted)
++            assertTrue(f.client.budget.retainedBytes.value > preparingBytes)
++
++            // Three call slots but only TWO writer entries: the third reaches Sending admission.
++            // Together with the held writer and second SDK reservation this observes the real queue.
++            val full = failureOf(awaitAtCurrentTime(f.call("queue-full")))
++            assertEquals(RpcFailureKind.Overloaded, full.kind)
++            assertNotSent(full)
++            assertEquals(clientWrites, f.wire.a.writeAttempts)
++            assertTrue(f.handled.isEmpty())
++
++            awaitAtCurrentTime(f.scope.async { client.seal() })
++            assertTrue(client.isSealed)
++            assertFalse(f.beforeClientCommit.release.isCompleted)
++            assertFalse(preparing.isCompleted, "Seal must not need the noncancellable parked writer to exit")
++            assertNotSent(failureOf(awaitAtCurrentTime(queued)))
++            // Sealing releases uncommitted SDK ticket leases even while the first writer is parked.
++            // The remaining baseline belongs to live protocol readers, not RPC-private accounting.
++            assertEquals(clientBaseline, f.client.budget.retainedBytes.value)
++            assertEquals(hostBaseline, f.host.budget.retainedBytes.value)
++            assertEquals(ConnectionState.Connected, f.wire.a.state.value)
++            assertEquals(ConnectionState.Connected, f.client.session.state.value)
++
++            f.beforeClientCommit.release.complete(Unit)
++            assertNotSent(failureOf(awaitAtCurrentTime(preparing)))
++            runCurrent()
++            assertTrue(f.requests.isEmpty())
++            assertTrue(f.handled.isEmpty())
++            assertTrue(f.hostPhases.isEmpty())
++            assertTrue(f.clientPhases.all { it == ScopedRpcDisclosurePhase.Request })
++            assertEquals(clientWrites, f.wire.a.writeAttempts)
++            assertEquals(hostWrites, f.wire.b.writeAttempts)
++            assertEquals(1, f.wire.a.dataFrames())
++            assertEquals(1, f.wire.b.dataFrames())
++            assertFailsWith<P2pError.ConnectionFailed> { f.client.session.claimInitialDisclosureLifetime() }
++        } finally {
++            dispose(f)
++        }
++    }
++
++    private suspend fun TestScope.assertRefusesForwardedLifetime(
++        create: suspend (P2pSession, CoroutineScope) -> Unit,
++    ) {
++        val f = Fixture(this)
++        try {
++            val wrapper = SubstitutingSession(f.client.session)
++            val failure = assertFailsWith<RpcFailure> { create(wrapper, f.scope) }
++            assertEquals(RpcFailureKind.NotConnected, failure.kind)
++            assertEquals(RpcFailurePhase.Negotiation, failure.phase)
++            val lifetime = assertNotNull(wrapper.forwarded)
++            assertTrue(lifetime.belongsTo(f.client.session))
++            assertFalse(lifetime.belongsTo(wrapper))
++            assertTrue(lifetime.isSealed)
++            assertTrue(wrapper.propertyReads.isEmpty())
++            assertEquals(0, wrapper.equalityCalls)
++            assertEquals(0, wrapper.hashCalls)
++            assertEquals(0, wrapper.legacySends)
++            assertEquals(0, wrapper.scopedSends)
++            assertEquals(0, wrapper.closes)
++            assertEquals(0, f.wire.a.writeAttempts)
++            assertEquals(0, f.wire.b.writeAttempts)
++            assertEquals(ConnectionState.Connected, f.client.session.state.value)
++            assertFailsWith<P2pError.ConnectionFailed> { f.client.session.claimInitialDisclosureLifetime() }
++        } finally {
++            dispose(f)
++        }
++    }
++
++    private suspend fun TestScope.openRpc(f: Fixture, calls: Int, sendQueue: Int) {
++        val limits = ScopedRpcLimits(calls, records = 8, sendQueue = sendQueue,
++            payloadBytes = 1_048_576, resultCacheBytes = 65_536)
++        // Synthetic application authorization, never a credential-verification or POS-route claim.
++        f.hostRpc = ScopedRpcHostSession.create(f.host.session, BINDING, f.scope) {
++            this.limits = limits
++            disclose = ScopedRpcDisclosureAuthorizer {
++                f.hostPhases += it.phase
++                it.grant == GRANT && it.request.binding == BINDING
++            }
++            register(PROCEDURE, windowMillis = { CALL_WINDOW }, authorize = { context, request ->
++                f.requests += context to request
++                GRANT
++            }) { _, request ->
++                f.handled += request
++                RpcReply.Success("reply:$request")
++            }
++        }
++        f.clientRpc = awaitAtCurrentTime(f.scope.async {
++            ScopedRpcClientSession.create(f.client.session, BINDING, f.scope) {
++                this.limits = limits
++                windowMillis = { CALL_WINDOW }
++                authorize = ScopedRpcDisclosureAuthorizer {
++                    f.clientPhases += it.phase
++                    it.grant == GRANT && it.request.binding == BINDING
++                }
++            }
++        })
++        runCurrent()
++    }
++
++    private class CommitPause {
++        var enabled = false
++        val entered = CompletableDeferred<Unit>()
++        val release = CompletableDeferred<Unit>()
++
++        suspend fun waitIfEnabled() {
++            if (!enabled) return
++            entered.complete(Unit)
++            withContext(NonCancellable) { release.await() }
++        }
++    }
++
++    private class Fixture(testScope: TestScope) {
++        val supervisor = SupervisorJob(testScope.backgroundScope.coroutineContext[Job])
++        val scope = CoroutineScope(StandardTestDispatcher(testScope.testScheduler) + supervisor)
++        val wire = FakeConnectionPair()
++        val beforeClientCommit = CommitPause()
++        val client = Endpoint(testScope, scope, wire.a, "rpc-client", "rpc-host", 7,
++            beforeClientCommit::waitIfEnabled)
++        val host = Endpoint(testScope, scope, wire.b, "rpc-host", "rpc-client", 11)
++        var clientRpc: ScopedRpcClientSession? = null
++        var hostRpc: ScopedRpcHostSession? = null
++        val requests = mutableListOf<Pair<ScopedRpcRequestContext, String>>()
++        val handled = mutableListOf<String>()
++        val clientPhases = mutableListOf<ScopedRpcDisclosurePhase>()
++        val hostPhases = mutableListOf<ScopedRpcDisclosurePhase>()
++        val calls = mutableListOf<Deferred<Result<ScopedRpcDelivery<String, String>>>>()
++
++        fun call(request: String): Deferred<Result<ScopedRpcDelivery<String, String>>> = scope.async {
++            runCatching { checkNotNull(clientRpc).call(PROCEDURE, request, GRANT, CALL_WINDOW) }
++        }.also(calls::add)
++    }
++
++    private class Endpoint(
++        testScope: TestScope,
++        scope: CoroutineScope,
++        connection: FakeRawConnection,
++        localId: String,
++        remoteId: String,
++        fingerprintByte: Byte,
++        beforeCommit: (suspend () -> Unit)? = null,
++    ) {
++        val budget = PayloadBudget(16L * 1_048_576)
++        private val profile = P2pSessionProfile({ PeerAdmission.Trusted }, budget, 1,
++            maxApplicationBytes = MAX_APPLICATION_BYTES)
++        private val protocol = DefaultP2pProtocol(
++            clock = { testScope.testScheduler.currentTime }, version = ProtocolConstants.SECURE_VERSION,
++            sessionProfile = profile,
++        )
++        private val features = setOf(ProtocolFeatures.APP_MESSAGE_ENVELOPE_V1)
++        private val protocolState = ProtocolSessionState(
++            localId, secure = true, localFeatures = features, restrictedApplicationBytes = MAX_APPLICATION_BYTES,
++        ).also { it.completeHello(remoteId, features) }
++        val events = Channel<ProtocolEvent>(Channel.UNLIMITED, onUndeliveredElement = ProtocolEvent::release)
++        var readerFailure: Throwable? = null
++            private set
++        val reader = scope.launch {
++            try {
++                protocol.events(connection, protocolState).collect(events::send)
++                events.close()
++            } catch (failure: Throwable) {
++                events.close(failure)
++                if (failure !is CancellationException) readerFailure = failure
++            }
++        }
++        val session = P2pSessionImpl(
++            id = "fixture-$localId",
++            peer = Peer(PeerId(remoteId), "fixture", Platform.UNKNOWN, setOf(TransportKind.LAN)),
++            peerIdentity = PeerIdentity(
++                PeerId(remoteId), PeerFingerprint.fromDigest(ByteArray(32) { fingerprintByte }),
++            ),
++            initialConnection = connection, initialEvents = events, initialReaderJob = reader,
++            initialProtocolState = protocolState, protocol = protocol, parentScope = scope,
++            keepAlive = KeepAliveConfig(60_000, 120_000), clock = { testScope.testScheduler.currentTime },
++            monotonicClock = { testScope.testScheduler.currentTime }, logger = P2pLogger.NoOp,
++            sessionProfile = profile, beforeScopedDisclosureCommitForTest = beforeCommit,
++        ).also { it.start() }
++    }
++
++    /** Forwards real authority but offers unrelated virtual application views; not an SDK owner. */
++    private class SubstitutingSession(private val actual: P2pSession) : P2pSession by actual {
++        val propertyReads = mutableListOf<String>()
++        var forwarded: P2pInitialDisclosureLifetime? = null
++            private set
++        var equalityCalls = 0
++            private set
++        var hashCalls = 0
++            private set
++        var legacySends = 0
++            private set
++        var scopedSends = 0
++            private set
++        var closes = 0
++            private set
++        private val fakePeer = Peer(PeerId("substitute"), "fake", Platform.UNKNOWN, setOf(TransportKind.LAN))
++        private val fakeIdentity = PeerIdentity(fakePeer.id, PeerFingerprint.fromDigest(ByteArray(32) { 19 }))
++        private val fakeIncoming = MutableSharedFlow<P2pMessage>()
++        private val fakeState = MutableStateFlow(ConnectionState.Connected)
++        private val fakeConnectionInfo = MutableStateFlow(SessionConnectionInfo(1))
++        private val fakeOffers = MutableStateFlow<List<P2pFileOffer>>(emptyList())
++        private val fakeFiles = MutableSharedFlow<P2pFileOffer>()
++
++        private fun <T> view(name: String, value: T): T {
++            propertyReads += name
++            return value
++        }
++
++        override val id: String get() = view("id", "substituted-id")
++        override val peer: Peer get() = view("peer", fakePeer)
++        override val peerIdentity: PeerIdentity get() = view("peerIdentity", fakeIdentity)
++        override val admission: PeerAdmission get() = view("admission", PeerAdmission.Trusted)
++        override val incoming: SharedFlow<P2pMessage> get() = view("incoming", fakeIncoming)
++        override val state: StateFlow<ConnectionState> get() = view("state", fakeState)
++        override val connectionInfo: StateFlow<SessionConnectionInfo>
++            get() = view("connectionInfo", fakeConnectionInfo)
++        override val pendingFileOffers: StateFlow<List<P2pFileOffer>> get() = view("pendingFileOffers", fakeOffers)
++
++        @Deprecated("Observe pendingFileOffers")
++        override val incomingFiles: SharedFlow<P2pFileOffer> get() = view("incomingFiles", fakeFiles)
++
++        override suspend fun claimInitialDisclosureLifetime(): P2pInitialDisclosureLifetime =
++            actual.claimInitialDisclosureLifetime().also { forwarded = it }
++
++        override suspend fun send(message: P2pMessage) {
++            legacySends++
++            actual.send(message)
++        }
++
++        override suspend fun sendAtGeneration(message: P2pMessage, generation: Long) {
++            legacySends++
++            actual.sendAtGeneration(message, generation)
++        }
++
++        override suspend fun sendScoped(ticket: P2pDisclosureTicket) {
++            scopedSends++
++            actual.sendScoped(ticket)
++        }
++
++        override suspend fun close() {
++            closes++
++            actual.close()
++        }
++
++        override fun equals(other: Any?): Boolean {
++            equalityCalls++
++            error("The opaque SDK owner verifier must not call virtual equality")
++        }
++
++        override fun hashCode(): Int {
++            hashCalls++
++            error("The opaque SDK owner verifier must not call virtual hashing")
++        }
++    }
++
++    private suspend fun TestScope.dispose(f: Fixture) {
++        f.beforeClientCommit.release.complete(Unit)
++        try {
++            val closing = listOf(
++                f.scope.async { runCatching { f.clientRpc?.close() ?: f.client.session.close() } },
++                f.scope.async { runCatching { f.hostRpc?.close() ?: f.host.session.close() } },
++            )
++            runAtCurrentTimeUntil { closing.all { it.isCompleted } }
++            closing.forEach { it.await().getOrThrow() }
++            awaitAtCurrentTime(f.scope.async {
++                f.client.session.awaitRuntimeTermination()
++                f.host.session.awaitRuntimeTermination()
++            })
++            runAtCurrentTimeUntil { f.calls.all { it.isCompleted } }
++            for (endpoint in listOf(f.client, f.host)) {
++                assertTrue(endpoint.reader.isCompleted)
++                assertNull(endpoint.readerFailure)
++                assertFalse(endpoint.session.runtimeJobIsActiveForTest)
++                assertEquals(0 to 0L, endpoint.session.applicationBacklogForTest())
++                assertEquals(0L, endpoint.budget.retainedBytes.value)
++            }
++            assertEquals(ConnectionState.Closed, f.wire.a.state.value)
++            assertEquals(ConnectionState.Closed, f.wire.b.state.value)
++        } finally {
++            // Failure-path ownership is also bounded; never strand the deliberately parked writer.
++            f.beforeClientCommit.release.complete(Unit)
++            f.wire.a.breakWith()
++            f.wire.b.breakWith()
++            f.client.events.cancel()
++            f.host.events.cancel()
++            f.supervisor.cancel()
++            runAtCurrentTimeUntil { f.supervisor.isCompleted }
++        }
++    }
++
++    private suspend fun <T> TestScope.awaitAtCurrentTime(deferred: Deferred<T>): T {
++        runAtCurrentTimeUntil { deferred.isCompleted }
++        return deferred.await()
++    }
++
++    private fun TestScope.runAtCurrentTimeUntil(ready: () -> Boolean) {
++        // Public RPC uses its real monotonic clock. Do not auto-advance test timers while native-free
++        // SDK cleanup dispatchers settle. This real timeout is ONLY a deadlock guard, not an oracle.
++        runBlocking(Dispatchers.Default) {
++            withTimeout(5_000L) {
++                while (!ready()) {
++                    testScheduler.runCurrent()
++                    yield()
++                }
++            }
++        }
++    }
++
++    private fun FakeRawConnection.dataFrames(): Int = writtenChunks.count {
++        FrameCodec.decode(it, ProtocolConstants.SECURE_VERSION).type == PacketType.DATA
++    }
++
++    private fun failureOf(result: Result<ScopedRpcDelivery<String, String>>): RpcFailure =
++        assertIs<RpcFailure>(result.exceptionOrNull())
++
++    private fun assertNotSent(failure: RpcFailure) {
++        assertEquals(RpcFailurePhase.Sending, failure.phase)
++        assertEquals(RpcExecutionEvidence.NotSent, failure.executionEvidence)
++        assertEquals(RpcRetryAdvice.SafeBeforeExecution, failure.retryAdvice)
++    }
++
++    private suspend fun assertUnauthorizedTake(delivery: ScopedRpcDelivery<String, String>) {
++        val failure = assertFailsWith<RpcFailure> { delivery.take(BINDING) }
++        assertEquals(RpcFailureKind.Unauthorized, failure.kind)
++        assertEquals(RpcFailurePhase.Decoding, failure.phase)
++    }
++
++    private companion object {
++        const val MAX_APPLICATION_BYTES = 1_048_576
++        const val CALL_WINDOW = 10_000L
++        val BINDING = ScopedRpcBinding("fixture-scope", "fixture-actor", "fixture-session", "echo", "fixture-view")
++        val GRANT = ScopedRpcRequestGrant(BINDING, "fixture-resource")
++        val PROCEDURE = ScopedRpcProcedure("fixture.echo", 1,
++            String.serializer(), String.serializer(), String.serializer(),
++            requestLimitBytes = 1_024, responseLimitBytes = 1_024, errorLimitBytes = 1_024)
++        val REQUEST_RESPONSE = listOf(ScopedRpcDisclosurePhase.Request, ScopedRpcDisclosurePhase.Response)
++    }
++}

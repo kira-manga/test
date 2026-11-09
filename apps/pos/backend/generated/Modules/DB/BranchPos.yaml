@@ -1,0 +1,124 @@
+# New namespace only. This is a bounded T00/T06 generation probe, NOT the full
+# product graph or an authorization policy. Every generic BranchPos route is
+# disabled by handwritten Go guards, including reads and administrator writes.
+# Existing Org records are referenced by their verified opaque STRING IDs.
+# All new domain IDs / explicit _id values are canonical UUID strings.
+# Exact values and versions are strings: Go's generator integer is *int and
+# generic JSON number decoding must never decide financial precision.
+# Required fields / unique composite constraints / cross-tenant references are
+# enforced by the typed service + transaction adapter, not YAML form metadata.
+BranchPos:
+  CompanyProfile:
+    props:
+      compound_indexes: ['org:1,company:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    schema_version: {type: string}
+    revision: {type: string}
+    activity: {type: string}
+    currency: {type: string}
+    timezone: {type: string}
+    active_release_hash: {type: string}
+    branch_bindings: {type: inversed, model: BranchBinding, mapped: company_profile}
+
+  BranchBinding:
+    props:
+      compound_indexes: ['org:1,company:1,branch:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    company_profile: {type: relation, model: CompanyProfile}
+    schema_version: {type: string}
+    revision: {type: string}
+    # Public identity only: no bearer tokens, credential verifiers or keys.
+    selected_master_device_id: {type: string}
+    authority_epoch: {type: string}
+
+  OperationEvidence:
+    props:
+      compound_indexes: ['branch:1,operation_id:1', 'branch:1,authority_epoch:1,journal_sequence:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    schema_version: {type: string}
+    operation_id: {type: string}
+    authority_epoch: {type: string}
+    journal_sequence: {type: string}
+    original_actor_id: {type: string}
+    origin_master_device_id: {type: string}
+    content_hash: {type: string}
+    payload_encoding: {type: string}
+    # Exact canonical validated v1 envelope; never execute this as a command.
+    canonical_payload: {type: string}
+    # BSON datetime is millisecond precision: a coarse query projection ONLY.
+    # Exact signed UTC bytes remain in canonical_payload, never rebuilt here.
+    master_committed_at: {type: datetime}
+
+  IngestionReceipt:
+    props:
+      compound_indexes: ['branch:1,operation_id:1', 'branch:1,authority_epoch:1,journal_sequence:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    schema_version: {type: string}
+    operation_id: {type: string}
+    authority_epoch: {type: string}
+    journal_sequence: {type: string}
+    content_hash: {type: string}
+    disposition: {type: string}
+    # A receipt is not a highest-contiguous / complete-recovery acknowledgement.
+    stored_at: {type: datetime}
+
+  IngestionCheckpoint:
+    props:
+      compound_indexes: ['branch:1,authority_epoch:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    schema_version: {type: string}
+    authority_epoch: {type: string}
+    contiguous_accepted_sequence: {type: string}
+    # This stream says nothing about standby, projection or full recovery.
+    stream: {type: string}
+
+  QuarantineEnvelope:
+    props:
+      compound_indexes: ['branch:1,operation_id:1,content_hash:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    schema_version: {type: string}
+    operation_id: {type: string}
+    content_hash: {type: string}
+    canonical_payload: {type: string}
+    reason_code: {type: string}
+    received_at: {type: datetime}
+
+  ProjectionJob:
+    props:
+      compound_indexes: ['branch:1,operation_id:1,destination:1']
+      offline: {mode: none}
+    domain_id: {type: string, unique: true}
+    org: {type: relation, model: 'Org\Org'}
+    company: {type: relation, model: 'Org\Company'}
+    branch: {type: relation, model: 'Org\Branch'}
+    schema_version: {type: string}
+    operation_id: {type: string}
+    evidence_id: {type: relation, model: OperationEvidence}
+    content_hash: {type: string}
+    destination: {type: string}
+    state: {type: string}
+    attempt_count: {type: string}
+    next_attempt_at: {type: datetime}

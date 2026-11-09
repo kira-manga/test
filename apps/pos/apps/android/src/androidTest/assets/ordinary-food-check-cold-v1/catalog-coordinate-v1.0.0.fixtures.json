@@ -1,0 +1,384 @@
+{
+  "adjunct_id": "ordinary-food-check-cold-catalog-coordinate",
+  "version": "1.0.0",
+  "variant": "OFC-COLD-CATALOG-RELEASE5-1",
+  "status": "FROZEN_BEFORE_SOURCE_BINDING_OR_EXECUTION",
+  "execution_status": "NOT RUN",
+  "date": "2026-11-06",
+  "tested_revision": null,
+  "execution_evidence": null,
+  "purpose": "Explicit new source-coordinate interpretation of unchanged generic catalog_revision5; fixture bindings, not a wire/storage/admission schema.",
+  "base": {
+    "cases": "cases.md",
+    "fixtures": "fixtures.json",
+    "version": "1.1.0",
+    "case_ids": [
+      "OFC-COLD-101",
+      "OFC-COLD-102",
+      "OFC-COLD-103",
+      "OFC-COLD-104",
+      "OFC-COLD-105",
+      "OFC-COLD-106",
+      "OFC-COLD-107",
+      "OFC-COLD-108"
+    ],
+    "original_files_and_literals_preserved": true,
+    "original_execution_status": "NOT RUN",
+    "original_generic_coordinate_qualified_by_this_adjunct": false,
+    "original_version_approved_by_this_adjunct": false
+  },
+  "contracts": [
+    {
+      "file": "../../contracts/catalog-release-source.md",
+      "contract": "CSR-CONTRACT-1",
+      "sections": [
+        "CSR-01",
+        "CSR-02",
+        "CSR-03",
+        "CSR-04",
+        "CSR-05",
+        "CSR-06",
+        "CSR-07",
+        "CSR-08",
+        "CSR-09"
+      ]
+    },
+    {
+      "file": "../../contracts/LOCAL-FOOD-ROUTE-FREE-ADD.md",
+      "sections": [
+        "Compatibility and admission",
+        "Authentic capture and durable representation",
+        "Original ownership and reads"
+      ]
+    },
+    {
+      "file": "../../contracts/LOCAL-FOOD-CURRENT-PAYABLE-V3.md",
+      "version": 3,
+      "sections": [
+        "Business boundary",
+        "Compatible protected read"
+      ]
+    }
+  ],
+  "coordinate_interpretations": [
+    {
+      "profile": "restaurant",
+      "base_pointer": "/fixtures/restaurant/catalog_revision",
+      "preserved_original_literal": "5",
+      "new_variant_role": "CompanyCatalog release publication revision, not a quotation cursor or member revision",
+      "release": {
+        "company_id_ref": "/fixtures/restaurant/company_id",
+        "catalog_id_binding": "restaurant_company_catalog_id",
+        "publication_domain": "CATALOG_RELEASE_V1",
+        "publication_id_binding": "restaurant_catalog_release5_publication_id",
+        "revision": "5",
+        "content_digest_binding": "restaurant_catalog_release5_original_digest",
+        "native_chain_revision_strings": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "chain_rule": "Same company/catalog; no predecessor at 0, then exact previous publication ID/revision/digest; genuine completed authenticated originals, no gaps/rewrites/reused publication identity.",
+        "active_pointer": "Exact immutable release5 original after genuine authorized Master activation; signing alone is insufficient.",
+        "first_activation": "Latest complete release5 allowed with full native predecessor proof; no mandated branch activation of 0-4.",
+        "manifest_binding": "restaurant_release5_exact_ordered_authenticated_member_manifest",
+        "required_selected_SKU_roles": [
+          "burger",
+          "tea",
+          "bread",
+          "meat",
+          "tea_leaf",
+          "cup"
+        ],
+        "member_coordinates": "Each exact SKU publication ID/digest and SKU ID/revision plus complete matching product ID/revision/body; no inferred or replacement provenance.",
+        "manifest_member_bounds": {
+          "min": 1,
+          "max": 64
+        },
+        "native_publication_byte_max": 49152
+      },
+      "quotation": {
+        "branch_id_ref": "/fixtures/restaurant/branch_id",
+        "seed_cursor_binding": "restaurant_quote_cursor_at_seed",
+        "cursor_source": "Actual current local quotation cursor recorded after provisioning and before seed creation, using existing canonical revision encoding.",
+        "fresh_request_cursor_rule": "Record actual current cursor before each genuinely new original quote request; never copy release revision5 by numerical analogy.",
+        "original_retry_cursor_rule": "Exact original recorded cursor/source/time/canonical request retained; never refresh from current source.",
+        "expected_catalog_revision_input": "The independently bound actual quote cursor, not the generic release literal.",
+        "original_source_rule": "Genuine current activity, signed recipe/matching immutable publication, selected output/choices/modifiers/serving quantities, exact selected SKU publications/dimensions and actual pricing; complete original producer/resource/native joins.",
+        "no_invented_release_foreign_key": true,
+        "fixed_recipe_and_price_refs": [
+          "/fixtures/restaurant/recipes",
+          "/fixtures/restaurant/lines",
+          "/append_inputs/restaurant"
+        ]
+      }
+    },
+    {
+      "profile": "cafe",
+      "base_pointer": "/fixtures/cafe/catalog_revision",
+      "preserved_original_literal": "5",
+      "new_variant_role": "CompanyCatalog release publication revision, not a quotation cursor or member revision",
+      "release": {
+        "company_id_ref": "/fixtures/cafe/company_id",
+        "catalog_id_binding": "cafe_company_catalog_id",
+        "publication_domain": "CATALOG_RELEASE_V1",
+        "publication_id_binding": "cafe_catalog_release5_publication_id",
+        "revision": "5",
+        "content_digest_binding": "cafe_catalog_release5_original_digest",
+        "native_chain_revision_strings": [
+          "0",
+          "1",
+          "2",
+          "3",
+          "4",
+          "5"
+        ],
+        "chain_rule": "Same company/catalog; no predecessor at 0, then exact previous publication ID/revision/digest; genuine completed authenticated originals, no gaps/rewrites/reused publication identity.",
+        "active_pointer": "Exact immutable release5 original after genuine authorized Master activation; signing alone is insufficient.",
+        "first_activation": "Latest complete release5 allowed with full native predecessor proof; no mandated branch activation of 0-4.",
+        "manifest_binding": "cafe_release5_exact_ordered_authenticated_member_manifest",
+        "required_selected_SKU_roles": [
+          "latte",
+          "cheese_toast",
+          "coffee",
+          "milk",
+          "cup",
+          "bread",
+          "cheese"
+        ],
+        "member_coordinates": "Each exact SKU publication ID/digest and SKU ID/revision plus complete matching product ID/revision/body; no inferred or replacement provenance.",
+        "manifest_member_bounds": {
+          "min": 1,
+          "max": 64
+        },
+        "native_publication_byte_max": 49152
+      },
+      "quotation": {
+        "branch_id_ref": "/fixtures/cafe/branch_id",
+        "seed_cursor_binding": "cafe_quote_cursor_at_seed",
+        "cursor_source": "Actual current local quotation cursor recorded after provisioning and before seed creation, using existing canonical revision encoding.",
+        "fresh_request_cursor_rule": "Record actual current cursor before each genuinely new original quote request; never copy release revision5 by numerical analogy.",
+        "original_retry_cursor_rule": "Exact original recorded cursor/source/time/canonical request retained; never refresh from current source.",
+        "expected_catalog_revision_input": "The independently bound actual quote cursor, not the generic release literal.",
+        "original_source_rule": "Genuine current activity, signed recipe/matching immutable publication, selected output/choices/modifiers/serving quantities, exact selected SKU publications/dimensions and actual pricing; complete original producer/resource/native joins.",
+        "no_invented_release_foreign_key": true,
+        "fixed_recipe_and_price_refs": [
+          "/fixtures/cafe/recipes",
+          "/fixtures/cafe/lines",
+          "/append_inputs/cafe"
+        ]
+      }
+    }
+  ],
+  "numeric_coordinate_equality_is_interchangeability": false,
+  "branch_counter_value_or_increment_count_prescribed": false,
+  "business_oracle_changes": [],
+  "setup_and_source_assertions": [
+    {
+      "id": "OFC-CAT5-S01",
+      "mapped_cases": [
+        "OFC-COLD-101",
+        "OFC-COLD-102",
+        "OFC-COLD-103",
+        "OFC-COLD-104",
+        "OFC-COLD-105",
+        "OFC-COLD-106",
+        "OFC-COLD-107",
+        "OFC-COLD-108"
+      ],
+      "action": "Before seed, genuine authenticated company-native 0-5 release chain, exact bounded manifest/current branch member copies and protected Master release5 activation.",
+      "expected": "Exact independent company/catalog/release source, genuine native membership and legitimate native company-owner signing/head approval plus current delegated Master activation authority; no role-label grant or cashier elevation. Documentary activation effects only, no SKU/cursor/assortment/stock/money mutation.",
+      "sources": [
+        "CSR-01..07",
+        "CSR-09",
+        "D 2.2/4.1/4.3"
+      ],
+      "scenarios": [
+        "TAX-07"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-03",
+        "Q-SEC-06",
+        "Q-SEC-09"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "OFC-CAT5-S02",
+      "mapped_cases": [
+        "OFC-COLD-101",
+        "OFC-COLD-102",
+        "OFC-COLD-103",
+        "OFC-COLD-104",
+        "OFC-COLD-105",
+        "OFC-COLD-106",
+        "OFC-COLD-107",
+        "OFC-COLD-108"
+      ],
+      "action": "Record independent actual current quote cursor and exact genuine quotation sources before original seed/fresh quote requests.",
+      "expected": "Fixed original prices/recipe revision1/quantities/selections; separate release/member/cursor coordinates; actual complete producer/resource/native joins.",
+      "sources": [
+        "CSR-01",
+        "CSR-02",
+        "CSR-05",
+        "CSR-09",
+        "Add capture/original ownership",
+        "O 3"
+      ],
+      "scenarios": [
+        "TAX-01",
+        "TAX-03",
+        "TAX-07"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-03"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "OFC-CAT5-S03",
+      "mapped_cases": [
+        "OFC-COLD-101",
+        "OFC-COLD-102",
+        "OFC-COLD-103",
+        "OFC-COLD-104",
+        "OFC-COLD-105",
+        "OFC-COLD-106",
+        "OFC-COLD-107",
+        "OFC-COLD-108"
+      ],
+      "action": "Original genuine cold boundary then fresh authorized source/result/seed readback.",
+      "expected": "Same release5/company/manifest/native originals, literal saved cursor and quotation source/producer custody; no reactivation/regeneration/repricing; every original base oracle unchanged.",
+      "sources": [
+        "CSR-08",
+        "CSR-09",
+        "Add original ownership",
+        "V3 complete-source boundary"
+      ],
+      "scenarios": [
+        "REL-04",
+        "REL-10"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-RES-09"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "OFC-CAT5-S04",
+      "mapped_cases": [
+        "OFC-COLD-102",
+        "OFC-COLD-103",
+        "OFC-COLD-104",
+        "OFC-COLD-105",
+        "OFC-COLD-106",
+        "OFC-COLD-108"
+      ],
+      "action": "Fresh quote uses pre-recorded current cursor; original retries/recovery preserve original cursor/request/source/time/actor.",
+      "expected": "Unchanged exact original results, one-group/portion workload, quantity-only payload mismatch, other-actor denial and 106 order-revision conflict; no catalog mutation injected.",
+      "sources": [
+        "CSR-08",
+        "Add compatibility/original recovery",
+        "D 5.2..5.4"
+      ],
+      "scenarios": [
+        "REL-04"
+      ],
+      "gates": [
+        "Q-RES-02",
+        "Q-DB-03",
+        "Q-SEC-09"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "OFC-CAT5-S05",
+      "mapped_cases": [
+        "OFC-COLD-105",
+        "OFC-COLD-107",
+        "OFC-COLD-108"
+      ],
+      "action": "Separate coordinate/source qualification; retain original exact check/access/outcome fault branches.",
+      "expected": "No unrelated-coordinate or supplied-source substitution; missing release custody cannot qualify variant. Missing actual required quote/original FOOD sources refuse dependent fresh Add/complete read; all-conclusive-outcome-proof absence stays unresolved. No fabricated originals or business effects.",
+      "sources": [
+        "CSR-01",
+        "CSR-02",
+        "CSR-05",
+        "CSR-08",
+        "CSR-09",
+        "Add source refusal",
+        "V3 complete-source boundary"
+      ],
+      "scenarios": [
+        "REL-04",
+        "REL-10",
+        "TAX-07"
+      ],
+      "gates": [
+        "Q-DB-06",
+        "Q-RES-02",
+        "Q-RES-09",
+        "Q-SEC-06",
+        "Q-SEC-09"
+      ],
+      "execution_status": "NOT RUN"
+    }
+  ],
+  "fresh_cursor_contexts": [
+    "base_seed",
+    "102_target_last_edit",
+    "102_unrelated_other_owner_check",
+    "103_ADD_and_EDIT_starting_batch",
+    "104_and_108_original_ADD_setup",
+    "105_denied_fresh_append",
+    "106_both_original_candidates_same_configuration_cut"
+  ],
+  "original_retry_invariants": [
+    "original_operation_id",
+    "original_actor",
+    "original_order_revision",
+    "original_quote_cursor",
+    "original_recorded_time",
+    "exact_original_sources_and_dependencies",
+    "canonical_request_and_ordered_portion_selection",
+    "original_result_created_ids_and_committed_revision"
+  ],
+  "changed_quantity_retry": "Only original frozen quantity/selection input changes; original cursor and other original fields remain, OPERATION_PAYLOAD_MISMATCH/no effect unchanged.",
+  "fault_scope": "Original 107/108 definitions unchanged. Documentary release qualification gap does not invent FOOD release dependency or whole-branch degraded policy.",
+  "unchanged_business_oracle_refs": [
+    "/calculations",
+    "/fixtures/<profile> except explicit coordinate-role and initial source bindings",
+    "/append_inputs",
+    "/numeric_expectations",
+    "/unchanged_for_every_unsent_operation",
+    "/cases",
+    "/required_layers",
+    "/platform_matrix",
+    "/closure"
+  ],
+  "identity_variant_selection": {
+    "automatically_selected": false,
+    "optional_variant": "OFC-COLD-ANCHOR-GROUP-1",
+    "version": "1.0.0",
+    "cases": "identity-only-v1.0.0.cases.md",
+    "fixtures": "identity-only-v1.0.0.fixtures.json",
+    "rule": "If used, record both variant IDs/versions explicitly before seed; its exact frozen raw group/portion bindings apply only when selected. Without it, original raw identity issue remains unresolved.",
+    "original_or_candidate_approved": false
+  },
+  "other_variants_and_workloads": "Preserved, unresolved by this adjunct and never implicitly selected.",
+  "execution_prerequisites": [
+    "Exact separate company/catalog/release publication/native completion/manifest/member coordinate bindings before seed",
+    "Actual current local seed and each fresh original quote cursor recorded before request creation",
+    "Genuine actual Master authorization/activation and original FOOD producer/resource/native source bindings",
+    "Explicit selected variant set; original identities/prices/recipes/quantities/state/workload and source claims unchanged except separately selected documented variants",
+    "Actual production durable native driver/protected adapter/admitted official LAN RPC/cold-close observer and tested revision",
+    "Original required non-device and separate platform/device/owner campaign bindings"
+  ],
+  "central_status": "HELD"
+}

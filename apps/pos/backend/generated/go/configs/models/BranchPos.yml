@@ -1,0 +1,459 @@
+branch_pos__branch_binding:
+  analysis:
+    main: {}
+  compound_indexes:
+    - org:1,company:1,branch:1
+  fields:
+    authority_epoch:
+      field: authority_epoch
+      group: main
+      name: authority_epoch
+      type: string
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    company_profile:
+      field: company_profile
+      group: main
+      model: branch_pos__company_profile
+      name: company_profile
+      type: relation
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    revision:
+      field: revision
+      group: main
+      name: revision
+      type: string
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+    selected_master_device_id:
+      field: selected_master_device_id
+      group: main
+      name: selected_master_device_id
+      type: string
+  offline:
+    mode: none
+branch_pos__company_profile:
+  analysis:
+    main: {}
+  compound_indexes:
+    - org:1,company:1
+  fields:
+    active_release_hash:
+      field: active_release_hash
+      group: main
+      name: active_release_hash
+      type: string
+    activity:
+      field: activity
+      group: main
+      name: activity
+      type: string
+    branch_bindings:
+      field: branch_bindings
+      group: main
+      mapped: company_profile
+      model: branch_pos__branch_binding
+      name: branch_bindings
+      type: inversed
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    currency:
+      field: currency
+      group: main
+      name: currency
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    revision:
+      field: revision
+      group: main
+      name: revision
+      type: string
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+    timezone:
+      field: timezone
+      group: main
+      name: timezone
+      type: string
+  offline:
+    mode: none
+branch_pos__ingestion_checkpoint:
+  analysis:
+    main: {}
+  compound_indexes:
+    - branch:1,authority_epoch:1
+  fields:
+    authority_epoch:
+      field: authority_epoch
+      group: main
+      name: authority_epoch
+      type: string
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    contiguous_accepted_sequence:
+      field: contiguous_accepted_sequence
+      group: main
+      name: contiguous_accepted_sequence
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+    stream:
+      field: stream
+      group: main
+      name: stream
+      type: string
+  offline:
+    mode: none
+branch_pos__ingestion_receipt:
+  analysis:
+    main: {}
+  compound_indexes:
+    - branch:1,operation_id:1
+    - branch:1,authority_epoch:1,journal_sequence:1
+  fields:
+    authority_epoch:
+      field: authority_epoch
+      group: main
+      name: authority_epoch
+      type: string
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    content_hash:
+      field: content_hash
+      group: main
+      name: content_hash
+      type: string
+    disposition:
+      field: disposition
+      group: main
+      name: disposition
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    journal_sequence:
+      field: journal_sequence
+      group: main
+      name: journal_sequence
+      type: string
+    operation_id:
+      field: operation_id
+      group: main
+      name: operation_id
+      type: string
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+    stored_at:
+      field: stored_at
+      group: main
+      name: stored_at
+      type: datetime
+  offline:
+    mode: none
+branch_pos__operation_evidence:
+  analysis:
+    main: {}
+  compound_indexes:
+    - branch:1,operation_id:1
+    - branch:1,authority_epoch:1,journal_sequence:1
+  fields:
+    authority_epoch:
+      field: authority_epoch
+      group: main
+      name: authority_epoch
+      type: string
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    canonical_payload:
+      field: canonical_payload
+      group: main
+      name: canonical_payload
+      type: string
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    content_hash:
+      field: content_hash
+      group: main
+      name: content_hash
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    journal_sequence:
+      field: journal_sequence
+      group: main
+      name: journal_sequence
+      type: string
+    master_committed_at:
+      field: master_committed_at
+      group: main
+      name: master_committed_at
+      type: datetime
+    operation_id:
+      field: operation_id
+      group: main
+      name: operation_id
+      type: string
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    origin_master_device_id:
+      field: origin_master_device_id
+      group: main
+      name: origin_master_device_id
+      type: string
+    original_actor_id:
+      field: original_actor_id
+      group: main
+      name: original_actor_id
+      type: string
+    payload_encoding:
+      field: payload_encoding
+      group: main
+      name: payload_encoding
+      type: string
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+  offline:
+    mode: none
+branch_pos__projection_job:
+  analysis:
+    main: {}
+  compound_indexes:
+    - branch:1,operation_id:1,destination:1
+  fields:
+    attempt_count:
+      field: attempt_count
+      group: main
+      name: attempt_count
+      type: string
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    content_hash:
+      field: content_hash
+      group: main
+      name: content_hash
+      type: string
+    destination:
+      field: destination
+      group: main
+      name: destination
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    evidence_id:
+      field: evidence_id
+      group: main
+      model: branch_pos__operation_evidence
+      name: evidence_id
+      type: relation
+    next_attempt_at:
+      field: next_attempt_at
+      group: main
+      name: next_attempt_at
+      type: datetime
+    operation_id:
+      field: operation_id
+      group: main
+      name: operation_id
+      type: string
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+    state:
+      field: state
+      group: main
+      name: state
+      type: string
+  offline:
+    mode: none
+branch_pos__quarantine_envelope:
+  analysis:
+    main: {}
+  compound_indexes:
+    - branch:1,operation_id:1,content_hash:1
+  fields:
+    branch:
+      field: branch
+      group: main
+      model: org__branch
+      name: branch
+      type: relation
+    canonical_payload:
+      field: canonical_payload
+      group: main
+      name: canonical_payload
+      type: string
+    company:
+      field: company
+      group: main
+      model: org__company
+      name: company
+      type: relation
+    content_hash:
+      field: content_hash
+      group: main
+      name: content_hash
+      type: string
+    domain_id:
+      field: domain_id
+      group: main
+      name: domain_id
+      type: string
+      unique: true
+    operation_id:
+      field: operation_id
+      group: main
+      name: operation_id
+      type: string
+    org:
+      field: org
+      group: main
+      model: org__org
+      name: org
+      type: relation
+    reason_code:
+      field: reason_code
+      group: main
+      name: reason_code
+      type: string
+    received_at:
+      field: received_at
+      group: main
+      name: received_at
+      type: datetime
+    schema_version:
+      field: schema_version
+      group: main
+      name: schema_version
+      type: string
+  offline:
+    mode: none

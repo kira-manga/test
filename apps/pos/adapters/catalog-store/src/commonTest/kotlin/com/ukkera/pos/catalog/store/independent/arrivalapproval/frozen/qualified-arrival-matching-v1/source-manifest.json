@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "freezeId": "qualified-arrival-matching-v1",
+  "requirementSources": [
+    {"path": "docs/pos/original-handoff/POS_PURCHASING_AND_RECEIVING_DESIGN.md", "sections": ["2", "3", "4", "8", "9"], "requirements": "Branch authority, separate receipt/invoice/money, exact products and versions, required local evidence, configured retention and guarded recovery."},
+    {"path": "docs/pos/original-handoff/POS_COMPANY_POLICIES_AND_CATALOG.md", "sections": ["1", "5"], "requirements": "Bound requester/actual approver, separate and named self-approval, currently activated grants, preserved unresolved evidence."},
+    {"path": "docs/pos/original-handoff/POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md", "sections": ["4.2", "5.1", "5.2", "5.3", "5.4", "7", "8"], "requirements": "Trusted actor, exact operation-bound approval, current transaction gate, idempotency and immutable recovery history."},
+    {"path": "docs/pos/original-handoff/POS_ACCEPTANCE_SCENARIOS.md", "scenarios": ["CFG-02", "CFG-03", "CFG-04", "CFG-05", "PUR-01", "PUR-04", "PUR-06", "PUR-16"]},
+    {"path": "qa/pos/contracts/purchasing-documentary-intake.md", "sections": ["Public requests and identities", "Explicit bounded profile"], "requirements": "Exact original length/digest/media/purpose and trusted scope; documentary selectors do not grant a later action."},
+    {"path": "qa/pos/freezes/purchasing-documentary-intake-v2/proposed-contract-v2.md", "sections": ["Resolved v1 bindings and retained questions", "Preservation, recovery and zero business effects"], "requirements": "Retained qualification/retention gaps and preservation; this additive matcher does not close them."},
+    {"path": "qa/pos/freezes/purchasing-documentary-intake-v2/fixtures-v2.json", "selectors": ["files.JPEG-A", "files.PDF-A"], "requirements": "Existing exact synthetic 155-byte JPEG and 640-byte PDF recipes/digests; no native-custody claim."}
+  ],
+  "assignedObservableMatchingContract": {
+    "M1": "One explicitly selected complete signed-rule body; no automatic selection or permission merging.",
+    "M2": "Exact expected policy/publication/branch coordinates and action. Company scope remains a required production gate where bounded-field binding is unavailable.",
+    "M3": "Exact authoritative supplier and every product/revision/catalog release; no category membership inferred from names.",
+    "M4": "Actual public PERFORM AuthorizedAction, independently expected original requester identity and operation-bound AuthorizationRequirement. Proof cannot adopt a different original actor. Direct has no approval coordinates; Separate has distinct actual actors; NamedSelf is the Separate route with equality allowed only for the selected rule's explicit named account, while distinct authorized actors remain eligible. Fresh grants are external.",
+    "M5": "Independently ordered operation-bound selected manifests and corresponding resolved current original metadata; zero-to-two originals, required/optional presence, exact media/purpose/supplier/scope/identity/storage revision/length/digest and order constraints. Master alone establishes normalized request and current byte/history authority.",
+    "M6": "Explicit exact selected retention class/revision; no default retention or disposal authority. Required policy/company/branch provenance remains production/unbound where the public bounded input cannot observe it.",
+    "M7": "Mismatch on violated supplied constraints. Agreement is only a bounded comparison, never signed/current-source/authority/commit/history qualification and never an effect. Genuine production gates remain NOT_RUN."
+  },
+  "correctionPolicy": "Preserve these inputs and expectations. Any clarification that changes an expectation needs an additive separately versioned requirements rationale; wiring does not relax a refusal or promote NOT_RUN to PASS."
+}

@@ -1,0 +1,254 @@
+{
+  "applicationAcceptance": false,
+  "applyCheck": "temporary isolated Git index; exact pinned tree; whitespace-error check; apply; every owned byte/mode verified; no shared index/working-tree update",
+  "baseCommit": "3ef2c6155abd66292011c3775b30fb71d280e9c7",
+  "baseTree": "95c9b7c295856a81f509d47fe11f8a15e60c1529",
+  "candidateTree": "bb7208a52d97a3132ac8a0a0ab89b3290a3d904a",
+  "coordinates": "local.ukkera.pos.p2pkit:<module>:0.8.0-SNAPSHOT",
+  "files": {
+    ".githooks/pre-push": {
+      "baseBlob": null,
+      "bytes": 63,
+      "gitMode": "100755",
+      "sha256": "2a6c2b5120ad2218498c17dab3638e13556e305fa0e71a4c8acb51bbe3b643ec"
+    },
+    "UKKERA-LOCAL-PROVENANCE.md": {
+      "baseBlob": null,
+      "bytes": 1699,
+      "gitMode": "100644",
+      "sha256": "321f833c0021adee128005e6630dbac31da19f5ae5827e81ecad3269ec5000c1"
+    },
+    "gradle.properties": {
+      "baseBlob": "6b408d883f2a23f8ca73a596e09b50052e5a9dc7",
+      "bytes": 1876,
+      "gitMode": "100644",
+      "sha256": "2c59aa3b017f16465012bd908b2360d0bf07c93a6bbd9ef9d39af13341d95de0"
+    },
+    "library/p2p-core/SCOPED-DISCLOSURE.md": {
+      "baseBlob": null,
+      "bytes": 13184,
+      "gitMode": "100644",
+      "sha256": "1c667a912bd77d573104ef6b419207f79c1bdce6cc3c13f02bcc1e1a85705d48"
+    },
+    "library/p2p-core/build.gradle.kts": {
+      "baseBlob": "c343ca621234713ac22032ee529767e937762096",
+      "bytes": 8969,
+      "gitMode": "100644",
+      "sha256": "ef5b4a00e02d0e08afabddd63d18a55f6e23a674212d68b9d7b60908d195e32c"
+    },
+    "library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pDisclosure.kt": {
+      "baseBlob": null,
+      "bytes": 17895,
+      "gitMode": "100644",
+      "sha256": "0f620073a56b49271f216841e2ceedb97f0d326d4fe6a5b549619366e343002e"
+    },
+    "library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pSession.kt": {
+      "baseBlob": "94cd35626c4eb2318725755e3451773053d55c21",
+      "bytes": 17432,
+      "gitMode": "100644",
+      "sha256": "58c3a895b77eab259caa9ef55dc9fc1991962bd30152c42a6e7e1f2165c94e66"
+    },
+    "library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/internal/P2pSessionImpl.kt": {
+      "baseBlob": "9e5cf12802eaf0220078fe0a3470407d4c9091bc",
+      "bytes": 104647,
+      "gitMode": "100644",
+      "sha256": "08fc0680a090c73d80f3e8faba70b12827e7dd9028238f61f96c4868c3ab00dd"
+    },
+    "library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/DisclosureLifetimeTest.kt": {
+      "baseBlob": null,
+      "bytes": 14412,
+      "gitMode": "100644",
+      "sha256": "7f4ac411786b75f5352ae6dd071c6f6b624695f1f53c345c4695c436dd82b2b9"
+    },
+    "library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/internal/SessionScopedDisclosureTest.kt": {
+      "baseBlob": null,
+      "bytes": 38871,
+      "gitMode": "100644",
+      "sha256": "88598b0754672ed6aff30d7a3fa844689a2346f869c67d912eb82e306fc54d0e"
+    },
+    "library/p2p-core/src/jvmTest/kotlin/dev/p2pkit/core/internal/ScopedDisclosureConcurrencyTest.kt": {
+      "baseBlob": null,
+      "bytes": 21172,
+      "gitMode": "100644",
+      "sha256": "27521a485e7501e93d3f84650321a429963ef97ecc93a8461cc82629eafe9eee"
+    },
+    "library/p2p-rpc/README.md": {
+      "baseBlob": "2956e7ceacd53397af23f2b823117bca304f7508",
+      "bytes": 1752,
+      "gitMode": "100644",
+      "sha256": "b308b1acf0b4fa4d89514cc219afb69467a29d2656dca5825702e3dd884b3678"
+    },
+    "library/p2p-rpc/SCOPED-INVOKE-ONLY.md": {
+      "baseBlob": null,
+      "bytes": 13473,
+      "gitMode": "100644",
+      "sha256": "3de516c0a25c341513e1eb989a8dd30c131a56b97baf75df8931c0020763d471"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcContract.kt": {
+      "baseBlob": null,
+      "bytes": 8318,
+      "gitMode": "100644",
+      "sha256": "3814c3906aa6348a230364a3f25860ed609336c6dfb956c9cd52726fbbb9ded2"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt": {
+      "baseBlob": null,
+      "bytes": 7634,
+      "gitMode": "100644",
+      "sha256": "46ad749cc3b1f500c55edd6cf1f2834172460899fce9b5508f0f215d691d4eb8"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcAuthorization.kt": {
+      "baseBlob": null,
+      "bytes": 1383,
+      "gitMode": "100644",
+      "sha256": "5f9b8a8a78614d9f8bd5d32b5505d1a0b143b44d660e1016b2424fc5b61dc63f"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcClientEngine.kt": {
+      "baseBlob": null,
+      "bytes": 22216,
+      "gitMode": "100644",
+      "sha256": "79ce35c2d3ed4d5b280448b28e3f5702b33b95817fe8993cea71995ec4cbe5f2"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcHostEngine.kt": {
+      "baseBlob": null,
+      "bytes": 17753,
+      "gitMode": "100644",
+      "sha256": "40d4d2d1a568a2e2dc1e19ee156834a811697ce4cf15629e44ec8fc5f7fe8b7b"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcLink.kt": {
+      "baseBlob": null,
+      "bytes": 13359,
+      "gitMode": "100644",
+      "sha256": "ee99cbc9f7d216b48e0478d6133fa67fd988d8ccbf28e0a0a3ee2e6e6605dc5f"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcRegistry.kt": {
+      "baseBlob": null,
+      "bytes": 3405,
+      "gitMode": "100644",
+      "sha256": "cdf5f6b9212468b39a7193c01e4269ac39b71361b2f70aca57e010b0d148ddf2"
+    },
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcWire.kt": {
+      "baseBlob": null,
+      "bytes": 3266,
+      "gitMode": "100644",
+      "sha256": "aea95c80deef0f63388e126a34f465b55aafc2a6ab90959521f32af9ff895306"
+    },
+    "library/p2p-rpc/src/commonTest/kotlin/dev/p2pkit/rpc/internal/ScopedRpcClientEngineTest.kt": {
+      "baseBlob": null,
+      "bytes": 30891,
+      "gitMode": "100644",
+      "sha256": "e0abbe2455fa5054feed00146320ff7166cf5d96e7992344e093de1bef2ada34"
+    },
+    "library/p2p-rpc/src/commonTest/kotlin/dev/p2pkit/rpc/internal/ScopedRpcHostEngineTest.kt": {
+      "baseBlob": null,
+      "bytes": 19299,
+      "gitMode": "100644",
+      "sha256": "2bd230cb72eaecf0759754fc98fd39c57f7750a2b51e5620942ba4f31e9fa42f"
+    },
+    "library/p2p-rpc/src/commonTest/kotlin/dev/p2pkit/rpc/internal/ScopedRpcSessionRefusalTest.kt": {
+      "baseBlob": null,
+      "bytes": 3321,
+      "gitMode": "100644",
+      "sha256": "6d524b8944082f8802629408e22e2865bc5783fabd6a347d414bc5177a53927f"
+    },
+    "library/p2p-rpc/src/commonTest/kotlin/dev/p2pkit/rpc/internal/ScopedRpcTestLink.kt": {
+      "baseBlob": null,
+      "bytes": 11512,
+      "gitMode": "100644",
+      "sha256": "0226da5ff4212bf8c8e1a4729614cb637a384576d57e28760f05f4b1b4eac065"
+    },
+    "library/p2p-rpc/src/commonTest/kotlin/dev/p2pkit/rpc/internal/ScopedRpcWireTest.kt": {
+      "baseBlob": null,
+      "bytes": 5844,
+      "gitMode": "100644",
+      "sha256": "9717a785d7aa86ced28e3cdea219092ccc2cdcdc19125f40c4bb0cabc04f8634"
+    }
+  },
+  "label": "rc6+ukkera-scope1",
+  "locksAndVerificationUnchangedFromBase": {
+    "buildscript-gradle.lockfile": "7fadc91a2e7baa694c2b840af86b5593a7553d193dcf757517cc1baf5d260097",
+    "gradle.lockfile": "ef94f2832dc3ffb543e1a08b0fc19dd1abe636e96d0c281ba808979707a1edd6",
+    "gradle/verification-metadata.xml": "e9c24bb830590613447a29ba02f511b3dea7587987535f23cde5508de48c8ce7",
+    "library/p2p-core/gradle.lockfile": "6e77394d33c3b99cbf8c92d64b086ae2fbbae184732ee2be0998f37214db28bd",
+    "library/p2p-network-provisioning-android/gradle.lockfile": "172f8edf146f24a939cc13c9a2e27e4c2e7e4f6c502b3f25e71ae2e0691f8aca",
+    "library/p2p-network-provisioning-desktop/gradle.lockfile": "b77fdd5829d305897969ca3e9e1bbb8e1a6183d3ac1a061795a58a671ff825b1",
+    "library/p2p-rpc/gradle.lockfile": "283ffcfd7b5cc14b583de0d39668d96e8f5ae808fb57e1d87c5c14abe87d833b",
+    "library/p2p-transport-lan/gradle.lockfile": "11bf329497ca7fc3297106fbd613e7306c673b96b08a64fa83b024e28a2a43c8",
+    "samples/p2p-sample-android/gradle.lockfile": "382f296fa30135d8c8cb1c5a52965f2d948e4eea706bcbe5101b387c080bfc9b",
+    "samples/p2p-sample-desktop-ui/gradle.lockfile": "ba2e83e7b20839eda7176fbed240c8eb78693ac91ca3658b90bfb93b06e601c9",
+    "samples/p2p-sample-desktop/gradle.lockfile": "90a1b812f211080a659871dfb0252629ce0bbf4089486b2b3b327c4dd49ec914",
+    "samples/p2p-sample-diagnostics/gradle.lockfile": "716f0da77abccd70a4fe3edddb766416a3880d913b5af46d5921b3fe1cb96448",
+    "samples/p2p-sample-rpc/gradle.lockfile": "f9826c4da0903da86b5c274a80815f7f0740beaf760af999644d8fa8e6409072",
+    "samples/sample-kmp-shared/gradle.lockfile": "ba9eba2120869c07affa36da4271380f8c2b8e31483891cb5a47c0c715d7d1ee",
+    "settings-gradle.lockfile": "5e2d075903b5cd264613e7538c7c51b1484fe2ed489d4ead3e6b4ba0cf3911c4"
+  },
+  "mode": "LOCAL_ONLY",
+  "notQualified": [
+    "four SDK/public-facade overlay tests",
+    "complete lock/API maintenance",
+    "Apple ABI/Swift/link/runtime",
+    "suspend-inclusive clock",
+    "native transport",
+    "sensitive POS integration"
+  ],
+  "observedArtifacts": {
+    "library/p2p-core/build/libs/p2p-core-0.8.0-SNAPSHOT.jar": {
+      "bytes": 4318,
+      "gitMode": "100644",
+      "qualification": "observed local JVM artifact, not native or bit-reproducible-release proof",
+      "sha256": "f9b866d5c24c446f5094a1315031263219530a9bb1a3ff3b3854aa379643f057"
+    },
+    "library/p2p-core/build/libs/p2p-core-jvm-0.8.0-SNAPSHOT.jar": {
+      "bytes": 1942022,
+      "gitMode": "100644",
+      "qualification": "observed local JVM artifact, not native or bit-reproducible-release proof",
+      "sha256": "75e21fa567c8732668ed258389b5b273254134b064bfe12b7968efa9cc797fdd"
+    },
+    "library/p2p-rpc/build/libs/p2p-rpc-0.8.0-SNAPSHOT.jar": {
+      "bytes": 4318,
+      "gitMode": "100644",
+      "qualification": "observed local JVM artifact, not native or bit-reproducible-release proof",
+      "sha256": "f9b866d5c24c446f5094a1315031263219530a9bb1a3ff3b3854aa379643f057"
+    },
+    "library/p2p-rpc/build/libs/p2p-rpc-jvm-0.8.0-SNAPSHOT.jar": {
+      "bytes": 796473,
+      "gitMode": "100644",
+      "qualification": "observed local JVM artifact, not native or bit-reproducible-release proof",
+      "sha256": "35cc78246a4497113feaca7a3d2a31499a73d7e577784e1714075207da1cd0bc"
+    }
+  },
+  "patch": "scoped-base.patch",
+  "patchBytes": 308384,
+  "patchSha256": "64e9fd9f59e1d01b55f20db2879845f8a69484296a17eb2f295fb35695c2f898",
+  "schema": "ukkera.isolated-source-patch/v1",
+  "status": "SOURCE_APPLY_CHECKED_AND_BOUNDED_HOST_TESTED_NOT_FULL_SDK_QUALIFIED",
+  "verification": {
+    "path": ".workspace/evidence/p2p/base-scoped-hosts-20261023/verification.json",
+    "sha256": "5b776870b453234f7ea893250e6457fdcaca540c4634ae11f5b96dab5d7063f7",
+    "tests": {
+      "p2p-core/jvmTest": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 927
+      },
+      "p2p-core/testAndroidHostTest": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 126
+      },
+      "p2p-rpc/jvmTest": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 125
+      },
+      "p2p-rpc/testAndroidHostTest": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 118
+      }
+    }
+  }
+}

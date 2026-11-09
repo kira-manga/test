@@ -1,0 +1,110 @@
+{
+  "fixture": "public-test-only-not-a-credential",
+  "canonicalEncoding": "branch-pos-json-v1",
+  "signatureDomain": "ukkera-branch-pos:evidence:v1\n",
+  "publicKey": "WJNmBKvaESvJSTNWnIL40MwN35Kj+DKfL0SPf0hKWUw=",
+  "canonicalPayload": "{\"schemaVersion\":\"1\",\"domainId\":\"00000000-0000-4000-8000-000000000065\",\"scope\":{\"organizationId\":\"org-a\",\"companyId\":\"company-a\",\"branchId\":\"branch-a\"},\"operationId\":\"00000000-0000-4000-8000-0000000000c9\",\"authorityEpoch\":\"1\",\"journalSequence\":\"1\",\"originMasterDeviceId\":\"00000000-0000-4000-8000-00000000002a\",\"signingKeyId\":\"00000000-0000-4000-8000-00000000002b\",\"authorityProofId\":\"00000000-0000-4000-8000-00000000002c\",\"originalActorId\":\"00000000-0000-4000-8000-00000000002d\",\"catalogRevision\":\"9007199254740993\",\"policyRevision\":\"1\",\"masterCommittedAt\":\"2026-10-23T10:20:30Z\",\"effects\":[{\"effectId\":\"00000000-0000-4000-8000-00000000012d\",\"kind\":\"cashPosted\",\"resourceId\":\"00000000-0000-4000-8000-000000000041\",\"revision\":\"9223372036854775807\",\"money\":{\"currency\":\"EGP\",\"minor\":\"9007199254740993\"}},{\"effectId\":\"00000000-0000-4000-8000-000000000191\",\"kind\":\"stockPosted\",\"resourceId\":\"00000000-0000-4000-8000-000000000042\",\"revision\":\"1\",\"quantity\":{\"units\":\"-1234567\",\"scale\":\"6\"}}],\"result\":{\"documentId\":\"00000000-0000-4000-8000-0000000001f5\",\"revision\":\"9223372036854775807\"}}",
+  "envelope": {
+    "payload": {
+      "schemaVersion": "1",
+      "domainId": "00000000-0000-4000-8000-000000000065",
+      "scope": {
+        "organizationId": "org-a",
+        "companyId": "company-a",
+        "branchId": "branch-a"
+      },
+      "operationId": "00000000-0000-4000-8000-0000000000c9",
+      "authorityEpoch": "1",
+      "journalSequence": "1",
+      "originMasterDeviceId": "00000000-0000-4000-8000-00000000002a",
+      "signingKeyId": "00000000-0000-4000-8000-00000000002b",
+      "authorityProofId": "00000000-0000-4000-8000-00000000002c",
+      "originalActorId": "00000000-0000-4000-8000-00000000002d",
+      "catalogRevision": "9007199254740993",
+      "policyRevision": "1",
+      "masterCommittedAt": "2026-10-23T10:20:30Z",
+      "effects": [
+        {
+          "effectId": "00000000-0000-4000-8000-00000000012d",
+          "kind": "cashPosted",
+          "resourceId": "00000000-0000-4000-8000-000000000041",
+          "revision": "9223372036854775807",
+          "money": {
+            "currency": "EGP",
+            "minor": "9007199254740993"
+          }
+        },
+        {
+          "effectId": "00000000-0000-4000-8000-000000000191",
+          "kind": "stockPosted",
+          "resourceId": "00000000-0000-4000-8000-000000000042",
+          "revision": "1",
+          "quantity": {
+            "units": "-1234567",
+            "scale": "6"
+          }
+        }
+      ],
+      "result": {
+        "documentId": "00000000-0000-4000-8000-0000000001f5",
+        "revision": "9223372036854775807"
+      }
+    },
+    "contentHash": "sha256:16c899e8261d514648e163ffa5aa9168b57091099ebcf600a3fd02a5e30d136f",
+    "signature": "U5qBo/dsnzuwKCwH8sJdM60vNu6pyfuRos9FvAZqru7ZV1tNIJDj5n5U30lfKFzjmnwAzKIQittP9hhkn0ruCA=="
+  },
+  "batch": {
+    "schemaVersion": "1",
+    "envelopes": [
+      {
+        "payload": {
+          "schemaVersion": "1",
+          "domainId": "00000000-0000-4000-8000-000000000065",
+          "scope": {
+            "organizationId": "org-a",
+            "companyId": "company-a",
+            "branchId": "branch-a"
+          },
+          "operationId": "00000000-0000-4000-8000-0000000000c9",
+          "authorityEpoch": "1",
+          "journalSequence": "1",
+          "originMasterDeviceId": "00000000-0000-4000-8000-00000000002a",
+          "signingKeyId": "00000000-0000-4000-8000-00000000002b",
+          "authorityProofId": "00000000-0000-4000-8000-00000000002c",
+          "originalActorId": "00000000-0000-4000-8000-00000000002d",
+          "catalogRevision": "9007199254740993",
+          "policyRevision": "1",
+          "masterCommittedAt": "2026-10-23T10:20:30Z",
+          "effects": [
+            {
+              "effectId": "00000000-0000-4000-8000-00000000012d",
+              "kind": "cashPosted",
+              "resourceId": "00000000-0000-4000-8000-000000000041",
+              "revision": "9223372036854775807",
+              "money": {
+                "currency": "EGP",
+                "minor": "9007199254740993"
+              }
+            },
+            {
+              "effectId": "00000000-0000-4000-8000-000000000191",
+              "kind": "stockPosted",
+              "resourceId": "00000000-0000-4000-8000-000000000042",
+              "revision": "1",
+              "quantity": {
+                "units": "-1234567",
+                "scale": "6"
+              }
+            }
+          ],
+          "result": {
+            "documentId": "00000000-0000-4000-8000-0000000001f5",
+            "revision": "9223372036854775807"
+          }
+        },
+        "contentHash": "sha256:16c899e8261d514648e163ffa5aa9168b57091099ebcf600a3fd02a5e30d136f",
+        "signature": "U5qBo/dsnzuwKCwH8sJdM60vNu6pyfuRos9FvAZqru7ZV1tNIJDj5n5U30lfKFzjmnwAzKIQittP9hhkn0ruCA=="
+      }
+    ]
+  }
+}

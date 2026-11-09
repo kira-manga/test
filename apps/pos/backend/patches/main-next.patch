@@ -1,0 +1,122 @@
+diff --git a/script/createGoLangModel.ts b/script/createGoLangModel.ts
+index dd624e6..1f6aec7 100644
+--- a/script/createGoLangModel.ts
++++ b/script/createGoLangModel.ts
+@@ -117,15 +117,7 @@ export const CreateGoLangModelString = ({ moduleName, modelName, model: fmodel }
+   });
+   const model = _.omit(fmodel, omits);
+   const per_class = fmodel.props?.per_class ? `per_document.${fmodel.props?.per_class}` : 'per_document.NoPer';
+-  let out = `package ${_.snakeCase(moduleName)}
+-import (
+-  per_document "go-viki/internal/helpers/models/permissions"
+-  mongo_types "go-viki/types/mongo"
+-  "time"
+-  "github.com/paulmach/orb"
+-  "go.mongodb.org/mongo-driver/bson/primitive"
+-)
+-type ${modelName}Model struct {
++  let out = `type ${modelName}Model struct {
+   ${per_class} \`bson:",inline"\`
+ `;
+   _.forEach(model, (n_f: any, f_name: string) => {
+@@ -140,5 +132,13 @@ type ${modelName}Model struct {
+   out += `func (p *${modelName}Model) CollectionName() string {
+     return "${unifyName}"
+   }\n`;
+-  return out;
++  // Emitting every possible import required a separate destructive goimports
++  // sweep. Derive only the imports actually used by this generated model so
++  // isolated new-module output compiles without rewriting existing models.
++  const imports = ['  per_document "go-viki/internal/helpers/models/permissions"'];
++  if (/\bmongo_types\./.test(out)) imports.push('  mongo_types "go-viki/types/mongo"');
++  if (/\btime\./.test(out)) imports.push('  "time"');
++  if (/\borb\./.test(out)) imports.push('  "github.com/paulmach/orb"');
++  if (/\bprimitive\./.test(out)) imports.push('  "go.mongodb.org/mongo-driver/bson/primitive"');
++  return `package ${_.snakeCase(moduleName)}\nimport (\n${imports.join('\n')}\n)\n${out}`;
+ };
+diff --git a/script/server/index.ts b/script/server/index.ts
+index a743f3a..f4c9a3f 100644
+--- a/script/server/index.ts
++++ b/script/server/index.ts
+@@ -8,6 +8,7 @@ import { CreatePhpUpdatedModelString } from '../createPhpUpdateModel';
+ import { CreatePythonHelperModelString, CreatePythonModelString } from '../createPythonModel';
+ import { viki_go_document_path, viki_node_document_path, viki_php_document_path, viki_python_document_path } from './configs';
+ import { getModuleFromArgv, readModule } from './models';
++import { CreateGoRegistryString } from './go_registry';
+ // const home = '/Applications/MAMP/htdocs/'
+ 
+ const file = getModuleFromArgv();
+@@ -195,39 +196,15 @@ const createIndexDirForNodejs = () => {
+ 
+ const createIndexDirForGolang = () => {
+   const main_p_dir = viki_go_document_path;
+-  const entries = fs.readdirSync(main_p_dir, { withFileTypes: true }).filter((d: any) => d.name != 'index.ts');
+-  const directory = entries.filter((d: any) => d.isDirectory());
+-  if (!fs.existsSync(main_p_dir)) {
+-    fs.mkdirSync(main_p_dir, { recursive: true });
++  fs.mkdirSync(main_p_dir, { recursive: true });
++  const inventory: Record<string, string[]> = {};
++  for (const dir of fs.readdirSync(main_p_dir, { withFileTypes: true }).filter(entry => entry.isDirectory())) {
++    inventory[dir.name] = fs.readdirSync(`${main_p_dir}/${dir.name}`, { withFileTypes: true })
++      .filter(entry => entry.isFile()).map(entry => entry.name);
+   }
+-  let fileContent = `package document
+-import(
+-  "reflect"
+-`;
+-  fileContent += directory.map((d: any) => `  "go-viki/internal/document/${d.name}"`).join('\n');
+-  fileContent += `
+-)
+-  
+-var Document = map[string]reflect.Type{\n`;
+-  _.forEach(directory, (d: any) => {
+-    const files = fs
+-      .readdirSync(main_p_dir + '/' + d.name, { withFileTypes: true })
+-      .filter((d: any) => d.isFile())
+-      .filter((f: any) => !isHelperFile(f.name));
+-    fileContent += files
+-      .map((v: any) => {
+-        const v_name = v.name.replace('.go', '');
+-        const modelName = titleCase(`${v_name}_model`);
+-        return `  "${_.snakeCase(d.name)}__${_.snakeCase(v_name)}": reflect.TypeFor[${d.name}.${modelName}]()`;
+-      })
+-      .join(',\n');
+-    fileContent += ',\n';
+-  });
+-  fileContent += `
+-}`;
+-  const file_path = viki_go_document_path + '/main.go';
+-  fs.writeFileSync(file_path, fileContent);
++  fs.writeFileSync(`${main_p_dir}/main.go`, CreateGoRegistryString(inventory));
+ };
++
+ if (file) {
+   const modules = readModule(file);
+   _.forEach(modules, (models: any, moduleName: string) => {
+diff --git a/script/server/go_registry.ts b/script/server/go_registry.ts
+new file mode 100644
+index 0000000..2fb5466
+--- /dev/null
++++ b/script/server/go_registry.ts
+@@ -0,0 +1,21 @@
++// Pure registry rendering, shared by the legacy driver and the isolated probe.
++// No filesystem writes, app config imports, git commands or generator fanout.
++export const CreateGoRegistryString = (inventory: Record<string, string[]>): string => {
++  const entries: [string, string][] = [];
++  for (const dir of Object.keys(inventory).sort()) {
++    if (!/^[a-z][a-z0-9_]*$/.test(dir)) throw new Error(`Invalid Go package: ${dir}`);
++    for (const file of [...inventory[dir]].sort()) {
++      if (!file.endsWith('.go') || /_helpers?\.go$/i.test(file) || file.endsWith('_test.go')) continue;
++      const name = file.slice(0, -3);
++      if (!/^[a-z][a-z0-9_]*$/.test(name)) throw new Error(`Invalid model file: ${file}`);
++      entries.push([dir, name]);
++    }
++  }
++  const dirs = [...new Set(entries.map(([dir]) => dir))];
++  const imports = ['  "reflect"', ...dirs.map(dir => `  "go-viki/internal/document/${dir}"`)];
++  const rows = entries.map(([dir, name]) => {
++    const model = `${name}_model`.replace(/(^|_)([a-z])/g, (_, _separator, letter) => letter.toUpperCase());
++    return `  "${dir}__${name}": reflect.TypeFor[${dir}.${model}](),`;
++  });
++  return `package document\nimport (\n${imports.join('\n')}\n)\n\nvar Document = map[string]reflect.Type{\n${rows.join('\n')}\n}\n`;
++};

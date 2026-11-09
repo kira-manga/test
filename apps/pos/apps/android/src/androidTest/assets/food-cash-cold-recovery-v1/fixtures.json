@@ -1,0 +1,1133 @@
+{
+  "schema_version": "1.0.0",
+  "expectation_version": "1.0.0",
+  "status": "NOT RUN",
+  "synthetic_only": true,
+  "tested_revision": null,
+  "execution_evidence": [],
+  "fixture_clock": {
+    "date": "2026-11-05",
+    "event_timezone": "UTC",
+    "branch_timezone": "Africa/Cairo",
+    "local_offset_on_fixture_date": "+02:00",
+    "operational_cutoff_local": "04:00:00",
+    "business_date": "2026-11-05",
+    "actual_owner_witness_times": null,
+    "binding": "Supported isolated fixture-clock boundary required; actual owner action timestamps recorded separately."
+  },
+  "money_contract": {
+    "currency": "EGP",
+    "minor_unit_digits": 2,
+    "all_posted_minor_values_are_integer_strings": true,
+    "tax_rate_is_illustrative_only": true,
+    "no_float_tolerance": true
+  },
+  "synthetic_ids": {
+    "organization": "cc510026-0028-4000-8000-000000000001",
+    "restaurant_company": "cc510026-0028-4000-8000-000000000002",
+    "cafe_company": "cc510026-0028-4000-8000-000000000003",
+    "restaurant_branch": "cc510026-0028-4000-8000-000000000004",
+    "cafe_branch": "cc510026-0028-4000-8000-000000000005",
+    "foreign_branch": "cc510026-0028-4000-8000-000000000006",
+    "restaurant_actor": "cc510026-0028-4000-8000-00000000000a",
+    "cafe_actor": "cc510026-0028-4000-8000-00000000000b",
+    "other_cashier": "cc510026-0028-4000-8000-00000000000c",
+    "restaurant_master_device": "cc510026-0028-4000-8000-000000000014",
+    "restaurant_originating_client_device": "cc510026-0028-4000-8000-000000000015",
+    "cafe_master_device": "cc510026-0028-4000-8000-000000000016",
+    "cafe_originating_client_device": "cc510026-0028-4000-8000-000000000017",
+    "other_device": "cc510026-0028-4000-8000-000000000018",
+    "restaurant_drawer": "cc510026-0028-4000-8000-00000000001e",
+    "restaurant_cash_session": "cc510026-0028-4000-8000-00000000001f",
+    "cafe_drawer": "cc510026-0028-4000-8000-000000000020",
+    "cafe_cash_session": "cc510026-0028-4000-8000-000000000021",
+    "other_drawer": "cc510026-0028-4000-8000-000000000022",
+    "restaurant_order": "cc510026-0028-4000-8000-000000000028",
+    "restaurant_control_order": "cc510026-0028-4000-8000-000000000029",
+    "cafe_order": "cc510026-0028-4000-8000-00000000002a",
+    "cafe_control_order": "cc510026-0028-4000-8000-00000000002b",
+    "different_order": "cc510026-0028-4000-8000-00000000002c",
+    "restaurant_portion_inclusive": "cc510026-0028-4000-8000-000000000032",
+    "restaurant_portion_exclusive": "cc510026-0028-4000-8000-000000000033",
+    "cafe_portion_1": "cc510026-0028-4000-8000-000000000034",
+    "cafe_portion_2": "cc510026-0028-4000-8000-000000000035",
+    "control_portion": "cc510026-0028-4000-8000-000000000036",
+    "restaurant_batch": "cc510026-0028-4000-8000-00000000003c",
+    "cafe_batch": "cc510026-0028-4000-8000-00000000003d",
+    "burger_inclusive_sku": "cc510026-0028-4000-8000-000000000046",
+    "burger_exclusive_sku": "cc510026-0028-4000-8000-000000000047",
+    "latte_small_sku": "cc510026-0028-4000-8000-000000000048",
+    "bread_sku": "cc510026-0028-4000-8000-000000000049",
+    "meat_sku": "cc510026-0028-4000-8000-00000000004a",
+    "beans_sku": "cc510026-0028-4000-8000-00000000004b",
+    "milk_sku": "cc510026-0028-4000-8000-00000000004c",
+    "burger_recipe": "cc510026-0028-4000-8000-000000000050",
+    "latte_recipe": "cc510026-0028-4000-8000-000000000051",
+    "restaurant_profile_publication": "cc510026-0028-4000-8000-00000000005a",
+    "cafe_profile_publication": "cc510026-0028-4000-8000-00000000005b",
+    "restaurant_collection_operation": "cc510026-0028-4000-8000-000000000064",
+    "cafe_collection_operation": "cc510026-0028-4000-8000-000000000065",
+    "restaurant_instruction_presentation": "cc510026-0028-4000-8000-00000000006a",
+    "cafe_instruction_presentation": "cc510026-0028-4000-8000-00000000006b",
+    "new_presentation": "cc510026-0028-4000-8000-00000000006c",
+    "fresh_control_collection_operation": "cc510026-0028-4000-8000-00000000006d",
+    "different_original_operation": "cc510026-0028-4000-8000-00000000006e"
+  },
+  "authority_seed": {
+    "restaurant_exact_enabled_activities": [
+      "RESTAURANT"
+    ],
+    "cafe_exact_enabled_activities": [
+      "CAFE"
+    ],
+    "authentic_branch_applied_profile_and_earlier_activation_native_sources_required": true,
+    "company_publication_or_ui_flag_alone_is_authority": false,
+    "kitchen_sending_available": true,
+    "one_active_master_per_independent_fixture": true,
+    "one_cashier_custodian_per_drawer": true,
+    "central_and_standby_required_for_completion": false,
+    "credential_tokens_or_private_keys": null,
+    "current_authentication_and_permission_bindings": null,
+    "provisioning_note": "Clearly identified synthetic already-provisioned local qualification data; no central registration claim.",
+    "topology_profiles": {
+      "protected_one_device": "Appoint the originating device as Master from the fixture start; original device is never rebound.",
+      "separate_admitted_client": "Use the distinct listed Master and originating Client; native admission required."
+    }
+  },
+  "restaurant": {
+    "activity": "RESTAURANT",
+    "channel": "DINE_IN",
+    "table_note": "Synthetic table R-1",
+    "branch_id": "cc510026-0028-4000-8000-000000000004",
+    "order_id": "cc510026-0028-4000-8000-000000000028",
+    "creator_and_owner": "cc510026-0028-4000-8000-00000000000a",
+    "opening_drawer": {
+      "currency": "EGP",
+      "minor": "100000"
+    },
+    "current_amount_read_version": 3,
+    "selected_page_size": 1,
+    "complete_portion_count": 2,
+    "price_batch_id": "cc510026-0028-4000-8000-00000000003c",
+    "original_price_profile": {
+      "tax_rate_ratio": {
+        "numerator": "14",
+        "denominator": "100"
+      },
+      "rounding": "HALF_UP_AT_DECLARED_POSTING_BOUNDARY",
+      "discount_minor": "0",
+      "service_delivery_tip_deposit_minor": "0",
+      "portions": [
+        {
+          "id": "cc510026-0028-4000-8000-000000000032",
+          "sku_id": "cc510026-0028-4000-8000-000000000046",
+          "quantity": "1",
+          "tax_inclusive": true,
+          "configured_unit_price": "114.00",
+          "posted_net_minor": "10000",
+          "posted_tax_minor": "1400",
+          "posted_gross_minor": "11400"
+        },
+        {
+          "id": "cc510026-0028-4000-8000-000000000033",
+          "sku_id": "cc510026-0028-4000-8000-000000000047",
+          "quantity": "1",
+          "tax_inclusive": false,
+          "configured_unit_price": "100.00",
+          "posted_net_minor": "10000",
+          "posted_tax_minor": "1400",
+          "posted_gross_minor": "11400"
+        }
+      ],
+      "total_net_minor": "20000",
+      "total_tax_minor": "2800",
+      "original_quote_gross_minor": "22800",
+      "price_revision": "1"
+    },
+    "recipe": {
+      "id": "cc510026-0028-4000-8000-000000000050",
+      "version": "1",
+      "yield_portions": "1",
+      "per_portion": [
+        {
+          "sku_id": "cc510026-0028-4000-8000-000000000049",
+          "quantity": "1",
+          "unit": "piece"
+        },
+        {
+          "sku_id": "cc510026-0028-4000-8000-00000000004a",
+          "quantity": "150",
+          "unit": "g"
+        }
+      ]
+    },
+    "opening_stock": {
+      "bread": {
+        "unit": "piece",
+        "on_hand": "10",
+        "reserved": "0",
+        "available": "10",
+        "carrying_value_minor": "2000",
+        "original_issued_value_minor": "0"
+      },
+      "meat": {
+        "unit": "g",
+        "on_hand": "1500",
+        "reserved": "0",
+        "available": "1500",
+        "carrying_value_minor": "30000",
+        "original_issued_value_minor": "0"
+      }
+    },
+    "unit_carrying_cost_egp": {
+      "bread_per_piece": "2.00",
+      "meat_per_g": "0.20"
+    },
+    "stock_issue": {
+      "bread_quantity": "2",
+      "meat_quantity_g": "300",
+      "original_total_cost_minor": "6400"
+    },
+    "originals": {
+      "instruction": {
+        "original_operation_id": "cc510026-0028-4000-8000-000000000064",
+        "branch_id": "cc510026-0028-4000-8000-000000000004",
+        "order_id": "cc510026-0028-4000-8000-000000000028",
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000a",
+        "original_device_id": "cc510026-0028-4000-8000-000000000015",
+        "original_cash_session_id": "cc510026-0028-4000-8000-00000000001f",
+        "original_presentation_id": "cc510026-0028-4000-8000-00000000006a",
+        "amount": {
+          "currency": "EGP",
+          "minor": "22800"
+        },
+        "tender": "CASH",
+        "issued_at_utc": "2026-11-05T18:21:00Z",
+        "durable_before_presentation": true,
+        "native_instruction_id": null,
+        "native_payable_revision": null,
+        "native_contract_family_and_version": null,
+        "required_original_activity_publication": "cc510026-0028-4000-8000-00000000005a"
+      },
+      "observation": {
+        "original_instruction_operation_id": "cc510026-0028-4000-8000-000000000064",
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000a",
+        "original_device_id": "cc510026-0028-4000-8000-000000000015",
+        "original_cash_session_id": "cc510026-0028-4000-8000-00000000001f",
+        "outcome_behavior": "SUCCESS",
+        "tender": "CASH",
+        "received": {
+          "currency": "EGP",
+          "minor": "30000"
+        },
+        "change_actually_given": {
+          "currency": "EGP",
+          "minor": "7200"
+        },
+        "net_observed": {
+          "currency": "EGP",
+          "minor": "22800"
+        },
+        "observed_at_utc": "2026-11-05T18:22:00Z",
+        "native_observation_id": null,
+        "native_outcome_encoding": null,
+        "retention_not_financial_acceptance": true,
+        "original_operation_id": "cc510026-0028-4000-8000-000000000064",
+        "native_phase_command_id_if_contract_has_one": null
+      },
+      "application": {
+        "links_original_instruction_operation_id": "cc510026-0028-4000-8000-000000000064",
+        "links_original_observation_operation_id": "cc510026-0028-4000-8000-000000000066",
+        "behavior_result": "COMMITTED",
+        "applied_coverage": {
+          "currency": "EGP",
+          "minor": "22800"
+        },
+        "net_cash_effect": {
+          "currency": "EGP",
+          "minor": "22800"
+        },
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000a",
+        "cash_session_id": "cc510026-0028-4000-8000-00000000001f",
+        "committed_at_utc": "2026-11-05T18:22:03Z",
+        "native_result_id": null,
+        "native_result_schema_version": null,
+        "native_affected_ids_and_revisions": null,
+        "application_original_food_snapshot": "both_ready_served",
+        "original_operation_id": "cc510026-0028-4000-8000-000000000064",
+        "native_phase_command_id_if_contract_has_one": null
+      }
+    },
+    "timeline_utc": {
+      "cash_open_observed": "2026-11-05T18:00:00Z",
+      "cash_open_committed": "2026-11-05T18:00:01Z",
+      "draft": "2026-11-05T18:05:00Z",
+      "quote": "2026-11-05T18:06:00Z",
+      "send": "2026-11-05T18:10:00Z",
+      "r1_start": "2026-11-05T18:12:00Z",
+      "r1_ready": "2026-11-05T18:15:00Z",
+      "r1_served": "2026-11-05T18:16:00Z",
+      "r2_start": "2026-11-05T18:17:00Z",
+      "uncollected_snapshot": "2026-11-05T18:18:00Z",
+      "uncollected_owner_close": "2026-11-05T18:18:05Z",
+      "uncollected_owner_reopen": "2026-11-05T18:19:00Z",
+      "r2_ready": "2026-11-05T18:20:00Z",
+      "r2_served": "2026-11-05T18:20:30Z",
+      "instruction": "2026-11-05T18:21:00Z",
+      "instruction_retained_before_display": "2026-11-05T18:21:00Z",
+      "observation": "2026-11-05T18:22:00Z",
+      "observation_durably_captured": "2026-11-05T18:22:01Z",
+      "application_commit": "2026-11-05T18:22:03Z",
+      "paid_finalize": "2026-11-05T18:23:00Z",
+      "paid_owner_close": "2026-11-05T18:24:00Z",
+      "paid_owner_reopen": "2026-11-05T18:25:00Z",
+      "original_lookup": "2026-11-05T18:26:00Z"
+    },
+    "snapshots": {
+      "uncollected_mixed": {
+        "order_revision_handle": "R_MIXED_CURRENT",
+        "commercial": "Open",
+        "collection": "Unpaid",
+        "portions": [
+          {
+            "id": "cc510026-0028-4000-8000-000000000032",
+            "preparation": "Ready",
+            "fulfillment": "Served"
+          },
+          {
+            "id": "cc510026-0028-4000-8000-000000000033",
+            "preparation": "Preparing",
+            "fulfillment": "NotHandedOver"
+          }
+        ],
+        "historical_quote_minor": "22800",
+        "current_unpaid_payable_minor": "22800",
+        "applied_coverage_minor": "0",
+        "cash_received_minor": "0",
+        "cash_change_minor": "0",
+        "net_applied_cash_minor": "0",
+        "drawer_ledger_minor": "100000",
+        "stock": {
+          "bread": {
+            "unit": "piece",
+            "on_hand": "8",
+            "reserved": "0",
+            "available": "8",
+            "carrying_value_minor": "1600",
+            "original_issued_value_minor": "400"
+          },
+          "meat": {
+            "unit": "g",
+            "on_hand": "1200",
+            "reserved": "0",
+            "available": "1200",
+            "carrying_value_minor": "24000",
+            "original_issued_value_minor": "6000"
+          }
+        },
+        "finalized_sale_count": 0,
+        "receipt_count": 0,
+        "kitchen_task_count": 2
+      },
+      "instructed_before_physical": {
+        "order_revision_handle": "R_COLLECTION_LOCKED",
+        "commercial": "Open",
+        "collection": "CollectionLocked",
+        "historical_quote_minor": "22800",
+        "current_unpaid_payable_minor": null,
+        "applied_coverage_minor": "0",
+        "cash_received_minor": "0",
+        "cash_change_minor": "0",
+        "net_applied_cash_minor": "0",
+        "drawer_ledger_minor": "100000",
+        "stock": {
+          "bread": {
+            "unit": "piece",
+            "on_hand": "8",
+            "reserved": "0",
+            "available": "8",
+            "carrying_value_minor": "1600",
+            "original_issued_value_minor": "400"
+          },
+          "meat": {
+            "unit": "g",
+            "on_hand": "1200",
+            "reserved": "0",
+            "available": "1200",
+            "carrying_value_minor": "24000",
+            "original_issued_value_minor": "6000"
+          }
+        }
+      },
+      "observed_success_unapplied_partition": {
+        "order_revision_handle": "R_COLLECTION_LOCKED",
+        "commercial": "Open",
+        "collection": "CollectionLocked",
+        "historical_quote_minor": "22800",
+        "current_unpaid_payable_minor": null,
+        "original_obligation_minor": "22800",
+        "observed_received_minor": "30000",
+        "observed_change_minor": "7200",
+        "observed_net_minor": "22800",
+        "physically_counted_drawer_minor": "122800",
+        "master_application_reached": false,
+        "applied_coverage_minor": "0",
+        "net_applied_cash_minor": "0",
+        "drawer_ledger_minor": "100000",
+        "observed_cash_awaiting_application_minor": "22800",
+        "finalized_sale_count": 0,
+        "receipt_count": 0,
+        "stock": {
+          "bread": {
+            "unit": "piece",
+            "on_hand": "8",
+            "reserved": "0",
+            "available": "8",
+            "carrying_value_minor": "1600",
+            "original_issued_value_minor": "400"
+          },
+          "meat": {
+            "unit": "g",
+            "on_hand": "1200",
+            "reserved": "0",
+            "available": "1200",
+            "carrying_value_minor": "24000",
+            "original_issued_value_minor": "6000"
+          }
+        }
+      },
+      "paid_closed": {
+        "order_revision_handle": "R_FINAL_CURRENT",
+        "commercial": "Closed",
+        "collection": "Paid",
+        "all_portions_preparation": "Ready",
+        "all_portions_fulfillment": "Served",
+        "historical_quote_minor": "22800",
+        "current_unpaid_payable_minor": null,
+        "applied_coverage_minor": "22800",
+        "remaining_obligation_minor": "0",
+        "cash_received_minor": "30000",
+        "cash_change_minor": "7200",
+        "net_applied_cash_minor": "22800",
+        "drawer_ledger_minor": "122800",
+        "refund_due_minor": "0",
+        "stock": {
+          "bread": {
+            "unit": "piece",
+            "on_hand": "8",
+            "reserved": "0",
+            "available": "8",
+            "carrying_value_minor": "1600",
+            "original_issued_value_minor": "400"
+          },
+          "meat": {
+            "unit": "g",
+            "on_hand": "1200",
+            "reserved": "0",
+            "available": "1200",
+            "carrying_value_minor": "24000",
+            "original_issued_value_minor": "6000"
+          }
+        },
+        "sold_portion_count": 2,
+        "finalized_sale_count": 1,
+        "receipt_count": 1,
+        "kitchen_task_count": 2,
+        "application_count": 1,
+        "net_cash_effect_set_count": 1,
+        "ingredient_issue_set_count": 1,
+        "posted_sale_net_minor": "20000",
+        "posted_sale_tax_minor": "2800",
+        "posted_sale_gross_minor": "22800"
+      }
+    },
+    "later_catalog_control_only": {
+      "price_revision": "2",
+      "new_inclusive_burger_price": "228.00",
+      "new_exclusive_burger_price": "200.00",
+      "effect_on_saved_quote_or_current_original_batches": "NONE"
+    }
+  },
+  "cafe": {
+    "activity": "CAFE",
+    "channel": "TAKEAWAY_PREPAID",
+    "pickup_reference": "Synthetic pickup C-1",
+    "branch_id": "cc510026-0028-4000-8000-000000000005",
+    "order_id": "cc510026-0028-4000-8000-00000000002a",
+    "creator_and_owner": "cc510026-0028-4000-8000-00000000000b",
+    "opening_drawer": {
+      "currency": "EGP",
+      "minor": "100000"
+    },
+    "current_amount_read_version": 3,
+    "selected_page_size": 2,
+    "complete_portion_count": 2,
+    "price_batch_id": "cc510026-0028-4000-8000-00000000003d",
+    "original_price_profile": {
+      "tax_rate_ratio": {
+        "numerator": "14",
+        "denominator": "100"
+      },
+      "rounding": "HALF_UP_AT_DECLARED_POSTING_BOUNDARY",
+      "tax_inclusive": true,
+      "variant": "SMALL",
+      "unit_price": "57.00",
+      "quantity": "2",
+      "per_portion_net_minor": "5000",
+      "per_portion_tax_minor": "700",
+      "per_portion_gross_minor": "5700",
+      "discount_minor": "0",
+      "service_delivery_tip_deposit_minor": "0",
+      "total_net_minor": "10000",
+      "total_tax_minor": "1400",
+      "original_quote_gross_minor": "11400",
+      "price_revision": "1"
+    },
+    "recipe": {
+      "id": "cc510026-0028-4000-8000-000000000051",
+      "version": "1",
+      "yield_portions": "1",
+      "per_portion": [
+        {
+          "sku_id": "cc510026-0028-4000-8000-00000000004b",
+          "quantity": "18",
+          "unit": "g"
+        },
+        {
+          "sku_id": "cc510026-0028-4000-8000-00000000004c",
+          "quantity": "200",
+          "unit": "ml"
+        }
+      ]
+    },
+    "opening_stock": {
+      "beans": {
+        "unit": "g",
+        "on_hand": "360",
+        "reserved": "0",
+        "available": "360",
+        "carrying_value_minor": "18000",
+        "original_issued_value_minor": "0"
+      },
+      "milk": {
+        "unit": "ml",
+        "on_hand": "2000",
+        "reserved": "0",
+        "available": "2000",
+        "carrying_value_minor": "8000",
+        "original_issued_value_minor": "0"
+      }
+    },
+    "unit_carrying_cost_egp": {
+      "beans_per_g": "0.50",
+      "milk_per_ml": "0.04"
+    },
+    "stock_issue_after_send": {
+      "beans_quantity_g": "36",
+      "milk_quantity_ml": "400",
+      "original_total_cost_minor": "3400"
+    },
+    "originals": {
+      "instruction": {
+        "original_operation_id": "cc510026-0028-4000-8000-000000000065",
+        "branch_id": "cc510026-0028-4000-8000-000000000005",
+        "order_id": "cc510026-0028-4000-8000-00000000002a",
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000b",
+        "original_device_id": "cc510026-0028-4000-8000-000000000017",
+        "original_cash_session_id": "cc510026-0028-4000-8000-000000000021",
+        "original_presentation_id": "cc510026-0028-4000-8000-00000000006b",
+        "amount": {
+          "currency": "EGP",
+          "minor": "11400"
+        },
+        "tender": "CASH",
+        "issued_at_utc": "2026-11-05T08:10:00Z",
+        "durable_before_presentation": true,
+        "native_instruction_id": null,
+        "native_payable_revision": null,
+        "native_contract_family_and_version": null,
+        "required_original_activity_publication": "cc510026-0028-4000-8000-00000000005b"
+      },
+      "observation": {
+        "original_instruction_operation_id": "cc510026-0028-4000-8000-000000000065",
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000b",
+        "original_device_id": "cc510026-0028-4000-8000-000000000017",
+        "original_cash_session_id": "cc510026-0028-4000-8000-000000000021",
+        "outcome_behavior": "SUCCESS",
+        "tender": "CASH",
+        "received": {
+          "currency": "EGP",
+          "minor": "20000"
+        },
+        "change_actually_given": {
+          "currency": "EGP",
+          "minor": "8600"
+        },
+        "net_observed": {
+          "currency": "EGP",
+          "minor": "11400"
+        },
+        "observed_at_utc": "2026-11-05T08:11:00Z",
+        "native_observation_id": null,
+        "native_outcome_encoding": null,
+        "retention_not_financial_acceptance": true,
+        "original_operation_id": "cc510026-0028-4000-8000-000000000065",
+        "native_phase_command_id_if_contract_has_one": null
+      },
+      "application": {
+        "links_original_instruction_operation_id": "cc510026-0028-4000-8000-000000000065",
+        "links_original_observation_operation_id": "cc510026-0028-4000-8000-000000000067",
+        "behavior_result": "COMMITTED",
+        "applied_coverage": {
+          "currency": "EGP",
+          "minor": "11400"
+        },
+        "net_cash_effect": {
+          "currency": "EGP",
+          "minor": "11400"
+        },
+        "original_actor_id": "cc510026-0028-4000-8000-00000000000b",
+        "cash_session_id": "cc510026-0028-4000-8000-000000000021",
+        "committed_at_utc": "2026-11-05T08:11:03Z",
+        "native_result_id": null,
+        "native_result_schema_version": null,
+        "native_affected_ids_and_revisions": null,
+        "application_original_food_snapshot": "both_not_sent_not_handed_over",
+        "original_operation_id": "cc510026-0028-4000-8000-000000000065",
+        "native_phase_command_id_if_contract_has_one": null
+      }
+    },
+    "timeline_utc": {
+      "cash_open_observed": "2026-11-05T08:00:00Z",
+      "cash_open_committed": "2026-11-05T08:00:01Z",
+      "draft": "2026-11-05T08:05:00Z",
+      "quote": "2026-11-05T08:06:00Z",
+      "instruction": "2026-11-05T08:10:00Z",
+      "reservation_before_instruction": "2026-11-05T08:09:59Z",
+      "instruction_retained_before_display": "2026-11-05T08:10:00Z",
+      "observation": "2026-11-05T08:11:00Z",
+      "observation_durably_captured": "2026-11-05T08:11:01Z",
+      "application_commit": "2026-11-05T08:11:03Z",
+      "paid_unsent_owner_close": "2026-11-05T08:12:00Z",
+      "paid_unsent_owner_reopen": "2026-11-05T08:13:00Z",
+      "paid_unsent_read": "2026-11-05T08:14:00Z",
+      "send": "2026-11-05T08:15:00Z",
+      "all_start": "2026-11-05T08:16:00Z",
+      "all_ready": "2026-11-05T08:18:00Z",
+      "pickup": "2026-11-05T08:20:00Z",
+      "final_owner_close": "2026-11-05T08:21:00Z",
+      "final_owner_reopen": "2026-11-05T08:22:00Z",
+      "original_lookup": "2026-11-05T08:23:00Z",
+      "paid_sale_finalize": "2026-11-05T08:11:04Z",
+      "check_close_after_pickup": "2026-11-05T08:20:01Z"
+    },
+    "snapshots": {
+      "quoted_unpaid": {
+        "commercial": "Open",
+        "collection": "Unpaid",
+        "all_preparation": "NotSent",
+        "all_fulfillment": "NotHandedOver",
+        "historical_quote_minor": "11400",
+        "current_unpaid_payable_minor": "11400",
+        "applied_coverage_minor": "0",
+        "drawer_ledger_minor": "100000",
+        "stock": {
+          "beans": {
+            "unit": "g",
+            "on_hand": "360",
+            "reserved": "0",
+            "available": "360",
+            "carrying_value_minor": "18000",
+            "original_issued_value_minor": "0"
+          },
+          "milk": {
+            "unit": "ml",
+            "on_hand": "2000",
+            "reserved": "0",
+            "available": "2000",
+            "carrying_value_minor": "8000",
+            "original_issued_value_minor": "0"
+          }
+        }
+      },
+      "instructed_before_physical": {
+        "order_revision_handle": "C_COLLECTION_LOCKED",
+        "commercial": "Open",
+        "collection": "CollectionLocked",
+        "all_preparation": "NotSent",
+        "all_fulfillment": "NotHandedOver",
+        "historical_quote_minor": "11400",
+        "current_unpaid_payable_minor": null,
+        "applied_coverage_minor": "0",
+        "net_applied_cash_minor": "0",
+        "drawer_ledger_minor": "100000",
+        "stock": {
+          "beans": {
+            "unit": "g",
+            "on_hand": "360",
+            "reserved": "36",
+            "available": "324",
+            "carrying_value_minor": "18000",
+            "original_issued_value_minor": "0"
+          },
+          "milk": {
+            "unit": "ml",
+            "on_hand": "2000",
+            "reserved": "400",
+            "available": "1600",
+            "carrying_value_minor": "8000",
+            "original_issued_value_minor": "0"
+          }
+        }
+      },
+      "paid_unsent": {
+        "order_revision_handle": "C_PAID_UNSENT_CURRENT",
+        "commercial": "Open",
+        "collection": "Paid",
+        "all_preparation": "NotSent",
+        "all_fulfillment": "NotHandedOver",
+        "pending_preparation": true,
+        "historical_quote_minor": "11400",
+        "current_unpaid_payable_minor": null,
+        "applied_coverage_minor": "11400",
+        "remaining_obligation_minor": "0",
+        "cash_received_minor": "20000",
+        "cash_change_minor": "8600",
+        "net_applied_cash_minor": "11400",
+        "drawer_ledger_minor": "111400",
+        "stock": {
+          "beans": {
+            "unit": "g",
+            "on_hand": "360",
+            "reserved": "36",
+            "available": "324",
+            "carrying_value_minor": "18000",
+            "original_issued_value_minor": "0"
+          },
+          "milk": {
+            "unit": "ml",
+            "on_hand": "2000",
+            "reserved": "400",
+            "available": "1600",
+            "carrying_value_minor": "8000",
+            "original_issued_value_minor": "0"
+          }
+        },
+        "ingredient_issue_set_count": 0,
+        "kitchen_task_count": 0,
+        "application_count": 1,
+        "net_cash_effect_set_count": 1,
+        "sold_portion_coverage_count": 2,
+        "finalized_sale_count": 1,
+        "receipt_count": 1,
+        "sold_portion_count": 2,
+        "posted_sale_net_minor": "10000",
+        "posted_sale_tax_minor": "1400",
+        "posted_sale_gross_minor": "11400"
+      },
+      "paid_picked_up_closed": {
+        "order_revision_handle": "C_FINAL_CURRENT",
+        "commercial": "Closed",
+        "collection": "Paid",
+        "all_preparation": "Ready",
+        "all_fulfillment": "PickedUp",
+        "pending_preparation": false,
+        "historical_quote_minor": "11400",
+        "current_unpaid_payable_minor": null,
+        "applied_coverage_minor": "11400",
+        "remaining_obligation_minor": "0",
+        "cash_received_minor": "20000",
+        "cash_change_minor": "8600",
+        "net_applied_cash_minor": "11400",
+        "drawer_ledger_minor": "111400",
+        "stock": {
+          "beans": {
+            "unit": "g",
+            "on_hand": "324",
+            "reserved": "0",
+            "available": "324",
+            "carrying_value_minor": "16200",
+            "original_issued_value_minor": "1800"
+          },
+          "milk": {
+            "unit": "ml",
+            "on_hand": "1600",
+            "reserved": "0",
+            "available": "1600",
+            "carrying_value_minor": "6400",
+            "original_issued_value_minor": "1600"
+          }
+        },
+        "ingredient_issue_set_count": 1,
+        "kitchen_task_count": 2,
+        "application_count": 1,
+        "net_cash_effect_set_count": 1,
+        "sold_portion_count": 2,
+        "finalized_sale_count": 1,
+        "receipt_count": 1,
+        "posted_sale_net_minor": "10000",
+        "posted_sale_tax_minor": "1400",
+        "posted_sale_gross_minor": "11400"
+      }
+    }
+  },
+  "fresh_cash_negative_control": {
+    "enabled_only_for_authority_and_fresh-source_cases": true,
+    "restaurant_order_id": "cc510026-0028-4000-8000-000000000029",
+    "cafe_order_id": "cc510026-0028-4000-8000-00000000002b",
+    "restaurant_one_quoted_unsent_burger_minor": "11400",
+    "cafe_two_quoted_unsent_lattes_minor": "11400",
+    "commercial": "Open",
+    "collection": "Unpaid",
+    "preparation": "NotSent",
+    "fulfillment": "NotHandedOver",
+    "applied_coverage_minor": "0",
+    "reserved_quantity": "0",
+    "issue_set_count": 0,
+    "kitchen_task_count": 0,
+    "receipt_count": 0,
+    "valid_current_amount_ceiling_minor_before_denial": "30000",
+    "denied_ceiling_minor": "11399",
+    "separate_open_control_obligation_minor": "11400",
+    "baseline_paid_order_and_drawer_effects_stay_separate": true,
+    "denial_vectors": [
+      "current_operation_permission_withdrawn",
+      "employee_disabled",
+      "session_revoked",
+      "device_no_longer_admitted",
+      "current_amount_ceiling_below_requested_amount"
+    ],
+    "expected_new_physical_instructions_after_denial": 0,
+    "expected_new_money_or_stock_effects_after_denial": 0,
+    "read_denial_variant": "Selected V3 refuses all protected current observations; no fallback or accepting null."
+  },
+  "source_fault_bindings": {
+    "genuine_native_production_source_required": true,
+    "actual_native_source_keys": null,
+    "current_v3_faults": [
+      "missing_off_page_original_price",
+      "missing_required_original_portion",
+      "price_portion_points_to_other_order",
+      "original_stock_relationship_mismatch"
+    ],
+    "original_cash_faults": [
+      "missing_or_mismatched_instruction_observation_association",
+      "missing_or_mismatched_original_profile_publication_activation",
+      "missing_or_mismatched_original_price_portion_allocation"
+    ],
+    "expected_effects_of_refusal": "NONE; retained originals unchanged; no verified original from DATA/current substitute.",
+    "restore_scope": "Only controlled fault in isolated synthetic working data; preserve the original frozen fixture."
+  },
+  "inert_data": {
+    "profile_version": "1.0.0",
+    "status": "NOT RUN",
+    "native_protocol_binding": null,
+    "byte_encoding": "Hex of exact UTF-8 compact fixture JSON in documented insertion order; not native canonical or wire encoding.",
+    "requirement_utf8_preview": "{\"original_operation_id\":\"cc510026-0028-4000-8000-000000000064\",\"branch_id\":\"cc510026-0028-4000-8000-000000000004\",\"order_id\":\"cc510026-0028-4000-8000-000000000028\",\"amount_minor\":\"22800\",\"currency\":\"EGP\",\"tender\":\"CASH\",\"original_actor_id\":\"cc510026-0028-4000-8000-00000000000a\",\"original_device_id\":\"cc510026-0028-4000-8000-000000000015\",\"original_cash_session_id\":\"cc510026-0028-4000-8000-00000000001f\",\"original_presentation_id\":\"cc510026-0028-4000-8000-00000000006a\",\"issued_at_utc\":\"2026-11-05T18:21:00Z\"}",
+    "observation_utf8_preview": "{\"original_instruction_operation_id\":\"cc510026-0028-4000-8000-000000000064\",\"outcome\":\"SUCCESS\",\"received_minor\":\"30000\",\"change_minor\":\"7200\",\"net_minor\":\"22800\",\"currency\":\"EGP\",\"observed_at_utc\":\"2026-11-05T18:22:00Z\"}",
+    "original_descriptor": {
+      "profile": "INERT_ORIGINAL_COMPARISON_V1",
+      "original_identity": "cc510026-0028-4000-8000-000000000064",
+      "branch": "cc510026-0028-4000-8000-000000000004",
+      "actor": "cc510026-0028-4000-8000-00000000000a",
+      "original_device": "cc510026-0028-4000-8000-000000000015",
+      "original_presentation": "cc510026-0028-4000-8000-00000000006a",
+      "command_family": "CASH_COLLECTION",
+      "command_version": "fixture-behavior-v1",
+      "requirement_bytes_hex": "7b226f726967696e616c5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226272616e63685f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303034222c226f726465725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303238222c22616d6f756e745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c2274656e646572223a2243415348222c226f726967696e616c5f6163746f725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303061222c226f726967696e616c5f6465766963655f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303135222c226f726967696e616c5f636173685f73657373696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303166222c226f726967696e616c5f70726573656e746174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303661222c226973737565645f61745f757463223a22323032362d31312d30355431383a32313a30305a227d",
+      "observation_bytes_hex": "7b226f726967696e616c5f696e737472756374696f6e5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226f7574636f6d65223a2253554343455353222c2272656365697665645f6d696e6f72223a223330303030222c226368616e67655f6d696e6f72223a2237323030222c226e65745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c226f627365727665645f61745f757463223a22323032362d31312d30355431383a32323a30305a227d"
+    },
+    "vectors": [
+      {
+        "id": "DATA-EQUAL",
+        "candidate_single_field_replacement": {},
+        "expected_whole_equality": true,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-IDENTITY",
+        "candidate_single_field_replacement": {
+          "original_identity": "cc510026-0028-4000-8000-00000000006e"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-BRANCH",
+        "candidate_single_field_replacement": {
+          "branch": "cc510026-0028-4000-8000-000000000006"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-ACTOR",
+        "candidate_single_field_replacement": {
+          "actor": "cc510026-0028-4000-8000-00000000000c"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-DEVICE",
+        "candidate_single_field_replacement": {
+          "original_device": "cc510026-0028-4000-8000-000000000018"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-PRESENTATION",
+        "candidate_single_field_replacement": {
+          "original_presentation": "cc510026-0028-4000-8000-00000000006c"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-FAMILY",
+        "candidate_single_field_replacement": {
+          "command_family": "CASH_REFUND_COMPARISON_ONLY"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-VERSION",
+        "candidate_single_field_replacement": {
+          "command_version": "fixture-behavior-v2"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-REQUIREMENT-AMOUNT",
+        "candidate_single_field_replacement": {
+          "requirement_bytes_hex": "7b226f726967696e616c5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226272616e63685f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303034222c226f726465725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303238222c22616d6f756e745f6d696e6f72223a223232383031222c2263757272656e6379223a22454750222c2274656e646572223a2243415348222c226f726967696e616c5f6163746f725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303061222c226f726967696e616c5f6465766963655f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303135222c226f726967696e616c5f636173685f73657373696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303166222c226f726967696e616c5f70726573656e746174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303661222c226973737565645f61745f757463223a22323032362d31312d30355431383a32313a30305a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-REQUIREMENT-ORDER",
+        "candidate_single_field_replacement": {
+          "requirement_bytes_hex": "7b226f726967696e616c5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226272616e63685f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303034222c226f726465725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303263222c22616d6f756e745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c2274656e646572223a2243415348222c226f726967696e616c5f6163746f725f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303061222c226f726967696e616c5f6465766963655f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303135222c226f726967696e616c5f636173685f73657373696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303166222c226f726967696e616c5f70726573656e746174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303661222c226973737565645f61745f757463223a22323032362d31312d30355431383a32313a30305a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-OBSERVATION-OUTCOME",
+        "candidate_single_field_replacement": {
+          "observation_bytes_hex": "7b226f726967696e616c5f696e737472756374696f6e5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226f7574636f6d65223a224e4f545f504552464f524d4544222c2272656365697665645f6d696e6f72223a223330303030222c226368616e67655f6d696e6f72223a2237323030222c226e65745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c226f627365727665645f61745f757463223a22323032362d31312d30355431383a32323a30305a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-OBSERVATION-RECEIVED",
+        "candidate_single_field_replacement": {
+          "observation_bytes_hex": "7b226f726967696e616c5f696e737472756374696f6e5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226f7574636f6d65223a2253554343455353222c2272656365697665645f6d696e6f72223a223330303031222c226368616e67655f6d696e6f72223a2237323030222c226e65745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c226f627365727665645f61745f757463223a22323032362d31312d30355431383a32323a30305a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-OBSERVATION-CHANGE",
+        "candidate_single_field_replacement": {
+          "observation_bytes_hex": "7b226f726967696e616c5f696e737472756374696f6e5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226f7574636f6d65223a2253554343455353222c2272656365697665645f6d696e6f72223a223330303030222c226368616e67655f6d696e6f72223a2237323031222c226e65745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c226f627365727665645f61745f757463223a22323032362d31312d30355431383a32323a30305a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      },
+      {
+        "id": "DATA-OBSERVATION-TIME",
+        "candidate_single_field_replacement": {
+          "observation_bytes_hex": "7b226f726967696e616c5f696e737472756374696f6e5f6f7065726174696f6e5f6964223a2263633531303032362d303032382d343030302d383030302d303030303030303030303634222c226f7574636f6d65223a2253554343455353222c2272656365697665645f6d696e6f72223a223330303030222c226368616e67655f6d696e6f72223a2237323030222c226e65745f6d696e6f72223a223232383030222c2263757272656e6379223a22454750222c226f627365727665645f61745f757463223a22323032362d31312d30355431383a32323a30315a227d"
+        },
+        "expected_whole_equality": false,
+        "expected_retained_original_equality_after_candidate": true,
+        "expected_retained_original_changed": false,
+        "expected_native_authority_verified": false,
+        "expected_current_authorization_checked": false,
+        "expected_financial_application_confirmed": false,
+        "status": "NOT RUN"
+      }
+    ],
+    "required_verification_labels": [
+      "DATA comparison only",
+      "native authority not verified",
+      "current authorization not checked",
+      "financial application not confirmed"
+    ],
+    "transport_receipt_control": {
+      "receipt_label": "RECEIVED",
+      "original_descriptor_unchanged": true,
+      "expected_whole_equality": true,
+      "expected_financial_application_confirmed": false,
+      "expected_native_authority_verified": false
+    },
+    "no_refund_or_other_tender_execution_from_comparison_vectors": true
+  },
+  "native_bindings_required_before_execution": [
+    "Actual production CASH command/instruction/observation/application/result contracts and compatible versions",
+    "Literal native original source selection and generated instruction/observation/result/issue/task/receipt ID bindings",
+    "Actual saved original and current revision handles; no fabricated increment assumptions",
+    "Production native durable observation storage, Master storage driver, fresh connection/process boundary",
+    "Protected same-device adapter and genuinely admitted local RPC with current authorization",
+    "Bounded partition/lost-response/source-fault controls; Receipt separate from financial acceptance",
+    "Supported isolated fixture clock; separate actual owner witness times",
+    "Named platform/minimum OS and real owner close/reopen; surviving-service UI closure tracked separately"
+  ],
+  "case_catalog": [
+    {
+      "id": "FCC-R-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-R-02",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-C-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-C-02",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-O-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-REC-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-REC-02",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-AUTH-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-AUTH-02",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-USER-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-SRC-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-SRC-02",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-SRC-03",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    },
+    {
+      "id": "FCC-DATA-01",
+      "expectation_version": "1.0.0",
+      "status": "NOT RUN",
+      "results": []
+    }
+  ]
+}

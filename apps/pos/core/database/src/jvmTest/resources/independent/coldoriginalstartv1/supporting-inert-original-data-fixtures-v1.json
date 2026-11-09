@@ -1,0 +1,145 @@
+{
+  "schema_version": 1,
+  "design_version": "cold-original-start-inert-data-v1",
+  "additive_to": "cold-original-start-v1",
+  "execution_status": "UNRUN",
+  "layer": "non-device supporting inert DATA comparison only",
+  "fixture_warning": "Synthetic opaque descriptor DATA only; these labels are not native proof, certificates, credentials, authenticated principals or dispatch permits. Equality cannot establish authenticity, custody, lineage, current authority, native closure or business execution.",
+  "reference_id": "D-A",
+  "reference_descriptor": {
+    "original_actor_descriptor": "ACTOR-F-original",
+    "original_operation_descriptor": "6ed06000-0100-4000-8000-000000000003",
+    "original_command_descriptor": "retail-cash-collection-original-command-A",
+    "original_source_descriptor": {
+      "origin_label": "opaque-original-origin-A",
+      "branch_id": "6ed06000-0000-4000-8000-000000000003",
+      "original_record_label": "opaque-original-source-A",
+      "original_cut_label": "opaque-original-before-cut-A"
+    },
+    "captured_start_descriptor": {
+      "instruction_label": "opaque-original-instruction-A",
+      "original_actor_label": "ACTOR-F-original",
+      "original_device_label": "DEVICE-F-original",
+      "original_presentation_label": "opaque-original-presentation-A",
+      "document_id": "6ed06000-0100-4000-8000-000000000002",
+      "document_version_label": "opaque-original-payable-version-A",
+      "amount_minor": "12000",
+      "currency": "EGP",
+      "tender": "CASH"
+    },
+    "captured_certificate_descriptor": "opaque-original-certificate-descriptor-A",
+    "captured_requirement_descriptor": "opaque-original-requirement-descriptor-A",
+    "captured_outcome_descriptor": {
+      "outcome_label": "opaque-original-outcome-A",
+      "classification": "SUCCESS",
+      "cash_received_minor": "15000",
+      "cash_change_minor": "3000",
+      "cash_net_minor": "12000"
+    }
+  },
+  "identical_candidate": {
+    "id": "D-A-COPY",
+    "construction": "A separately constructed complete identical descriptor with every reference field/value preserved",
+    "expected": "MATCH"
+  },
+  "top_level_one_field_changes": [
+    {
+      "id": "D-T01",
+      "field": "original_actor_descriptor",
+      "replacement": "ACTOR-E-original",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T02",
+      "field": "original_operation_descriptor",
+      "replacement": "6ed06000-0200-4000-8000-000000000003",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T03",
+      "field": "original_command_descriptor",
+      "replacement": "different-original-command-B",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T04",
+      "field": "original_source_descriptor",
+      "replacement": {
+        "origin_label": "opaque-original-origin-B",
+        "branch_id": "6ed06000-0000-4000-8000-000000000004",
+        "original_record_label": "opaque-original-source-B",
+        "original_cut_label": "opaque-original-before-cut-B"
+      },
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T05",
+      "field": "captured_start_descriptor",
+      "replacement": {
+        "instruction_label": "opaque-different-instruction-B",
+        "original_actor_label": "ACTOR-F-original",
+        "original_device_label": "DEVICE-F-original",
+        "original_presentation_label": "opaque-original-presentation-A",
+        "document_id": "6ed06000-0100-4000-8000-000000000002",
+        "document_version_label": "opaque-original-payable-version-A",
+        "amount_minor": "12000",
+        "currency": "EGP",
+        "tender": "CASH"
+      },
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T06",
+      "field": "captured_certificate_descriptor",
+      "replacement": "opaque-different-certificate-descriptor-B",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T07",
+      "field": "captured_requirement_descriptor",
+      "replacement": "opaque-different-requirement-descriptor-B",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "D-T08",
+      "field": "captured_outcome_descriptor",
+      "replacement": {
+        "outcome_label": "opaque-original-outcome-A",
+        "classification": "NOT_PERFORMED",
+        "cash_received_minor": "0",
+        "cash_change_minor": "0",
+        "cash_net_minor": "0"
+      },
+      "expected": "DOES_NOT_MATCH"
+    }
+  ],
+  "nested_one_field_changes": [
+    {"id": "D-N01", "field": "original_source_descriptor.original_cut_label", "replacement": "opaque-later-current-cut-B", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N02", "field": "original_source_descriptor.original_record_label", "replacement": "opaque-different-source-record-B", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N03", "field": "original_source_descriptor.branch_id", "replacement": "6ed06000-0000-4000-8000-000000000004", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N04", "field": "captured_start_descriptor.original_actor_label", "replacement": "ACTOR-E-original", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N05", "field": "captured_start_descriptor.original_device_label", "replacement": "DEVICE-E-original", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N06", "field": "captured_start_descriptor.original_presentation_label", "replacement": "opaque-new-presentation-B", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N07", "field": "captured_start_descriptor.document_id", "replacement": "6ed06000-0200-4000-8000-000000000002", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N08", "field": "captured_start_descriptor.document_version_label", "replacement": "opaque-different-payable-version-B", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N09", "field": "captured_start_descriptor.amount_minor", "replacement": "12001", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N10", "field": "captured_start_descriptor.currency", "replacement": "USD", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N11", "field": "captured_start_descriptor.tender", "replacement": "EXTERNAL_CARD", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N12", "field": "captured_outcome_descriptor.outcome_label", "replacement": "opaque-different-outcome-B", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N13", "field": "captured_outcome_descriptor.classification", "replacement": "UNKNOWN", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N14", "field": "captured_outcome_descriptor.cash_received_minor", "replacement": "15001", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N15", "field": "captured_outcome_descriptor.cash_change_minor", "replacement": "3001", "expected": "DOES_NOT_MATCH"},
+    {"id": "D-N16", "field": "captured_outcome_descriptor.cash_net_minor", "replacement": "12001", "expected": "DOES_NOT_MATCH"}
+  ],
+  "comparison_effect_expectation": {
+    "creates_current_principal": false,
+    "creates_session_approval_or_admission": false,
+    "creates_dispatch_permit": false,
+    "consumes_original_native_action": false,
+    "publishes_new_physical_instruction": false,
+    "executes_business_operation": false,
+    "native_settlement_or_current_closure_proven": false,
+    "full_COS_or_monetary_acceptance_proven": false
+  },
+  "result_labels": "MATCH and DOES_NOT_MATCH are expected inert comparison classifications, not production machine codes or native proof acceptance."
+}

@@ -1,0 +1,575 @@
+{
+  "schema": "selected-sale-receipt-design-fixtures-v2",
+  "status": "FROZEN_READY_NOT_EXECUTED",
+  "quantityConvention": {
+    "baseUnit": "EA",
+    "allowedPrecision": 0,
+    "values": "exact integers; serialized quantities are canonical decimal strings"
+  },
+  "identityConvention": "Frozen aliases below map to canonical lower-case UUID synthetic identities. Oracle fields are not extra public payload fields. Generated fixture families use distinct canonical UUID templates.",
+  "idAliases": {
+    "organization": "a0000000-0000-4000-8000-000000000001",
+    "company": "a0000000-0000-4000-8000-000000000002",
+    "branch": "a0000000-0000-4000-8000-000000000003",
+    "A": "a0000000-0000-4000-8000-000000000010",
+    "B": "a0000000-0000-4000-8000-000000000011",
+    "D": "a0000000-0000-4000-8000-000000000012",
+    "S": "a0000000-0000-4000-8000-000000000100",
+    "P-A": "a0000000-0000-4000-8000-000000000101",
+    "P-B": "a0000000-0000-4000-8000-000000000102",
+    "Finalize-S": "a0000000-0000-4000-8000-000000000110",
+    "E1": "a0000000-0000-4000-8000-000000000201",
+    "E2": "a0000000-0000-4000-8000-000000000202",
+    "E3": "a0000000-0000-4000-8000-000000000203",
+    "W": "a0000000-0000-4000-8000-000000000204",
+    "W-ALT": "a0000000-0000-4000-8000-000000000205",
+    "L": "a0000000-0000-4000-8000-000000000206",
+    "X": "a0000000-0000-4000-8000-000000000207",
+    "NEVER": "a0000000-0000-4000-8000-000000000208",
+    "N": "a0000000-0000-4000-8000-000000000300",
+    "P-N": "a0000000-0000-4000-8000-000000000301",
+    "Finalize-N": "a0000000-0000-4000-8000-000000000310",
+    "First-N": "a0000000-0000-4000-8000-000000000320",
+    "S-CAP64": "a0000000-0000-4000-8000-000000000400",
+    "S-CAP256": "a0000000-0000-4000-8000-000000000500",
+    "P-C64-A": "a0000000-0000-4000-8000-000000000401",
+    "P-C64-B": "a0000000-0000-4000-8000-000000000402",
+    "Finalize-C64": "a0000000-0000-4000-8000-000000000410",
+    "Refused-C64-65": "a0000000-0000-4000-8000-000000000420",
+    "Finalize-C256": "a0000000-0000-4000-8000-000000000510",
+    "C256-E1": "a0000000-0000-4000-8000-000000000520",
+    "C256-E2": "a0000000-0000-4000-8000-000000000521"
+  },
+  "F-AUTH": {
+    "scope": [
+      "organization",
+      "company",
+      "branch"
+    ],
+    "baseline": "enabled branch accounts; admitted distinct devices; current valid sessions; active non-retired Master; activated policy; synthetic provisioning only",
+    "A": [
+      "CUSTOMER_RECEIPT_RECORD/PERFORM own original collector"
+    ],
+    "B": [
+      "CUSTOMER_RECEIPT_RECORD/PERFORM with explicit ANY_OWNER",
+      "Explicit ordinary synthetic sales/Finalize fixture rights; these do not imply receipt-record authority"
+    ],
+    "D": [
+      "RETURN_RECEIPT_LOOKUP/PERFORM limited documentary read only"
+    ],
+    "denialVariants": [
+      "receipt grant revoked",
+      "account disabled",
+      "session revoked",
+      "session expired",
+      "device retired",
+      "device unadmitted",
+      "activated policy deny",
+      "B ANY_OWNER removed"
+    ],
+    "closedPurposes": [
+      "RECORD default/explicit",
+      "RETURN_LOOKUP explicit"
+    ]
+  },
+  "F-SELECT": {
+    "sale": "S",
+    "kind": "genuine normalized RETAIL paid Finalize",
+    "original": {
+      "collector": "A",
+      "finalizeOperation": "Finalize-S",
+      "finalizedAt": "2026-11-01T08:00:00Z",
+      "authorityEpoch": "1",
+      "journalSequence": "1000",
+      "sold": {
+        "P-A": 100,
+        "P-B": 30
+      },
+      "grossMinorEGP": 13000,
+      "unitPriceMinorEGP": 100,
+      "unitCostMinorEGP": 50,
+      "originalTender": "CASH paid coverage 13000 minor EGP"
+    },
+    "head": {
+      "revision": 3,
+      "eventCount": 3,
+      "recorded": {
+        "P-A": 45,
+        "P-B": 10
+      },
+      "latest": "E3"
+    },
+    "authoritativeEventMembership": [
+      "E1",
+      "E2",
+      "E3"
+    ],
+    "events": [
+      {
+        "operation": "E1",
+        "headRevision": 1,
+        "actor": "A",
+        "portions": {
+          "P-A": 20
+        },
+        "receivedAt": "2026-11-01T08:01:00Z",
+        "receiptTimeZoneId": "Africa/Cairo",
+        "recordedAt": "2026-11-01T08:02:00Z",
+        "originalSale": "S",
+        "originalFinalize": "Finalize-S",
+        "originalCollector": "A",
+        "authorityEpoch": "1",
+        "journalSequence": "1010",
+        "observation": "CUSTOMER_RECEIVED_AT_COUNTER"
+      },
+      {
+        "operation": "E2",
+        "headRevision": 2,
+        "actor": "A",
+        "portions": {
+          "P-A": 25
+        },
+        "receivedAt": "2026-11-02T08:01:00Z",
+        "receiptTimeZoneId": "Africa/Cairo",
+        "recordedAt": "2026-11-02T08:02:00Z",
+        "originalSale": "S",
+        "originalFinalize": "Finalize-S",
+        "originalCollector": "A",
+        "authorityEpoch": "1",
+        "journalSequence": "1011",
+        "observation": "CUSTOMER_RECEIVED_AT_COUNTER"
+      },
+      {
+        "operation": "E3",
+        "headRevision": 3,
+        "actor": "A",
+        "portions": {
+          "P-B": 10
+        },
+        "receivedAt": "2026-11-02T09:01:00Z",
+        "receiptTimeZoneId": "Africa/Cairo",
+        "recordedAt": "2026-11-02T09:02:00Z",
+        "originalSale": "S",
+        "originalFinalize": "Finalize-S",
+        "originalCollector": "A",
+        "authorityEpoch": "1",
+        "journalSequence": "1012",
+        "observation": "CUSTOMER_RECEIVED_AT_COUNTER"
+      }
+    ],
+    "businessBeforeSelectedAction": {
+      "originalCollectedMinorEGP": 13000,
+      "previousAcceptedReturned": {
+        "P-A": 20,
+        "P-B": 5
+      },
+      "previousRefundedMinorEGP": 2500,
+      "remainingEntitlement": {
+        "P-A": 80,
+        "P-B": 25
+      },
+      "remainingRefundableMinorEGP": 10500,
+      "cashSessionOpeningMinorEGP": 20000,
+      "cashSessionExpectedMinorEGP": 30500,
+      "sellableStock": {
+        "P-A": 900,
+        "P-B": 970
+      },
+      "quarantineStock": {
+        "P-A": 20,
+        "P-B": 5
+      },
+      "sellableStockValueMinorEGP": 93500,
+      "quarantineValueMinorEGP": 1250,
+      "fixtureBasis": "Initially 1000 EA of each product at 50 minor EGP/unit; Finalize sold 100/30; prior returned 20/5 quarantined, paid refund 2500; A drawer opening 20000. Unrelated SKU/drawer effects are separate."
+    },
+    "writes": {
+      "W": {
+        "operation": "W",
+        "actor": "A",
+        "command": "sales.customer-receipt.write",
+        "version": "1",
+        "payload": {
+          "saleId": "S",
+          "expectedHeadRevision": "3",
+          "receivedAt": "2026-11-03T10:00:00Z",
+          "receiptTimeZoneId": "Africa/Cairo",
+          "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+          "portions": [
+            {
+              "portionId": "P-A",
+              "quantity": "5"
+            },
+            {
+              "portionId": "P-B",
+              "quantity": "7"
+            }
+          ]
+        },
+        "fixtureMasterCommitAt": "2026-11-03T11:00:00Z"
+      },
+      "W-ALT": {
+        "operation": "W-ALT",
+        "actor": "B",
+        "command": "sales.customer-receipt.write",
+        "version": "1",
+        "payload": {
+          "saleId": "S",
+          "expectedHeadRevision": "3",
+          "receivedAt": "2026-11-03T10:01:00Z",
+          "receiptTimeZoneId": "Africa/Cairo",
+          "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+          "portions": [
+            {
+              "portionId": "P-A",
+              "quantity": "8"
+            },
+            {
+              "portionId": "P-B",
+              "quantity": "2"
+            }
+          ]
+        },
+        "fixtureMasterCommitAt": "2026-11-03T11:00:00Z"
+      },
+      "L": {
+        "operation": "L",
+        "actor": "A",
+        "command": "sales.customer-receipt.write",
+        "version": "1",
+        "payload": {
+          "saleId": "S",
+          "expectedHeadRevision": "4",
+          "receivedAt": "2026-11-03T11:05:00Z",
+          "receiptTimeZoneId": "Africa/Cairo",
+          "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+          "portions": [
+            {
+              "portionId": "P-A",
+              "quantity": "1"
+            }
+          ]
+        },
+        "fixtureMasterCommitAt": "2026-11-03T11:06:00Z"
+      }
+    },
+    "expectedCuts": {
+      "base": {
+        "revision": 3,
+        "eventCount": 3,
+        "recorded": {
+          "P-A": 45,
+          "P-B": 10
+        },
+        "latest": "E3",
+        "membership": [
+          "E1",
+          "E2",
+          "E3"
+        ]
+      },
+      "W-wins": {
+        "revision": 4,
+        "eventCount": 4,
+        "recorded": {
+          "P-A": 50,
+          "P-B": 17
+        },
+        "latest": "W",
+        "membership": [
+          "E1",
+          "E2",
+          "E3",
+          "W"
+        ]
+      },
+      "W-ALT-wins": {
+        "revision": 4,
+        "eventCount": 4,
+        "recorded": {
+          "P-A": 53,
+          "P-B": 12
+        },
+        "latest": "W-ALT",
+        "membership": [
+          "E1",
+          "E2",
+          "E3",
+          "W-ALT"
+        ]
+      },
+      "W-then-L": {
+        "revision": 5,
+        "eventCount": 5,
+        "recorded": {
+          "P-A": 51,
+          "P-B": 17
+        },
+        "latest": "L",
+        "membership": [
+          "E1",
+          "E2",
+          "E3",
+          "W",
+          "L"
+        ]
+      }
+    }
+  },
+  "F-GROWTH": {
+    "profiles": {
+      "G0": 0,
+      "G65": 65,
+      "G513": 513
+    },
+    "profileMeaning": "Number of unrelated sale heads with complete recorded observations. All 513 genuine paid original sales may be provisioned before the receipt-growth phases; receipt observations are never backfilled.",
+    "perUnrelatedSale": {
+      "originalCollector": "B",
+      "kind": "genuine normalized paid same-branch RETAIL",
+      "portionCount": 1,
+      "soldQuantity": 64,
+      "grossAndPaidCoverageMinorEGP": 6400,
+      "originalFinalizedAt": "2026-11-01T07:00:00Z",
+      "originalAuthorityEpoch": "1",
+      "originalFinalizeJournalSequence": "s for s=1..513; all precede the selected original Finalize sequence 1000",
+      "eventCount": 64,
+      "headRevision": 64,
+      "eachEventQuantity": 1,
+      "cumulativeQuantity": 64,
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "freshObservationTimeRule": "For e=1..64 in the applicable growth phase, receivedAt=phaseBase+2*e seconds; recordedAt=phaseBase+(2*e+1) seconds. The employee-attested observed value is fixed before each dispatch. These fixture times are controlled authoritative-Master test clock values, never request-supplied commit timestamps.",
+      "provenance": "Every event references exactly its own sale/portion/Finalize/collector and original observed request; actor B; unique current-epoch journal sequence from the serialized production writer. The chosen schedule may place independent writes at the same UTC instant; Master sequence, not wall-clock sorting, determines order.",
+      "ordinarySaleSetup": "Explicit sufficient synthetic stock and paid coverage for each original; independent unrelated SKU namespace and B drawer/cash session, not A stock/custody. Finalize/payment rights and receipt-record rights are separately present."
+    },
+    "growthPhases": {
+      "RSEL-01-02-03-06-07": [
+        {
+          "saleRange": "1..65",
+          "phaseBase": "2026-11-03T10:30:00Z",
+          "lastCommit": "2026-11-03T10:32:09Z"
+        },
+        {
+          "saleRange": "66..513",
+          "phaseBase": "2026-11-03T10:40:00Z",
+          "lastCommit": "2026-11-03T10:42:09Z"
+        }
+      ],
+      "RSEL-04": [
+        {
+          "saleRange": "1..65",
+          "phaseBase": "2026-11-03T10:30:00Z",
+          "lastCommit": "2026-11-03T10:32:09Z"
+        },
+        {
+          "saleRange": "66..513",
+          "phaseBase": "2026-11-03T10:59:56Z",
+          "lastCommit": "2026-11-03T11:02:05Z"
+        }
+      ],
+      "RSEL-05": [
+        {
+          "saleRange": "1..65",
+          "phaseBase": "2026-11-03T11:01:00Z",
+          "lastCommit": "2026-11-03T11:03:09Z"
+        },
+        {
+          "saleRange": "66..513",
+          "phaseBase": "2026-11-03T11:03:10Z",
+          "lastCommit": "2026-11-03T11:05:19Z"
+        }
+      ]
+    },
+    "chronology": "The frozen selected W commits at 11:00Z. Ordinary growth finishes earlier. RSEL-04 remaining growth has fresh commits immediately before/after 11:00Z. RSEL-05 growth begins after W and finishes before L commits at 11:06Z; L attests 11:05Z and may be dispatched later. A legitimate delayed dispatch does not change L observedAt.",
+    "canonicalIdTemplates": {
+      "sale": "d0000000-0000-4000-8000-{s:08x}0000",
+      "portion": "c0000000-0000-4000-8000-{s:08x}0000",
+      "finalizeOperation": "e0000000-0000-4000-8000-{s:08x}0000",
+      "receiptOperation": "f0000000-0000-4000-8000-{s:08x}{e:04x}"
+    },
+    "generationRanges": {
+      "s": "1..profile count",
+      "e": "1..64"
+    },
+    "globalCountsG65": {
+      "events": 4160,
+      "originalPortionsInRecordedHeads": 65
+    },
+    "globalCountsG513": {
+      "events": 32832,
+      "originalPortionsInRecordedHeads": 513
+    },
+    "preconditions": "Every unrelated new write uses its genuine same-sale head expected revision e-1, explicit frozen observed instant/Cairo and positive quantity 1. Each request <=8192 bytes and each per-sale aggregate <=65536 bytes under the unchanged profile; total unrelated corpus >65536 bytes. Record actual sizes. Prefix growth preserves selected sources/events and earlier unrelated events. No authority to browse unrelated sales is implied."
+  },
+  "F-EMPTY": {
+    "sale": "N",
+    "originalCollector": "A",
+    "finalizeOperation": "Finalize-N",
+    "finalizedAt": "2026-11-01T08:00:00Z",
+    "sold": {
+      "P-N": 2
+    },
+    "head": null,
+    "events": [],
+    "firstObservation": {
+      "operation": "First-N",
+      "expectedHeadRevision": "0",
+      "portion": "P-N",
+      "quantity": "1",
+      "receivedAt": "2026-11-03T10:00:00Z",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "fixtureMasterCommitAt": "2026-11-03T11:00:00Z"
+    },
+    "expectedFirstCut": {
+      "revision": 1,
+      "eventCount": 1,
+      "recorded": {
+        "P-N": 1
+      },
+      "membership": [
+        "First-N"
+      ]
+    },
+    "originalAuthorityEpoch": "1",
+    "originalFinalizeJournalSequence": "1000",
+    "grossAndPaidCoverageMinorEGP": 200
+  },
+  "F-CORRUPT": {
+    "base": "Independent reset from F-SELECT for each mutation; original sale remains verified",
+    "variants": {
+      "missing": "remove E2 only; head unchanged",
+      "extra": "add X as a same-sale immutable event outside original head membership",
+      "duplicate": "two canonical E2 evidence entries; do not silently collapse either identical or inconsistent duplicates",
+      "orphan": "head absent, E1/E2/E3 remain",
+      "cumulative": "head P-A=46 while canonical sum=45",
+      "wrongOriginal": "E2 references another sale portion/Finalize/original collector instead of the genuine selected original",
+      "wrongLocator": "latest E3 locator or E3 provenance points at another sale"
+    },
+    "expectedQueries": "Unavailable selected evidence for Head, existing exact Event, implicated Event and purported absence query; no prefix, NotRecorded or missing fallback",
+    "expectedWrite": "Unavailable evidence refusal; preserve damaged prior state and all surviving evidence; zero business delta"
+  },
+  "F-CAP64": {
+    "sale": "S-CAP64",
+    "originalCollector": "A",
+    "originalFinalize": "Finalize-C64",
+    "originalFinalizedAt": "2026-11-01T08:00:00Z",
+    "originalAuthorityEpoch": "1",
+    "originalFinalizeJournalSequence": "1000",
+    "originalSold": {
+      "P-C64-A": 64,
+      "P-C64-B": 1
+    },
+    "grossAndPaidCoverageMinorEGP": 6500,
+    "quantityAliases": "A means P-C64-A; B means P-C64-B in cases.md only",
+    "events": {
+      "ordinalRange": "e=1..64",
+      "operationIdTemplate": "a2000000-0000-4000-8000-{e:012x}",
+      "quantity": {
+        "P-C64-A": 1
+      },
+      "headRevision": "e",
+      "actor": "A",
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "receivedAt": "2026-11-02T10:00:00Z + 2*e seconds",
+      "recordedAt": "2026-11-02T10:00:00Z + (2*e+1) seconds",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "originalSource": "exact S-CAP64/Finalize-C64/A/portion identity",
+      "authorityEpoch": "1",
+      "journalSequence": "2000+e"
+    },
+    "head": {
+      "revision": 64,
+      "eventCount": 64,
+      "recorded": {
+        "P-C64-A": 64,
+        "P-C64-B": 0
+      },
+      "latestEventOrdinal": 64
+    },
+    "refused65th": {
+      "operation": "Refused-C64-65",
+      "expectedHeadRevision": "64",
+      "portions": {
+        "P-C64-B": 1
+      },
+      "receivedAt": "2026-11-03T10:00:00Z",
+      "fixtureMasterCommitAt": "2026-11-03T11:00:00Z",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "expected": "Explicit event capacity refusal; complete prior head/event/result evidence unchanged"
+    },
+    "preconditions": "Current own receipt-record grant, positive allowed quantity, request <=8192 bytes and selected aggregate <=65536 bytes. Use a reset fixture instead of F-SELECT; no duplicate initial journal sequences."
+  },
+  "F-CAP256": {
+    "sale": "S-CAP256",
+    "originalCollector": "A",
+    "originalFinalize": "Finalize-C256",
+    "originalFinalizedAt": "2026-11-01T08:00:00Z",
+    "originalAuthorityEpoch": "1",
+    "originalFinalizeJournalSequence": "1000",
+    "portionRange": "P001..P256; i=1..256 maps to canonical UUID a1000000-0000-4000-8000-{i:012x}; sorted by canonical ID",
+    "soldEach": 2,
+    "originalTotalQuantity": 512,
+    "grossAndPaidCoverageMinorEGP": 51200,
+    "firstEvent": {
+      "operation": "C256-E1",
+      "headRevision": 1,
+      "actor": "A",
+      "portions": {
+        "P001": 1
+      },
+      "receivedAt": "2026-11-02T10:00:00Z",
+      "recordedAt": "2026-11-02T10:01:00Z",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "originalSource": "exact S-CAP256/Finalize-C256/A/P001 identity",
+      "authorityEpoch": "1",
+      "journalSequence": "2000"
+    },
+    "head": {
+      "revision": 1,
+      "eventCount": 1,
+      "recorded": {
+        "P001": 1,
+        "otherPortions": 0
+      },
+      "latest": "C256-E1"
+    },
+    "permittedNext": {
+      "operation": "C256-E2",
+      "expectedHeadRevision": "1",
+      "portions": {
+        "P256": 1
+      },
+      "receivedAt": "2026-11-03T10:00:00Z",
+      "fixtureMasterCommitAt": "2026-11-03T11:00:00Z",
+      "receiptTimeZoneId": "Africa/Cairo",
+      "observation": "CUSTOMER_RECEIVED_AT_COUNTER",
+      "expectedCut": {
+        "revision": 2,
+        "eventCount": 2,
+        "recorded": {
+          "P001": 1,
+          "P256": 1,
+          "otherPortions": 0
+        },
+        "recordedTotal": 2,
+        "originalTotalQuantity": 512,
+        "latest": "C256-E2"
+      }
+    },
+    "preconditions": "Current own receipt-record grant, complete genuine 256-portion original, request <=8192 bytes and selected aggregate <=65536 bytes. Use a reset fixture instead of F-SELECT; no duplicate initial journal sequences."
+  },
+  "zeroBusinessDelta": {
+    "sale": 0,
+    "tenders": 0,
+    "cashSession": 0,
+    "stockQuantity": 0,
+    "stockValuation": 0,
+    "returnEntitlement": 0,
+    "returnOrRefund": 0,
+    "kitchen": 0
+  },
+  "freezeNotes": "Version 2 corrects synthetic chronology/provenance completeness without weakening selected read/write/refusal/recovery/permission/capacity oracles or reducing the 32832-event unrelated corpus. Version 1 retained; application NOT RUN."
+}

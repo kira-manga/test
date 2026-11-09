@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "design_version": "cold-original-start-v1",
+  "execution_status": "UNRUN",
+  "data_classification": "synthetic local qualification data only",
+  "binding_rule": "Logical fixture labels identify the requested business inputs. Producer-only native account, device, origin, session, presentation and observation identities must come from actual supported production provisioning/enrollment and be captured at the named original checkpoint. Matching labels or scalar IDs are never proof. Freeze the executable binding before running; do not replace missing native facts with copied rows or an accepting permit.",
+  "business_inputs": {
+    "organization_id": "6ed06000-0000-4000-8000-000000000001",
+    "company_id": "6ed06000-0000-4000-8000-000000000002",
+    "activity": "CLOTHING",
+    "branch_id": "6ed06000-0000-4000-8000-000000000003",
+    "other_branch_id": "6ed06000-0000-4000-8000-000000000004",
+    "warehouse_id": "6ed06000-0000-4000-8000-000000000005",
+    "product_id": "6ed06000-0000-4000-8000-000000000006",
+    "currency": "EGP",
+    "currency_scale": 2,
+    "unit": "piece",
+    "quantity_initial": "5",
+    "quantity_each_order": "2",
+    "unit_price_minor": "6000",
+    "tax_rate": "0",
+    "discount_minor": "0",
+    "other_charge_minor": "0",
+    "bill_gross_minor": "12000",
+    "cash_received_minor": "15000",
+    "cash_change_minor": "3000",
+    "cash_net_minor": "12000",
+    "opening_cash_each_drawer_minor": "100000",
+    "initial_inventory_carrying_value_minor": "10000",
+    "unit_inventory_cost_minor": "2000",
+    "sale_cost_each_order_minor": "4000",
+    "blocked_quarantined_expired_quantity": "0",
+    "other_reservations_quantity": "0"
+  },
+  "actors": [
+    {
+      "alias": "ACTOR-F",
+      "display_label_at_original": "Founding cashier",
+      "source": "Genuine enabled branch-local employee account in supported initial native local qualification origin",
+      "device_alias": "DEVICE-F",
+      "drawer_id": "6ed06000-0100-4000-8000-000000000001",
+      "order_id": "6ed06000-0100-4000-8000-000000000002",
+      "operation_id": "6ed06000-0100-4000-8000-000000000003",
+      "semantic_current_grants": [
+        "collect/finalize this own retail order at the original amount",
+        "use its own admitted device and assigned open drawer",
+        "recover its own original result through the permitted projection"
+      ]
+    },
+    {
+      "alias": "ACTOR-E",
+      "display_label_at_original": "Enrolled cashier",
+      "source": "Absent from initial native origin; genuine enabled branch-local employee created by supported actual later local enrollment before its original instruction",
+      "device_alias": "DEVICE-E",
+      "drawer_id": "6ed06000-0200-4000-8000-000000000001",
+      "order_id": "6ed06000-0200-4000-8000-000000000002",
+      "operation_id": "6ed06000-0200-4000-8000-000000000003",
+      "semantic_current_grants": [
+        "collect/finalize this own retail order at the original amount",
+        "use its own admitted device and assigned open drawer",
+        "recover its own original result through the permitted projection"
+      ]
+    },
+    {
+      "alias": "RECOVERY-INSPECTOR",
+      "source": "A real separately authenticated, enabled same-branch account with explicit scoped historical-result and necessary cost/audit projection grants",
+      "constraint": "No implicit cashier, approver, master-replacement or unrestricted private-read authority; preserve original collecting actor/cash session"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "F-FOUNDING",
+      "actor_alias": "ACTOR-F",
+      "initial_checkpoint": "C0",
+      "preconditions": [
+        "Actual same active Master/branch origin and qualified protected storage owner",
+        "Genuine admitted DEVICE-F and current interactive ACTOR-F session",
+        "Activated permitted policy; no explicit deny or other scope inheritance",
+        "One open own drawer/session with counted opening cash 100000 minor and no other movement",
+        "One own retail order, payable version stable, two units at 6000 minor each",
+        "Five sellable units, no other reservation, moving-average cost 2000 minor per unit",
+        "No existing sale, receipt, collection application or captured physical outcome for this operation"
+      ]
+    },
+    {
+      "id": "F-ENROLLED",
+      "actor_alias": "ACTOR-E",
+      "initial_checkpoint": "C0",
+      "preconditions": [
+        "Same monetary/stock baseline as F-FOUNDING in an independent reset",
+        "Actual origin proves ACTOR-E absent before its real later enrollment",
+        "Actual enrollment, credential presence, admitted DEVICE-E and activated permitted local policy precede its original instruction",
+        "No current-census or caller-supplied row substitutes for enrollment history",
+        "Separate own order, cash session and drawer; no inherited ACTOR-F session or private state"
+      ]
+    },
+    {
+      "id": "F-CONCURRENT",
+      "actor_aliases": ["ACTOR-F", "ACTOR-E"],
+      "initial_checkpoint": "C0-CONCURRENT",
+      "preconditions": [
+        "Both actual account sources are valid before their independent instructions",
+        "Two genuine current local interactive sessions/devices, two drawers and two own orders",
+        "Shared stock five units; each order requests two units",
+        "Each drawer opening 100000 minor; each order total 12000 minor",
+        "Independent operations remain distinct even when amounts are equal"
+      ]
+    }
+  ],
+  "chronology_labels": [
+    "H0: genuine native local qualification origin with ACTOR-F and without ACTOR-E",
+    "H1: supported actual enrollment/activation of ACTOR-E",
+    "H2: currently authorized original cash instruction for its exact employee/device/order/presentation",
+    "H3: actual durable original physical outcome, distinct from financial application",
+    "H4: durable acknowledged retail collection/finalization if applied",
+    "H5: later account/session/policy changes, owner close and same-storage cold reopen"
+  ],
+  "original_binding_assertions": [
+    "Original operation ID and complete original semantic request compare exactly equal after reopen",
+    "Original employee/device/presentation/source identities come from the actual installed producer",
+    "Original instruction was permitted by its real account/device/session/policy and business cut",
+    "Enrolled source must actually exist before its original instruction; future enrollment is not earlier evidence",
+    "Captured outcome and successful received/change amounts never become a new physical instruction",
+    "Historical source/result verification grants no current private release or financial authority",
+    "Current native closure/protected history must genuinely complete before original recovery is called verified"
+  ],
+  "checkpoints": {
+    "C0": {
+      "physical_instruction_count": 0,
+      "captured_outcome_count": 0,
+      "collection_application_count": 0,
+      "sale_count": 0,
+      "receipt_count": 0,
+      "drawer_expected_cash_minor": "100000",
+      "stock_on_hand": "5",
+      "stock_reserved": "0",
+      "stock_available": "5",
+      "inventory_carrying_value_minor": "10000",
+      "original_sale_cost_minor": "0",
+      "paid_minor": "0",
+      "payable_remaining_minor": "12000"
+    },
+    "C1": {
+      "physical_instruction_count": 1,
+      "captured_outcome_count": 0,
+      "collection_application_count": 0,
+      "sale_count": 0,
+      "receipt_count": 0,
+      "drawer_expected_cash_minor": "100000",
+      "stock_on_hand": "5",
+      "stock_reserved": "2",
+      "stock_available": "3",
+      "inventory_carrying_value_minor": "10000",
+      "original_sale_cost_minor": "0",
+      "paid_minor": "0",
+      "payable_remaining_minor": "12000"
+    },
+    "C2-SUCCESS": {
+      "inherits_business_totals_from": "C1",
+      "captured_outcome_count": 1,
+      "outcome": "SUCCESS",
+      "observed_cash_received_minor": "15000",
+      "observed_cash_change_minor": "3000",
+      "observed_cash_net_minor": "12000",
+      "financial_application": "PENDING",
+      "instruction_or_physical_action_must_not_repeat": true
+    },
+    "C2-NOT-PERFORMED": {
+      "physical_instruction_count": 1,
+      "captured_outcome_count": 1,
+      "collection_application_count": 0,
+      "sale_count": 0,
+      "receipt_count": 0,
+      "drawer_expected_cash_minor": "100000",
+      "stock_on_hand": "5",
+      "inventory_carrying_value_minor": "10000",
+      "original_sale_cost_minor": "0",
+      "paid_minor": "0",
+      "payable_remaining_minor": "12000",
+      "outcome": "NOT_PERFORMED",
+      "observed_cash_received_minor": "0",
+      "observed_cash_change_minor": "0",
+      "observed_cash_net_minor": "0",
+      "financial_application": "NONE",
+      "stock_reserved": null,
+      "reservation_boundary": "UNRESOLVED_PUBLIC_BEHAVIOR: automatic reservation disposition for known-not-performed capture is unspecified; freeze a separately clarified settlement subvariant before execution rather than assume release or retention",
+      "instruction_or_physical_action_must_not_repeat": true
+    },
+    "C2-UNKNOWN": {
+      "inherits_business_totals_from": "C1",
+      "captured_outcome_count": 1,
+      "outcome": "UNKNOWN",
+      "observed_cash_received_minor": null,
+      "observed_cash_change_minor": null,
+      "observed_cash_net_minor": null,
+      "financial_application": "UNRESOLVED",
+      "actual_physical_drawer_cash_is_not_inferred": true,
+      "instruction_or_physical_action_must_not_repeat": true
+    },
+    "C3": {
+      "physical_instruction_count": 1,
+      "captured_outcome_count": 1,
+      "outcome": "SUCCESS",
+      "collection_application_count": 1,
+      "sale_count": 1,
+      "receipt_count": 1,
+      "observed_cash_received_minor": "15000",
+      "observed_cash_change_minor": "3000",
+      "posted_cash_net_minor": "12000",
+      "drawer_expected_cash_minor": "112000",
+      "stock_on_hand": "3",
+      "stock_reserved": "0",
+      "stock_available": "3",
+      "inventory_carrying_value_minor": "6000",
+      "original_sale_cost_minor": "4000",
+      "bill_gross_minor": "12000",
+      "paid_minor": "12000",
+      "payable_remaining_minor": "0",
+      "recovery_business_delta": "0 for cash, stock, cost, sale, receipt, allocation, liability, tax and kitchen"
+    },
+    "C0-CONCURRENT": {
+      "stock_on_hand": "5",
+      "stock_reserved": "0",
+      "inventory_carrying_value_minor": "10000",
+      "opening_cash_each_drawer_minor": "100000",
+      "sale_count": 0,
+      "receipt_count": 0,
+      "collection_application_count": 0
+    },
+    "C3-CONCURRENT": {
+      "physical_instruction_count": 2,
+      "captured_outcome_count": 2,
+      "collection_application_count": 2,
+      "sale_count": 2,
+      "receipt_count": 2,
+      "sold_quantity_total": "4",
+      "stock_on_hand": "1",
+      "stock_reserved": "0",
+      "stock_available": "1",
+      "inventory_carrying_value_minor": "2000",
+      "original_sale_cost_total_minor": "8000",
+      "drawer_expected_cash_each_minor": "112000",
+      "bill_gross_each_minor": "12000",
+      "paid_each_minor": "12000",
+      "payable_remaining_each_minor": "0",
+      "cash_received_each_minor": "15000",
+      "cash_change_each_minor": "3000",
+      "posted_cash_net_total_minor": "24000"
+    }
+  },
+  "replay_one_field_changes": [
+    {"field": "original_amount_minor", "changed_value": "12001"},
+    {"field": "currency", "changed_value": "USD"},
+    {"field": "tender", "changed_value": "EXTERNAL_CARD"},
+    {"field": "document", "changed_value": "ACTOR-E own distinct order"},
+    {"field": "payable_version", "changed_value": "different from captured original version"},
+    {"field": "quantity", "changed_value": "3"},
+    {"field": "claimed_original_actor", "changed_value": "ACTOR-E for ACTOR-F original"},
+    {"field": "claimed_original_device", "changed_value": "DEVICE-E for DEVICE-F original"},
+    {"field": "claimed_original_presentation", "changed_value": "new or copied presentation rather than actual original"},
+    {"field": "captured_cash_received_minor", "changed_value": "15001"},
+    {"field": "captured_cash_change_minor", "changed_value": "3001"},
+    {"field": "captured_outcome", "changed_value": "NOT_PERFORMED replacing retained SUCCESS"}
+  ],
+  "boundedness_inputs": {
+    "duplicate_or_recovery_submissions": 100000,
+    "cold_reopen_after_submission": [1, 1000, 100000],
+    "supported_native_history_capacity": "UNPUBLISHED_PREREQUISITE",
+    "supported_retained_resource_bound": "UNPUBLISHED_PREREQUISITE",
+    "supported_progress_timeout": "UNPUBLISHED_PREREQUISITE",
+    "expected_business_duplicates": 0,
+    "capacity_failure_expectation": "Explicit refusal/unavailability with no needed-original truncation, history reset, accepting fallback or duplicate effect"
+  },
+  "arithmetic": [
+    "2 * 6000 = 12000 minor sale gross",
+    "15000 - 3000 = 12000 minor one net cash receipt",
+    "100000 + 12000 = 112000 minor drawer expected cash",
+    "5 - 2 = 3 stock units after one finalization",
+    "10000 - (2 * 2000) = 6000 minor remaining carrying value",
+    "5 - (2 + 2) = 1 stock unit after two distinct finalizations",
+    "10000 - (4 * 2000) = 2000 minor remaining concurrent carrying value"
+  ]
+}

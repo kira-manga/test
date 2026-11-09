@@ -1,0 +1,36 @@
+{
+  "files": {
+    "gradle.properties": {
+      "normalizedPostimage": {
+        "bytes": 2167,
+        "mode": 384,
+        "sha256": "465ad514e130f5db9b6e36d148ab2ab3723965ce3806dca67126b65d4df44f14"
+      },
+      "preimage": {
+        "bytes": 2231,
+        "mode": 384,
+        "sha256": "208ea9c1d782e18c8e0bf7a7715ec248213ba01fc447a230e2739f89ce0f9427"
+      },
+      "reviewedPolicyDraftSha256": "208ea9c1d782e18c8e0bf7a7715ec248213ba01fc447a230e2739f89ce0f9427"
+    },
+    "gradle/ukkera-pos-compile-repository.init.gradle": {
+      "normalizedPostimage": {
+        "bytes": 6714,
+        "mode": 384,
+        "sha256": "467283de54a3e9e9d4f7748c45f6681a78f924ade6a6887e868a2ec4adf1706e"
+      },
+      "preimage": {
+        "bytes": 5610,
+        "mode": 384,
+        "sha256": "4c11aa034743d1a19431fc6c47815a84a71f345c90c54699ff4530924b19f3c2"
+      },
+      "reviewedPolicyDraftSha256": "83cfeb3a36dd8a546aa2c02f196a7e2d30159985cd4f8bb59e7038bb58843764"
+    }
+  },
+  "parentSourceRecipeFileSha256": "b3a0c02b1736172c8f5df7bf91ae4eda9383b684db7e6df4b4348df10053590d",
+  "parentSourceRecipeSha256": "61dbf3d154db562f5e3e350d9de4baae11eed785c6b940cbd743e9fc1da7e427",
+  "purpose": "PRIVATE_COMPILE_REPOSITORY_GRADLE_OUTPUT_LIFECYCLE",
+  "schema": 1,
+  "scope": "COMMON_ANDROID_JVM_PRIVATE_COMPILE_ONLY_NOT_APPLE_OR_FULL_DESKTOP_QUALIFICATION",
+  "sourcePatchSha256": "b803aaa6b7ad04e277ac66f0ef00613a3dcea00102438ceff4b9f26d81c4e498"
+}

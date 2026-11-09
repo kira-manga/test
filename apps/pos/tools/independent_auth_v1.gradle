@@ -1,0 +1,38 @@
+// Prepare the ordinary JVM runtime used by the frozen auth-v1 host slices.
+import groovy.json.JsonOutput
+import org.gradle.api.GradleException
+import org.gradle.api.tasks.testing.Test
+
+gradle.projectsEvaluated {
+    def project = gradle.rootProject.findProject(":core:database")
+    if (project == null) return
+    def regressionTask = project.tasks.named("jvmTest", Test)
+    def descriptor = gradle.rootProject.file(
+        gradle.rootProject.findProperty("independentAuthV1RuntimeDescriptor") ?:
+        ".workspace/acceptance/auth-v1/runtime.json")
+    project.tasks.register("prepareIndependentAuthV1") { task ->
+        task.group = "verification"
+        task.description = "Prepare the JVM runtime for the frozen auth-v1 host slices"
+        task.dependsOn(project.tasks.named("jvmTestClasses"))
+        // Plain providers describe the runtime without treating jvmTest as a producer.
+        task.inputs.files(project.provider { regressionTask.get().classpath.files })
+        task.inputs.property("javaExecutable", project.provider {
+            regressionTask.get().javaLauncher.get().executablePath.asFile.absolutePath
+        })
+        task.outputs.file(descriptor)
+        task.doLast {
+            def regression = regressionTask.get()
+            def launcher = regression.javaLauncher.get()
+            def classpath = regression.classpath.files.collect { it.absolutePath }
+            if (classpath.isEmpty()) throw new GradleException("auth-v1 runtime classpath is empty")
+            def value = [schema: "independent-auth-compiled-runtime/v1",
+                         preparationTask: task.path,
+                         mainClass: "com.ukkera.pos.database.AuthV1Main",
+                         javaExecutable: launcher.executablePath.asFile.absolutePath,
+                         classpath: classpath]
+            descriptor.parentFile.mkdirs()
+            descriptor.setText(JsonOutput.prettyPrint(JsonOutput.toJson(value)) + "\n", "UTF-8")
+            println("auth-v1 runtime: ${descriptor}")
+        }
+    }
+}

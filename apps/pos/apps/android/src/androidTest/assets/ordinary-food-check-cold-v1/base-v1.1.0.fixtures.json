@@ -1,0 +1,1132 @@
+{
+  "design_id": "ordinary-food-check-cold-v1",
+  "version": "1.1.0",
+  "status": "FROZEN_BEFORE_SOURCE_BINDING_OR_EXECUTION",
+  "execution_status": "NOT RUN",
+  "date": "2026-11-06",
+  "scope_revision": "Bounded successor to unexecuted v1.0.0. Its original expectations are retained unchanged. Fresh IDs 101-108 specify ordinary unpaid non-empty check preservation/continuation; broader handoff, new kitchen/physical-payment and before-start-restoration obligations remain required outside this increment, neither passed nor waived.",
+  "currency": "EGP",
+  "calculations": {
+    "money": "exact_integer_minor_units_as_decimal_strings",
+    "quantity": "exact_base_unit_decimal_strings",
+    "tax_fixture_rate": "0",
+    "discount_minor": "0",
+    "service_charge_minor": "0",
+    "delivery_charge_minor": "0",
+    "fixture_only": "Synthetic arithmetic configuration; no fiscal/legal claim.",
+    "restaurant": "2*12000+2*3000=30000",
+    "cafe": "3*8000+2*6000=36000",
+    "restaurant_stock": "bread 10-2=8; meat 1500-300=1200; tea_leaf 100-2=98; cup 20-1=19",
+    "cafe_stock": "coffee 1000-54=946; milk 5000-600=4400; cup 20-3=17; bread 20-4=16; cheese 1000-80=920"
+  },
+  "binding_rules": {
+    "seed": "Use synthetic qualified already-provisioned local identity/configuration; create business histories through actual production services/persistence and assert these literals before closing.",
+    "identity_only": "Bind generated IDs, seed_r0/current revisions, prior task/issue/actor/result/journal/outbox identities. Bind provided fixture UUIDs when public creation owns ID generation. Never derive business expected values from implementation.",
+    "cold_boundary": "Await production orderly runtime shutdown and confirmed native storage close; discard runtime/in-memory domain state and reopen same durable store with fresh native handles. Desktop UI close with surviving service is only a warm control.",
+    "startup": "Same active branch Master device/epoch; no intentional-stop/retirement/handover restriction. Recover local state/current grants before admitting protected work. Cold UI authenticates before restoring a protected view.",
+    "client_outage": "While master unavailable, no independent authoritative commit/Saved at branch claim; preserve draft/pending identity and reconnect/revalidate. Current/expired cursor variants must repair stale projections with pull/new snapshot.",
+    "fresh_observation": "Read original result plus fresh authorized check/stock/task/custody/history views. No cache/return-value-only pass. Durable prior unacknowledged work/identity remains retained.",
+    "no_effects": "Rejected attempts add no check/quantity/table/ownership/stock/reservation/task/collection/cash/refund/paid-finalization effect. Earlier committed evidence stays immutable. A separately authorized rejection/security audit append is allowed.",
+    "count_semantics": "Portion/task counts are logical business identities, not imposed SQL/outbox row layouts; existing quantities and ingredient sums are exact.",
+    "repetitions": "Each fixture/case/variant begins independently; one interactive session per account. Different owners use their own independent admitted sessions for unrelated work."
+  },
+  "sources": {
+    "A": {
+      "file": "../../requirements/original/POS_ACCEPTANCE_SCENARIOS.md",
+      "revision": "1.2",
+      "sections": [
+        "Identity, order ownership and table/bill operations",
+        "Kitchen, inventory issue and cancellations",
+        "Runtime, synchronization and recovery",
+        "Setup, daily interface and training"
+      ]
+    },
+    "O": {
+      "file": "../../requirements/original/POS_OPERATIONAL_SPECIFICATION.md",
+      "revision": "1.2"
+    },
+    "D": {
+      "file": "../../requirements/original/POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md"
+    },
+    "P": {
+      "file": "../../requirements/original/POS_PRODUCTION_ARCHITECTURE_PROPOSAL.md",
+      "revision": "3.2"
+    },
+    "Q": {
+      "file": "../../requirements/original/POS_TEST_AND_QUALITY_PLAN.md",
+      "revision": "1.0"
+    },
+    "C": {
+      "file": "../../requirements/original/POS_COMPANY_POLICIES_AND_CATALOG.md",
+      "revision": "1.1"
+    },
+    "OWNER": {
+      "file": "../../requirements/OWNER-DIRECTIVE.md"
+    },
+    "DEVICE": {
+      "file": "../../requirements/OWNER-DEVICE-VERIFICATION.md"
+    }
+  },
+  "fixtures": {
+    "restaurant": {
+      "organization_id": "a60c0000-0000-4000-8000-000000000001",
+      "company_id": "a60c0000-0000-4000-8000-000000000010",
+      "branch_id": "a60c0000-0000-4000-8000-000000000011",
+      "owner_id": "a60c0000-0000-4000-8000-000000000031",
+      "other_cashier_id": "a60c0000-0000-4000-8000-000000000032",
+      "kds_id": "a60c0000-0000-4000-8000-000000000033",
+      "local_administrator_id": "a60c0000-0000-4000-8000-000000000034",
+      "master_device_id": "a60c0000-0000-4000-8000-000000000041",
+      "admitted_client_a_id": "a60c0000-0000-4000-8000-000000000042",
+      "admitted_client_b_id": "a60c0000-0000-4000-8000-000000000043",
+      "master_epoch": "7",
+      "check_id": "a60c0000-0000-4000-8000-000000000101",
+      "creator_id": "a60c0000-0000-4000-8000-000000000031",
+      "current_owner_id": "a60c0000-0000-4000-8000-000000000031",
+      "channel": "DINE_IN",
+      "table_id": "a60c0000-0000-4000-8000-000000000104",
+      "seat_note": "Seat 2",
+      "commercial_state": "Open",
+      "ownership_state": "Owned",
+      "collection_state": "Unpaid",
+      "refund_state": "None",
+      "exception_state": "None",
+      "revision_binding": "restaurant_r0",
+      "catalog_revision": "5",
+      "quote_policy": "PRESERVE_EXISTING_QUOTED_LINES",
+      "lines": [
+        {
+          "id": "a60c0000-0000-4000-8000-000000000111",
+          "product": "burger",
+          "quantity": "2",
+          "unit_price_minor": "12000",
+          "line_total_minor": "24000"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000112",
+          "product": "tea",
+          "quantity": "2",
+          "unit_price_minor": "3000",
+          "line_total_minor": "6000"
+        }
+      ],
+      "portions": [
+        {
+          "id": "a60c0000-0000-4000-8000-000000000121",
+          "line_id": "a60c0000-0000-4000-8000-000000000111",
+          "quantity": "1",
+          "preparation": "Preparing",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000122",
+          "line_id": "a60c0000-0000-4000-8000-000000000111",
+          "quantity": "1",
+          "preparation": "Ready",
+          "fulfillment": "Served",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000123",
+          "line_id": "a60c0000-0000-4000-8000-000000000112",
+          "quantity": "1",
+          "preparation": "Queued",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000124",
+          "line_id": "a60c0000-0000-4000-8000-000000000112",
+          "quantity": "1",
+          "preparation": "NotSent",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "0"
+        }
+      ],
+      "recipes": {
+        "burger": {
+          "revision": "1",
+          "components": [
+            {
+              "product": "bread",
+              "unit": "unit",
+              "quantity": "1"
+            },
+            {
+              "product": "meat",
+              "unit": "g",
+              "quantity": "150"
+            }
+          ]
+        },
+        "tea": {
+          "revision": "1",
+          "components": [
+            {
+              "product": "tea_leaf",
+              "unit": "g",
+              "quantity": "2"
+            },
+            {
+              "product": "cup",
+              "unit": "unit",
+              "quantity": "1"
+            }
+          ]
+        }
+      },
+      "stock": {
+        "bread": {
+          "unit": "unit",
+          "initial": "10",
+          "available": "8",
+          "reserved": "0",
+          "issued": "2"
+        },
+        "meat": {
+          "unit": "g",
+          "initial": "1500",
+          "available": "1200",
+          "reserved": "0",
+          "issued": "300"
+        },
+        "tea_leaf": {
+          "unit": "g",
+          "initial": "100",
+          "available": "98",
+          "reserved": "0",
+          "issued": "2"
+        },
+        "cup": {
+          "unit": "unit",
+          "initial": "20",
+          "available": "19",
+          "reserved": "0",
+          "issued": "1"
+        }
+      },
+      "expected": {
+        "line_count": "2",
+        "total_quantity": "4",
+        "payable_minor": "30000",
+        "outstanding_minor": "30000",
+        "issued_portions": "3",
+        "distinct_preparation_tasks": "3",
+        "collected_minor": "0",
+        "cash_effect_minor": "0",
+        "refund_due_minor": "0",
+        "paid_sale_finalizations": "0",
+        "unpaid_incidents": "0",
+        "inventory_restoration": "0"
+      },
+      "history_bindings": [
+        "original_creator",
+        "all_line_and_portion_ids",
+        "prior_task_and_issue_allocation_ids",
+        "prior_preparation_and_fulfillment_actors",
+        "pending_outbox_operation_and_job_ids",
+        "committed_operation_results_and_journal_cut"
+      ]
+    },
+    "cafe": {
+      "organization_id": "a60c0000-0000-4000-8000-000000000001",
+      "company_id": "a60c0000-0000-4000-8000-000000000020",
+      "branch_id": "a60c0000-0000-4000-8000-000000000021",
+      "owner_id": "a60c0000-0000-4000-8000-000000000051",
+      "other_cashier_id": "a60c0000-0000-4000-8000-000000000052",
+      "kds_id": "a60c0000-0000-4000-8000-000000000053",
+      "master_device_id": "a60c0000-0000-4000-8000-000000000061",
+      "admitted_client_a_id": "a60c0000-0000-4000-8000-000000000062",
+      "master_epoch": "7",
+      "check_id": "a60c0000-0000-4000-8000-000000000201",
+      "creator_id": "a60c0000-0000-4000-8000-000000000051",
+      "current_owner_id": "a60c0000-0000-4000-8000-000000000051",
+      "channel": "DINE_IN",
+      "table_id": "a60c0000-0000-4000-8000-000000000204",
+      "seat_note": "Seat 1",
+      "commercial_state": "Open",
+      "ownership_state": "Owned",
+      "collection_state": "Unpaid",
+      "refund_state": "None",
+      "exception_state": "None",
+      "revision_binding": "cafe_r0",
+      "catalog_revision": "5",
+      "quote_policy": "PRESERVE_EXISTING_QUOTED_LINES",
+      "lines": [
+        {
+          "id": "a60c0000-0000-4000-8000-000000000211",
+          "product": "latte",
+          "quantity": "3",
+          "unit_price_minor": "8000",
+          "line_total_minor": "24000"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000212",
+          "product": "cheese_toast",
+          "quantity": "2",
+          "unit_price_minor": "6000",
+          "line_total_minor": "12000"
+        }
+      ],
+      "portions": [
+        {
+          "id": "a60c0000-0000-4000-8000-000000000221",
+          "line_id": "a60c0000-0000-4000-8000-000000000211",
+          "quantity": "1",
+          "preparation": "Queued",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000222",
+          "line_id": "a60c0000-0000-4000-8000-000000000211",
+          "quantity": "1",
+          "preparation": "Preparing",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000223",
+          "line_id": "a60c0000-0000-4000-8000-000000000211",
+          "quantity": "1",
+          "preparation": "Ready",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000224",
+          "line_id": "a60c0000-0000-4000-8000-000000000212",
+          "quantity": "1",
+          "preparation": "Ready",
+          "fulfillment": "Served",
+          "required_station_task_count": "1"
+        },
+        {
+          "id": "a60c0000-0000-4000-8000-000000000225",
+          "line_id": "a60c0000-0000-4000-8000-000000000212",
+          "quantity": "1",
+          "preparation": "Ready",
+          "fulfillment": "NotHandedOver",
+          "required_station_task_count": "1"
+        }
+      ],
+      "recipes": {
+        "latte": {
+          "revision": "1",
+          "components": [
+            {
+              "product": "coffee",
+              "unit": "g",
+              "quantity": "18"
+            },
+            {
+              "product": "milk",
+              "unit": "ml",
+              "quantity": "200"
+            },
+            {
+              "product": "cup",
+              "unit": "unit",
+              "quantity": "1"
+            }
+          ]
+        },
+        "cheese_toast": {
+          "revision": "1",
+          "components": [
+            {
+              "product": "bread",
+              "unit": "unit",
+              "quantity": "2"
+            },
+            {
+              "product": "cheese",
+              "unit": "g",
+              "quantity": "40"
+            }
+          ]
+        }
+      },
+      "stock": {
+        "coffee": {
+          "unit": "g",
+          "initial": "1000",
+          "available": "946",
+          "reserved": "0",
+          "issued": "54"
+        },
+        "milk": {
+          "unit": "ml",
+          "initial": "5000",
+          "available": "4400",
+          "reserved": "0",
+          "issued": "600"
+        },
+        "cup": {
+          "unit": "unit",
+          "initial": "20",
+          "available": "17",
+          "reserved": "0",
+          "issued": "3"
+        },
+        "bread": {
+          "unit": "unit",
+          "initial": "20",
+          "available": "16",
+          "reserved": "0",
+          "issued": "4"
+        },
+        "cheese": {
+          "unit": "g",
+          "initial": "1000",
+          "available": "920",
+          "reserved": "0",
+          "issued": "80"
+        }
+      },
+      "expected": {
+        "line_count": "2",
+        "total_quantity": "5",
+        "payable_minor": "36000",
+        "outstanding_minor": "36000",
+        "issued_portions": "5",
+        "distinct_preparation_tasks": "5",
+        "collected_minor": "0",
+        "cash_effect_minor": "0",
+        "refund_due_minor": "0",
+        "paid_sale_finalizations": "0",
+        "unpaid_incidents": "0",
+        "inventory_restoration": "0"
+      },
+      "history_bindings": [
+        "original_creator",
+        "all_line_and_portion_ids",
+        "prior_task_and_issue_allocation_ids",
+        "prior_preparation_and_fulfillment_actors",
+        "pending_outbox_operation_and_job_ids",
+        "committed_operation_results_and_journal_cut"
+      ]
+    }
+  },
+  "append_inputs": {
+    "restaurant": {
+      "product": "tea",
+      "unit_price_minor": "3000",
+      "last_edit_quantity": "1",
+      "unrelated_quantity": "2",
+      "add_quantity": "3",
+      "edit_new_fully_unsent_quantity": "2",
+      "changed_retry_quantity": "4",
+      "concurrent_quantities": [
+        "1",
+        "2"
+      ]
+    },
+    "cafe": {
+      "product": "latte",
+      "unit_price_minor": "8000",
+      "last_edit_quantity": "1",
+      "unrelated_quantity": "2",
+      "add_quantity": "2",
+      "edit_new_fully_unsent_quantity": "1",
+      "changed_retry_quantity": "3",
+      "concurrent_quantities": [
+        "1",
+        "2"
+      ]
+    }
+  },
+  "numeric_expectations": {
+    "restaurant": {
+      "baseline": {
+        "line_count": "2",
+        "total_quantity": "4",
+        "payable_minor": "30000",
+        "outstanding_minor": "30000",
+        "issued_portions": "3",
+        "distinct_preparation_tasks": "3",
+        "collected_minor": "0",
+        "cash_effect_minor": "0",
+        "refund_due_minor": "0",
+        "paid_sale_finalizations": "0",
+        "unpaid_incidents": "0",
+        "inventory_restoration": "0"
+      },
+      "last_edit": {
+        "line_count": "3",
+        "total_quantity": "5",
+        "payable_minor": "33000",
+        "outstanding_minor": "33000"
+      },
+      "unrelated_order": {
+        "line_count": "1",
+        "total_quantity": "2",
+        "payable_minor": "6000",
+        "outstanding_minor": "6000",
+        "issued_portions": "0",
+        "distinct_preparation_tasks": "0",
+        "collection_state": "Unpaid"
+      },
+      "add": {
+        "line_count": "3",
+        "total_quantity": "7",
+        "payable_minor": "39000",
+        "outstanding_minor": "39000",
+        "new_unsent_quantity": "3"
+      },
+      "edit_fully_unsent": {
+        "line_count": "3",
+        "total_quantity": "6",
+        "payable_minor": "36000",
+        "outstanding_minor": "36000",
+        "new_unsent_quantity": "2"
+      },
+      "concurrent_first_wins": {
+        "line_count": "3",
+        "total_quantity": "5",
+        "payable_minor": "33000",
+        "outstanding_minor": "33000"
+      },
+      "concurrent_second_wins": {
+        "line_count": "3",
+        "total_quantity": "6",
+        "payable_minor": "36000",
+        "outstanding_minor": "36000"
+      }
+    },
+    "cafe": {
+      "baseline": {
+        "line_count": "2",
+        "total_quantity": "5",
+        "payable_minor": "36000",
+        "outstanding_minor": "36000",
+        "issued_portions": "5",
+        "distinct_preparation_tasks": "5",
+        "collected_minor": "0",
+        "cash_effect_minor": "0",
+        "refund_due_minor": "0",
+        "paid_sale_finalizations": "0",
+        "unpaid_incidents": "0",
+        "inventory_restoration": "0"
+      },
+      "last_edit": {
+        "line_count": "3",
+        "total_quantity": "6",
+        "payable_minor": "44000",
+        "outstanding_minor": "44000"
+      },
+      "unrelated_order": {
+        "line_count": "1",
+        "total_quantity": "2",
+        "payable_minor": "16000",
+        "outstanding_minor": "16000",
+        "issued_portions": "0",
+        "distinct_preparation_tasks": "0",
+        "collection_state": "Unpaid"
+      },
+      "add": {
+        "line_count": "3",
+        "total_quantity": "7",
+        "payable_minor": "52000",
+        "outstanding_minor": "52000",
+        "new_unsent_quantity": "2"
+      },
+      "edit_fully_unsent": {
+        "line_count": "3",
+        "total_quantity": "6",
+        "payable_minor": "44000",
+        "outstanding_minor": "44000",
+        "new_unsent_quantity": "1"
+      },
+      "concurrent_first_wins": {
+        "line_count": "3",
+        "total_quantity": "6",
+        "payable_minor": "44000",
+        "outstanding_minor": "44000"
+      },
+      "concurrent_second_wins": {
+        "line_count": "3",
+        "total_quantity": "7",
+        "payable_minor": "52000",
+        "outstanding_minor": "52000"
+      }
+    }
+  },
+  "unchanged_for_every_unsent_operation": {
+    "stock": "fixture.stock.available and reserved",
+    "issued_portions": "fixture.expected.issued_portions",
+    "distinct_preparation_tasks": "fixture.expected.distinct_preparation_tasks",
+    "old_line_portion_task_issue_and_actor_identity": "preserved",
+    "commercial": "Open",
+    "collection": "Unpaid",
+    "refund": "None",
+    "exception": "None",
+    "collected_minor": "0",
+    "cash_effect_minor": "0",
+    "refund_due_minor": "0",
+    "paid_sale_finalizations": "0",
+    "unpaid_incidents": "0",
+    "inventory_restoration": "0"
+  },
+  "required_layers": {
+    "L1": "Exact values, current-access/state/retry decisions and allowed serial outcomes.",
+    "L2": "Actual production durable store/runtime/native driver, genuine orderly close/reopen and fresh readback.",
+    "L3": "Protected in-process adapter and actual official production P2pKit LAN communication; no stand-in production boundary.",
+    "L4": "Installed application/UI flow; deferred runtime runs recorded separately.",
+    "L5": "Deterministic production-boundary retry/concurrency/native storage-history faults with recorded schedules.",
+    "L6": "Actual supported OS/device lifecycle/native close and reopen; separate runtime/owner campaign."
+  },
+  "platform_matrix": {
+    "masters": [
+      "Windows",
+      "macOS",
+      "Android",
+      "iPhone",
+      "iPad"
+    ],
+    "clients": [
+      "Windows",
+      "macOS",
+      "Android",
+      "iPhone",
+      "iPad"
+    ],
+    "minimum_os": "not_specified_by_originals; record supported minimum before execution",
+    "required_variants": [
+      "protected_one_device_adapter",
+      "real_LAN_RPC",
+      "each_applicable_production_native_driver",
+      "explicit_required_platform_reopen_authority_retry_and_lifecycle"
+    ],
+    "network": "N1/N2 primary; N3/N4/N5 local failures as assigned. Central-dependent N0 work remains held.",
+    "deferred": "Emulator/simulator/physical-device/peripheral/owner runs remain individually NOT RUN/BLOCKED/FAIL until actually performed; no simulator-only physical qualification."
+  },
+  "closure": {
+    "development": "Integrated production/platform scope, reviewed defects resolved, required unit and non-device production integration pass.",
+    "device_campaign": "Separate from development closure; missing/broken production or failed required non-device integration remains development work.",
+    "central": "Implementation and verification held; no central substitute or central PASS.",
+    "remaining_requirements": [
+      "Handoff acceptance/reassignment and split/merge: OWN-04..OWN-09.",
+      "New kitchen send/start/ready/served/cancellation/restoration/remake and physical printing: KIT-01..KIT-15; state preservation only here.",
+      "New payment/refund, approval/refusal, unpaid incident/write-off and financial settlement: PAY/RET/CFG/CASH scope remains separately required.",
+      "Replacement-master/full backup restoration, pricing changes and entire 141-scenario/platform acceptance are not satisfied by this design."
+    ]
+  },
+  "cases": [
+    {
+      "id": "OFC-COLD-101",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "cold_cycle",
+        "reauthenticate",
+        "query_list_direct_and_subscription",
+        "refresh_expired_cursor_if_needed"
+      ],
+      "expected_ref": "numeric_expectations.<fixture>.baseline",
+      "unchanged": [
+        "all_seed_business_states_and_identities",
+        "seed_revision",
+        "master_device_and_epoch",
+        "prior_pending_work_identity"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "CURRENT_CURSOR",
+        "EXPIRED_CURSOR",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L2",
+        "L3",
+        "L4",
+        "L6"
+      ],
+      "scenarios": [
+        "REL-01",
+        "REL-03",
+        "REL-04",
+        "REL-07"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-04",
+        "Q-RES-09",
+        "Q-NAV-06"
+      ],
+      "sections": [
+        "O §§1,5,6",
+        "D §§3,4.4",
+        "P §§4.1,16,18.1,18.5,19"
+      ]
+    },
+    {
+      "id": "OFC-COLD-102",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "append_last_edit_quantity_as_one_new_unsent_line",
+        "optionally_commit_unrelated_order_on_same_master",
+        "cold_cycle",
+        "reauthenticate_and_query_both_authorized_orders"
+      ],
+      "inputs": {
+        "target_operation_id": "a60c0000-0000-4000-8000-000000000401",
+        "target_expected_revision": "seed_r0",
+        "target_new_line_id": "a60c0000-0000-4000-8000-000000000402",
+        "unrelated_operation_id": "a60c0000-0000-4000-8000-000000000403",
+        "unrelated_check_id": "a60c0000-0000-4000-8000-000000000404",
+        "unrelated_line_id": "a60c0000-0000-4000-8000-000000000405",
+        "unrelated_owner": "fixture.other_cashier_id",
+        "unrelated_table_id": "a60c0000-0000-4000-8000-000000000406",
+        "quantities": "append_inputs.<fixture>.last_edit_quantity and unrelated_quantity"
+      },
+      "expected_ref": {
+        "target": "numeric_expectations.<fixture>.last_edit",
+        "unrelated_if_created": "numeric_expectations.<fixture>.unrelated_order"
+      },
+      "unchanged": [
+        "all_original_target_identities_and_preparation_fulfillment_states",
+        "seed_stock_and_existing_issued_portion_task_counts",
+        "zero_tender_refund_and_paid_finalization_effects"
+      ],
+      "variants": [
+        "IMMEDIATE_CLOSE_AFTER_TARGET_COMMIT",
+        "LATER_UNRELATED_LEGITIMATE_WORK_BEFORE_CLOSE",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L1",
+        "L2",
+        "L3",
+        "L4"
+      ],
+      "scenarios": [
+        "REL-04",
+        "OWN-03"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-09"
+      ],
+      "sections": [
+        "O §§2,5,6",
+        "D §§3,4.4,5.2",
+        "P §§11,18.1,18.5",
+        "Q §2"
+      ]
+    },
+    {
+      "id": "OFC-COLD-103",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "ADD: cold_cycle_then_append_add_quantity",
+        "EDIT: prepare_add_state_then_cold_cycle_then_edit_only_that_fully_unsent_line",
+        "MOVE: cold_cycle_then_move_owned_check_to_available_destination_table"
+      ],
+      "inputs": {
+        "add_operation_id": "a60c0000-0000-4000-8000-000000000411",
+        "edit_operation_id": "a60c0000-0000-4000-8000-000000000412",
+        "move_operation_id": "a60c0000-0000-4000-8000-000000000413",
+        "new_line_id": "a60c0000-0000-4000-8000-000000000414",
+        "destination_table_id": "a60c0000-0000-4000-8000-000000000415",
+        "expected_revision": "current_authorized_revision",
+        "values_ref": "append_inputs.<fixture>"
+      },
+      "expected_ref": {
+        "ADD": "numeric_expectations.<fixture>.add",
+        "EDIT": "numeric_expectations.<fixture>.edit_fully_unsent",
+        "MOVE": "numeric_expectations.<fixture>.baseline with destination_table_id"
+      },
+      "unchanged": [
+        "original_line_portion_task_and_issue_identity",
+        "original_quotes_and_preparation_fulfillment_states",
+        "seed_stock_and_existing_issued_portion_task_counts",
+        "zero_tender_refund_and_paid_finalization_effects"
+      ],
+      "variants": [
+        "ADD_UNSENT",
+        "EDIT_FULLY_UNSENT",
+        "MOVE_TABLE",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L1",
+        "L2",
+        "L3",
+        "L4"
+      ],
+      "scenarios": [
+        "OWN-03",
+        "REL-04"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-09"
+      ],
+      "sections": [
+        "O §§2,3,5,6,6.3",
+        "D §4.4",
+        "P §18.1"
+      ]
+    },
+    {
+      "id": "OFC-COLD-104",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "append_add_quantity",
+        "drop_reply_after_real_commit",
+        "cold_cycle",
+        "reauthenticate_original_account",
+        "operation_lookup_and_identical_retry_twice",
+        "same_id_changed_quantity",
+        "same_id_other_actor"
+      ],
+      "inputs": {
+        "operation_id": "a60c0000-0000-4000-8000-000000000421",
+        "expected_revision": "seed_r0",
+        "new_line_id": "a60c0000-0000-4000-8000-000000000422",
+        "values_ref": "append_inputs.<fixture>",
+        "original_actor": "fixture.owner_id",
+        "other_actor": "fixture.other_cashier_id"
+      },
+      "expected_ref": "numeric_expectations.<fixture>.add",
+      "expected": {
+        "original_status": "COMMITTED",
+        "original_operation_id": "a60c0000-0000-4000-8000-000000000421",
+        "original_result_created_ids_actor_and_committed_revision": "identical_on_lookup_and_retries",
+        "additional_line_count": "1",
+        "changed_quantity_under_same_id": "OPERATION_PAYLOAD_MISMATCH",
+        "other_actor_under_same_id": "access_denial_or_identity_conflict_without_protected_original_result",
+        "rejected_variants": "no_command_specific_business_effects"
+      },
+      "variants": [
+        "N4_LOST_REPLY",
+        "N4_DUPLICATED_REQUEST",
+        "N4_CHANGED_PAYLOAD_OR_ACTOR",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5"
+      ],
+      "scenarios": [
+        "REL-04",
+        "OWN-02",
+        "UX-06"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-02",
+        "Q-SEC-04",
+        "Q-SEC-09"
+      ],
+      "sections": [
+        "O §§2,5,6",
+        "D §§2.1,5.1,5.2,5.3,5.4",
+        "P §§7,8,18.1,18.5"
+      ]
+    },
+    {
+      "id": "OFC-COLD-105",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "persist_named_local_access_state_and_suppress_hint",
+        "cold_cycle",
+        "attempt_applicable_read_paths_and_fresh_append_quantity_1",
+        "perform_fresh_local_login_only_where_account_and_device_remain_active"
+      ],
+      "inputs": {
+        "operation_id": "a60c0000-0000-4000-8000-000000000431",
+        "expected_revision": "seed_r0",
+        "product_and_price_ref": "append_inputs.<fixture>",
+        "quantity": "1",
+        "client_cache": "old_allow",
+        "notification_ack": "none"
+      },
+      "expected_ref": "numeric_expectations.<fixture>.baseline",
+      "expected": {
+        "other_owner_or_wrong_scope": "no_ordinary_check_projection_or_mutation",
+        "revoked_or_expired_session": "old_credential_denied",
+        "disabled_account_or_revoked_device": "protected_access_denied",
+        "removed_mutation_permission": "append_denied_but_explicit_retained_own_read_allowed",
+        "removed_read_permission": "private_list_direct_subscription_and_cached_projection_removed",
+        "fresh_local_login": "permitted_only_for_still_active_account_device_and_current_grants",
+        "rejected_mutation_effects": "none",
+        "previous_commits_and_historical_actors": "preserved"
+      },
+      "variants": [
+        "OTHER_OWNER",
+        "WRONG_BRANCH_COMPANY_OR_ORGANIZATION",
+        "REVOKED_OR_EXPIRED_SESSION",
+        "DISABLED_ACCOUNT",
+        "REMOVED_MUTATION_PERMISSION",
+        "REMOVED_READ_PERMISSION",
+        "REVOKED_CLIENT_DEVICE",
+        "LOST_LOCAL_REVOCATION_HINT",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L1",
+        "L2",
+        "L3",
+        "L4",
+        "L5"
+      ],
+      "scenarios": [
+        "OWN-01",
+        "OWN-02",
+        "OWN-03",
+        "TAX-07",
+        "REL-04"
+      ],
+      "gates": [
+        "Q-SEC-01",
+        "Q-SEC-03",
+        "Q-SEC-04",
+        "Q-SEC-06",
+        "Q-SEC-09",
+        "Q-NAV-06"
+      ],
+      "sections": [
+        "O §§1,2,5",
+        "D §§2.2,4.2,5.2,5.4",
+        "P §§5,7,8,18.1",
+        "C §1"
+      ]
+    },
+    {
+      "id": "OFC-COLD-106",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "cold_cycle",
+        "submit_two_valid_new_unsent_line_commands_at_same_seed_revision",
+        "read_after_settlement",
+        "retry_winner_with_original_id_and_revision"
+      ],
+      "inputs": {
+        "first_operation_id": "a60c0000-0000-4000-8000-000000000441",
+        "second_operation_id": "a60c0000-0000-4000-8000-000000000442",
+        "first_new_line_id": "a60c0000-0000-4000-8000-000000000443",
+        "second_new_line_id": "a60c0000-0000-4000-8000-000000000444",
+        "expected_revision_for_both": "seed_r0",
+        "product_and_quantities_ref": "append_inputs.<fixture>.concurrent_quantities"
+      },
+      "expected_ref": {
+        "FIRST_WINS": "numeric_expectations.<fixture>.concurrent_first_wins",
+        "SECOND_WINS": "numeric_expectations.<fixture>.concurrent_second_wins"
+      },
+      "expected": {
+        "committed_commands": "1",
+        "loser": "REVISION_CONFLICT",
+        "loser_new_line_or_other_business_effects": "none",
+        "winning_retry": "original_result_only",
+        "seed_stock_and_existing_issued_portion_task_counts": "unchanged"
+      },
+      "variants": [
+        "FIRST_THEN_STALE_SECOND",
+        "SECOND_THEN_STALE_FIRST",
+        "N4_CONCURRENT_BARRIER_SCHEDULE",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L1",
+        "L2",
+        "L3",
+        "L5"
+      ],
+      "scenarios": [
+        "REL-04"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-01",
+        "Q-RES-02"
+      ],
+      "sections": [
+        "O §5",
+        "D §§4.4,5.2,5.4",
+        "Q §§5,10"
+      ]
+    },
+    {
+      "id": "OFC-COLD-107",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "cold_close",
+        "inject_named_bounded_native_history_fault_into_disposable_synthetic_store",
+        "reopen_and_attempt_dependent_protected_load_or_mutation"
+      ],
+      "inputs": {
+        "faults": {
+          "REQUIRED_CHECK_HISTORY_UNREADABLE": "The authoritative line/quantity/state history required for a correct complete check projection is unavailable.",
+          "INCONSISTENT_QUANTITY_HISTORY": {
+            "restaurant": {
+              "declared_burger_quantity": "2",
+              "represented_burger_quantity": "3"
+            },
+            "cafe": {
+              "declared_latte_quantity": "3",
+              "represented_latte_quantity": "4"
+            }
+          },
+          "REQUIRED_ACCESS_HISTORY_UNREADABLE": "The authoritative current session/activated permission evidence is unavailable; stale client cache says allow."
+        }
+      },
+      "expected": {
+        "complete_or_empty_usable_check_success": "forbidden",
+        "dependent_mutation_success": "forbidden",
+        "visible_state": "actionable_storage_or_recovery_failure",
+        "unauthorized_or_unvalidated_protected_frame": "absent",
+        "business_effects_of_failed_attempt": "none",
+        "prior_readable_evidence_and_clean_seed": "preserved_without_rewrite",
+        "guessing_empty_default_quantities_or_allow_grants": "forbidden",
+        "whole_branch_policy": "not_prescribed; dependent operations must remain safe"
+      },
+      "variants": [
+        "N5_UNAVAILABLE_HISTORY",
+        "N5_INCONSISTENT_HISTORY",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L2",
+        "L3",
+        "L4",
+        "L5"
+      ],
+      "scenarios": [
+        "REL-04",
+        "REL-10"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-06",
+        "Q-RES-09",
+        "Q-NAV-06",
+        "Q-SEC-06"
+      ],
+      "sections": [
+        "O §5",
+        "D §§3,4.4,5.2,5.4",
+        "P §§4.1,18.1",
+        "Q §2"
+      ]
+    },
+    {
+      "id": "OFC-COLD-108",
+      "fixtures": [
+        "restaurant",
+        "cafe"
+      ],
+      "actions": [
+        "prepare_genuine_committed_lost_reply_add_from_104",
+        "cold_close",
+        "inject_fault_removing_all_conclusive_required_outcome_evidence",
+        "reopen_and_lookup_retry_only_original_operation",
+        "restore_coherent_original_evidence_access",
+        "recover_original_result"
+      ],
+      "inputs": {
+        "original_operation_id": "a60c0000-0000-4000-8000-000000000421",
+        "original_request": "OFC-COLD-104 original semantic request",
+        "client_state": "OUTCOME_UNKNOWN",
+        "fault": "Required authoritative operation/result evidence is unavailable or incoherent; no other accessible authoritative evidence can conclusively prove the original outcome."
+      },
+      "expected_ref": {
+        "AFTER_COHERENT_EVIDENCE_RETURNS": "numeric_expectations.<fixture>.add"
+      },
+      "expected": {
+        "DURING_FAULT": {
+          "same_operation_id": "a60c0000-0000-4000-8000-000000000421",
+          "state": "unresolved_recovery_required_or_outcome_unknown",
+          "fabricated_success_or_conclusive_absence": "forbidden",
+          "new_operation_id_or_new_execution": "forbidden",
+          "new_business_effects": "none",
+          "original_pending_identity_and_readable_evidence": "retained"
+        },
+        "AFTER_COHERENT_EVIDENCE_RETURNS": {
+          "status": "COMMITTED",
+          "operation_id": "a60c0000-0000-4000-8000-000000000421",
+          "original_result_ids_actor_and_revision": "identical_to_actual_pre_fault_commit",
+          "additional_line_count": "1",
+          "seed_stock_and_existing_issued_portion_task_counts": "unchanged"
+        }
+      },
+      "variants": [
+        "N4_LOST_REPLY",
+        "N5_OUTCOME_HISTORY_UNAVAILABLE",
+        "N5_OUTCOME_HISTORY_INCONSISTENT",
+        "N1",
+        "N2",
+        "LOCAL_ADAPTER",
+        "LAN_RPC"
+      ],
+      "layers": [
+        "L2",
+        "L3",
+        "L4",
+        "L5"
+      ],
+      "scenarios": [
+        "REL-04",
+        "REL-10",
+        "UX-06"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-DB-06",
+        "Q-RES-02",
+        "Q-RES-09"
+      ],
+      "sections": [
+        "O §5",
+        "D §§5.2,5.3,5.4",
+        "P §§18.1,18.5,19",
+        "C §8"
+      ]
+    }
+  ]
+}

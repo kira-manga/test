@@ -1,0 +1,175 @@
+{
+  "status": "EXACT_PIN_APPLY_CHECKED_IN_ISOLATED_INDEX_NOT_RUNTIME",
+  "sources": {
+    "main-next": {
+      "pin": "34c6ffc50d7f9c552f6e293a1746b4dc4ba7bd8e",
+      "patch": "main-next.patch",
+      "sha256": "ac546703489037edebd92d0930ac10f9487e37456f8feb9a8f9d0b980c310804",
+      "bytes": 5811,
+      "files": {
+        "script/createGoLangModel.ts": {
+          "sha256": "cac9a507ab47ae2ff6ba7f14b076caccff93bc0f8f7ecc9d6bb78e0954c1cacb",
+          "newFile": false
+        },
+        "script/server/go_registry.ts": {
+          "sha256": "d5afd6d06ac8e35e45edde5d58565462f4261c3c35f7c85d737094503ea4e201",
+          "newFile": true
+        },
+        "script/server/index.ts": {
+          "sha256": "e05892a157ffe400856ca13587f01d37e84930a44a78c84e8f3a464c954594f2",
+          "newFile": false
+        }
+      },
+      "appliesToPinnedTree": true
+    },
+    "viki-go": {
+      "pin": "80125bc8795b5ea807d9b18aa25f686572bf29bd",
+      "patch": "viki-go.patch",
+      "sha256": "e3d9ef12da292de18dc0188e31c9baa8628aa4444c50749c16deeaec2ee40bed",
+      "bytes": 119537,
+      "files": {
+        "internal/branchpos/contracts.go": {
+          "sha256": "7c2e248ac53e14c230ce4e8d7b464971f36e9d3086e22c0cd3a0040524dc96f7",
+          "newFile": true
+        },
+        "internal/branchpos/http.go": {
+          "sha256": "40f0befae3f8a0fe9c9932f3f95e11a2df7d4cd2d4ec0bc20f01dc7bbd22bfd2",
+          "newFile": true
+        },
+        "internal/branchpos/ingestion.go": {
+          "sha256": "9df5b0f41d5b724a3ce10bab608e5bd3cb791a154acbe5c20d1b81894cf0abcc",
+          "newFile": true
+        },
+        "internal/branchpos/ingestion_test.go": {
+          "sha256": "817c2c8c151310207957cc166e23a7cdbe9c20db901833282142dfa69b5be8f4",
+          "newFile": true
+        },
+        "internal/helpers/apis/functions/models.go": {
+          "sha256": "68fc4692fbbbdcf96b173a59c31f2f1f666e2ac4f2d19f3d1ae7dd61973b78b6",
+          "newFile": false
+        },
+        "internal/helpers/apis/functions/translations.go": {
+          "sha256": "855ae81c83590b05a43423056587a4914ef330cbfeb65cf0a676fbfc0fe8c626",
+          "newFile": false
+        },
+        "internal/helpers/apis/handlers/crud.go": {
+          "sha256": "ab500058da41b94b7e22f30c6e63578c07d1efd705e929f533f3e4b9c5415788",
+          "newFile": false
+        },
+        "internal/helpers/db_functions/branch_pos_guard_test.go": {
+          "sha256": "fe5ec80bc1501be7d45f533d4ace7b745fa447d7066562185b407460246db5b4",
+          "newFile": true
+        },
+        "internal/helpers/db_functions/bulk.go": {
+          "sha256": "5f79627f9f5b6ad58e7fcb95ec74aea74682d57937954d880e260b20be0d97d5",
+          "newFile": false
+        },
+        "internal/helpers/db_functions/main.go": {
+          "sha256": "369f63c9e7f60bce70087bf53326cbf32e615680c9ac2d1492d6f4ccd5b6322d",
+          "newFile": false
+        },
+        "internal/helpers/db_functions/updates.go": {
+          "sha256": "be123cb0f6114b8606630299d131e1814d1765ec82d50810eef0229d47649417",
+          "newFile": false
+        },
+        "internal/helpers/db_functions/upsert.go": {
+          "sha256": "b711e93ea6171fe308181ce822a9671e6a731697bef0a156e945cd75f0a0f43c",
+          "newFile": false
+        },
+        "internal/helpers/modelguard/configured/check.go": {
+          "sha256": "a24adb3ebd414121dac55855b05fa7dd1cd925e254afdad3513c46dc31e96609",
+          "newFile": true
+        },
+        "internal/helpers/modelguard/guard.go": {
+          "sha256": "cd0df6805d81c9424454df6d168264dc049fbfcc8a383062acdd08cbd52cf55d",
+          "newFile": true
+        },
+        "internal/helpers/modelguard/guard_test.go": {
+          "sha256": "f9628cb75b481c96feacc09376fd8f21a50e63969cd6f655991ac998b496b66a",
+          "newFile": true
+        },
+        "internal/helpers/models/permissions/app_model_access.go": {
+          "sha256": "3c36ed028e110088f2c80613d5ceb1017af1ad2f4d450ab964c750729e1bc15f",
+          "newFile": false
+        },
+        "internal/helpers/models/permissions/branch_pos_access_test.go": {
+          "sha256": "16056d19135de63c2b332e0e8f5c11e1883abbedaaf835125f538a1c3766005d",
+          "newFile": true
+        },
+        "internal/helpers/sync/branch_pos_guard_test.go": {
+          "sha256": "7f13e3d84a5b6855dcb5de67537d1f0fbcfdc1e05815262b4d967945f06c2e42",
+          "newFile": true
+        },
+        "internal/helpers/sync/pull.go": {
+          "sha256": "36ed045d6429f41b893ebc56cd7b64cb5e57ae176b7ea44c6a6a52d61cd254e9",
+          "newFile": false
+        },
+        "services/app/grpc/branch_pos_guard_test.go": {
+          "sha256": "debf6d9adfc2b0ac1b29e50c3306f34f814b12aa938e0692a28e5fcc164cf996",
+          "newFile": true
+        },
+        "services/app/handlers/branch_pos_guard_test.go": {
+          "sha256": "d26c055cc4471ae97b4b0d1e89b67fb2bf71bf42319aee4780b5af5369605392",
+          "newFile": true
+        },
+        "services/app/handlers/full_query.go": {
+          "sha256": "74b43ff75e40be8de941a146c0e8656f37ad6b0b48538a48899e03278089e912",
+          "newFile": false
+        },
+        "services/app/handlers/multi.go": {
+          "sha256": "46919c067bd53f6a648e39d4a236e265de4d11250c9bc1e5047b76c2e070a595",
+          "newFile": false
+        },
+        "services/app/handlers/schema.go": {
+          "sha256": "6bc10c70965ca89bf3835e0687559042934b52c3bee769bb277227be962544ad",
+          "newFile": false
+        },
+        "services/graphql/resolvers/branch_pos_guard_test.go": {
+          "sha256": "d0aceed246e968162b6963bb57c2ff08c055d1071c10d96ee6c69b98ad142034",
+          "newFile": true
+        },
+        "services/graphql/resolvers/generic.go": {
+          "sha256": "ee84293effb420a42f470e360e9693ee8ba0a7bad42d4b5faa68957ebb0a04d2",
+          "newFile": false
+        },
+        "services/graphql/resolvers/helpers.go": {
+          "sha256": "9724fe51f160d65c88d6effdfae098d6ca82ba40dbbaf1ce7347aa1c30274834",
+          "newFile": false
+        },
+        "services/import_export/handlers/branch_pos_guard_test.go": {
+          "sha256": "86f32318e9779e77fbb5ffc16e03482894f021876c6faf130d1e04769fb1a402",
+          "newFile": true
+        },
+        "services/import_export/handlers/export_direct.go": {
+          "sha256": "5362a7be15e062a466e62bcc046c2d19de6ab3fa56395fcc871f0674159d60c3",
+          "newFile": false
+        },
+        "services/import_export/handlers/file.go": {
+          "sha256": "7896e03727582c64fb22372fc89b1f939dcf7441d11bc592163ec5ff51498391",
+          "newFile": false
+        },
+        "services/import_export/handlers/import.go": {
+          "sha256": "f2b96dc98bd89092110d3361aa395480072f37ef70fd1ddb50c3cb412ad06a16",
+          "newFile": false
+        },
+        "services/import_export/helpers/functions/imports/registry.go": {
+          "sha256": "f0d1e8ade6b0d12b72366c02fdb0883f912f086187d8d66f41df64064c1480a5",
+          "newFile": false
+        },
+        "services/import_export/helpers/models/inserts/inserts.go": {
+          "sha256": "811da2e7c1ed8cdc9b3ce42aeb649c30a107e2aff3f9d4ca7c1e1f30754ce331",
+          "newFile": false
+        },
+        "services/import_export/helpers/service/exports.go": {
+          "sha256": "5da36acbe888e59aed0585cd39825024372950fa31d1bd037f75789de166d6d3",
+          "newFile": false
+        },
+        "services/import_export/helpers/service/imports.go": {
+          "sha256": "03d032b6d959d2cd85d6e394db04365ca8da0b024ff6a668f984b5f5a8218bc7",
+          "newFile": false
+        }
+      },
+      "appliesToPinnedTree": true
+    }
+  }
+}

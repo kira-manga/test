@@ -1,0 +1,21 @@
+{
+  "design_id": "food-payment-already-applied-v1",
+  "version": "1.0.0",
+  "frozen_date_utc": "2026-11-06",
+  "specification_state": "FROZEN",
+  "execution_state": "NOT RUN",
+  "sources": [
+    {"ref": "C", "path": "qa/pos/contracts/LOCAL-FOOD-CASH-FINANCIAL-RPC.md", "sections": ["Fixed scope", "Financial behavior and current Master authority", "Journal and original-result continuity", "Failure and verification boundaries"]},
+    {"ref": "A", "path": "qa/pos/requirements/original/POS_ACCEPTANCE_SCENARIOS.md", "sections": ["Cash, shifts and custody: CASH-06, CASH-08", "Identity, order ownership and table/bill operations: OWN-01 through OWN-06, OWN-10", "Kitchen, inventory issue and cancellations: KIT-01, KIT-02, KIT-12, KIT-15", "Payments, unpaid service and delivery: PAY-03, PAY-04", "Runtime, synchronization and recovery: REL-01 through REL-04, REL-07 through REL-10", "Company permissions, report scope and approvals: CFG-05, CFG-07"]},
+    {"ref": "B", "path": "qa/pos/requirements/original/POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md", "sections": ["2.1 Required scalar contracts", "2.2 Mandatory field groups", "4.2 Local authentication and approvals", "4.6 Sales, tenders, returns, exchanges and deposits", "4.7 Cash sessions, safe custody and incidents", "5.1 Candidate transport-neutral envelope", "5.2 Execution sequence", "5.3 Result/recovery statuses", "5.4 Typed error taxonomy", "6. Procedure groups and read contracts", "7. Journal, sync, idempotency and central ingestion"]},
+    {"ref": "O", "path": "qa/pos/requirements/original/POS_OPERATIONAL_SPECIFICATION.md", "sections": ["2. Accounts, ownership and everyday access", "4. Cash drawers, cashier sessions and business days", "5. Order, preparation, fulfillment and settlement are separate", "9. Payments, delivery collection and monetary corrections"]},
+    {"ref": "P", "path": "qa/pos/requirements/original/POS_COMPANY_POLICIES_AND_CATALOG.md", "sections": ["1. Company head, delegation and configurable limits", "8. Everyday interface and operational recovery"]},
+    {"ref": "Q", "path": "qa/pos/requirements/original/POS_TEST_AND_QUALITY_PLAN.md", "sections": ["1. Ownership and the meaning of done", "2. Non-negotiable invariants", "3. Test pyramid and harness contracts", "4. Fixtures, platform roles and execution profiles", "5. Required command expansion for every business scenario", "6. Exact arithmetic, properties and independent reference models", "7. Room, storage and crash consistency gates", "9. Authentication, tenancy and transport security", "10. Fault, race, recovery and reconciliation matrix", "11. Navigation 3, Koin, Coil and application behavior", "14. Required OS, packaging and physical peripheral matrix", "16. Evidence format, traceability validation and release verdict"]},
+    {"ref": "D", "path": "qa/pos/requirements/OWNER-DIRECTIVE.md", "sections": ["Local scope", "Test-design separation (mandatory)"]},
+    {"ref": "V", "path": "qa/pos/requirements/OWNER-DEVICE-VERIFICATION.md", "sections": ["Implementation completion and deferred runtime testing"]},
+    {"ref": "M", "path": "qa/pos/requirements/original-manifest.json", "sections": ["Original requirements archive identity"]}
+  ],
+  "cases": ["FAA-001", "FAA-002", "FAA-003", "FAA-004", "FAA-005", "FAA-006", "FAA-007", "FAA-008", "FAA-009", "FAA-010", "FAA-011", "FAA-012"],
+  "public_contract_questions": ["FAA-Q01", "FAA-Q02", "FAA-Q03", "FAA-Q04"],
+  "revision_policy": "Preserve v1. Corrections require an independently derived new version and rationale. Harness wiring cannot alter expected outcomes."
+}

@@ -1,0 +1,21 @@
+{
+  "files": {
+    "library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt": {
+      "normalizedPostimage": {
+        "bytes": 1687,
+        "mode": 384,
+        "sha256": "1564626679da163bc9a94d2346bd6c261fbf6cb963a865a17d1b9c321c3a4c8c"
+      },
+      "preimage": {
+        "bytes": 1678,
+        "mode": 384,
+        "sha256": "125623a28d37375b973523223be163d6d805465556a74a4f3e9af2810e6d8860"
+      }
+    }
+  },
+  "parentSourceRecipeFileSha256": "e1cbe9baac109a3706e6378a1198afc8508bea19165083776df0467ce1cf6e1c",
+  "parentSourceRecipeSha256": "67d17eafcb2b68421b61b25d89198ea7a6cac714af1be530fd714e7a3ea47229",
+  "purpose": "SOURCE_COMPILER_TYPE_CORRECTION_NOT_CLOCK_QUALIFICATION",
+  "schema": 1,
+  "scope": "ONE_IOS_UINT_ARGUMENT_CONVERSION_EXACT_RAW_CLOCK_ZERO_FAIL_CLOSED_WERROR_UNCHANGED"
+}

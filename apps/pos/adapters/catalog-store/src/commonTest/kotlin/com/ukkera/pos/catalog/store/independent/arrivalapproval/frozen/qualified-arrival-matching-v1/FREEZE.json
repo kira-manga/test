@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "freezeId": "qualified-arrival-matching-v1",
+  "version": 1,
+  "frozenDate": "2026-11-01",
+  "state": "FROZEN_EXPECTATIONS",
+  "applicationExecutionStatus": "NOT_RUN",
+  "caseIds": [
+    "QAM-01",
+    "QAM-02",
+    "QAM-03",
+    "QAM-04",
+    "QAM-05"
+  ],
+  "contentSha256": {
+    "README.md": "106182ef21fe01e146f33fa799a6030770a8e1d26934d4c6ad79c4e1a14051a5",
+    "cases.md": "2101a6e4b712ec587984845407342b7280dfc476773f145607ba3ba80394cfe5",
+    "fixtures.json": "5c944a21d3169e777ebbcc3bbdc34c9b280170472ad716e1a4be6414d51d5a96",
+    "source-manifest.json": "9ea972883a39542021a0ee8fc163aa27c89dc656d1b8fac1fe400ab54bb4861c"
+  },
+  "artifactValidation": "JSON, five unique case IDs, referenced source paths, reused JPEG/PDF exact byte lengths and SHA-256 values, and publication-content audit checked. No application result is claimed.",
+  "wiringRule": "Preserve inputs, assertions and semantic outcomes. Record actual public bindings and separate lane outcomes. A matcher result cannot qualify current authority, an original, production history or a transaction."
+}

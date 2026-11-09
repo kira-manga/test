@@ -1,0 +1,431 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ukkera:branch-pos:evidence-v1:candidate",
+  "title": "BranchPos evidence-v1 candidate request and confirmed-commit ACK",
+  "$comment": "NOT MOUNTED. JSON Schema is structural, not authorization. Runtime additionally checks calendar dates, duplicate JSON keys, UTF-8/body bound, hash/signature, mapping/admission, effect-ID uniqueness, and checkpoint relations. Canonical payload field order is the ordered Payload.required list; this is not generic RFC 8785.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/Batch"
+    },
+    {
+      "$ref": "#/$defs/Acknowledgement"
+    }
+  ],
+  "$defs": {
+    "UUID": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$(?![\\s\\S])"
+    },
+    "PositiveInt64": {
+      "type": "string",
+      "pattern": "^(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)$(?![\\s\\S])"
+    },
+    "NonnegativeInt64": {
+      "type": "string",
+      "pattern": "^(?:0|(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807))$(?![\\s\\S])"
+    },
+    "NonzeroInt64": {
+      "type": "string",
+      "pattern": "^(?:(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-6]|9223372036854775807)|-(?:[1-9][0-9]{0,17}|[1-8][0-9]{18}|9[0-1][0-9]{17}|92[0-1][0-9]{16}|922[0-2][0-9]{15}|9223[0-2][0-9]{14}|92233[0-6][0-9]{13}|922337[0-1][0-9]{12}|92233720[0-2][0-9]{10}|922337203[0-5][0-9]{9}|9223372036[0-7][0-9]{8}|92233720368[0-4][0-9]{7}|922337203685[0-3][0-9]{6}|9223372036854[0-6][0-9]{5}|92233720368547[0-6][0-9]{4}|922337203685477[0-4][0-9]{3}|9223372036854775[0-7][0-9]{2}|922337203685477580[0-7]|9223372036854775808))$(?![\\s\\S])"
+    },
+    "ContentHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "Signature": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9+/]{85}[AQgw]==$(?![\\s\\S])"
+    },
+    "EvidenceV1Time": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9](?:\\.(?:[0-9]{6}(?!000)[0-9]{3}|[0-9]{3}(?!000)[0-9]{3}|(?!000)[0-9]{3}))?Z$(?![\\s\\S])",
+      "$comment": "Explicit evidence-v1 adapter subset: years 0000..9999, Kotlin Instant 0/3/6/9 fraction groups. Generic UtcInstant supports a wider year range. Validate the date and this bound before local effects; never normalize signed bytes."
+    },
+    "Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "organizationId",
+        "companyId",
+        "branchId"
+      ],
+      "properties": {
+        "organizationId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "companyId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "branchId": {
+          "$ref": "#/$defs/UUID"
+        }
+      },
+      "$comment": "DOMAIN identities only. Protected per-entity one-to-one mapping resolves unchanged native strings in one admission snapshot."
+    },
+    "Money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "minor"
+      ],
+      "properties": {
+        "currency": {
+          "const": "EGP"
+        },
+        "minor": {
+          "$ref": "#/$defs/NonzeroInt64"
+        }
+      }
+    },
+    "Quantity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unitId",
+        "scaled",
+        "scale"
+      ],
+      "properties": {
+        "unitId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "scaled": {
+          "$ref": "#/$defs/NonzeroInt64"
+        },
+        "scale": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 6,
+          "$comment": "Actual decoder accepts only one unquoted digit 0..6; JSON Schema alone cannot distinguish 6 from lexical 6.0/6e0."
+        }
+      }
+    },
+    "Effect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "effectId",
+        "kind",
+        "resourceId",
+        "revision"
+      ],
+      "properties": {
+        "effectId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "kind": {
+          "enum": [
+            "cashPosted",
+            "stockPosted"
+          ]
+        },
+        "resourceId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "revision": {
+          "$ref": "#/$defs/NonnegativeInt64"
+        },
+        "money": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Money"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "quantity": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "kind": {
+              "const": "cashPosted"
+            },
+            "money": {
+              "$ref": "#/$defs/Money"
+            },
+            "quantity": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "money"
+          ]
+        },
+        {
+          "properties": {
+            "kind": {
+              "const": "stockPosted"
+            },
+            "quantity": {
+              "$ref": "#/$defs/Quantity"
+            },
+            "money": {
+              "type": "null"
+            }
+          },
+          "required": [
+            "quantity"
+          ]
+        }
+      ],
+      "$comment": "The unused optional member may be absent/null on input; canonical payload omits it. Effect IDs must additionally be unique within a payload."
+    },
+    "Result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documentId",
+        "revision"
+      ],
+      "properties": {
+        "documentId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "revision": {
+          "$ref": "#/$defs/NonnegativeInt64"
+        }
+      }
+    },
+    "Payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "domainId",
+        "scope",
+        "operationId",
+        "authorityEpoch",
+        "journalSequence",
+        "originMasterDeviceId",
+        "signingKeyId",
+        "authorityProofId",
+        "originalActorId",
+        "catalogRevision",
+        "policyRevision",
+        "masterCommittedAt",
+        "effects",
+        "result"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1"
+        },
+        "domainId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "operationId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "authorityEpoch": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "journalSequence": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "originMasterDeviceId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "signingKeyId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "authorityProofId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "originalActorId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "catalogRevision": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "policyRevision": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "masterCommittedAt": {
+          "$ref": "#/$defs/EvidenceV1Time"
+        },
+        "effects": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "items": {
+            "$ref": "#/$defs/Effect"
+          }
+        },
+        "result": {
+          "$ref": "#/$defs/Result"
+        }
+      }
+    },
+    "Envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "payload",
+        "contentHash",
+        "signature"
+      ],
+      "properties": {
+        "payload": {
+          "$ref": "#/$defs/Payload"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "signature": {
+          "$ref": "#/$defs/Signature"
+        }
+      }
+    },
+    "Batch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "envelopes"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1"
+        },
+        "envelopes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/Envelope"
+          }
+        }
+      }
+    },
+    "Receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operationId",
+        "contentHash",
+        "authorityEpoch",
+        "journalSequence",
+        "disposition"
+      ],
+      "properties": {
+        "operationId": {
+          "$ref": "#/$defs/UUID"
+        },
+        "contentHash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "authorityEpoch": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "journalSequence": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "disposition": {
+          "enum": [
+            "accepted",
+            "quarantined",
+            "conflict"
+          ]
+        }
+      }
+    },
+    "SequenceRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "first",
+        "last"
+      ],
+      "properties": {
+        "first": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "last": {
+          "$ref": "#/$defs/PositiveInt64"
+        }
+      }
+    },
+    "Checkpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorityEpoch",
+        "highestContiguousAcceptedSequence",
+        "highestAcceptedSequence",
+        "missingRanges"
+      ],
+      "properties": {
+        "authorityEpoch": {
+          "$ref": "#/$defs/PositiveInt64"
+        },
+        "highestContiguousAcceptedSequence": {
+          "$ref": "#/$defs/NonnegativeInt64"
+        },
+        "highestAcceptedSequence": {
+          "$ref": "#/$defs/NonnegativeInt64"
+        },
+        "missingRanges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SequenceRange"
+          }
+        }
+      }
+    },
+    "Acknowledgement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "scope",
+        "coverage",
+        "items",
+        "checkpoints"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": "1"
+        },
+        "scope": {
+          "$ref": "#/$defs/Scope"
+        },
+        "coverage": {
+          "const": "central-accepted-evidence-only"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/Receipt"
+          }
+        },
+        "checkpoints": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 64,
+          "items": {
+            "$ref": "#/$defs/Checkpoint"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "design": "food-cash-cold-recovery-v1",
+  "freeze_version": "1.0.0",
+  "frozen_at_utc": "2026-11-06T10:29:00+00:00",
+  "status": "FROZEN EXPECTATIONS; ALL CASES NOT RUN",
+  "case_count": 14,
+  "inert_data_vector_count": 14,
+  "case_ids": [
+    "FCC-R-01",
+    "FCC-R-02",
+    "FCC-C-01",
+    "FCC-C-02",
+    "FCC-O-01",
+    "FCC-REC-01",
+    "FCC-REC-02",
+    "FCC-AUTH-01",
+    "FCC-AUTH-02",
+    "FCC-USER-01",
+    "FCC-SRC-01",
+    "FCC-SRC-02",
+    "FCC-SRC-03",
+    "FCC-DATA-01"
+  ],
+  "tested_revision": null,
+  "execution_evidence": [],
+  "scope": "Ordinary full direct CASH Restaurant/Cafe original and current-state cold recovery, with DATA-only descriptor comparison.",
+  "selected_public_contracts": {
+    "physical_observation": "v1",
+    "current_food_read": "v3",
+    "food_activity_authority": "assigned public contract",
+    "native_cash_protocol": "UNBOUND",
+    "inert_descriptor_profile": "INERT_ORIGINAL_COMPARISON_V1; NOT NATIVE"
+  },
+  "requirements_inputs": [
+    {
+      "path": "qa/pos/requirements/OWNER-DIRECTIVE.md",
+      "bytes": 3210,
+      "sha256": "57944df26ae7823f4cc95cefe07eaa2247ce46f04ac1f0a4078455972ef4649d"
+    },
+    {
+      "path": "qa/pos/requirements/OWNER-MASTER-AUTHORITY.md",
+      "bytes": 1452,
+      "sha256": "32a068e5a6d1fcd984e9a0bd20a88551f83d27dc36aac157f9370097a4233db9"
+    },
+    {
+      "path": "qa/pos/requirements/OWNER-DEVICE-VERIFICATION.md",
+      "bytes": 1778,
+      "sha256": "1d058909053c1aa4841cc79415f42664d48034d648989e2f2f21dcd2c269842e"
+    },
+    {
+      "path": "qa/pos/requirements/original-manifest.json",
+      "bytes": 3368,
+      "sha256": "526024d836052fdb9afc65c0bfd5386f4321844abfebbdac2de9b44578a31cf8"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_OPERATIONAL_SPECIFICATION.md",
+      "bytes": 47570,
+      "sha256": "51b27996aea30fd61514e2fb58bc568e489d45c30541c166d0015d4d93412530"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_ACCEPTANCE_SCENARIOS.md",
+      "bytes": 28478,
+      "sha256": "7200e4c06b0b1e045dd06deb0db99cc88383a05d9413fe10f415c98cfea1023b"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_TEST_AND_QUALITY_PLAN.md",
+      "bytes": 52836,
+      "sha256": "5a5b945435ef939ecc33c4e18c92bf1b92b8f67536807df9ccf25768527458ee"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_COMPANY_POLICIES_AND_CATALOG.md",
+      "bytes": 27227,
+      "sha256": "439aa019060d9c3d9a987732b077e74917c3fb9e87462547decd2c52f76adb60"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_PRODUCTION_ARCHITECTURE_PROPOSAL.md",
+      "bytes": 87355,
+      "sha256": "3ebcb32ffa8a7bd2f50911471efe44067293193c6350ef53744ef6c00768744d"
+    },
+    {
+      "path": "qa/pos/requirements/original/POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md",
+      "bytes": 74709,
+      "sha256": "0c847fab4cb9f84bf6b247e25ec56282f35a8ca19d4ea88981b210fe2b931b61"
+    },
+    {
+      "path": "qa/pos/contracts/LOCAL-PHYSICAL-OBSERVATION-BEHAVIOR-v1.md",
+      "bytes": 6258,
+      "sha256": "2218ce9b3306d8ae9047c680a3f0a1039ae8a9970fba1be06bb0f94a4b295ddb"
+    },
+    {
+      "path": "qa/pos/contracts/LOCAL-FOOD-CURRENT-PAYABLE-V3.md",
+      "bytes": 5048,
+      "sha256": "217abe9679be54f6050c67720157a384ff7b50f147ff309b8ab5ce12c47694b8"
+    },
+    {
+      "path": "qa/pos/contracts/LOCAL-FOOD-ACTIVITY-AUTHORITY.md",
+      "bytes": 6546,
+      "sha256": "97921e4c019bcf7c9ce045e0b602ea8fc572213dc0c7eac751d4641f6365653f"
+    }
+  ],
+  "frozen_outputs": [
+    {
+      "path": "qa/pos/designs/food-cash-cold-recovery-v1/README.md",
+      "bytes": 14996,
+      "sha256": "6ac61809e0889b6e32962754456cffbf93874acd3b68c97ba7612e074af07917"
+    },
+    {
+      "path": "qa/pos/designs/food-cash-cold-recovery-v1/cases.md",
+      "bytes": 29063,
+      "sha256": "95826425a58e368e831cb7cfeb7f0ad7580f776e03e92ca27c0e33b2af3aeb9f"
+    },
+    {
+      "path": "qa/pos/designs/food-cash-cold-recovery-v1/fixtures.json",
+      "bytes": 48183,
+      "sha256": "a7e281c76cf650742b92ebb47ded9f7d7338d6d6cb5eb2b58f179b0972bfc0be"
+    }
+  ],
+  "verification_limit": "JSON/catalog/independent fixture arithmetic checked only; no application/source/test/build/native/owner execution.",
+  "revision_policy": "Preserve this version; any expectation correction requires a separately versioned independently derived rationale."
+}

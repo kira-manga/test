@@ -1,0 +1,37 @@
+--- a/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt
++++ b/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt
+@@ -65,11 +65,12 @@
+                 if (engine.isSealed) throw RpcFailure(RpcFailureKind.Closed, RpcFailurePhase.Negotiation)
+                 ScopedRpcHostSession(binding, link.identity, engine)
+             } catch (failure: Throwable) {
+-                withContext(NonCancellable) {
+-                    try { link.close() } catch (_: Exception) {
+-                        // Revocation already committed. The caller still owns the original SDK session
+-                        // and can reobserve incomplete native cleanup with its close()/kit.stop().
+-                    }
++                try {
++                    withContext(NonCancellable) { link.close() }
++                } catch (cleanup: Throwable) {
++                    // Preserve the first non-Exception without attaching public failure chains.
++                    // The caller still owns the original session and must reobserve its cleanup.
++                    if (failure is Exception && cleanup !is Exception) throw cleanup
+                 }
+                 throw failure
+             }
+@@ -138,10 +139,12 @@
+                 if (engine.isSealed) throw RpcFailure(RpcFailureKind.Closed, RpcFailurePhase.Negotiation)
+                 ScopedRpcClientSession(binding, link.identity, engine)
+             } catch (failure: Throwable) {
+-                withContext(NonCancellable) {
+-                    try { link.close() } catch (_: Exception) {
+-                        // The SDK retains cleanup evidence; a claimed lifetime never falls back to legacy.
+-                    }
++                try {
++                    withContext(NonCancellable) { link.close() }
++                } catch (cleanup: Throwable) {
++                    // Preserve the first non-Exception without attaching public failure chains.
++                    // The caller still owns the original session and must reobserve its cleanup.
++                    if (failure is Exception && cleanup !is Exception) throw cleanup
+                 }
+                 throw failure
+             }

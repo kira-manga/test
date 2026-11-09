@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 1,
+  "freezeId": "qualified-arrival-matching-v1",
+  "executionStatus": "NOT_RUN",
+  "bindingNote": "Semantic synthetic labels must map to public contracts. These are constraint inputs and proof-provisioning requirements, never fabricated AuthorizedAction instances, signed publications or native completed originals.",
+  "scope": {
+    "companyId": "SYN-COMPANY-A",
+    "branchId": "SYN-BRANCH-A",
+    "otherCompanyId": "SYN-COMPANY-B",
+    "otherBranchId": "SYN-BRANCH-B"
+  },
+  "operation": {
+    "operationId": "SYN-ARRIVAL-001",
+    "actionSymbol": "UNPRICED_ARRIVAL",
+    "targetId": "SYN-ARRIVAL-DRAFT-001",
+    "targetRevision": "3",
+    "originalRequesterId": "SYN-REQUESTER-R",
+    "semanticInputLabel": "Exact baseline supplier, two product lines, ordered document selection and retention choice",
+    "expectedRequirementSource": "Independent public operation-bound AuthorizationRequirement materialized from this exact operation; never copied from the actual proof"
+  },
+  "policyCoordinates": {
+    "policyId": "SYN-PUR-POLICY",
+    "policyRevision": "6",
+    "publicationId": "SYN-PUR-PUBLICATION",
+    "publicationRevision": "8",
+    "companyId": "SYN-COMPANY-A",
+    "branchId": "SYN-BRANCH-A"
+  },
+  "supplier": {
+    "supplierId": "SYN-SUPPLIER-A",
+    "revision": "3",
+    "companyId": "SYN-COMPANY-A",
+    "branchId": "SYN-BRANCH-A"
+  },
+  "catalog": {
+    "catalogId": "SYN-CATALOG-A",
+    "releaseId": "SYN-CATALOG-RELEASE-7",
+    "releaseRevision": "7",
+    "companyId": "SYN-COMPANY-A"
+  },
+  "products": [
+    {
+      "productId": "SYN-PRODUCT-RICE",
+      "revision": "4",
+      "companyId": "SYN-COMPANY-A",
+      "catalogId": "SYN-CATALOG-A",
+      "releaseId": "SYN-CATALOG-RELEASE-7",
+      "releaseRevision": "7"
+    },
+    {
+      "productId": "SYN-PRODUCT-OIL",
+      "revision": "5",
+      "companyId": "SYN-COMPANY-A",
+      "catalogId": "SYN-CATALOG-A",
+      "releaseId": "SYN-CATALOG-RELEASE-7",
+      "releaseRevision": "7"
+    }
+  ],
+  "selectedRetention": {
+    "classId": "RET-PUR-ORIGINAL",
+    "classRevision": "2",
+    "policyId": "SYN-PUR-POLICY",
+    "policyRevision": "6",
+    "companyId": "SYN-COMPANY-A",
+    "branchId": "SYN-BRANCH-A"
+  },
+  "commonRuleBodyConstraints": {
+    "policyCoordinatesRef": "policyCoordinates",
+    "actionSymbol": "UNPRICED_ARRIVAL",
+    "supplierIds": ["SYN-SUPPLIER-A"],
+    "productIds": ["SYN-PRODUCT-RICE", "SYN-PRODUCT-OIL"],
+    "requiredCatalogRef": "catalog",
+    "allowedEvidenceMedia": ["JPEG", "PDF"],
+    "allowedEvidencePurposes": ["SUPPLIER_DELIVERY"],
+    "maximumSelectedOriginals": 2,
+    "requiredRetentionRef": "selectedRetention"
+  },
+  "explicitRuleChoices": [
+    {
+      "ruleId": "RULE-DIRECT",
+      "commonConstraintsRef": "commonRuleBodyConstraints",
+      "approvalMode": "Direct",
+      "namedSelfAccountId": null,
+      "evidenceRequired": false
+    },
+    {
+      "ruleId": "RULE-SEPARATE",
+      "commonConstraintsRef": "commonRuleBodyConstraints",
+      "approvalMode": "Separate",
+      "namedSelfAccountId": null,
+      "evidenceRequired": true
+    },
+    {
+      "ruleId": "RULE-NAMED-SELF",
+      "commonConstraintsRef": "commonRuleBodyConstraints",
+      "approvalMode": "NamedSelf",
+      "approvalSemantics": "Separate route with explicit named equality exception; distinct otherwise authorized actors remain eligible",
+      "namedSelfAccountId": "SYN-REQUESTER-R",
+      "evidenceRequired": true
+    }
+  ],
+  "proofProvisioning": {
+    "path": "Real public evaluator plus approval output producing PERFORM AuthorizedAction",
+    "requester": {"actorId": "SYN-REQUESTER-R", "employeePolicyRevision": "11"},
+    "separateApprover": {"actorId": "SYN-APPROVER-A", "employeePolicyRevision": "12"},
+    "directOutput": {"actorId": "SYN-REQUESTER-R", "approverId": null, "approverPolicyRevision": null, "approvalId": null},
+    "separateOutput": {"actorId": "SYN-REQUESTER-R", "approverId": "SYN-APPROVER-A", "approverPolicyRevision": "12", "approvalId": "ACTUAL-SEPARATE-APPROVAL-ID"},
+    "namedSelfOutput": {"actorId": "SYN-REQUESTER-R", "approverId": "SYN-REQUESTER-R", "approverPolicyRevision": "11", "approvalId": "ACTUAL-NAMED-SELF-APPROVAL-ID"},
+    "requirement": "Exactly the independently expected public operation-bound requirement",
+    "currentAuthorityGate": "Every present actor's separate current Master grant, session/device admission and fresh approval state must be established outside the matcher"
+  },
+  "documentManifests": [
+    {
+      "label": "DOC-J",
+      "originalId": "SYN-ORIGINAL-J",
+      "storageRevision": "1",
+      "companyId": "SYN-COMPANY-A",
+      "branchId": "SYN-BRANCH-A",
+      "supplierId": "SYN-SUPPLIER-A",
+      "supplierRevisionAtCapture": "3",
+      "media": "JPEG",
+      "purpose": "SUPPLIER_DELIVERY",
+      "byteLength": 155,
+      "exactBytesDigest": "3f93bab029856dfaa0d8d9eceeceaa5977e4381e9209ed61f6f7af51c622147f",
+      "byteFixtureRef": "qa/pos/freezes/purchasing-documentary-intake-v2/fixtures-v2.json#/files/JPEG-A",
+      "qualificationClaim": "NONE"
+    },
+    {
+      "label": "DOC-P",
+      "originalId": "SYN-ORIGINAL-P",
+      "storageRevision": "1",
+      "companyId": "SYN-COMPANY-A",
+      "branchId": "SYN-BRANCH-A",
+      "supplierId": "SYN-SUPPLIER-A",
+      "supplierRevisionAtCapture": "3",
+      "media": "PDF",
+      "purpose": "SUPPLIER_DELIVERY",
+      "byteLength": 640,
+      "exactBytesDigest": "96c72b8140b230b776d119cce2bac959aa9f2211af5e85e9b5652571568c1728",
+      "byteFixtureRef": "qa/pos/freezes/purchasing-documentary-intake-v2/fixtures-v2.json#/files/PDF-A",
+      "qualificationClaim": "NONE"
+    }
+  ],
+  "operationBoundSelectedManifestRefs": ["DOC-J", "DOC-P"],
+  "resolvedCurrentOriginalManifestRefs": ["DOC-J", "DOC-P"],
+  "manifestBinding": "Materialize the two ordered lists independently; compare every exact ID/storage revision/length/digest/scope/supplier/media/purpose. Master alone establishes normalized request and current byte/history authority.",
+  "productionUnboundCoordinates": {
+    "companyScope": "All companyId fixture fields remain mandatory whole-action scope requirements; they do not assert corresponding fields exist in the bounded public input",
+    "retentionPolicyProvenance": "selectedRetention policyId/policyRevision/companyId/branchId are mandatory whole-action provenance requirements whose bounded public-field binding is unconfirmed; wrong/missing provenance refuses the protected action in the separate production lane"
+  },
+  "overflowOriginal": {"cloneManifestRef": "DOC-P", "originalId": "SYN-ORIGINAL-P2"},
+  "independentMutationValues": {
+    "unknownRuleId": "RULE-UNKNOWN",
+    "differentActionSymbol": "SUPPLIER_INVOICE",
+    "oldPolicyRevision": "5",
+    "oldPublicationRevision": "7",
+    "oldCatalogReleaseRevision": "6",
+    "oldProductRevision": "2",
+    "wrongSupplierId": "SYN-SUPPLIER-B",
+    "excludedProductId": "SYN-PRODUCT-OTHER",
+    "wrongRetentionClassId": "RET-OTHER",
+    "wrongRetentionClassRevision": "1",
+    "wrongDocumentPurpose": "SUPPLIER_INVOICE",
+    "forbiddenDocumentMedia": "PNG",
+    "wrongDocumentDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+    "differentRequesterId": "SYN-REQUESTER-X",
+    "differentOperationId": "SYN-ARRIVAL-002"
+  },
+  "semanticOutcomes": ["MISMATCH", "NO_MISMATCH"],
+  "caseIds": ["QAM-01", "QAM-02", "QAM-03", "QAM-04", "QAM-05"]
+}

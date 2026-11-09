@@ -1,0 +1,198 @@
+{
+  "specificationVersion": "candidate-v3",
+  "status": "NOT_RUN",
+  "syntheticOnly": true,
+  "interpretation": {
+    "canonicalGoldens": "Independently specified literal UTF-8 bytes, not encoder output. Exactly one LF after the prefix and no terminal LF.",
+    "otherFixtureKeys": "Specification labels unless expressly a canonical public wire field; no invented application commands or DTOs.",
+    "quantity": "Exact value = scaled / 10^scale. Reference destination scaled numbers assert arithmetic at the given scale, not an unassigned output-normalization convention.",
+    "nativeOriginals": "Prerequisite synthetic fixtures must come from the original native owner or a clearly isolated read-boundary fixture. An employee-created original/snapshot is never a production authority substitute.",
+    "longMinimum": "-9223372036854775808",
+    "longMaximum": "9223372036854775807"
+  },
+  "fixtures": {
+    "F-CUA-IDENTITIES": {
+      "organization": "10000000-aaaa-4000-8000-000000000001",
+      "company": "10000000-aaaa-4000-8000-000000000002",
+      "productA": "20000000-bbbb-4000-8000-000000000001",
+      "skuA": "20000000-bbbb-4000-8000-000000000002",
+      "productB": "20000000-bbbb-4000-8000-000000000003",
+      "publication1": "30000000-cccc-4000-8000-000000000001",
+      "publication2": "30000000-cccc-4000-8000-000000000002",
+      "piece": "40000000-dddd-4000-8000-000000000001",
+      "carton": "40000000-dddd-4000-8000-000000000002",
+      "kilogram": "40000000-dddd-4000-8000-000000000003",
+      "gram": "40000000-dddd-4000-8000-000000000004",
+      "litre": "40000000-dddd-4000-8000-000000000005",
+      "massPortion": "40000000-dddd-4000-8000-000000000006",
+      "newPieceId": "40000000-dddd-4000-8000-000000000007",
+      "legacyRaw": "40000000-dddd-4000-8000-000000000008",
+      "conversion": "50000000-eeee-4000-8000-000000000001",
+      "evidence": "50000000-eeee-4000-8000-000000000002",
+      "root": "60000000-ffff-4000-8000-000000000001",
+      "operation2": "70000000-aaaa-4000-8000-000000000002"
+    },
+    "F-CUA-UNIT-VALUES": {
+      "validDimensions": ["COUNT", "MASS", "VOLUME", "LENGTH", "AREA", "DURATION"],
+      "validMaximumScales": [0, 6],
+      "invalidMaximumScales": [-1, 7],
+      "normalization": "EXACT_V1",
+      "validLiteralCodes": ["a", "000012", " g ", "G", "g"],
+      "validBoundaryCodes": [
+        {"label": "ascii-256", "scalarHex": "0061", "repeat": 256, "expectedUtf16Length": 256},
+        {"label": "paired-emoji-128", "scalarHex": "1F600", "repeat": 128, "expectedUtf16Length": 256}
+      ],
+      "invalidBoundaryCodes": [
+        {"label": "empty", "scalarHex": "0061", "repeat": 0, "expectedUtf16Length": 0},
+        {"label": "ascii-257", "scalarHex": "0061", "repeat": 257, "expectedUtf16Length": 257},
+        {"label": "paired-emoji-plus-one", "scalarHex": "1F600", "repeat": 128, "suffix": "a", "expectedUtf16Length": 257},
+        {"label": "unpaired-high", "utf16UnitsHex": ["D800"], "expected": "REJECT"},
+        {"label": "unpaired-low", "utf16UnitsHex": ["DC00"], "expected": "REJECT"}
+      ],
+      "mismatchedCode": {"original": " g ", "normalizedKey": "g", "normalization": "EXACT_V1", "expected": "REJECT"},
+      "invalidUuidValues": ["40000000-DDDD-4000-8000-000000000001", "40000000dddd40008000000000000001", ""]
+    },
+    "F-CUA-RATES": {
+      "constructed": [
+        {"numerator": "24", "denominator": "2", "expectedCanonical": "12/1"},
+        {"numerator": "1", "denominator": "3", "expectedCanonical": "1/3"},
+        {"numerator": "9223372036854775807", "denominator": "9223372036854775807", "expectedCanonical": "1/1"}
+      ],
+      "invalidComponents": [
+        {"numerator": "0", "denominator": "1"},
+        {"numerator": "12", "denominator": "0"},
+        {"numerator": "-12", "denominator": "1"},
+        {"numerator": "12", "denominator": "-1"},
+        {"numerator": "-12", "denominator": "-1"},
+        {"numerator": "9223372036854775808", "denominator": "1"}
+      ],
+      "invalidCanonicalWire": ["24/2", "12/01", "+12/1", " 12/1 "],
+      "validRevisions": ["0", "9223372036854775807"],
+      "invalidRevisions": ["-1", "9223372036854775808"]
+    },
+    "F-CUA-CONVERSION": {
+      "idLabel": "conversion",
+      "productLabel": "productA",
+      "sourceLabel": "carton",
+      "targetLabel": "piece",
+      "publicationBaseLabel": "piece",
+      "revision": "1",
+      "rate": "12/1",
+      "evidenceId": null,
+      "futureRevision": {"revision": "2", "rate": "10/1", "productLabel": "productA", "sourceLabel": "carton", "targetLabel": "piece"}
+    },
+    "F-CUA-CODEC": {
+      "legacyWireFields": {
+        "company": {"organizationId": "10000000-aaaa-4000-8000-000000000001", "companyId": "10000000-aaaa-4000-8000-000000000002"},
+        "publicationId": "30000000-cccc-4000-8000-000000000001",
+        "skuId": "20000000-bbbb-4000-8000-000000000002",
+        "productId": "20000000-bbbb-4000-8000-000000000001",
+        "catalogRevision": "1",
+        "skuRevision": "1",
+        "names": {"english": "Fixture", "arabic": "Fixture"},
+        "code": "000012",
+        "barcodes": [],
+        "baseUnitId": "40000000-dddd-4000-8000-000000000001",
+        "quantityScale": 0,
+        "tracking": "QUANTITY",
+        "fulfillment": "RETAIL",
+        "requiresExpiry": false,
+        "canPurchase": true,
+        "canSell": false,
+        "active": true,
+        "conversions": [],
+        "prices": []
+      },
+      "extensionDefinitions": [
+        {"id": "40000000-dddd-4000-8000-000000000001", "code": {"original": "piece", "normalizedKey": "piece", "normalization": "EXACT_V1"}, "dimension": "COUNT", "maximumScale": 0}
+      ],
+      "legacyCanonicalUtf8": "ukkera.company-sku-publication/v1\n{\"company\":{\"organizationId\":\"10000000-aaaa-4000-8000-000000000001\",\"companyId\":\"10000000-aaaa-4000-8000-000000000002\"},\"publicationId\":\"30000000-cccc-4000-8000-000000000001\",\"skuId\":\"20000000-bbbb-4000-8000-000000000002\",\"productId\":\"20000000-bbbb-4000-8000-000000000001\",\"catalogRevision\":\"1\",\"skuRevision\":\"1\",\"names\":{\"english\":\"Fixture\",\"arabic\":\"Fixture\"},\"code\":\"000012\",\"barcodes\":[],\"baseUnitId\":\"40000000-dddd-4000-8000-000000000001\",\"quantityScale\":0,\"tracking\":\"QUANTITY\",\"fulfillment\":\"RETAIL\",\"requiresExpiry\":false,\"canPurchase\":true,\"canSell\":false,\"active\":true,\"conversions\":[],\"prices\":[]}",
+      "extendedCanonicalUtf8": "ukkera.company-sku-publication/v1\n{\"company\":{\"organizationId\":\"10000000-aaaa-4000-8000-000000000001\",\"companyId\":\"10000000-aaaa-4000-8000-000000000002\"},\"publicationId\":\"30000000-cccc-4000-8000-000000000001\",\"skuId\":\"20000000-bbbb-4000-8000-000000000002\",\"productId\":\"20000000-bbbb-4000-8000-000000000001\",\"catalogRevision\":\"1\",\"skuRevision\":\"1\",\"names\":{\"english\":\"Fixture\",\"arabic\":\"Fixture\"},\"code\":\"000012\",\"barcodes\":[],\"baseUnitId\":\"40000000-dddd-4000-8000-000000000001\",\"quantityScale\":0,\"tracking\":\"QUANTITY\",\"fulfillment\":\"RETAIL\",\"requiresExpiry\":false,\"canPurchase\":true,\"canSell\":false,\"active\":true,\"conversions\":[],\"prices\":[],\"unitDefinitions\":[{\"id\":\"40000000-dddd-4000-8000-000000000001\",\"code\":{\"original\":\"piece\",\"normalizedKey\":\"piece\",\"normalization\":\"EXACT_V1\"},\"dimension\":\"COUNT\",\"maximumScale\":0}]}",
+      "explicitEmptyExtension": "Legacy wire fields plus unitDefinitions as a present empty list; expected literal suffix ,\"unitDefinitions\":[]}",
+      "readerNegativeMutations": ["unknown top-level field", "unknown unit field", "publication SKU code as nested unit Code object", "dimension WEIGHT", "maximumScale 7", "EXACT_V1 original/key mismatch", "catalogRevision or skuRevision as numeric JSON token 1", "catalogRevision or skuRevision as JSON object", "catalogRevision or skuRevision as leading-zero string 01", "catalogRevision or skuRevision as exponent string 1e0"],
+      "scope": "Codec-only sibling values; not a legal authority upgrade of a previously used raw legacy ID."
+    },
+    "F-CUA-SNAPSHOT": {
+      "unavailableStates": ["initial", "absent ledger", "failed refresh", "unresolved original signing intent"],
+      "presentAfter": "Successful complete native refresh with resolved original outputs",
+      "companyLabel": "company",
+      "rootLabel": "root",
+      "observedGeneration": "7",
+      "completedOutputs": ["N1", "N2"],
+      "preservedOutputFields": ["original proposal and canonical content", "action ID", "key ID", "signature bytes", "nested unit definitions"],
+      "readSideEffectDelta": {"newOriginals": "0", "signingRetries": "0", "branchActivations": "0"},
+      "nativeOwnerFixtureBinding": "UNKNOWN; must use the original native owner, not employee-created outputs or an accepting production stand-in"
+    },
+    "F-CUA-HISTORY": {
+      "nativeOriginal1": {"label": "N1", "productLabel": "productA", "publicationLabel": "publication1", "unitDefinitions": ["piece COUNT 0 EXACT_V1(piece)", "carton COUNT 0 EXACT_V1(carton)"], "conversion": "C1 revision1 productA carton-to-piece 12/1"},
+      "nativeOriginal2": {"label": "N2", "productLabel": "productA", "publicationLabel": "publication2", "predecessor": "N1", "unitDefinitions": "Exact original N1 definitions", "conversion": "C1 revision2 productA carton-to-piece 10/1"},
+      "durableActivated1": {"label": "A1", "original": "N1"},
+      "completeNativeHistory": ["N1", "N2"],
+      "completeActivatedHistoryBeforeA2": ["A1"],
+      "refusedVariants": ["native history unavailable", "native history truncated or missing N1", "activated history unavailable or truncated", "pending original signing intent", "wrong company or root", "conflicting native facts", "native and activated original mismatch", "failed refresh with old captured completeness"],
+      "legacyOriginal": {"label": "L0", "rawUnitLabel": "legacyRaw", "unitDefinitions": "ABSENT", "existingMeaning": "UNKNOWN; no inferred COUNT"},
+      "legacyRedeclaration": {"rawUnitLabel": "legacyRaw", "proposedDimension": "COUNT", "expected": "REFUSE_NEW_DEFINITION_DEPENDENT_ADMISSION"}
+    },
+    "F-CUA-MEANING": {
+      "rejectedUnitChanges": ["same piece ID different code", "same piece ID dimension MASS", "same piece ID maximumScale 1", "normalized code piece with newPieceId"],
+      "allowedHistoricalReobservation": "Exactly equal ID, Code, dimension and maximumScale in another valid original; no false registry conflict",
+      "rejectedConversionChanges": ["C1 revision1 rate10/1", "C1 revision1 productB", "C1 revision1 changed source or target", "source equals target", "unresolved source or base definition", "target differs from publication base", "SKU precision1 above base piece precision0", "stale or incompatible predecessor/version"],
+      "eligibleFutureConversion": "C1 revision2 productA carton-to-piece 10/1 with otherwise valid approval/scope/history/current grant",
+      "historicalReceipt": {"label": "R1", "enteredCartons": "2", "conversionRevision": "1", "rate": "12/1", "basePieces": "24"}
+    },
+    "F-CUA-QUANTITIES": {
+      "signedValueBoundaries": [
+        {"scaled": "-9223372036854775808", "scale": 0, "exactValue": "-9223372036854775808"},
+        {"scaled": "0", "scale": 0, "exactValue": "0"},
+        {"scaled": "9223372036854775807", "scale": 6, "exactValue": "9223372036854.775807"}
+      ],
+      "invalidScaledValues": ["-9223372036854775809", "9223372036854775808"],
+      "invalidScales": [-1, 7],
+      "businessRejectedSigns": ["0", "-1"],
+      "vectors": [
+        {"label": "mass-exact", "sourceLabel": "gram", "targetLabel": "kilogram", "sourceMaximumScale": 3, "destinationMaximumScale": 6, "scaled": "1125", "scale": 0, "numerator": "1", "denominator": "1000", "expected": "ACCEPT_EXACT", "expectedValue": "1.125", "referenceDestinationScale": 6, "referenceDestinationScaled": "1125000"},
+        {"label": "mass-six-digit-boundary", "sourceLabel": "gram", "targetLabel": "kilogram", "sourceMaximumScale": 3, "destinationMaximumScale": 6, "scaled": "1", "scale": 3, "numerator": "1", "denominator": "1000", "expected": "ACCEPT_EXACT", "expectedValue": "0.000001", "referenceDestinationScale": 6, "referenceDestinationScaled": "1"},
+        {"label": "mass-source-precision", "sourceLabel": "gram", "targetLabel": "kilogram", "sourceMaximumScale": 3, "destinationMaximumScale": 6, "scaled": "1", "scale": 4, "numerator": "1", "denominator": "1000", "expected": "REJECT", "exactCandidateValue": "0.0000001"},
+        {"label": "third-exact-quantity", "sourceLabel": "massPortion", "targetLabel": "kilogram", "sourceMaximumScale": 0, "destinationMaximumScale": 6, "scaled": "3", "scale": 0, "numerator": "1", "denominator": "3", "expected": "ACCEPT_EXACT", "expectedValue": "1", "referenceDestinationScale": 6, "referenceDestinationScaled": "1000000"},
+        {"label": "third-unrepresentable", "sourceLabel": "massPortion", "targetLabel": "kilogram", "sourceMaximumScale": 0, "destinationMaximumScale": 6, "scaled": "1", "scale": 0, "numerator": "1", "denominator": "3", "expected": "REJECT", "exactCandidateFraction": "1/3", "forbiddenRoundedValue": "0.333333"},
+        {"label": "third-source-precision", "sourceLabel": "massPortion", "targetLabel": "kilogram", "sourceMaximumScale": 0, "destinationMaximumScale": 6, "scaled": "3", "scale": 1, "numerator": "1", "denominator": "3", "expected": "REJECT", "exactCandidateValue": "0.1"},
+        {"label": "count-near-limit", "sourceLabel": "carton", "targetLabel": "piece", "sourceMaximumScale": 0, "destinationMaximumScale": 0, "scaled": "4611686018427387903", "scale": 0, "numerator": "2", "denominator": "1", "expected": "ACCEPT_EXACT", "expectedValue": "9223372036854775806", "referenceDestinationScale": 0, "referenceDestinationScaled": "9223372036854775806"},
+        {"label": "count-overflow", "sourceLabel": "carton", "targetLabel": "piece", "sourceMaximumScale": 0, "destinationMaximumScale": 0, "scaled": "9223372036854775807", "scale": 0, "numerator": "2", "denominator": "1", "expected": "REJECT", "exactCandidateValue": "18446744073709551614"}
+      ],
+      "wrongSourceUnit": {"quantityUnitLabel": "kilogram", "conversionSourceLabel": "gram", "expected": "REJECT"}
+    },
+    "F-CUA-EVIDENCE": {
+      "productLabel": "productA",
+      "sourceLabel": "litre",
+      "targetLabel": "kilogram",
+      "rate": "4/5",
+      "evidenceIdLabel": "evidence",
+      "refusedVariants": ["no retained evidence", "evidence ID alone", "evidence binds productB", "evidence binds different endpoints", "evidence binds different rate", "applicable conditions unbound"],
+      "requiredPositiveMassVolumeWorkflow": "Retained in broad CUP-05 / #17; not claimed implemented by this supplement"
+    },
+    "F-CUA-ACTIVATION": {
+      "historyFixture": "F-CUA-HISTORY",
+      "originalNativeOutput": "N2",
+      "currentGrant": "CATALOG_ACTIVATE/ADMINISTER",
+      "actor": "synthetic-authorized-local-employee",
+      "operationLabel": "operation2",
+      "initialActive": "A1",
+      "expectedActiveAfterSuccess": "A2 from N2, conversion revision2 10/1",
+      "unchangedBusinessState": {"onHandPieces": "24", "inventoryValueMinorEGP": "4800", "cashMinorEGP": "0", "historicalReceipt": "R1 base24 conversionRevision1 12/1"},
+      "rejectedAuthorityVariants": ["current action grant absent", "session revoked or expired", "employee disabled", "unadmitted device", "wrong company or branch", "retired or stale Master", "invalid signature", "unsigned appended definitions", "changed definitions under original signature", "incomplete or conflicting dependencies"],
+      "productionActivationCallAndReadProjection": "UNKNOWN",
+      "productionOriginalResultRecovery": "UNKNOWN"
+    },
+    "F-CUA-CURRENT-USE": {
+      "enteredCartons": "2",
+      "allowedSerialResults": [
+        {"activePublication": "A1", "conversionRevision": "1", "rate": "12/1", "basePieces": "24"},
+        {"activePublication": "A2", "conversionRevision": "2", "rate": "10/1", "basePieces": "20"}
+      ],
+      "unavailableOrConflictingRequiredCurrentHistory": "REFUSE_NEW_DEFINITION_DEPENDENT_OPERATION",
+      "legacyBaseOnlyAndHistoricalContinuity": "Separate; do not invent dimensions or rewrite existing history",
+      "explicitStaleExpectedVersionVariant": "Requires actual bound public expected-version request; no arbitrary failure permitted as race success",
+      "productionCurrentUseCallAndReadProjection": "UNKNOWN"
+    }
+  }
+}

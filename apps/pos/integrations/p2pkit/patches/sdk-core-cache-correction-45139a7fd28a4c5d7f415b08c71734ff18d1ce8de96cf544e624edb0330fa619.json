@@ -1,0 +1,82 @@
+{
+  "androidOwnerCountUnchanged": 7,
+  "cacheSubrecordProtocol": "android-sdk-known-packages-cache-v1",
+  "completeThreeFileSdkDeltaSha256": "0504a538f9f9dcc9a41dfd7c6a9be71b29a4a5f2ff781c9282ebcd0ca705e118",
+  "files": {
+    "gradle.properties": {
+      "after": {
+        "bytes": 1933,
+        "mode": 384,
+        "sha256": "d12d3b6a5bf8094a896ea8351380a1242366a3b77f93de724a031b98f415b19e"
+      },
+      "before": {
+        "bytes": 1933,
+        "mode": 384,
+        "sha256": "f5a6669dcec2997892efc9fb40898c4396ee60b795086fed242a369329df85bb"
+      }
+    },
+    "gradle/ukkera-pos-compile-repository.init.gradle": {
+      "after": {
+        "bytes": 3985,
+        "mode": 384,
+        "sha256": "607f240bded603fd3699b8790acdd5179676cbf8a87502eb5560321ee0414761"
+      },
+      "before": {
+        "bytes": 3985,
+        "mode": 384,
+        "sha256": "d6e33ce3ed1edc1d08e708d0da5dbf854b8537ff117954c91624d1bc94a005e9"
+      }
+    },
+    "library/p2p-core/build.gradle.kts": {
+      "after": {
+        "bytes": 12294,
+        "mode": 384,
+        "sha256": "0296e38ba8f7baf29332a93dd6b32dbf8c44974c7c2c73464ed07e2e2751dcf8"
+      },
+      "before": {
+        "bytes": 12209,
+        "mode": 384,
+        "sha256": "80cbba727483c2a647f9cf494ec7762da30c63531435d554f169ee5e35770ff8"
+      }
+    }
+  },
+  "fullSourceRosterPath": "integrations/p2pkit/compile-full-source-roster-45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619.json",
+  "group": "local.ukkera.pos.p2pkit.s45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619",
+  "held": {
+    "nativeDisclosurePlatformServiceQualification": "REQUIRED_NOT_GRANTED",
+    "sdkQualification": "HELD",
+    "sensitiveRpc": "HELD",
+    "strictPublicSdkOverlayExecution": "REQUIRED_NOT_GRANTED",
+    "wholeProjectLockApiDependencySignatureReview": "REQUIRED_NOT_GRANTED"
+  },
+  "historicalSdkCompileProducerApiDeltaSha256": "129461563bfd34a51d85fb71d76044cc0b0d63fb8448a8d511b2cfd6183b8a88",
+  "historicalSdkPatchSha256": "49f86e84d65d10f120a91b494b655592b21f08ca0c5107ed2fcc0f20e71f7df3",
+  "inputProtocolUnchanged": "android-sdk-eight-roots-v2",
+  "inputRootCountUnchanged": 8,
+  "intendedSdkSourceMode": "0600",
+  "leadOnlyNextSteps": "Review; additive integration; fresh source materialization/input selection; separately owned execution",
+  "moduleDeltaPatch": "integrations/p2pkit/patches/sdk-core-expect-actual-cdd2f87bcf6f40d659375ebea98a10434e52556e5e3ef191aa63c41e1cee7c4b.patch",
+  "moduleDeltaPatchSha256": "cdd2f87bcf6f40d659375ebea98a10434e52556e5e3ef191aa63c41e1cee7c4b",
+  "normalizedRecipePath": "integrations/p2pkit/compile-source-recipe-45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619.json",
+  "onlySdkBehaviorDelta": "library/p2p-core/build.gradle.kts kotlin.compilerOptions.freeCompilerArgs.add(\"-Xexpect-actual-classes\")",
+  "otherSdkDeltas": "Derived GROUP and exporter expectedGroup substitutions only",
+  "parentFullSourceRosterFileSha256": "d1b145a8115ea0627b7e2e6de2e3641bd56a3d1fdef93452f0beef0342b97b6a",
+  "parentSourceRecipeFileSha256": "29199a6f06ce0b675b5daa8e3f833946804f0d5d74339c592a17ac301dee98b3",
+  "parentSourceRecipeSha256": "88547f236d8cbd9c058a3a99ff79f421d30275de2530abe951ba53aa51dfb687",
+  "pendingBindingPath": "integrations/p2pkit/compile-binding-45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619.json",
+  "preserved": [
+    "old recipe/roster/pending-binding versions",
+    "consumed old source",
+    "a001 derivation including validated cache",
+    "all four producer failures and all source archives/seals",
+    "strict checksum metadata and all locks",
+    "SDK17/Kotlin2.4.20/AGP9.3.1/Gradle9.7.0 and POS21/Kotlin2.4.21",
+    "all targets/providers/payload trees",
+    "Werror, source freshness and separate qualification gates"
+  ],
+  "schema": "ukkera.sdk-core-cache-correction/v1",
+  "sdkBaselineAssignment": "50244585b09cd89e5140dbe7ebeccb7d958c356d",
+  "sourceRecipeSha256": "45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619",
+  "status": "SOURCE_ONLY_PROPOSAL_UNMATERIALIZED_UNEXECUTED_NOT_QUALIFIED",
+  "version": "0.8.0"
+}

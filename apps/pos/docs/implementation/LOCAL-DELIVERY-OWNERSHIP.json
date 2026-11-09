@@ -1,0 +1,141 @@
+{
+  "directive_date": "2026-10-24",
+  "updated_utc": "2026-10-24T13:27:59.085653+00:00",
+  "central_phase": "HELD_UNTIL_OWNER_LOCAL_HANDS_ON_APPROVAL",
+  "git_revision_state": "No tracked files or commits; use exact source content manifests, never fabricate commit IDs",
+  "design_isolation": "Fresh contexts and allowlisted spec-only workspace; instruction-enforced, not OS sandbox",
+  "historical_tests": "Regression evidence only, not newly independent-designed acceptance",
+  "components": [
+    {
+      "component": "scope-and-resilience-requirements",
+      "implementer": null,
+      "test_designer": "/root/qa_scope",
+      "test_executor": null,
+      "independent_case_version": "scope-v1",
+      "execution_status": "NOT_EXECUTED",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "local-authentication-and-authorization",
+      "implementer": "/root/independent_review",
+      "test_designer": "/root/qa_auth",
+      "test_executor": "/root/backend",
+      "independent_case_version": "auth-v1",
+      "execution_status": "PARTIAL: 13 frozen auth slices, 7 assertions / 3 cases PARTIAL, no full pass",
+      "freeze_manifest": "../ukkera-pos-independent-qa/freezes/auth-v1/FREEZE-MANIFEST.json",
+      "execution_packet": "../ukkera-pos-independent-qa/executions/auth-v1/20261024T121611.657589Z-execute-d32432281f9644279a78f159f189977d",
+      "execution_launcher": "/root",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "local-read-ingress-runtime-and-configuration",
+      "implementer": "/root",
+      "test_designer": "/root/qa_auth;/root/qa_scope",
+      "test_executor": "/root/backend (auth slices);/root/qa_auth (commerce slices)",
+      "independent_case_version": "auth-v1; scope-v1",
+      "execution_status": "PARTIAL endpoint/auth/Room infrastructure exercised by auth/cash slices; installed runtime/LAN/configuration acceptance NOT_RUN",
+      "freeze_manifest": "../ukkera-pos-independent-qa/freezes/auth-v1/FREEZE-MANIFEST.json",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "sales-cash-orders-returns",
+      "implementer": "/root/sales",
+      "test_designer": "/root/qa_commerce",
+      "test_executor": "/root/qa_auth",
+      "independent_case_version": "commerce-v1",
+      "execution_status": "PARTIAL CASH ONLY: 72 matched component observations, 5 assertions / 2 cases PARTIAL; orders/returns/full cash not accepted",
+      "commerce_freeze_manifest": "../ukkera-pos-independent-qa/freezes/commerce-v1/FREEZE-MANIFEST.json",
+      "execution_packet": "../ukkera-pos-independent-qa/executions/commerce-v1/20261024T121817.436937Z-execute-ac046465e8604449ad71e7dd63a02f22",
+      "execution_launcher": "/root",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "catalog-stock-receiving-purchasing",
+      "implementer": "/root/inventory;/root",
+      "test_designer": "/root/qa_commerce",
+      "test_executor": "/root/qa_auth",
+      "independent_case_version": "commerce-v1",
+      "execution_status": "NEW_SOURCE_AUTHORED_UNCOMPILED_UNEXECUTED; no current workflow acceptance",
+      "commerce_freeze_manifest": "../ukkera-pos-independent-qa/freezes/commerce-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "native-ui-workflows",
+      "implementer": "/root/app_shell",
+      "test_designer": "/root/qa_auth;/root/qa_commerce;/root/qa_scope",
+      "test_executor": null,
+      "independent_case_version": "auth-v1; scope-v1; commerce-v1",
+      "execution_status": "NEW_SOURCE_AUTHORED_UNCOMPILED_UNEXECUTED; no current workflow acceptance",
+      "freeze_manifest": "../ukkera-pos-independent-qa/freezes/auth-v1/FREEZE-MANIFEST.json",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json",
+      "commerce_freeze_manifest": "../ukkera-pos-independent-qa/freezes/commerce-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "backup-recovery-storage",
+      "implementer": "/root/recovery",
+      "test_designer": "/root/qa_scope",
+      "test_executor": null,
+      "independent_case_version": "scope-v1",
+      "execution_status": "NEW_SOURCE_AUTHORED_UNCOMPILED_UNEXECUTED; no current workflow acceptance",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "local-only-verification-tooling",
+      "implementer": "/root/backend",
+      "test_designer": "/root/qa_scope",
+      "test_executor": null,
+      "independent_case_version": "scope-v1",
+      "execution_status": "NOT_EXECUTED",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case implementer mapping remains explicit UNKNOWN pending applicability review; component ownership is not whole-case coverage"
+    },
+    {
+      "component": "jvm-master-host-and-startup-maintenance",
+      "implementer": "/root/recovery; /root (build/composition registration)",
+      "test_designer": "/root/qa_scope",
+      "test_executor": null,
+      "independent_case_version": "scope-v1",
+      "execution_status": "NEW_SOURCE_AUTHORED_UNCOMPILED_UNEXECUTED; no current workflow acceptance",
+      "scope_freeze_manifest": "../ukkera-pos-independent-qa/freezes/scope-v1/FREEZE-MANIFEST.json"
+    },
+    {
+      "component": "durable-company-branch-pricing-and-production-registry",
+      "implementer": "/root; /root/sales (immutable quote companions)",
+      "test_designer": "/root/qa_commerce",
+      "test_executor": null,
+      "independent_case_version": "commerce-v1",
+      "execution_status": "SOURCE_UNCOMPILED_UNEXECUTED; independent source review ongoing, no UI/runtime acceptance",
+      "commerce_freeze_manifest": "../ukkera-pos-independent-qa/freezes/commerce-v1/FREEZE-MANIFEST.json",
+      "per_case_applicability": "Whole-case applicability still explicit UNKNOWN where not reviewed"
+    }
+  ],
+  "tool_failures": [
+    "Additional fresh qa_stock designer spawn failed: agent thread limit reached. Stock responsibilities explicitly reassigned to fresh isolated qa_commerce, resilience to fresh isolated qa_scope.",
+    "Follow-up to prior completed security agent failed: agent thread limit reached. Actual T08 implementation explicitly assigned to existing independent_review agent; its role is now implementer, NOT designer.",
+    "2026-10-24 approximately13:23UTC: independent_review SERIAL source-review turn failed with model token rate limit; resumed once after cooldown, no completed review inferred.",
+    "2026-10-24 approximately13:23UTC: qa_auth CEW harness correction turn failed with model token rate limit; partial source not sealed/frozen, resumed once after cooldown."
+  ],
+  "traceability_register": "../ukkera-pos-independent-qa/executions/traceability-v1/matrix.json",
+  "all_case_execution_status": "5 PARTIAL / 406 NOT_RUN; 12 PARTIAL / 1391 NOT_RUN assertions; zero full assertion/case/scenario passes; audited imports pinned to bc1708",
+  "execution_launcher": {
+    "actor": "/root",
+    "provenance": "Lead-attested command launches; wiring executors independently specified runners; not OS-audited identity"
+  },
+  "audited_execution_source": "bc1708a6b8a8369261cfe2df084de6e88a7ed8dc68b4f8d305faac8409440bbe",
+  "compile_only_source": "14e70ac1307cfcd2f24d47f87c857b6be3e68ad99e7f22d070c06844be19b1f1",
+  "compile_only_packet": ".workspace/evidence/local-delivery-20261024/20261024T122715.366465Z-ui-build-14b220c5854a403d8b0d839f1bfa822d",
+  "traceability_import_report": "../ukkera-pos-independent-qa/executions/traceability-v1/IMPORT-REPORT-v1.json",
+  "current_source_qualification": "NEW_COMBINED_CUT_UNCOMPILED_UNEXECUTED; independent source corrections are not runtime acceptance",
+  "new_auth_binding": "../ukkera-pos-independent-qa/wiring/auth-v1/wiring-v3.json",
+  "new_commerce_binding": "../ukkera-pos-independent-qa/wiring/commerce-v1/BINDING-v2.json",
+  "new_bindings_status": "AUTH_V3_AUTHORED_NOT_EXECUTED; COMMERCE_V2_NOT_FROZEN_PENDING_CEW_01_02_03_CORRECTIONS_AND_INDEPENDENT_REREVIEW",
+  "pending_tooling_findings": [
+    "CEW-01 real initiating response suppression",
+    "CEW-02 original reply identity and required fields",
+    "CEW-03 both exact distinct-race staged intents"
+  ]
+}

@@ -1,0 +1,1048 @@
+{
+  "design_id": "supplier-reference-v2",
+  "version": "1.0.0",
+  "case_version": "SUPPLIER-REFERENCE-V2-CASES-1.0.0",
+  "status": "FROZEN_BEFORE_EXECUTION",
+  "execution_status": "NOT RUN",
+  "date": "2026-11-06",
+  "tested_revision": null,
+  "execution_evidence": null,
+  "purpose": "Synthetic semantic business inputs and independent observable oracles; not an invented wire/store schema or an application execution.",
+  "scope": {
+    "directory_reference_only": true,
+    "directory_uniqueness_assumed": false,
+    "new_tax_contact_invoice_item_mapping_or_central_scope": false,
+    "original_supplier_workflow_obligations_preserved": true
+  },
+  "contracts": [
+    {
+      "file": "../../contracts/LOCAL-SUPPLIER-REFERENCE-V2.md",
+      "version": 2
+    },
+    {
+      "file": "../../contracts/local-supplier-rpc-workflow-v1.md",
+      "version": 1
+    }
+  ],
+  "identities": {
+    "organization": "b21f0000-0000-4000-8000-000000000001",
+    "company": "b21f0000-0000-4000-8000-000000000010",
+    "branch": "b21f0000-0000-4000-8000-000000000011",
+    "other_branch": "b21f0000-0000-4000-8000-000000000012",
+    "other_company": "b21f0000-0000-4000-8000-000000000020",
+    "other_company_branch": "b21f0000-0000-4000-8000-000000000021",
+    "original_employee": "b21f0000-0000-4000-8000-000000000031",
+    "other_employee": "b21f0000-0000-4000-8000-000000000032",
+    "delegated_local_administrator": "b21f0000-0000-4000-8000-000000000034",
+    "master": "b21f0000-0000-4000-8000-000000000041",
+    "client": "b21f0000-0000-4000-8000-000000000042",
+    "other_client": "b21f0000-0000-4000-8000-000000000043",
+    "LEGACY_supplier": "b21f0000-0000-4000-8000-000000000101",
+    "CURRENT_supplier": "b21f0000-0000-4000-8000-000000000102",
+    "FILTER_supplier": "b21f0000-0000-4000-8000-000000000103"
+  },
+  "operation_ids": {
+    "create_v1": "b21f0000-0000-4000-8000-000000000201",
+    "create_v2": "b21f0000-0000-4000-8000-000000000202",
+    "create_filter": "b21f0000-0000-4000-8000-000000000203",
+    "set_reference": "b21f0000-0000-4000-8000-000000000301",
+    "replace_reference": "b21f0000-0000-4000-8000-000000000302",
+    "clear_reference": "b21f0000-0000-4000-8000-000000000303",
+    "names_only_v2": "b21f0000-0000-4000-8000-000000000304",
+    "names_active_v1_omission": "b21f0000-0000-4000-8000-000000000305",
+    "race_set": "b21f0000-0000-4000-8000-000000000401",
+    "race_clear": "b21f0000-0000-4000-8000-000000000402",
+    "NFC_original": "b21f0000-0000-4000-8000-000000000403",
+    "later_staged_intent": "b21f0000-0000-4000-8000-000000000501"
+  },
+  "binding_rules": {
+    "synthetic_setup": "Already-provisioned qualified local identity/native admission; actual production supplier commands and durable history, no direct-storage positive seed.",
+    "identity_only": "If the genuine public creation owns ID generation, bind generated IDs before use without changing role/actor/operation/history. Bind actual storage/aggregate revisions and original native result/time/producer cut; do not force counters.",
+    "independent_reset": "Each primary case, vector, authority/capability/fault variant starts independently; same IDs never retag an earlier operation in one history.",
+    "source_custody": "Actual retained selected original physical Master/Client attachment and genuine native intent/credential/storage lifetime; no cohost credentials or in-memory journal.",
+    "no_effects_observer": "Fresh separately authorized before/after directory/result/native history plus stock/payable/cash views; not only returned DTO or mocked counters."
+  },
+  "names": {
+    "initial": {
+      "english": "Atlas Supply",
+      "arabic": "توريد أطلس"
+    },
+    "edited_names": {
+      "english": "Atlas Supply Updated",
+      "arabic": "توريد أطلس محدث"
+    },
+    "filter": {
+      "english": "Cedar Supply",
+      "arabic": "توريد الأرز"
+    }
+  },
+  "seed_states": {
+    "LEGACY": {
+      "creation_version": 1,
+      "reference_member": "OMITTED_OLD_FORMAT",
+      "recorded_reference": null,
+      "active": true,
+      "names_ref": "names.initial"
+    },
+    "CURRENT": {
+      "creation_version": 2,
+      "reference_input": "LITERAL",
+      "reference_oracle_vector_id": "LITERAL",
+      "active": true,
+      "names_ref": "names.initial"
+    },
+    "FILTER": {
+      "creation_version": 2,
+      "reference_input": "MIXED",
+      "active": true,
+      "names_ref": "names.filter"
+    }
+  },
+  "reference_contract": {
+    "presence": "Absent is not recorded; present is Code(original, equal normalized key, EXACT_V1).",
+    "utf16_code_units_min": 1,
+    "utf16_code_units_max": 256,
+    "surrogate_pairing": "valid only",
+    "normalization_marker": "EXACT_V1",
+    "trim_casefold_number_parse_or_unicode_normalize": false,
+    "editor_empty_maps_to": "EXPLICIT_NULL",
+    "whitespace_nonempty_is_literal": true,
+    "new_control_character_restriction": false
+  },
+  "valid_values": [
+    {
+      "id": "LITERAL",
+      "value": " 0007-Ab  ",
+      "utf16_code_units": 10,
+      "expected": {
+        "original": " 0007-Ab  ",
+        "normalized_key": " 0007-Ab  ",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "MIXED",
+      "value": "مورد-0007-A😀 ",
+      "utf16_code_units": 14,
+      "expected": {
+        "original": "مورد-0007-A😀 ",
+        "normalized_key": "مورد-0007-A😀 ",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "NFC",
+      "value": "Café-01",
+      "utf16_code_units": 7,
+      "expected": {
+        "original": "Café-01",
+        "normalized_key": "Café-01",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "NFD",
+      "value": "Café-01",
+      "utf16_code_units": 8,
+      "expected": {
+        "original": "Café-01",
+        "normalized_key": "Café-01",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "SPACE",
+      "value": " ",
+      "utf16_code_units": 1,
+      "expected": {
+        "original": " ",
+        "normalized_key": " ",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "ONE",
+      "value": "Z",
+      "utf16_code_units": 1,
+      "expected": {
+        "original": "Z",
+        "normalized_key": "Z",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "BMP256",
+      "value": "مممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممم",
+      "utf16_code_units": 256,
+      "expected": {
+        "original": "مممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممم",
+        "normalized_key": "مممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممم",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "ASCII256",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "utf16_code_units": 256,
+      "expected": {
+        "original": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "normalized_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "PAIR256",
+      "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+      "utf16_code_units": 256,
+      "expected": {
+        "original": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "normalized_key": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "PAIR_AT_END256",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA😀",
+      "utf16_code_units": 256,
+      "expected": {
+        "original": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA😀",
+        "normalized_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA😀",
+        "normalization_marker": "EXACT_V1"
+      }
+    },
+    {
+      "id": "ESCAPE256",
+      "value": "\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"",
+      "utf16_code_units": 256,
+      "expected": {
+        "original": "\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"",
+        "normalized_key": "\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"\\\"",
+        "normalization_marker": "EXACT_V1"
+      }
+    }
+  ],
+  "invalid_values": [
+    {
+      "id": "PRESENT_EMPTY",
+      "input_role": "non-null present reference, not empty-editor mapping",
+      "utf16_hex_units": [],
+      "reason": "zero code units"
+    },
+    {
+      "id": "ASCII257",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "utf16_code_units": 257,
+      "reason": "257 exceeds 256"
+    },
+    {
+      "id": "PAIR257",
+      "value": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀A",
+      "utf16_code_units": 257,
+      "reason": "257 exceeds 256 despite 129 scalar values"
+    },
+    {
+      "id": "PAIR_AT_END257",
+      "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA😀",
+      "utf16_code_units": 257,
+      "reason": "pair cannot be truncated to fit"
+    },
+    {
+      "id": "HIGH_ONLY",
+      "utf16_hex_units": [
+        "D83D"
+      ],
+      "reason": "unpaired high surrogate"
+    },
+    {
+      "id": "LOW_ONLY",
+      "utf16_hex_units": [
+        "DE00"
+      ],
+      "reason": "unpaired low surrogate"
+    },
+    {
+      "id": "REVERSED_PAIR",
+      "utf16_hex_units": [
+        "DE00",
+        "D83D"
+      ],
+      "reason": "invalid pairing"
+    },
+    {
+      "id": "HIGH_THEN_ASCII",
+      "utf16_hex_units": [
+        "D83D",
+        "0041"
+      ],
+      "reason": "high surrogate not followed by low surrogate"
+    }
+  ],
+  "literal_conflicts": {
+    "TRIMMED_LITERAL": "0007-Ab",
+    "CASE_CHANGED_LITERAL": " 0007-ab  ",
+    "LITERAL_PLUS_SPACE": " 0007-Ab   ",
+    "NFC_original": "Café-01",
+    "NFD_changed": "Café-01"
+  },
+  "maximum_valid_names": {
+    "english": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    "arabic": "مممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممممم",
+    "existing_name_bound_characters": 160,
+    "reference_vector": "ESCAPE256",
+    "assertion": "Exact valid domain values survive strict finite actual outer encoding; no truncation/reduced domain limit/accepting complete empty result."
+  },
+  "V1_pretransition_binding": {
+    "required_before_compatible_transition": [
+      "Exact original canonical V1 create/update business payload bytes",
+      "Exact original typed V1 result body bytes",
+      "Immutable original V1 supplier and operation/effect record bytes",
+      "Unchanged qualified V1 field grammar and supported schema identity",
+      "Genuine original actor/operation/digest/native prior/source dependencies"
+    ],
+    "captured_from": "Genuine original V1 production workflow before the compatible reference transition, never selected to match later V2-aware output.",
+    "expected_after": "Byte-for-byte retained originals and exact V1 grammar; no new reference field or original evidence rewrite.",
+    "literal_wire_golden_supplied_by_assigned_contracts": false,
+    "old_binary_test_claimed_without_execution": false,
+    "transport_incarnation_is_business_golden": false
+  },
+  "authority_variants": [
+    {
+      "id": "READ_ONLY",
+      "purchasing_read": true,
+      "supplier_administration": false,
+      "original_recovery": false,
+      "read": "allowed current scoped directory",
+      "edit": "denied"
+    },
+    {
+      "id": "ADMIN_WITHOUT_READ",
+      "purchasing_read": false,
+      "supplier_administration": true,
+      "read": "denied; admin grant does not imply supplier read"
+    },
+    {
+      "id": "NO_RECOVERY",
+      "purchasing_read": true,
+      "supplier_administration": true,
+      "original_recovery": false,
+      "original_lookup": "denied"
+    },
+    {
+      "id": "OTHER_ORIGINAL_ACTOR",
+      "purchasing_read": true,
+      "supplier_administration": true,
+      "original_recovery": true,
+      "current_scoped_directory": "allowed if independently currently granted",
+      "adopt_or_release_other_actor_original": "denied or identity conflict"
+    },
+    {
+      "id": "WRONG_SCOPE",
+      "targets": [
+        "other_branch",
+        "other_company_branch"
+      ],
+      "allowed": false
+    },
+    {
+      "id": "INVALID_CURRENT_IDENTITY",
+      "variants": [
+        "unadmitted_or_revoked_device",
+        "expired_or_revoked_session",
+        "disabled_account"
+      ],
+      "allowed": false
+    }
+  ],
+  "capability_variants": [
+    {
+      "id": "V1_ONLY",
+      "supplier_commands": [
+        1
+      ],
+      "supplier_reads": [
+        1
+      ],
+      "new_reference_form": "blocked",
+      "legacy_pending_recovery": "original V1 only"
+    },
+    {
+      "id": "V2_SUPPORTED",
+      "supplier_commands": [
+        1,
+        2
+      ],
+      "supplier_reads": [
+        1,
+        2
+      ],
+      "new_reference_form": "select V2 before request under current authority"
+    },
+    {
+      "id": "COMMAND2_READ1",
+      "supplier_commands": [
+        1,
+        2
+      ],
+      "supplier_reads": [
+        1
+      ],
+      "new_reference_form": "blocked"
+    },
+    {
+      "id": "COMMAND1_READ2",
+      "supplier_commands": [
+        1
+      ],
+      "supplier_reads": [
+        1,
+        2
+      ],
+      "new_reference_form": "blocked"
+    },
+    {
+      "id": "SELECTED_V2_FAILURE",
+      "failures": [
+        "denied",
+        "failed",
+        "malformed",
+        "missing_support"
+      ],
+      "V1_fallback_write_count": 0
+    },
+    {
+      "id": "PENDING_V2_AFTER_SUPPORT_REMOVED",
+      "pending_original_version": 2,
+      "current_support": [
+        1
+      ],
+      "expected": "original V2 retained; recovery unavailable, no downgrade/rekey/guessed absence"
+    },
+    {
+      "id": "SUPPLIERS_RESTRICTED",
+      "other_profiles": [
+        "warehouse",
+        "catalog",
+        "financial"
+      ],
+      "other_workflow_advertised_or_enabled": false
+    }
+  ],
+  "no_effects": {
+    "rejected_supplier_mutations": 0,
+    "stock_effects": 0,
+    "new_invoices_or_supplier_payable_effects": 0,
+    "payments_or_cash_movements": 0,
+    "successful_reference_edit_scope": "One logical supplier mutation plus its normal original documentary result/audit/outbox only.",
+    "retry_duplicate_original_effects": 0,
+    "allowed_diagnostics": "Authorized refusal/security bookkeeping only; no original actor/result rewrite."
+  },
+  "cases": [
+    {
+      "id": "SREF2-001",
+      "fixture": "isolated V2 creation per null/valid/invalid vector",
+      "inputs": {
+        "valid_ref": "valid_values",
+        "invalid_ref": "invalid_values",
+        "null": "EXPLICIT_NULL",
+        "outer_encoding": "maximum_valid_names plus ESCAPE256"
+      },
+      "expected": {
+        "valid": "One committed supplier, exact original/key/EXACT_V1 or not-recorded for null",
+        "invalid": "REFUSED; zero supplier/stock/payable/cash effects; no normalization/truncation/default null"
+      },
+      "sources": [
+        "R2-V",
+        "R2-W",
+        "S1-D",
+        "S1-C",
+        "D2"
+      ],
+      "scenarios": [
+        "UX-01"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-UX-01",
+        "Q-UX-02"
+      ],
+      "layers": [
+        "supporting L1",
+        "required L2/L3"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "PROTECTED_SAME_DEVICE",
+        "ADMITTED_SUPPLIERS_RPC"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-002",
+      "fixture": "LEGACY then independent CURRENT full-state edit sequences",
+      "inputs": {
+        "sequence": [
+          "set LITERAL",
+          "V2 preload then edited_names/false preserving LITERAL",
+          "replace MIXED",
+          "explicit null clear"
+        ],
+        "editor_mapping": {
+          "empty": "EXPLICIT_NULL",
+          "SPACE": "PRESENT SPACE"
+        }
+      },
+      "expected": {
+        "sequence_reference_states": [
+          "LITERAL",
+          "LITERAL",
+          "MIXED",
+          null
+        ],
+        "previous_results": "Exact own-cut reference/names/active retained",
+        "supplier_id": "unchanged",
+        "new_original_operation_per_accepted_step": true
+      },
+      "sources": [
+        "R2-V",
+        "R2-W",
+        "R2-A",
+        "R2-R",
+        "S1-D",
+        "D5"
+      ],
+      "scenarios": [
+        "CFG-03"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-03",
+        "Q-UX-01",
+        "Q-UX-02"
+      ],
+      "layers": [
+        "supporting L1 form",
+        "required L2/L3"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "PROTECTED_SAME_DEVICE",
+        "ADMITTED_SUPPLIERS_RPC"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-003",
+      "fixture": "genuine V1 pre-transition originals; CURRENT prior record",
+      "inputs": {
+        "old_bytes_ref": "V1_pretransition_binding",
+        "names_active_update_version": 1,
+        "reference_member": "OMITTED_AS_OLD_GRAMMAR",
+        "later_clear_version": 2
+      },
+      "expected": {
+        "old_original_business_bytes": "byte-for-byte unchanged",
+        "old_record_rewrite": false,
+        "V1_reference_field_added_or_unknown_member_ignored": false,
+        "reference_after_V1_update": "LITERAL",
+        "after_later_V2_clear_current": null,
+        "V1_original_effect_reference": "LITERAL from genuine prior record",
+        "cross_version_old_binary_claim": false
+      },
+      "sources": [
+        "R2-W",
+        "S1-D",
+        "S1-C",
+        "D5",
+        "D10"
+      ],
+      "scenarios": [
+        "REL-04"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-03",
+        "Q-RES-02",
+        "Q-RES-09"
+      ],
+      "layers": [
+        "supporting L1 grammar",
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "N4",
+        "PROTECTED_SAME_DEVICE",
+        "ADMITTED_SUPPLIERS_RPC"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-004",
+      "fixture": "CURRENT actual storage r0",
+      "inputs": {
+        "candidate_A": "full-state MIXED",
+        "candidate_B": "full-state EXPLICIT_NULL",
+        "same_expected_storage_revision": "actual r0",
+        "distinct_operation_ids": [
+          "race_set",
+          "race_clear"
+        ]
+      },
+      "expected": {
+        "set_first": "Exactly one COMMITTED; current MIXED; clear REVISION_CONFLICT",
+        "clear_first": "Exactly one COMMITTED; current not-recorded; set REVISION_CONFLICT",
+        "barrier_race_allowed_current_refs": [
+          "MIXED",
+          null
+        ],
+        "loser_supplier_effects": 0,
+        "winner_original_retry": "same original result; no additional mutation"
+      },
+      "sources": [
+        "R2-W",
+        "R2-A",
+        "S1-D",
+        "D5"
+      ],
+      "scenarios": [
+        "REL-10"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-01",
+        "Q-RES-02"
+      ],
+      "layers": [
+        "supporting L1",
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "N4",
+        "BOTH_SERIAL_ORDERS",
+        "DETERMINISTIC_BARRIER",
+        "BOTH_PROTECTED_PATHS"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-005",
+      "fixture": "original SET then later separate replace and clear",
+      "inputs": {
+        "original_ref": "LITERAL",
+        "later_refs": [
+          "MIXED",
+          null
+        ],
+        "identical_retry_count": 2,
+        "changed_reference_same_id": [
+          "EXPLICIT_NULL",
+          "TRIMMED_LITERAL",
+          "CASE_CHANGED_LITERAL",
+          "LITERAL_PLUS_SPACE"
+        ],
+        "canonical_unicode_conflict": [
+          "NFC",
+          "NFD"
+        ]
+      },
+      "expected": {
+        "original_status": "COMMITTED",
+        "original_reference": "LITERAL",
+        "current_reference_after_lookup_retry": null,
+        "additional_supplier_mutations_from_retries": 0,
+        "changed_payload_status": "OPERATION_PAYLOAD_MISMATCH",
+        "other_actor": "DENIED_OR_IDENTITY_CONFLICT; no private original disclosure"
+      },
+      "sources": [
+        "R2-V",
+        "R2-W",
+        "R2-A",
+        "S1-D",
+        "D5"
+      ],
+      "scenarios": [
+        "REL-04"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-RES-02"
+      ],
+      "layers": [
+        "supporting L1",
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "N4",
+        "BOTH_PROTECTED_PATHS"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-006",
+      "fixture": "independent authority_variants and ordered revocation cuts",
+      "inputs": {
+        "authority_ref": "authority_variants",
+        "races": [
+          "revoke before writer admission",
+          "revoke after check before protected output commit",
+          "durable edit before revocation"
+        ]
+      },
+      "expected": {
+        "denied_supplier_effects": 0,
+        "unauthorized_reference_or_original_disclosure": false,
+        "postcommit_rollback": false,
+        "original_actor_result_identity_retained": true,
+        "fresh_access_after_reauthentication": "Current actual required grants only"
+      },
+      "sources": [
+        "R2-A",
+        "S1-A",
+        "D2",
+        "D5",
+        "C1",
+        "C2"
+      ],
+      "scenarios": [
+        "OWN-01",
+        "OWN-02",
+        "CFG-03",
+        "CFG-05",
+        "CFG-06"
+      ],
+      "gates": [
+        "Q-SEC-01",
+        "Q-SEC-04",
+        "Q-SEC-06",
+        "Q-SEC-09"
+      ],
+      "layers": [
+        "supporting L1",
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "N4",
+        "BOTH_PROTECTED_PATHS"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-007",
+      "fixture": "capability_variants and strict bounded legacy suppliers",
+      "inputs": {
+        "capability_ref": "capability_variants",
+        "chosen_V2_failures": [
+          "denial",
+          "transport_failure",
+          "malformed_result",
+          "missing_required_support"
+        ],
+        "page_size_inputs": [
+          0,
+          1,
+          50,
+          51
+        ]
+      },
+      "expected": {
+        "new_reference_form": "Requires V2 command/read; unavailable/partial blocks",
+        "V1_fallback_write_count": 0,
+        "pending_original_version_changed": false,
+        "other_workflow_enabled": false,
+        "page_bound": "1..50 unchanged; outside bound refuses",
+        "continuation_and_observed_branch_revision": "truthful, no merged immutable report across changed cuts"
+      },
+      "sources": [
+        "R2-R",
+        "S1-S",
+        "S1-A",
+        "S1-C",
+        "D10"
+      ],
+      "scenarios": [
+        "OWN-01",
+        "CFG-03"
+      ],
+      "gates": [
+        "Q-SEC-01",
+        "Q-SEC-09",
+        "Q-DB-02"
+      ],
+      "layers": [
+        "supporting L1",
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "N3",
+        "N4",
+        "BOTH_PROTECTED_PATHS"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-008",
+      "fixture": "genuine actor/device/branch durable pending original V1 or V2",
+      "inputs": {
+        "delivery_cuts": [
+          "reply lost after commit",
+          "cancel/disconnect while outcome uncertain"
+        ],
+        "close": "actual native confirmed orderly close; fresh handles",
+        "ack": [
+          "unknown-undisplayed must not clear",
+          "displayed original only",
+          "stale original ACK versus later staged intent"
+        ]
+      },
+      "expected": {
+        "uncertain_client_state": "OUTCOME_UNKNOWN",
+        "original_ID_version_digest_actor_payload_keys": "retained",
+        "automatic_login": false,
+        "replacement_empty_intent_history": false,
+        "recovered_result": "same genuine original under current authorized original owner",
+        "identical_retry_count": 2,
+        "additional_supplier_effects": 0,
+        "ack_business_effects": 0
+      },
+      "sources": [
+        "R2-A",
+        "R2-R",
+        "S1-A",
+        "S1-D",
+        "S1-C",
+        "D5"
+      ],
+      "scenarios": [
+        "OWN-02",
+        "REL-03",
+        "REL-04",
+        "REL-10"
+      ],
+      "gates": [
+        "Q-DB-03",
+        "Q-DB-06",
+        "Q-RES-02",
+        "Q-RES-09",
+        "Q-SEC-04",
+        "Q-SEC-09"
+      ],
+      "layers": [
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N3",
+        "N4",
+        "N5",
+        "PROTECTED_SAME_DEVICE",
+        "ADMITTED_SUPPLIERS_RPC",
+        "V1_PENDING",
+        "V2_PENDING"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-009",
+      "fixture": "disposable synthetic actual production originals/prior/native cuts",
+      "inputs": {
+        "faults": [
+          "before durable atomic commit",
+          "required original/prior/native evidence unreadable or corrupt",
+          "unknown supplier schema",
+          "schema/body mismatch",
+          "EXACT_V1 key differs from original",
+          "all conclusive outcome proof unavailable"
+        ]
+      },
+      "expected": {
+        "precommit_partial_supplier_or_orphan_success_effects": 0,
+        "committed_cut": "complete genuine original once",
+        "dependent_source_failure": "truthful refusal/unavailable; never accepting absent/empty/repair",
+        "all_conclusive_proof_absence": "same original unresolved recovery",
+        "evidence_restored": "same pre-fault original result/actor/reference/revision; no new edit"
+      },
+      "sources": [
+        "R2-W",
+        "R2-A",
+        "R2-B",
+        "S1-D",
+        "S1-C",
+        "D5",
+        "D10"
+      ],
+      "scenarios": [
+        "REL-04",
+        "REL-10"
+      ],
+      "gates": [
+        "Q-DB-02",
+        "Q-DB-03",
+        "Q-DB-06",
+        "Q-RES-02",
+        "Q-RES-09"
+      ],
+      "layers": [
+        "required L2/L3/L5"
+      ],
+      "variants": [
+        "N4",
+        "N5",
+        "EACH_APPLICABLE_PRODUCTION_NATIVE_DRIVER",
+        "BOTH_PROTECTED_PATHS"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-010",
+      "fixture": "shared V2 form/current detail/original result, optional displayed-page filter",
+      "inputs": {
+        "references": [
+          "LITERAL",
+          "MIXED",
+          "SPACE"
+        ],
+        "editor_empty": "EXPLICIT_NULL",
+        "languages": [
+          "English",
+          "Arabic"
+        ],
+        "layouts": [
+          "LTR",
+          "RTL",
+          "compact",
+          "expanded"
+        ],
+        "optional_filter": "Exact reference key only alongside unchanged existing name search on the current displayed page"
+      },
+      "expected": {
+        "reference_field_and_label": "separate from names/ID/active, exact value preserved",
+        "preload_names_only_submit": "current exact reference retained",
+        "current_after_clear": null,
+        "older_SET_result": "own exact original reference, distinctly labeled original",
+        "unsupported_or_denied_fallback_write_count": 0,
+        "private_frame_before_current_validation": false,
+        "optional_offpage_filter": "no complete-directory/uniqueness/cross-branch claim"
+      },
+      "sources": [
+        "R2-R",
+        "S1-S",
+        "S1-C",
+        "C8"
+      ],
+      "scenarios": [
+        "OWN-02"
+      ],
+      "gates": [
+        "Q-UX-01",
+        "Q-UX-02",
+        "Q-UX-03",
+        "Q-NAV-06",
+        "Q-NAV-07"
+      ],
+      "layers": [
+        "supporting shared L1/UI semantics",
+        "required production-bound application integration; installed/device separate"
+      ],
+      "variants": [
+        "N1",
+        "N2",
+        "ENGLISH",
+        "ARABIC",
+        "CURRENT_AUTH",
+        "OPTIONAL_FILTER_IF_ENABLED"
+      ],
+      "execution_status": "NOT RUN"
+    }
+  ],
+  "device_cases": [
+    {
+      "id": "SREF2-D01",
+      "mapped_primary": [
+        "SREF2-001",
+        "SREF2-002",
+        "SREF2-006",
+        "SREF2-007",
+        "SREF2-010"
+      ],
+      "platforms": [
+        "Windows",
+        "macOS",
+        "Android",
+        "iPhone",
+        "iPad"
+      ],
+      "Android_minimum": "API24+",
+      "other_minimum_os": "Record established supported floor before execution; no invented numeric minimum.",
+      "variants": [
+        "installed shared English/Arabic form",
+        "input methods",
+        "LTR/RTL",
+        "text scaling",
+        "emulator/simulator recorded separately from physical devices"
+      ],
+      "execution_status": "NOT RUN"
+    },
+    {
+      "id": "SREF2-D02",
+      "mapped_primary": [
+        "SREF2-003",
+        "SREF2-005",
+        "SREF2-006",
+        "SREF2-008",
+        "SREF2-009"
+      ],
+      "platforms": [
+        "Windows",
+        "macOS",
+        "Android",
+        "iPhone",
+        "iPad"
+      ],
+      "variants": [
+        "actual native Master/Client lifetime/storage/keys",
+        "retained admitted physical RPC",
+        "actual close/reopen",
+        "supported mobile/desktop hosting contracts"
+      ],
+      "missing_native_composition_is_deferred_pass": false,
+      "physical_iPhone_iPad_requires_actual_devices": true,
+      "execution_status": "NOT RUN"
+    }
+  ],
+  "required_nondevice": "Production L2/L3/L5, fresh durable native observations, current Master authority, genuine actor/device intent custody, same-device protected adapter and admitted SUPPLIERS RPC. Supporting pure/codec/port/UI-model checks do not replace these.",
+  "old_workflow_preservation": "V1 names/active and 160-character bounds, page1..50/continuation/observed branch revisions, independent current grants, exact retained physical owner, durable staging/original recovery/cancel/ACK/restart and finite strict codec envelopes remain required.",
+  "execution_prerequisites": [
+    "Qualified genuine original V1 pre-transition bytes/records and unchanged field grammar frozen before comparison; no invented literal old-binary golden",
+    "Existing V1/V2 command/read/result/store schema and strict codec binding without changing semantic oracles",
+    "Genuine current grants/admitted original physical Master/Client/native intent/storage/key/producer and prior-record evidence",
+    "Actual storage versus aggregate revision bindings and original result/time/operation identities",
+    "Production native close/reopen, RPC/authorization/writer/output/fault scheduling bindings and exact tested revision",
+    "Original required production integration plus separately recorded minimum-OS/device/owner campaigns"
+  ],
+  "unresolved_business_requirements": [],
+  "central_status": "HELD",
+  "frozen_case_ids": [
+    "SREF2-001",
+    "SREF2-002",
+    "SREF2-003",
+    "SREF2-004",
+    "SREF2-005",
+    "SREF2-006",
+    "SREF2-007",
+    "SREF2-008",
+    "SREF2-009",
+    "SREF2-010",
+    "SREF2-D01",
+    "SREF2-D02"
+  ]
+}

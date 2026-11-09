@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "status": "REQUIRED_NOT_INSTALLED",
+  "notes": [
+    "Source compound_indexes generates NON-UNIQUE indexes; this file is a migration requirement pending adapter/index review, not executable migration evidence.",
+    "Every tenant field is required. Never use missing/null scope or ObjectID conversion.",
+    "DomainId and explicit Mongo _id are the same UUID string. Do not rely on the generic Creating() fallback.",
+    "A production adapter must also validate every shared Org/Company/Branch relation in its atomic admission snapshot.",
+    "Accepted AND quarantined receipts reserve journal positions; conflicts are retained separately and cannot replace either receipt.",
+    "The protected per-entity domain/native mapping registry and its bidirectional unique indexes are separate required work; the seven-model probe is not that registry."
+  ],
+  "unique": [
+    {"collection": "branch_pos__company_profile", "fields": ["org", "company"]},
+    {"collection": "branch_pos__branch_binding", "fields": ["org", "company", "branch"]},
+    {"collection": "branch_pos__operation_evidence", "fields": ["branch", "operation_id"]},
+    {"collection": "branch_pos__operation_evidence", "fields": ["branch", "authority_epoch", "journal_sequence"]},
+    {"collection": "branch_pos__ingestion_receipt", "fields": ["branch", "operation_id"]},
+    {"collection": "branch_pos__ingestion_receipt", "fields": ["branch", "authority_epoch", "journal_sequence"]},
+    {"collection": "branch_pos__ingestion_checkpoint", "fields": ["branch", "authority_epoch", "stream"]},
+    {"collection": "branch_pos__quarantine_envelope", "fields": ["branch", "operation_id", "content_hash"]},
+    {"collection": "branch_pos__projection_job", "fields": ["branch", "operation_id", "destination"]}
+  ]
+}

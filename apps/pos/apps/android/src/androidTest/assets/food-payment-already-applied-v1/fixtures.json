@@ -1,0 +1,75 @@
+{
+  "fixture_version": "1.0.0",
+  "notation": "Business-level synthetic facts; keys are specification labels, not a claimed serializer schema. Identity labels resolve through ids to exact UUIDs. Monetary amounts are integer EGP minor-unit strings; ingredient quantities are exact base-unit strings. Stable fixture UUIDs do not qualify production UUID generation.",
+  "ids": {
+    "organization": "712dcf98-d37f-4c1e-9acf-000000000001",
+    "food_company": "712dcf98-d37f-4c1e-9acf-000000000002",
+    "other_company": "712dcf98-d37f-4c1e-9acf-000000000003",
+    "branch": "712dcf98-d37f-4c1e-9acf-000000000004",
+    "other_branch": "712dcf98-d37f-4c1e-9acf-000000000005",
+    "actor_a": "712dcf98-d37f-4c1e-9acf-000000000006",
+    "actor_b": "712dcf98-d37f-4c1e-9acf-000000000007",
+    "supervisor": "712dcf98-d37f-4c1e-9acf-000000000008",
+    "device_a": "712dcf98-d37f-4c1e-9acf-000000000009",
+    "device_b": "712dcf98-d37f-4c1e-9acf-00000000000a",
+    "auth_session_a": "712dcf98-d37f-4c1e-9acf-00000000000b",
+    "reauth_session_a": "712dcf98-d37f-4c1e-9acf-00000000000c",
+    "drawer_a": "712dcf98-d37f-4c1e-9acf-00000000000d",
+    "drawer_b": "712dcf98-d37f-4c1e-9acf-00000000000e",
+    "cash_session_a": "712dcf98-d37f-4c1e-9acf-00000000000f",
+    "cash_session_b": "712dcf98-d37f-4c1e-9acf-000000000010",
+    "order": "712dcf98-d37f-4c1e-9acf-000000000011",
+    "collection": "712dcf98-d37f-4c1e-9acf-000000000012",
+    "attempt": "712dcf98-d37f-4c1e-9acf-000000000013",
+    "original_recording": "712dcf98-d37f-4c1e-9acf-000000000014",
+    "operation": "712dcf98-d37f-4c1e-9acf-000000000015",
+    "cash_movement": "712dcf98-d37f-4c1e-9acf-000000000016",
+    "portion_1": "712dcf98-d37f-4c1e-9acf-000000000017",
+    "portion_2": "712dcf98-d37f-4c1e-9acf-000000000018",
+    "wrong_identity": "712dcf98-d37f-4c1e-9acf-000000000019"
+  },
+  "FAA-F01": {
+    "prerequisite": "One genuinely retained native CASH original with authentic source identities and original-before observations is already durably accounted exactly once, and a genuine ordinary ApplyOriginal AlreadyApplied outcome has been prepared/committed as operation. It cannot be supplied by a request DTO, fabricated callback, RecordOriginal RPC or replay of an earlier Applied result. Production source qualification and prerequisite setup are subject to FAA-Q01/FAA-Q02; no new action or replacement identity is prescribed.",
+    "profile": "FOOD_CASH_FINANCIAL",
+    "procedures_version": "1",
+    "original_identity": {
+      "organization": "organization", "company": "food_company", "branch": "branch",
+      "actor": "actor_a", "operation": "operation", "command_key": "sales.food.payment",
+      "command_version": "1", "canonical_body_kind": "ApplyOriginal",
+      "order": "order", "collection": "collection", "cash_session": "cash_session_a",
+      "attempt": "attempt", "recording": "original_recording",
+      "source_revision_rule": "Retain the genuine original-before observations established by the prerequisite; no numeric internal revisions or their wire format are prescribed.",
+      "canonical_body_and_semantic_digest": "Pin the actual public canonical body and versioned digest for these immutable facts before Stage. Exact bytes/encoding are unknown in FAA-Q04; never generate expected bytes using implementation output."
+    },
+    "ordinary_outcome": {"kind": "AlreadyApplied", "operation": "operation", "originating_actor": "actor_a", "source_recording": "original_recording", "qualification": "Genuine retained ordinary AlreadyApplied outcome, not earlier Applied carrier replay; public setup/projection binding is unknown."},
+    "quote": {"currency": "EGP", "portions": "2", "unit_gross_minor": "15000", "payable_minor": "30000", "discount_minor": "0", "tax_minor": "0", "charges_minor": "0"},
+    "native_original": {"tender": "CASH", "received_minor": "50000", "change_minor": "20000", "net_collected_minor": "30000", "physical_capture_count": "1", "actor": "actor_a", "cash_session": "cash_session_a", "attempt": "attempt", "recording": "original_recording"},
+    "accounted_baseline": {"drawer_a_opening_minor": "100000", "drawer_a_expected_minor": "130000", "drawer_b_opening_minor": "70000", "drawer_b_expected_minor": "70000", "collection_coverage_minor": "30000", "remaining_payable_minor": "0", "cash_movement_count_for_original": "1", "cash_movement_id": "cash_movement", "cash_movement_net_minor": "30000", "payment_accounting_count_for_original": "1", "refund_minor": "0", "sale_finalization_count": "0"},
+    "sent_stock": {"bread_initial_units": "10", "meat_initial_g": "1500", "recipe_bread_per_portion_units": "1", "recipe_meat_per_portion_g": "150", "bread_on_hand_units": "8", "meat_on_hand_g": "1200", "bread_reserved_units": "0", "meat_reserved_g": "0", "issued_portions": "2", "kitchen_tasks": "2", "issue_identity_rule": "Retain the two portions' existing task/issue IDs and allocation values; no new issue set."},
+    "rights": {"current_employee": "enabled actor_a", "current_device": "admitted device_a", "current_auth_session": "valid auth_session_a", "activated_policy_revision": "7", "explicit_permissions": ["ORDER_READ", "CASH_READ", "COLLECTION_ATTEST"], "original_recovery_access": "Currently authorized and scoped to original actor/branch/operation", "source_bound_business_rights": "Currently qualified against genuine original sources, not today's order ownership", "drawer_ownership": "actor_a owns drawer_a/cash_session_a"}
+  },
+  "FAA-F02": {
+    "inherits": "FAA-F01", "difference": "The two portions have not been sent; Begin reserved the ingredients before the native original was collected and accounted. Use unsent_stock in place of F01.sent_stock, never both.",
+    "unsent_stock": {"bread_on_hand_units": "10", "meat_on_hand_g": "1500", "bread_reserved_units": "2", "meat_reserved_g": "300", "bread_available_units": "8", "meat_available_g": "1200", "issued_portions": "0", "kitchen_tasks": "0"}
+  },
+  "FAA-F03": {
+    "inherits": "FAA-F01", "difference": "After the original was accounted, a separately authorized supervised ownership/recovery transition makes actor_b today's order owner. It does not transfer original cash or overwrite original-before sources.",
+    "current_order_owner": "actor_b", "current_source_rule": "Today's source state differs from the genuine original-before observations; no numeric internal revisions are prescribed.", "current_price_minor_per_portion": "20000", "current_recipe_meat_per_portion_g": "175",
+    "original_recovery_for_a": "Re-established current original-recovery access and all source-bound disclosure rights for actor_a; no reliance on current ownership.",
+    "other_drawer_expected_minor": "70000"
+  },
+  "authorization_variants": {
+    "no_cash_read": {"remove": "CASH_READ", "retain": "COLLECTION_ATTEST, current original-recovery access and other qualified rights"},
+    "no_original_recovery": {"remove": "current original-recovery access", "retain": "CASH_READ and other qualified rights"},
+    "no_source_rights": {"remove": "source-bound original business disclosure rights", "retain": "CASH_READ and generic recovery eligibility"},
+    "wrong_owner_b": {"actor": "actor_b", "explicit_permissions": ["ORDER_READ", "CASH_READ", "COLLECTION_ATTEST"], "original_recovery_access": "No scoped grant for actor_a's original"},
+    "supervisor_generic": {"actor": "supervisor", "original_recovery_access": "Generic management rights only; no explicit original recovery grant"},
+    "supervisor_scoped": {"actor": "supervisor", "original_recovery_access": "Explicit current supervisor grant scoped to actor_a/branch/operation with audit and source-bound disclosure rights"},
+    "stale_policy": {"client_cached_policy_revision": "7", "master_activated_policy_revision": "8", "master_policy_change": "Remove CASH_READ or original-recovery authorization"},
+    "pending_policy": {"master_activated_policy_revision": "7", "not_yet_activated_policy_revision": "8", "pending_change": "Remove CASH_READ; do not treat mere arrival/notification as activation"}
+  },
+  "source_variants": ["qualified retained original-before source", "original-before source unavailable despite readable current after-state", "no retained native original", "unsupported original refusal source", "source tuple belongs to wrong actor/branch/order/collection/session/attempt/recording", "transport lost with no writer-qualified observation"],
+  "all_post_accounting_actions": {
+    "additional_physical_capture_count": "0", "additional_cash_movement_count": "0", "drawer_a_expected_minor": "130000", "drawer_b_expected_minor": "70000", "collection_coverage_minor": "30000", "remaining_payable_minor": "0", "cash_movement_count_for_original": "1", "payment_accounting_count_for_original": "1", "additional_refund_minor": "0", "additional_sale_finalization_count": "0", "additional_stock_issue_or_reversal_count": "0", "additional_bread_reserved_units": "0", "additional_meat_reserved_g": "0", "additional_kitchen_task_count": "0", "new_original_recording_count": "0", "original_identity_rule": "Preserve every original identity and posted allocation. Denial/unavailability preserves retained evidence; it never implies a physical reversal.", "metadata_rule": "Read/recovery must not add business effects. Required scoped security audit or durable client remembrance is allowed and is distinct from money/stock effects."
+  }
+}

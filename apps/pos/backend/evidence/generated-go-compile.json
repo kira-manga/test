@@ -1,0 +1,17 @@
+{
+  "status": "GENERATED_GO_REGISTRY_JSON_BSON_VERIFIED_NOT_MONGO_RUNTIME",
+  "goVersion": "go version go1.27.3 linux/amd64",
+  "generatedModels": 7,
+  "originalRegistrationsPreserved": 786,
+  "originalRegistrySha256": "a0b7c4191848a107ca848b9ff04bdcc778a2a8e5ec8e9f8ac182cd67b60dce50",
+  "existingRegistryPreservedOnDisk": true,
+  "originalYamlUnchanged": true,
+  "output": "ok  \tgo-viki/internal/document\t0.010s",
+  "vet": "DISABLED_FOR_OVERLAY_ONLY_PACKAGE_DIRECTORY; enabled in ordinary source tests",
+  "notExecuted": [
+    "MongoDB operations",
+    "indexes/migrations",
+    "generic writes",
+    "service startup"
+  ]
+}

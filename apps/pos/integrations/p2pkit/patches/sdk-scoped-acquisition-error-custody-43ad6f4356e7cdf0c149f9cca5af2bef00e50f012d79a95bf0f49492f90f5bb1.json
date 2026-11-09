@@ -1,0 +1,35 @@
+{
+  "files": {
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt": {
+      "normalizedPostimage": {
+        "bytes": 7795,
+        "mode": 384,
+        "sha256": "e5d4c4efb8da72bfc86a3b24af29894807223642aaec2df9e112c6e0a8797229"
+      },
+      "preimage": {
+        "bytes": 7543,
+        "mode": 384,
+        "sha256": "ade37971d8038f34f6c4f06457a8b0bb334367f76c21341f9249adf66ee2244c"
+      }
+    }
+  },
+  "parentSourceRecipeFileSha256": "abe2e18b1b5f7ca8cd471a193a241c49caba65200411824a6fd81ef3a07c1f70",
+  "parentSourceRecipeSha256": "d2c978a2df5c9a32ccee037a0abf92fd8af30837e93f48c1257839b166849760",
+  "purpose": "SCOPED_ACQUISITION_FIRST_ERROR_CUSTODY_NO_PUBLIC_FAILURE_CHAIN",
+  "schema": 1,
+  "sourceChanges": {
+    "library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt": [
+      {
+        "expectedOccurrenceCount": 1,
+        "replacement": "            } catch (failure: Throwable) {\n                try {\n                    withContext(NonCancellable) { link.close() }\n                } catch (cleanup: Throwable) {\n                    // Preserve the first non-Exception without attaching public failure chains.\n                    // The caller still owns the original session and must reobserve its cleanup.\n                    if (failure is Exception && cleanup !is Exception) throw cleanup\n                }\n                throw failure\n            }",
+        "search": "            } catch (failure: Throwable) {\n                withContext(NonCancellable) {\n                    try { link.close() } catch (_: Exception) {\n                        // Revocation already committed. The caller still owns the original SDK session\n                        // and can reobserve incomplete native cleanup with its close()/kit.stop().\n                    }\n                }\n                throw failure\n            }"
+      },
+      {
+        "expectedOccurrenceCount": 1,
+        "replacement": "            } catch (failure: Throwable) {\n                try {\n                    withContext(NonCancellable) { link.close() }\n                } catch (cleanup: Throwable) {\n                    // Preserve the first non-Exception without attaching public failure chains.\n                    // The caller still owns the original session and must reobserve its cleanup.\n                    if (failure is Exception && cleanup !is Exception) throw cleanup\n                }\n                throw failure\n            }",
+        "search": "            } catch (failure: Throwable) {\n                withContext(NonCancellable) {\n                    try { link.close() } catch (_: Exception) {\n                        // The SDK retains cleanup evidence; a claimed lifetime never falls back to legacy.\n                    }\n                }\n                throw failure\n            }"
+      }
+    ]
+  },
+  "sourcePatchSha256": "1287abd243e14f7007fcdb90e72485806080f310886a41b76d973872d8c78984"
+}

@@ -1,0 +1,3219 @@
+diff --git a/internal/helpers/apis/functions/models.go b/internal/helpers/apis/functions/models.go
+index ffd8cdf..b639b74 100644
+--- a/internal/helpers/apis/functions/models.go
++++ b/internal/helpers/apis/functions/models.go
+@@ -19,6 +19,8 @@ import (
+ 	"go-viki/internal/helpers/functions"
+ 	geo_functions "go-viki/internal/helpers/geo_functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
++	"go-viki/internal/helpers/modelguard/configured"
+ 	model_helpers "go-viki/internal/helpers/models/functions"
+ 	_ "go-viki/internal/helpers/models/functions/registry"
+ 	per_document "go-viki/internal/helpers/models/permissions"
+@@ -33,6 +35,9 @@ import (
+ )
+ 
+ func UpdateModelsFuncs(c context.Context, body map[string]any, saved_files []any) (map[string][]any, error) {
++	if err := configured.Envelope(body); err != nil {
++		return nil, err
++	}
+ 	out := map[string]any{}
+ 	main_data := functions.Get[any, any](body, "data", types.D{})
+ 	settings := functions.Get[any, types.D](body, "settings", types.D{})
+@@ -59,6 +64,9 @@ func UpdateModelsFuncs(c context.Context, body map[string]any, saved_files []any
+ }
+ 
+ func MultiUpdatesModelsFuncs(c context.Context, body map[string]any, saved_files []any) (map[string]any, error) {
++	if err := configured.Envelope(body); err != nil {
++		return nil, err
++	}
+ 	out := map[string]any{}
+ 	main_data := functions.Get[any, any](body, "data", types.D{})
+ 	settings := functions.Get[any, types.D](body, "settings", types.D{})
+@@ -222,6 +230,9 @@ func substituteAliases(value any, aliases map[string]string) {
+ }
+ 
+ func MultiQueryFuncs(c context.Context, body map[string]any) (map[string]any, error) {
++	if err := modelguard.CheckQueries(body); err != nil {
++		return nil, err
++	}
+ 	groups, _ := c.Value("groups").(map[string]bool)
+ 	out := make(map[string]any)
+ 
+@@ -473,6 +484,9 @@ func appendUniqDocs(merged []map[string]any, seen map[string]bool, source []map[
+ }
+ 
+ func UpdateOneModelFuncs(ctx context.Context, body map[string]any) (map[string]any, error) {
++	if err := configured.Writes(body); err != nil {
++		return nil, err
++	}
+ 	results := make(map[string]any)
+ 	cache := map[string]map[string]any{}
+ 	aliases := map[string]string{}
+@@ -1501,12 +1515,18 @@ func iterateBodyFunc(c context.Context, body map[string]any, fn func(context.Con
+ }
+ 
+ func CountModelsFuncs(c context.Context, body map[string]any) (map[string]any, error) {
++	if err := modelguard.CheckQueries(body); err != nil {
++		return nil, err
++	}
+ 	return iterateBodyFunc(c, body, func(ctx context.Context, module string, filter types.D) (any, error) {
+ 		return db_functions.CountModelWithFilter(ctx, module, filter)
+ 	})
+ }
+ 
+ func ResetModelsFuncs(c context.Context, body map[string]any) (map[string]any, error) {
++	if err := modelguard.CheckQueries(body); err != nil {
++		return nil, err
++	}
+ 	return iterateBodyFunc(c, body, func(ctx context.Context, module string, filter types.D) (any, error) {
+ 		if fn, ok := model_helpers.PreDeletes[module]; ok {
+ 			if err := fn(ctx, module, filter); err != nil {
+@@ -1518,6 +1538,9 @@ func ResetModelsFuncs(c context.Context, body map[string]any) (map[string]any, e
+ }
+ 
+ func CheckUniqueFuncs(c context.Context, module, field, value, id string) (map[string]any, error) {
++	if err := modelguard.CheckModel(module); err != nil {
++		return nil, err
++	}
+ 	filter := types.D{
+ 		field: bson.M{
+ 			"$regex":   fmt.Sprintf("^%s$", regexp.QuoteMeta(value)),
+@@ -1536,6 +1559,10 @@ func CheckUniqueFuncs(c context.Context, module, field, value, id string) (map[s
+ }
+ 
+ func UpdateManyModelsFuncs(c context.Context, main_data map[string]any) (map[string]any, error) {
++	// Includes every pipeline destination before the first bulk update.
++	if err := modelguard.CheckQueries(main_data); err != nil {
++		return nil, err
++	}
+ 	results := make(map[string]any)
+ 	for module, items := range main_data {
+ 		aggregate := functions.Get[any, []any](items, "aggregate", nil)
+diff --git a/internal/helpers/apis/functions/translations.go b/internal/helpers/apis/functions/translations.go
+index a1bd129..bbb24ff 100644
+--- a/internal/helpers/apis/functions/translations.go
++++ b/internal/helpers/apis/functions/translations.go
+@@ -8,6 +8,7 @@ import (
+ 	"go-viki/internal/database"
+ 	"go-viki/internal/document"
+ 	"go-viki/internal/helpers/functions"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"go.mongodb.org/mongo-driver/bson"
+ )
+@@ -25,6 +26,9 @@ const gedmoTranslationCollection = "Translation"
+ func GetTranslationFuncs(c context.Context, body map[string]any) (map[string]any, error) {
+ 	out := map[string]any{}
+ 	module := functions.Get[any, string](body, "model", "")
++	if err := modelguard.CheckModel(module); err != nil {
++		return nil, err
++	}
+ 	id := functions.Get[any, string](body, "id", "")
+ 	if module == "" || id == "" {
+ 		return out, nil
+diff --git a/internal/helpers/apis/handlers/crud.go b/internal/helpers/apis/handlers/crud.go
+index 97ac4cf..b3a8fdd 100644
+--- a/internal/helpers/apis/handlers/crud.go
++++ b/internal/helpers/apis/handlers/crud.go
+@@ -5,6 +5,7 @@ import (
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 	model_helpers "go-viki/internal/helpers/models/functions"
+ 	per_document "go-viki/internal/helpers/models/permissions"
+ 	"go-viki/internal/helpers/request"
+@@ -15,6 +16,9 @@ import (
+ )
+ 
+ func FindByQuery(c *fiber.Ctx, module_name string, query map[string]any) error {
++	if err := modelguard.CheckModel(module_name); err != nil {
++		return FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	doc_out, model_type, err := db_functions.FindList(c.UserContext(), module_name, query, nil)
+ 	if err != nil {
+ 		return FiberError(c, http.StatusBadRequest, err.Error())
+@@ -41,6 +45,9 @@ func CrudFindById(c *fiber.Ctx) error {
+ 
+ func CrudFindSingle(c *fiber.Ctx) error {
+ 	model := c.Params("module") + "__" + c.Params("model")
++	if err := modelguard.CheckModel(model); err != nil {
++		return FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	data, err := request.ReadPostData(c)
+ 	if err != nil {
+ 		return FiberError(c, http.StatusBadRequest, err.Error())
+diff --git a/internal/helpers/db_functions/bulk.go b/internal/helpers/db_functions/bulk.go
+index e96c7cf..16a98a7 100644
+--- a/internal/helpers/db_functions/bulk.go
++++ b/internal/helpers/db_functions/bulk.go
+@@ -3,12 +3,16 @@ package db_functions
+ import (
+ 	"context"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"github.com/kamva/mgm/v3"
+ 	"go.mongodb.org/mongo-driver/mongo"
+ )
+ 
+ func BulkWrite(ctx context.Context, module string, writes []mongo.WriteModel) (int, int, error) {
++	if err := modelguard.CheckModel(module); err != nil {
++		return 0, 0, err
++	}
+ 	_, model, ok := GetModel(module)
+ 	if !ok {
+ 		return 0, 0, logs.Error("module not found")
+diff --git a/internal/helpers/db_functions/main.go b/internal/helpers/db_functions/main.go
+index dac7135..0d69400 100644
+--- a/internal/helpers/db_functions/main.go
++++ b/internal/helpers/db_functions/main.go
+@@ -3,6 +3,7 @@ package db_functions
+ import (
+ 	"fmt"
+ 	"go-viki/internal/document"
++	"go-viki/internal/helpers/modelguard"
+ 	"reflect"
+ 
+ 	"github.com/kamva/mgm/v3"
+@@ -30,6 +31,11 @@ func GetIDString(model mgm.Model) string {
+ 	}
+ }
+ func GetModel(name string) (T reflect.Type, db_model mgm.Model, ok bool) {
++	// All generic typed/raw helpers share this lookup. Typed BranchPos
++	// ingestion must not regain generic access by setting skip_filters.
++	if modelguard.Reserved(name) {
++		return nil, nil, false
++	}
+ 	val, ok := document.Document[name]
+ 	if !ok {
+ 		return nil, nil, false
+diff --git a/internal/helpers/db_functions/updates.go b/internal/helpers/db_functions/updates.go
+index 3778b97..090c2be 100644
+--- a/internal/helpers/db_functions/updates.go
++++ b/internal/helpers/db_functions/updates.go
+@@ -9,6 +9,7 @@ import (
+ 	"go-viki/internal/config/models_config"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard/configured"
+ 	per_document "go-viki/internal/helpers/models/permissions"
+ 	"go-viki/types"
+ 	"reflect"
+@@ -217,6 +218,9 @@ func updateDbModels(module string, data []mongo.WriteModel) ([]any, error) {
+ 	return out, nil
+ }
+ func MainUpdateModels(c context.Context, data map[string][]any, props *types.D) (documents map[string][]any, err error) {
++	if err := configured.Writes(data); err != nil {
++		return nil, err
++	}
+ 	inserts := map[string][]mongo.WriteModel{}
+ 	outs := map[string][]any{}
+ 	setting := functions.ReadProps(props)
+diff --git a/internal/helpers/db_functions/upsert.go b/internal/helpers/db_functions/upsert.go
+index 46e46ef..6d9f5d0 100644
+--- a/internal/helpers/db_functions/upsert.go
++++ b/internal/helpers/db_functions/upsert.go
+@@ -10,6 +10,8 @@ import (
+ 	"go-viki/internal/document"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
++	"go-viki/internal/helpers/modelguard/configured"
+ 	per_document "go-viki/internal/helpers/models/permissions"
+ 	"go-viki/types"
+ 
+@@ -21,6 +23,9 @@ import (
+ // MainUpdateModels iterates over modules and items to upsert them.
+ // It replaces the previous implementations in updates.go
+ func NewMainUpdateModels(ctx context.Context, data map[string][]any, settings *map[string]any) (map[string]any, error) {
++	if err := configured.Writes(data); err != nil {
++		return nil, err
++	}
+ 	results := make(map[string]any)
+ 	for module, items := range data {
+ 		res, err := UpsertModels(ctx, module, items)
+@@ -46,6 +51,9 @@ func UpsertModels(ctx context.Context, module string, items []any) ([]any, error
+ 	return results, nil
+ }
+ func CountModelWithFilter(ctx context.Context, module string, filter types.D) (int, error) {
++	if err := per_document.CheckModelAccess(ctx, module, per_document.AccessRead); err != nil {
++		return 0, err
++	}
+ 	modelType, ok := document.Document[module]
+ 	if !ok {
+ 		return 0, logs.Error("model not found for module: %s", module)
+@@ -97,6 +105,9 @@ func UpdateModelWithFilter(ctx context.Context, module string, filter types.D, d
+ 	return int(update.ModifiedCount), nil
+ }
+ func AggregateModelWithFilter(ctx context.Context, module string, pipeline []any) (any, error) {
++	if err := modelguard.CheckPipeline(pipeline); err != nil {
++		return nil, err
++	}
+ 	// A pipeline can carry $merge/$out and write, so treat aggregation
+ 	// conservatively as a write (documented simplification).
+ 	if err := per_document.CheckModelAccess(ctx, module, per_document.AccessWrite); err != nil {
+diff --git a/internal/helpers/models/permissions/app_model_access.go b/internal/helpers/models/permissions/app_model_access.go
+index ebc30b6..0577f38 100644
+--- a/internal/helpers/models/permissions/app_model_access.go
++++ b/internal/helpers/models/permissions/app_model_access.go
+@@ -11,6 +11,7 @@ import (
+ 	models_config "go-viki/internal/config/models_config"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"github.com/kamva/mgm/v3"
+ 	"go.mongodb.org/mongo-driver/bson"
+@@ -77,7 +78,7 @@ func (e *AccessDeniedError) Error() string {
+ // AccessDeniedError.
+ func IsAccessDenied(err error) bool {
+ 	var denied *AccessDeniedError
+-	return errors.As(err, &denied)
++	return errors.As(err, &denied) || modelguard.IsProtected(err)
+ }
+ 
+ var enforceModelAccessOverride atomic.Pointer[bool]
+@@ -133,6 +134,11 @@ func IsEnforceModelAccess() bool {
+ // always returns nil, so the whole feature can be shipped and audited before
+ // being switched on.
+ func CheckModelAccess(ctx context.Context, module string, required AccessLevel) error {
++	// BranchPos is never a generic model API, including audit mode, no-app
++	// bootstrap contexts, server keys and super administrators.
++	if err := modelguard.CheckModel(module); err != nil {
++		return err
++	}
+ 	if ctx == nil || required <= AccessNone {
+ 		return nil
+ 	}
+diff --git a/internal/helpers/sync/pull.go b/internal/helpers/sync/pull.go
+index 51bba8b..4c46290 100644
+--- a/internal/helpers/sync/pull.go
++++ b/internal/helpers/sync/pull.go
+@@ -7,6 +7,7 @@ import (
+ 	"time"
+ 
+ 	db_filters "go-viki/internal/helpers/db/db_filters"
++	"go-viki/internal/helpers/modelguard"
+ 	model_helpers "go-viki/internal/helpers/models/functions"
+ 
+ 	"github.com/kamva/mgm/v3"
+@@ -66,6 +67,11 @@ type PullResult struct {
+ // Pull executes the request and returns {module: PullResult} plus the
+ // server time. Read-only: no counter is consumed.
+ func Pull(ctx context.Context, req PullRequest) (map[string]PullResult, time.Time, error) {
++	for module := range req.Modules {
++		if err := modelguard.CheckModel(module); err != nil {
++			return nil, time.Time{}, err
++		}
++	}
+ 	limit := req.Limit
+ 	if limit <= 0 || limit > 1000 {
+ 		limit = 500
+diff --git a/services/app/handlers/full_query.go b/services/app/handlers/full_query.go
+index d3639a0..5a52cb9 100644
+--- a/services/app/handlers/full_query.go
++++ b/services/app/handlers/full_query.go
+@@ -14,6 +14,7 @@ import (
+ 	db_filters "go-viki/internal/helpers/db/db_filters"
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/functions"
++	"go-viki/internal/helpers/modelguard"
+ 	model_helpers "go-viki/internal/helpers/models/functions"
+ 	"go-viki/internal/helpers/request"
+ 	"go-viki/types"
+@@ -70,6 +71,9 @@ func FullQuery(c *fiber.Ctx) error {
+ 		}
+ 	}
+ 
++	if err := modelguard.CheckModel(model); err != nil {
++		return handlers.FiberErrorFor(c, err, 400)
++	}
+ 	if model == "" {
+ 		return handlers.FiberError(c, 400, "model is required")
+ 	}
+diff --git a/services/app/handlers/multi.go b/services/app/handlers/multi.go
+index 9e5e8fe..eb4a708 100644
+--- a/services/app/handlers/multi.go
++++ b/services/app/handlers/multi.go
+@@ -3,6 +3,8 @@ package app_handlers
+ import (
+ 	handlers_funs "go-viki/internal/helpers/apis/functions"
+ 	"go-viki/internal/helpers/apis/handlers"
++	"go-viki/internal/helpers/modelguard"
++	"go-viki/internal/helpers/modelguard/configured"
+ 	"go-viki/internal/helpers/request"
+ 	files_handlers "go-viki/services/files/handlers"
+ 	"net/http"
+@@ -27,6 +29,9 @@ func UpdateOneModel(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return handlers.FiberError(c, 400, err.Error())
+ 	}
++	if err := configured.Writes(body); err != nil {
++		return handlers.FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	if err := guardProtectedWrite(c, body); err != nil {
+ 		return err
+ 	}
+@@ -43,6 +48,9 @@ func UpdateOneModel(c *fiber.Ctx) error {
+ 
+ func ModuleUpdateOne(c *fiber.Ctx) error {
+ 	module := c.Params("modules")
++	if err := modelguard.CheckModel(module); err != nil {
++		return handlers.FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	if module == "" {
+ 		return handlers.FiberError(c, 400, "module parameter is required")
+ 	}
+@@ -53,6 +61,9 @@ func ModuleUpdateOne(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return handlers.FiberError(c, 400, err.Error())
+ 	}
++	if err := configured.Writes(map[string]any{module: body}); err != nil {
++		return handlers.FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	body, _, err = files_handlers.UploadDataToS3(c, body)
+ 	if err != nil {
+ 		return handlers.FiberError(c, http.StatusBadRequest, err.Error())
+@@ -88,6 +99,9 @@ func UpdateModels(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return handlers.FiberError(c, 400, err.Error())
+ 	}
++	if err := configured.Envelope(body); err != nil {
++		return handlers.FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	if err := guardProtectedWrite(c, body); err != nil {
+ 		return err
+ 	}
+@@ -106,6 +120,9 @@ func MultiUpdatesModels(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return handlers.FiberError(c, 400, err.Error())
+ 	}
++	if err := configured.Envelope(body); err != nil {
++		return handlers.FiberErrorFor(c, err, http.StatusBadRequest)
++	}
+ 	if err := guardProtectedWrite(c, body); err != nil {
+ 		return err
+ 	}
+diff --git a/services/app/handlers/schema.go b/services/app/handlers/schema.go
+index 74c770d..16e8316 100644
+--- a/services/app/handlers/schema.go
++++ b/services/app/handlers/schema.go
+@@ -9,12 +9,16 @@ import (
+ 	config_functions "go-viki/internal/config/functions"
+ 	models_config "go-viki/internal/config/models_config"
+ 	"go-viki/internal/helpers/apis/handlers"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"github.com/goccy/go-yaml"
+ 	"github.com/gofiber/fiber/v2"
+ )
+ 
+ func buildModuleSchema(module string) (map[string]any, error) {
++	if err := modelguard.CheckModel(module); err != nil {
++		return nil, err
++	}
+ 	config := models_config.GetModelConfig(module)
+ 	if config.Fields == nil && config.PerClass == "" {
+ 		return nil, nil
+@@ -53,6 +57,9 @@ func ensureConfigsLoaded() error {
+ 
+ func ModuleSchema(c *fiber.Ctx) error {
+ 	module := c.Params("modules")
++	if err := modelguard.CheckModel(module); err != nil {
++		return handlers.FiberErrorFor(c, err, 400)
++	}
+ 	if module == "" {
+ 		return handlers.FiberError(c, 400, "module parameter is required")
+ 	}
+diff --git a/services/graphql/resolvers/generic.go b/services/graphql/resolvers/generic.go
+index 59f34e5..f29ac74 100644
+--- a/services/graphql/resolvers/generic.go
++++ b/services/graphql/resolvers/generic.go
+@@ -7,6 +7,7 @@ import (
+ 
+ 	models_config "go-viki/internal/config/models_config"
+ 	db_filters "go-viki/internal/helpers/db/db_filters"
++	"go-viki/internal/helpers/modelguard"
+ 	per_document "go-viki/internal/helpers/models/permissions"
+ 
+ 	"github.com/graphql-go/graphql"
+@@ -16,6 +17,9 @@ import (
+ )
+ 
+ func GenericListResolver(modelName string) graphql.FieldResolveFn {
++	if err := modelguard.CheckModel(modelName); err != nil {
++		return func(p graphql.ResolveParams) (any, error) { return nil, err }
++	}
+ 	cfg, ok := models_config.ModuleConfigs[modelName]
+ 	if !ok {
+ 		return func(p graphql.ResolveParams) (any, error) {
+diff --git a/services/graphql/resolvers/helpers.go b/services/graphql/resolvers/helpers.go
+index 1c9f142..ce227c1 100644
+--- a/services/graphql/resolvers/helpers.go
++++ b/services/graphql/resolvers/helpers.go
+@@ -7,6 +7,7 @@ import (
+ 	"strings"
+ 
+ 	models_config "go-viki/internal/config/models_config"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"github.com/kamva/mgm/v3"
+ 	"go.mongodb.org/mongo-driver/bson"
+@@ -286,6 +287,9 @@ func buildSimpleSearchCondition(dbField, value, method string) bson.M {
+ }
+ 
+ func searchRelatedModel(ctx context.Context, modelName, field, value, method string, useCollation bool) []string {
++	if err := modelguard.CheckModel(modelName); err != nil {
++		return []string{}
++	}
+ 	_, _, db, err := mgm.DefaultConfigs()
+ 	if err != nil {
+ 		return []string{}
+diff --git a/services/import_export/handlers/export_direct.go b/services/import_export/handlers/export_direct.go
+index 870c701..de3b00a 100644
+--- a/services/import_export/handlers/export_direct.go
++++ b/services/import_export/handlers/export_direct.go
+@@ -8,6 +8,7 @@ import (
+ 	"go-viki/internal/helpers/db/db_filters"
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 	"go-viki/internal/helpers/xlsx"
+ 	"go-viki/services/import_export/helpers/functions/exports"
+ 	"go-viki/types"
+@@ -32,6 +33,9 @@ func DirectExportHandler(c *fiber.Ctx) error {
+ 	if req.Module == "" {
+ 		return handlers.FiberError(c, fiber.StatusBadRequest, "module is required")
+ 	}
++	if err := modelguard.CheckModel(req.Module); err != nil {
++		return handlers.FiberErrorFor(c, err, fiber.StatusBadRequest)
++	}
+ 	if req.Format == "" {
+ 		req.Format = "xlsx"
+ 	}
+diff --git a/services/import_export/handlers/file.go b/services/import_export/handlers/file.go
+index c2496f0..e4fa29b 100644
+--- a/services/import_export/handlers/file.go
++++ b/services/import_export/handlers/file.go
+@@ -3,6 +3,7 @@ package import_export_handlers
+ import (
+ 	"go-viki/internal/document/common"
+ 	"go-viki/internal/helpers/db_functions"
++	"go-viki/internal/helpers/modelguard"
+ 	files_handlers "go-viki/services/files/handlers"
+ 
+ 	"github.com/gofiber/fiber/v2"
+@@ -14,6 +15,9 @@ func DownloadExportById(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if err := modelguard.CheckModel(sheet.Module); err != nil {
++		return fiber.NewError(fiber.StatusForbidden, err.Error())
++	}
+ 	return files_handlers.DownloadLocalFileByPath(c, sheet.Path)
+ }
+ 
+@@ -23,5 +27,8 @@ func DownloadImportById(c *fiber.Ctx) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if err := modelguard.CheckModel(sheet.UploadType); err != nil {
++		return fiber.NewError(fiber.StatusForbidden, err.Error())
++	}
+ 	return files_handlers.DownloadLocalFileByPath(c, sheet.Path)
+ }
+diff --git a/services/import_export/handlers/import.go b/services/import_export/handlers/import.go
+index 0ad7fa3..99560a9 100644
+--- a/services/import_export/handlers/import.go
++++ b/services/import_export/handlers/import.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"go-viki/internal/helpers/apis/handlers"
++	"go-viki/internal/helpers/modelguard"
+ 	"go-viki/internal/utils"
+ 	"go-viki/services/import_export/helpers/service"
+ 	"log"
+@@ -55,6 +56,9 @@ func ImportUploadHandler(c *fiber.Ctx) error {
+ 	if importType == "" {
+ 		importType = "license"
+ 	}
++	if err := modelguard.CheckModel(importType); err != nil {
++		return handlers.FiberError(c, fiber.StatusForbidden, err.Error())
++	}
+ 
+ 	tempPath := fmt.Sprintf("/tmp/%s", file.Filename)
+ 	if err := c.SaveFile(file, tempPath); err != nil {
+diff --git a/services/import_export/helpers/functions/imports/registry.go b/services/import_export/helpers/functions/imports/registry.go
+index ee975eb..565d3a8 100644
+--- a/services/import_export/helpers/functions/imports/registry.go
++++ b/services/import_export/helpers/functions/imports/registry.go
+@@ -3,6 +3,7 @@ package imports
+ import (
+ 	"fmt"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 	hr_imports "go-viki/services/import_export/helpers/functions/imports/hr"
+ 	safety_imports "go-viki/services/import_export/helpers/functions/imports/safety"
+ 	import_models "go-viki/services/import_export/helpers/models/imports"
+@@ -21,6 +22,9 @@ func init() {
+ }
+ 
+ func GetHandler(uploadType string) (import_models.HandlerFunc, error) {
++	if err := modelguard.CheckModel(uploadType); err != nil {
++		return nil, err
++	}
+ 	if h, ok := Registry[uploadType]; ok {
+ 		fmt.Println("Handler found for type:", uploadType)
+ 		return h, nil
+diff --git a/services/import_export/helpers/models/inserts/inserts.go b/services/import_export/helpers/models/inserts/inserts.go
+index 8fe2b82..f3c4dad 100644
+--- a/services/import_export/helpers/models/inserts/inserts.go
++++ b/services/import_export/helpers/models/inserts/inserts.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 
+ 	"go.mongodb.org/mongo-driver/mongo"
+ )
+@@ -24,6 +25,13 @@ type Inserts struct {
+ }
+ 
+ func (c *Inserts) FlushInserts() error {
++	// Preflight every target before any worker batch writes, independent of
++	// map order or a dynamically added import handler.
++	for module := range c.Inserts {
++		if err := modelguard.CheckModel(module); err != nil {
++			return err
++		}
++	}
+ 	for module, writes := range c.Inserts {
+ 		if len(writes) == 0 {
+ 			continue
+diff --git a/services/import_export/helpers/service/exports.go b/services/import_export/helpers/service/exports.go
+index 545ec78..2e8b3bb 100644
+--- a/services/import_export/helpers/service/exports.go
++++ b/services/import_export/helpers/service/exports.go
+@@ -7,6 +7,7 @@ import (
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 	data_exports_models "go-viki/internal/helpers/models/data/export"
+ 	"go-viki/internal/helpers/xlsx"
+ 	"go-viki/services/import_export/helpers/functions/exports"
+@@ -26,6 +27,9 @@ func ExportReprocessSheet(ctx context.Context, sheetID string, debug bool) (map[
+ 		return nil, err
+ 	}
+ 
++	if err := modelguard.CheckModel(repoModel.Module); err != nil {
++		return nil, err
++	}
+ 	repoModel.Status = "start processing"
+ 	repoModel.Progress = new(float64)
+ 	db_functions.UpsertModel(ctx, export_module, repoModel)
+@@ -38,6 +42,9 @@ func ExportReprocessSheet(ctx context.Context, sheetID string, debug bool) (map[
+ }
+ 
+ func ExportDataToSheet(ctx context.Context, progress *common.ExportSheetModel, debug bool) error {
++	if err := modelguard.CheckModel(progress.Module); err != nil {
++		return err
++	}
+ 	if len(progress.Filters) == 0 {
+ 		progress.Status = "failed"
+ 		msg := "Full Data Export Restrictions"
+diff --git a/services/import_export/helpers/service/imports.go b/services/import_export/helpers/service/imports.go
+index a8a481d..6b72886 100644
+--- a/services/import_export/helpers/service/imports.go
++++ b/services/import_export/helpers/service/imports.go
+@@ -9,6 +9,7 @@ import (
+ 	"go-viki/internal/helpers/db_functions"
+ 	"go-viki/internal/helpers/functions"
+ 	"go-viki/internal/helpers/logs"
++	"go-viki/internal/helpers/modelguard"
+ 	"go-viki/services/import_export/helpers/functions/imports"
+ 	import_models "go-viki/services/import_export/helpers/models/imports"
+ 	insert_models "go-viki/services/import_export/helpers/models/inserts"
+@@ -28,6 +29,9 @@ func ImportReprocessSheet(ctx context.Context, sheetID string, debug bool) (map[
+ 		return nil, err
+ 	}
+ 
++	if err := modelguard.CheckModel(repoModel.UploadType); err != nil {
++		return nil, err
++	}
+ 	repoModel.Status = "start processing"
+ 	repoModel.Progress = 0
+ 	repoModel.Invalid = 0
+@@ -73,6 +77,9 @@ func runImportBatch(ctx *import_models.ImportContext, fun import_models.HandlerF
+ }
+ 
+ func ImportAnalysisSheet(ctx context.Context, progress *common.UploadSheetModel, debug bool) ([]map[string]any, error) {
++	if err := modelguard.CheckModel(progress.UploadType); err != nil {
++		return nil, err
++	}
+ 	db_functions.DeleteModelWithFilter(ctx, "common__invalid_import", types.D{"sheet": progress.ID})
+ 	fun := progress.UploadType
+ 	logs.PrintInfo("Processing sheet %v %v\n", progress.ID, fun)
+@@ -132,6 +139,9 @@ func ImportAnalysisSheet(ctx context.Context, progress *common.UploadSheetModel,
+ }
+ 
+ func ImportProcessUpload(ctx context.Context, filePath string, importType string, sheetName string, debug bool) error {
++	if err := modelguard.CheckModel(importType); err != nil {
++		return err
++	}
+ 	progress := &common.UploadSheetModel{
+ 		Name:       sheetName,
+ 		Path:       filePath,
+diff --git a/internal/branchpos/contracts.go b/internal/branchpos/contracts.go
+new file mode 100644
+index 0000000..62a0e0c
+--- /dev/null
++++ b/internal/branchpos/contracts.go
+@@ -0,0 +1,454 @@
++// Package branchpos contains the bounded v1 central evidence-ingestion core.
++// It does not execute a sale, payment, stock command, or an authority transfer.
++// Production authentication and a proven atomic store are REQUIRED adapters;
++// no generic model API, in-memory fallback, or default route enables it.
++package branchpos
++
++import (
++	"bytes"
++	"crypto/ed25519"
++	"crypto/sha256"
++	"encoding/base64"
++	"encoding/hex"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"reflect"
++	"regexp"
++	"strconv"
++	"strings"
++	"time"
++	"unicode/utf8"
++)
++
++const (
++	SchemaVersion   = "1"
++	MaxBatchBytes   = 256 * 1024
++	MaxBatchItems   = 64
++	MaxEffects      = 256
++	SignatureDomain = "ukkera-branch-pos:evidence:v1\n"
++)
++
++var (
++	ErrValidation   = errors.New("invalid_branch_pos_evidence")
++	ErrUnauthorized = errors.New("branch_service_not_authorized")
++	ErrUnavailable  = errors.New("branch_pos_ingestion_adapter_unavailable")
++	ErrSignature    = errors.New("invalid_branch_pos_signature")
++)
++
++// Scope contains ONLY BranchPos domain UUIDs, never legacy/native Org IDs.
++// A protected, explicitly provisioned registry must map it one-to-one to
++// NativeScope in the transaction's admission snapshot. No ingestion code may
++// hash/coerce a native string into a UUID or auto-create a missing mapping.
++type Scope struct {
++	OrganizationID string `json:"organizationId"`
++	CompanyID      string `json:"companyId"`
++	BranchID       string `json:"branchId"`
++}
++
++// NativeScope is an internal authenticated/resolved scope. These existing
++// collection identifiers remain opaque strings, even when they look like
++// ObjectIDs. This type is deliberately distinct from the wire domain Scope.
++type NativeScope struct {
++	SourceNamespace string
++	OrganizationID  string
++	CompanyID       string
++	BranchID        string
++}
++
++type Money struct {
++	Currency string `json:"currency"`
++	Minor    string `json:"minor"`
++}
++
++// Matches core/types Quantity: scaled is an exact signed int64 string; scale
++// is a bounded integer precision snapshot, NOT an amount. The authoritative
++// unit/SKU/scale relationship is checked by ResolveOrigin, not inferred here.
++type Quantity struct {
++	UnitID string `json:"unitId"`
++	Scaled string `json:"scaled"`
++	Scale  int    `json:"scale"`
++}
++
++type Effect struct {
++	EffectID   string    `json:"effectId"`
++	Kind       string    `json:"kind"`
++	ResourceID string    `json:"resourceId"`
++	Revision   string    `json:"revision"`
++	Money      *Money    `json:"money,omitempty"`
++	Quantity   *Quantity `json:"quantity,omitempty"`
++}
++
++type Result struct {
++	DocumentID string `json:"documentId"`
++	Revision   string `json:"revision"`
++}
++
++// Payload field order is part of branch-pos-json-v1 canonical bytes. This is
++// a fixed-schema ASCII contract, NOT a claim to implement generic RFC 8785.
++// New fields/kinds require a versioned reader rather than an open raw map.
++type Payload struct {
++	SchemaVersion        string   `json:"schemaVersion"`
++	DomainID             string   `json:"domainId"`
++	Scope                Scope    `json:"scope"`
++	OperationID          string   `json:"operationId"`
++	AuthorityEpoch       string   `json:"authorityEpoch"`
++	JournalSequence      string   `json:"journalSequence"`
++	OriginMasterDeviceID string   `json:"originMasterDeviceId"`
++	SigningKeyID         string   `json:"signingKeyId"`
++	AuthorityProofID     string   `json:"authorityProofId"`
++	OriginalActorID      string   `json:"originalActorId"`
++	CatalogRevision      string   `json:"catalogRevision"`
++	PolicyRevision       string   `json:"policyRevision"`
++	MasterCommittedAt    string   `json:"masterCommittedAt"`
++	Effects              []Effect `json:"effects"`
++	Result               Result   `json:"result"`
++}
++
++type Envelope struct {
++	Payload     Payload `json:"payload"`
++	ContentHash string  `json:"contentHash"`
++	Signature   string  `json:"signature"`
++}
++
++type Batch struct {
++	SchemaVersion string     `json:"schemaVersion"`
++	Envelopes     []Envelope `json:"envelopes"`
++}
++
++// Principal is supplied ONLY by a verified device/service authenticator.
++// Request JSON/headers, central-human roles and local employee sessions are
++// not principals. The atomic store rechecks current branch service admission.
++type Principal struct {
++	Kind        string
++	NativeScope NativeScope
++	DeviceID    string
++}
++
++type Disposition string
++
++const (
++	Accepted    Disposition = "accepted"
++	Quarantined Disposition = "quarantined"
++	Conflict    Disposition = "conflict"
++)
++
++type Receipt struct {
++	OperationID     string      `json:"operationId"`
++	ContentHash     string      `json:"contentHash"`
++	AuthorityEpoch  string      `json:"authorityEpoch"`
++	JournalSequence string      `json:"journalSequence"`
++	Disposition     Disposition `json:"disposition"`
++}
++
++type SequenceRange struct {
++	First string `json:"first"`
++	Last  string `json:"last"`
++}
++
++type Checkpoint struct {
++	AuthorityEpoch                    string          `json:"authorityEpoch"`
++	HighestContiguousAcceptedSequence string          `json:"highestContiguousAcceptedSequence"`
++	HighestAcceptedSequence           string          `json:"highestAcceptedSequence"`
++	MissingRanges                     []SequenceRange `json:"missingRanges"`
++}
++
++type Acknowledgement struct {
++	SchemaVersion string       `json:"schemaVersion"`
++	Scope         Scope        `json:"scope"`
++	Coverage      string       `json:"coverage"`
++	Items         []Receipt    `json:"items"`
++	Checkpoints   []Checkpoint `json:"checkpoints"`
++}
++
++// Same scalar grammar as core/types DomainId/OperationId. Whether an ID was
++// actually assigned/enrolled is an admission decision, not UUID bit guessing.
++var uuid = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
++var sharedID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
++var unsigned = regexp.MustCompile(`^(0|[1-9][0-9]{0,18})$`)
++var signed = regexp.MustCompile(`^(0|-?[1-9][0-9]{0,18})$`)
++
++func invalid(field string) error { return fmt.Errorf("%w: %s", ErrValidation, field) }
++
++func decimal(value string, positive bool) (int64, error) {
++	if !unsigned.MatchString(value) {
++		return 0, ErrValidation
++	}
++	n, err := strconv.ParseInt(value, 10, 64)
++	if err != nil || (positive && n == 0) {
++		return 0, ErrValidation
++	}
++	return n, nil
++}
++
++func signedDecimal(value string) (int64, error) {
++	if !signed.MatchString(value) {
++		return 0, ErrValidation
++	}
++	n, err := strconv.ParseInt(value, 10, 64)
++	if err != nil {
++		return 0, ErrValidation
++	}
++	return n, nil
++}
++
++func (s Scope) valid() bool {
++	return uuid.MatchString(s.OrganizationID) && uuid.MatchString(s.CompanyID) && uuid.MatchString(s.BranchID)
++}
++
++func (s NativeScope) valid() bool {
++	return sharedID.MatchString(s.SourceNamespace) && sharedID.MatchString(s.OrganizationID) && sharedID.MatchString(s.CompanyID) && sharedID.MatchString(s.BranchID)
++}
++
++func (p Payload) Validate() error {
++	if p.SchemaVersion != SchemaVersion || !p.Scope.valid() {
++		return invalid("schemaVersion/scope")
++	}
++	ids := []string{p.DomainID, p.OperationID, p.OriginMasterDeviceID, p.SigningKeyID, p.AuthorityProofID, p.OriginalActorID, p.Result.DocumentID}
++	for _, id := range ids {
++		if !uuid.MatchString(id) {
++			return invalid("domain identifier")
++		}
++	}
++	for _, rev := range []string{p.AuthorityEpoch, p.JournalSequence, p.CatalogRevision, p.PolicyRevision} {
++		if _, err := decimal(rev, true); err != nil {
++			return invalid("positive version/sequence")
++		}
++	}
++	if _, err := decimal(p.Result.Revision, false); err != nil {
++		return invalid("result revision")
++	}
++	if err := ValidateEvidenceV1Time(p.MasterCommittedAt); err != nil {
++		return err
++	}
++	if len(p.Effects) == 0 || len(p.Effects) > MaxEffects {
++		return invalid("effect count")
++	}
++	seen := make(map[string]bool, len(p.Effects))
++	for _, effect := range p.Effects {
++		if !uuid.MatchString(effect.EffectID) || !uuid.MatchString(effect.ResourceID) || seen[effect.EffectID] {
++			return invalid("effect identifiers")
++		}
++		seen[effect.EffectID] = true
++		if _, err := decimal(effect.Revision, false); err != nil {
++			return invalid("effect revision")
++		}
++		switch effect.Kind {
++		case "cashPosted":
++			if effect.Money == nil || effect.Quantity != nil || effect.Money.Currency != "EGP" {
++				return invalid("cash effect")
++			}
++			if n, err := signedDecimal(effect.Money.Minor); err != nil || n == 0 {
++				return invalid("minor units")
++			}
++		case "stockPosted":
++			if effect.Quantity == nil || effect.Money != nil || !uuid.MatchString(effect.Quantity.UnitID) {
++				return invalid("stock effect")
++			}
++			if n, err := signedDecimal(effect.Quantity.Scaled); err != nil || n == 0 {
++				return invalid("quantity scaled units")
++			}
++			if effect.Quantity.Scale < 0 || effect.Quantity.Scale > 6 {
++				return invalid("quantity scale")
++			}
++		default:
++			return invalid("unsupported effect kind")
++		}
++	}
++	return nil
++}
++
++// ValidateEvidenceV1Time is an EXPLICIT evidence-v1 transport bound, not the
++// full core/types UtcInstant range: years 0000..9999, UTC Z, and Kotlin Instant
++// fraction groups 0/3/6/9. Producers must admit this bound BEFORE committing a
++// locally successful operation requiring this ingestion version. Never trim,
++// normalize or reformat an already-signed timestamp to make it fit.
++func ValidateEvidenceV1Time(value string) error {
++	at, err := time.Parse(time.RFC3339Nano, value)
++	if err != nil {
++		return invalid("evidence-v1 UTC time")
++	}
++	at = at.UTC()
++	if at.Year() < 0 || at.Year() > 9999 {
++		return invalid("evidence-v1 year bound")
++	}
++	fraction := ""
++	nanos := at.Nanosecond()
++	switch {
++	case nanos == 0:
++	case nanos%1000000 == 0:
++		fraction = fmt.Sprintf(".%03d", nanos/1000000)
++	case nanos%1000 == 0:
++		fraction = fmt.Sprintf(".%06d", nanos/1000)
++	default:
++		fraction = fmt.Sprintf(".%09d", nanos)
++	}
++	if at.Format("2006-01-02T15:04:05")+fraction+"Z" != value {
++		return invalid("evidence-v1 canonical UTC time")
++	}
++	return nil
++}
++
++func CanonicalPayload(payload Payload) ([]byte, error) {
++	if err := payload.Validate(); err != nil {
++		return nil, err
++	}
++	return json.Marshal(payload)
++}
++
++func ContentHash(canonical []byte) string {
++	sum := sha256.Sum256(canonical)
++	return "sha256:" + hex.EncodeToString(sum[:])
++}
++
++func signatureMessage(canonical []byte) []byte { return append([]byte(SignatureDomain), canonical...) }
++
++func VerifySignature(key ed25519.PublicKey, canonical []byte, signature string) error {
++	sig, err := base64.StdEncoding.Strict().DecodeString(signature)
++	if err != nil || len(sig) != ed25519.SignatureSize || base64.StdEncoding.EncodeToString(sig) != signature || len(key) != ed25519.PublicKeySize {
++		return ErrSignature
++	}
++	if !ed25519.Verify(key, signatureMessage(canonical), sig) {
++		return ErrSignature
++	}
++	return nil
++}
++
++// DecodeBatch rejects duplicate/case-variant keys, unknown fields, excessive
++// nesting/body size, invalid UTF-8, number-valued scalars and trailing JSON.
++func DecodeBatch(reader io.Reader) (Batch, error) {
++	var batch Batch
++	raw, err := io.ReadAll(io.LimitReader(reader, MaxBatchBytes+1))
++	if err != nil {
++		return batch, err
++	}
++	if len(raw) > MaxBatchBytes || !utf8.Valid(raw) {
++		return batch, invalid("body encoding/size")
++	}
++	decoder := json.NewDecoder(bytes.NewReader(raw))
++	decoder.UseNumber()
++	if err := checkJSONValue(decoder, 0); err != nil {
++		return batch, err
++	}
++	if _, err := decoder.Token(); err != io.EOF {
++		return batch, invalid("trailing JSON")
++	}
++	var shape any
++	decoder = json.NewDecoder(bytes.NewReader(raw))
++	decoder.UseNumber()
++	if err := decoder.Decode(&shape); err != nil {
++		return batch, invalid("JSON")
++	}
++	if err := exactShape(shape, reflect.TypeFor[Batch]()); err != nil {
++		return batch, err
++	}
++	decoder = json.NewDecoder(bytes.NewReader(raw))
++	decoder.DisallowUnknownFields()
++	if err := decoder.Decode(&batch); err != nil {
++		return batch, invalid("typed JSON")
++	}
++	return batch, nil
++}
++
++func checkJSONValue(decoder *json.Decoder, depth int) error {
++	if depth > 24 {
++		return invalid("JSON depth")
++	}
++	token, err := decoder.Token()
++	if err != nil {
++		return invalid("JSON")
++	}
++	if delim, ok := token.(json.Delim); ok {
++		switch delim {
++		case '{':
++			seen := map[string]bool{}
++			for decoder.More() {
++				t, err := decoder.Token()
++				if err != nil {
++					return invalid("JSON key")
++				}
++				key, ok := t.(string)
++				if !ok || seen[key] {
++					return invalid("duplicate JSON key")
++				}
++				seen[key] = true
++				if err := checkJSONValue(decoder, depth+1); err != nil {
++					return err
++				}
++			}
++		case '[':
++			for decoder.More() {
++				if err := checkJSONValue(decoder, depth+1); err != nil {
++					return err
++				}
++			}
++		default:
++			return invalid("JSON delimiter")
++		}
++		if _, err := decoder.Token(); err != nil {
++			return invalid("JSON close")
++		}
++	}
++	return nil
++}
++
++func exactShape(value any, typ reflect.Type) error {
++	if typ.Kind() == reflect.Pointer {
++		if value == nil {
++			return nil
++		}
++		return exactShape(value, typ.Elem())
++	}
++	switch typ.Kind() {
++	case reflect.Struct:
++		obj, ok := value.(map[string]any)
++		if !ok {
++			return invalid("object shape")
++		}
++		fields := map[string]reflect.Type{}
++		for i := 0; i < typ.NumField(); i++ {
++			field := typ.Field(i)
++			tag := strings.Split(field.Tag.Get("json"), ",")
++			fields[tag[0]] = field.Type
++			if len(tag) == 1 {
++				if _, exists := obj[tag[0]]; !exists {
++					return invalid("missing required field")
++				}
++			}
++		}
++		for key, child := range obj {
++			ft, ok := fields[key]
++			if !ok {
++				return invalid("unknown/noncanonical field name")
++			}
++			if err := exactShape(child, ft); err != nil {
++				return err
++			}
++		}
++	case reflect.Slice:
++		list, ok := value.([]any)
++		if !ok {
++			return invalid("array shape")
++		}
++		for _, child := range list {
++			if err := exactShape(child, typ.Elem()); err != nil {
++				return err
++			}
++		}
++	case reflect.String:
++		if _, ok := value.(string); !ok {
++			return invalid("string scalar")
++		}
++	case reflect.Int:
++		// Quantity.scale is the only numeric field. Reject quoted numbers,
++		// exponent/decimal notation and negative zero rather than coercing.
++		number, ok := value.(json.Number)
++		if !ok || len(number.String()) != 1 || number.String()[0] < '0' || number.String()[0] > '6' {
++			return invalid("quantity scale integer")
++		}
++	default:
++		return invalid("unsupported JSON shape")
++	}
++	return nil
++}
+diff --git a/internal/branchpos/http.go b/internal/branchpos/http.go
+new file mode 100644
+index 0000000..0eafb10
+--- /dev/null
++++ b/internal/branchpos/http.go
+@@ -0,0 +1,74 @@
++package branchpos
++
++import (
++	"encoding/json"
++	"errors"
++	"mime"
++	"net/http"
++)
++
++// IngestionPath is a candidate typed path, NOT automatically mounted in the
++// legacy Fiber service. The optional handler is exercised only in-process.
++const IngestionPath = "/api/v1/branch-pos/ingestion/v1"
++
++type Authenticator interface {
++	Authenticate(*http.Request) (Principal, error)
++}
++
++type HTTPHandler struct {
++	Authenticator Authenticator
++	Service       Service
++}
++
++func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
++	w.Header().Set("Content-Type", "application/json")
++	w.Header().Set("Cache-Control", "no-store")
++	if r.URL.Path != IngestionPath {
++		writeHTTPError(w, http.StatusNotFound, "not_found")
++		return
++	}
++	if r.Method != http.MethodPost {
++		w.Header().Set("Allow", http.MethodPost)
++		writeHTTPError(w, http.StatusMethodNotAllowed, "method_not_allowed")
++		return
++	}
++	if h.Authenticator == nil || h.Service.Store == nil {
++		writeHTTPError(w, http.StatusServiceUnavailable, "not_configured")
++		return
++	}
++	principal, err := h.Authenticator.Authenticate(r)
++	if err != nil {
++		writeHTTPError(w, http.StatusUnauthorized, "unauthorized")
++		return
++	}
++	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
++	if err != nil || media != "application/json" {
++		writeHTTPError(w, http.StatusUnsupportedMediaType, "json_required")
++		return
++	}
++	batch, err := DecodeBatch(r.Body)
++	if err != nil {
++		writeHTTPError(w, http.StatusBadRequest, "invalid_evidence")
++		return
++	}
++	ack, err := h.Service.Ingest(r.Context(), principal, batch)
++	if err != nil {
++		status, code := http.StatusServiceUnavailable, "commit_not_acknowledged"
++		if errors.Is(err, ErrUnauthorized) || errors.Is(err, ErrSignature) {
++			status, code = http.StatusForbidden, "forbidden"
++		}
++		if errors.Is(err, ErrValidation) {
++			status, code = http.StatusBadRequest, "invalid_evidence"
++		}
++		// Never serialize driver errors, credentials, raw payloads or stack traces.
++		writeHTTPError(w, status, code)
++		return
++	}
++	w.WriteHeader(http.StatusOK)
++	_ = json.NewEncoder(w).Encode(ack)
++}
++
++func writeHTTPError(w http.ResponseWriter, status int, code string) {
++	w.WriteHeader(status)
++	_ = json.NewEncoder(w).Encode(map[string]string{"error": code})
++}
+diff --git a/internal/branchpos/ingestion.go b/internal/branchpos/ingestion.go
+new file mode 100644
+index 0000000..38cc441
+--- /dev/null
++++ b/internal/branchpos/ingestion.go
+@@ -0,0 +1,278 @@
++package branchpos
++
++import (
++	"context"
++	"crypto/ed25519"
++	"encoding/json"
++	"fmt"
++	"sort"
++)
++
++type OriginAuthorization struct {
++	PublicKey   ed25519.PublicKey
++	Disposition Disposition
++	Reason      string
++	// Resolved from the protected domain-to-native registry, NOT copied from
++	// the incoming payload or uploader. Ingest matches it to the authenticated
++	// native scope before persisting anything for this envelope.
++	NativeScope NativeScope
++}
++
++type Evidence struct {
++	Envelope  Envelope
++	Canonical []byte
++}
++
++type ProjectionJob struct {
++	Scope       Scope
++	OperationID string
++	ContentHash string
++	Destination string
++}
++
++// AtomicStore MUST serialize/transactionally constrain (branch, operationId)
++// AND (branch, epoch, sequence), retaining uniqueness across epoch changes.
++// Callback failure rolls back ALL evidence, receipts, quarantine/conflicts,
++// outbox and checkpoints. Success means confirmed durable COMMIT. Ambiguous
++// commit returns an error/no ACK and is resolved by retry under the same ID.
++// No production adapter is supplied here: a real replica-set integration test
++// and installed unique indexes are still required before enabling this path.
++type AtomicStore interface {
++	WithinTransaction(context.Context, func(Transaction) error) error
++}
++
++type Transaction interface {
++	// Must recheck current device/service enrollment, scope and revocation.
++	AuthorizeUploader(context.Context, Principal) error
++	// Must resolve the domain Scope through a provisioned one-to-one registry,
++	// reject missing/ambiguous/disabled/reparented mappings and verify the REAL
++	// native Org -> Company -> Branch hierarchy in this admission snapshot.
++	// Mapping identity is unique in BOTH directions at EVERY entity level,
++	// qualified by entity kind/source namespace, not just a unique scope triple.
++	// Disabled identities retain tombstones; historical IDs cannot be reused or
++	// pointed at different native parents. Replay takes the same admission path.
++	// All actor/resource/unit/SKU/scale/config references, signing key ownership
++	// and historic authority/proof/cutoff must match that same scope. It must
++	// neither auto-create mappings nor reinterpret native IDs as UUID/ObjectID.
++	// An epoch increment by itself never fences a writer.
++	ResolveOrigin(context.Context, Payload) (OriginAuthorization, error)
++	FindReceipt(context.Context, Scope, string) (Receipt, bool, error)
++	// Accepted AND quarantined receipts reserve their signed journal position.
++	// A different operation cannot silently replace quarantined history.
++	FindPosition(context.Context, Scope, string, string) (Receipt, bool, error)
++	PutEvidence(context.Context, Evidence) error
++	PutReceipt(context.Context, Scope, Receipt) error
++	PutProjectionJob(context.Context, ProjectionJob) error
++	PutQuarantine(context.Context, Evidence, string) error
++	PutConflict(context.Context, Evidence, string) error
++	// Computes only contiguous ACCEPTED evidence (never quarantine/max seen),
++	// persisting the checkpoint atomically with all preceding inserts.
++	Checkpoint(context.Context, Scope, string) (Checkpoint, error)
++}
++
++type Service struct{ Store AtomicStore }
++
++func (s Service) Ingest(ctx context.Context, principal Principal, batch Batch) (*Acknowledgement, error) {
++	if s.Store == nil {
++		return nil, ErrUnavailable
++	}
++	if principal.Kind != "branch-service" || !principal.NativeScope.valid() || !uuid.MatchString(principal.DeviceID) {
++		return nil, ErrUnauthorized
++	}
++	if batch.SchemaVersion != SchemaVersion || len(batch.Envelopes) == 0 || len(batch.Envelopes) > MaxBatchItems {
++		return nil, invalid("batch version/count")
++	}
++	raw, err := json.Marshal(batch)
++	if err != nil || len(raw) > MaxBatchBytes {
++		return nil, invalid("batch bytes")
++	}
++	evidence := make([]Evidence, len(batch.Envelopes))
++	domainScope := batch.Envelopes[0].Payload.Scope
++	for i, envelope := range batch.Envelopes {
++		if envelope.Payload.Scope != domainScope {
++			return nil, ErrUnauthorized
++		}
++		canonical, err := CanonicalPayload(envelope.Payload)
++		if err != nil {
++			return nil, err
++		}
++		if ContentHash(canonical) != envelope.ContentHash {
++			return nil, invalid("content hash")
++		}
++		evidence[i] = Evidence{Envelope: envelope, Canonical: canonical}
++	}
++
++	var acknowledged *Acknowledgement
++	err = s.Store.WithinTransaction(ctx, func(tx Transaction) error {
++		if tx == nil {
++			return ErrUnavailable
++		}
++		if err := tx.AuthorizeUploader(ctx, principal); err != nil {
++			return err
++		}
++		// The callback may be retried by a Mongo transaction driver. Never
++		// accumulate response items across callback attempts.
++		ack := &Acknowledgement{SchemaVersion: SchemaVersion, Scope: domainScope, Coverage: "central-accepted-evidence-only", Items: []Receipt{}, Checkpoints: []Checkpoint{}}
++		epochs := map[string]bool{}
++		for _, item := range evidence {
++			p := item.Envelope.Payload
++			origin, err := tx.ResolveOrigin(ctx, p)
++			if err != nil {
++				return err
++			}
++			if !origin.NativeScope.valid() || origin.NativeScope != principal.NativeScope {
++				return ErrUnauthorized
++			}
++			if origin.Disposition != Accepted && origin.Disposition != Quarantined {
++				return ErrUnauthorized
++			}
++			if origin.Disposition == Quarantined && origin.Reason == "" {
++				return ErrUnauthorized
++			}
++			if err := VerifySignature(origin.PublicKey, item.Canonical, item.Envelope.Signature); err != nil {
++				return err
++			}
++			epochs[p.AuthorityEpoch] = true
++			receipt := Receipt{OperationID: p.OperationID, ContentHash: item.Envelope.ContentHash, AuthorityEpoch: p.AuthorityEpoch, JournalSequence: p.JournalSequence, Disposition: origin.Disposition}
++			existing, found, err := tx.FindReceipt(ctx, p.Scope, p.OperationID)
++			if err != nil {
++				return err
++			}
++			if found {
++				if existing.ContentHash == receipt.ContentHash {
++					ack.Items = append(ack.Items, existing)
++					continue
++				}
++				if err := tx.PutConflict(ctx, item, "operation_identity_content_mismatch"); err != nil {
++					return err
++				}
++				receipt.Disposition = Conflict
++				ack.Items = append(ack.Items, receipt)
++				continue
++			}
++			position, occupied, err := tx.FindPosition(ctx, p.Scope, p.AuthorityEpoch, p.JournalSequence)
++			if err != nil {
++				return err
++			}
++			if occupied && (position.OperationID != p.OperationID || position.ContentHash != receipt.ContentHash) {
++				if err := tx.PutConflict(ctx, item, "journal_position_content_mismatch"); err != nil {
++					return err
++				}
++				receipt.Disposition = Conflict
++				ack.Items = append(ack.Items, receipt)
++				continue
++			}
++			if receipt.Disposition == Quarantined {
++				if err := tx.PutQuarantine(ctx, item, origin.Reason); err != nil {
++					return err
++				}
++			} else {
++				if err := tx.PutEvidence(ctx, item); err != nil {
++					return err
++				}
++				if err := tx.PutProjectionJob(ctx, ProjectionJob{Scope: p.Scope, OperationID: p.OperationID, ContentHash: receipt.ContentHash, Destination: "central-reporting.v1"}); err != nil {
++					return err
++				}
++			}
++			if err := tx.PutReceipt(ctx, p.Scope, receipt); err != nil {
++				return err
++			}
++			ack.Items = append(ack.Items, receipt)
++		}
++		ordered := make([]string, 0, len(epochs))
++		for epoch := range epochs {
++			ordered = append(ordered, epoch)
++		}
++		sort.Slice(ordered, func(i, j int) bool {
++			a, _ := decimal(ordered[i], true)
++			b, _ := decimal(ordered[j], true)
++			return a < b
++		})
++		for _, epoch := range ordered {
++			checkpoint, err := tx.Checkpoint(ctx, domainScope, epoch)
++			if err != nil {
++				return err
++			}
++			if err := validateCheckpoint(epoch, checkpoint); err != nil {
++				return err
++			}
++			ack.Checkpoints = append(ack.Checkpoints, checkpoint)
++		}
++		acknowledged = ack
++		return nil
++	})
++	if err != nil {
++		return nil, err
++	} // including uncertain commit: never ACK
++	if acknowledged == nil {
++		return nil, ErrUnavailable
++	}
++	return acknowledged, nil
++}
++
++func validateCheckpoint(epoch string, cp Checkpoint) error {
++	low, e1 := decimal(cp.HighestContiguousAcceptedSequence, false)
++	high, e2 := decimal(cp.HighestAcceptedSequence, false)
++	if cp.AuthorityEpoch != epoch || e1 != nil || e2 != nil || low > high || cp.MissingRanges == nil {
++		return invalid("checkpoint")
++	}
++	previous := low
++	for _, gap := range cp.MissingRanges {
++		first, e1 := decimal(gap.First, true)
++		last, e2 := decimal(gap.Last, true)
++		if e1 != nil || e2 != nil || first <= previous || last < first || last >= high {
++			return invalid("checkpoint gaps")
++		}
++		previous = last
++	}
++	if (low == high) != (len(cp.MissingRanges) == 0) {
++		return invalid("checkpoint coverage")
++	}
++	if low != high {
++		first, _ := decimal(cp.MissingRanges[0].First, true)
++		if first != low+1 {
++			return invalid("checkpoint first gap")
++		}
++	}
++	return nil
++}
++
++// ComputeCheckpoint is a deterministic reference calculation over a bounded
++// authoritative set, not a database scanner. previous is a VERIFIED contiguous
++// cut. Real adapters may use indexed contiguous-range tracking; never pass a
++// client claimed cut, last batch maximum, or quarantined positions here.
++func ComputeCheckpoint(epoch, previous string, accepted []string) (Checkpoint, error) {
++	if _, err := decimal(epoch, true); err != nil {
++		return Checkpoint{}, invalid("checkpoint epoch")
++	}
++	cut, err := decimal(previous, false)
++	if err != nil || len(accepted) > 4096 {
++		return Checkpoint{}, invalid("checkpoint inputs")
++	}
++	values := make([]int64, 0, len(accepted))
++	for _, value := range accepted {
++		n, err := decimal(value, true)
++		if err != nil {
++			return Checkpoint{}, invalid("checkpoint sequence")
++		}
++		if n > cut {
++			values = append(values, n)
++		}
++	}
++	sort.Slice(values, func(i, j int) bool { return values[i] < values[j] })
++	cp := Checkpoint{AuthorityEpoch: epoch, HighestContiguousAcceptedSequence: previous, HighestAcceptedSequence: previous, MissingRanges: []SequenceRange{}}
++	last, contiguous := cut, cut
++	for _, value := range values {
++		if value == last {
++			continue
++		}
++		if value-last > 1 {
++			cp.MissingRanges = append(cp.MissingRanges, SequenceRange{First: fmt.Sprint(last + 1), Last: fmt.Sprint(value - 1)})
++		} else if contiguous == last {
++			contiguous = value
++		}
++		last = value
++	}
++	cp.HighestContiguousAcceptedSequence, cp.HighestAcceptedSequence = fmt.Sprint(contiguous), fmt.Sprint(last)
++	return cp, validateCheckpoint(epoch, cp)
++}
+diff --git a/internal/branchpos/ingestion_test.go b/internal/branchpos/ingestion_test.go
+new file mode 100644
+index 0000000..3691a75
+--- /dev/null
++++ b/internal/branchpos/ingestion_test.go
+@@ -0,0 +1,751 @@
++package branchpos
++
++import (
++	"bytes"
++	"context"
++	"crypto/ed25519"
++	"encoding/base64"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"maps"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strings"
++	"sync"
++	"testing"
++)
++
++// This copy-on-write fake is a TEST oracle for service orchestration. It is
++// intentionally not exported or available to a server; passing these tests
++// is not Mongo durability/transaction/tenant/recovery acceptance.
++type memoryState struct {
++	receipts    map[string]Receipt
++	evidence    map[string]Evidence
++	jobs        map[string]ProjectionJob
++	quarantine  map[string]Evidence
++	conflicts   map[string]Evidence
++	checkpoints map[string]Checkpoint
++}
++
++func newState() memoryState {
++	return memoryState{map[string]Receipt{}, map[string]Evidence{}, map[string]ProjectionJob{}, map[string]Evidence{}, map[string]Evidence{}, map[string]Checkpoint{}}
++}
++func (s memoryState) copy() memoryState {
++	return memoryState{maps.Clone(s.receipts), maps.Clone(s.evidence), maps.Clone(s.jobs), maps.Clone(s.quarantine), maps.Clone(s.conflicts), maps.Clone(s.checkpoints)}
++}
++
++type memoryStore struct {
++	mu                 sync.Mutex
++	state              memoryState
++	failAt             string
++	dropAfterCommit    bool
++	retryCallback      bool
++	quarantineSequence string
++	revoked            bool
++	// Explicit TEST registry fixtures, not a production mapping adapter.
++	mappings           []fixtureMapping
++	badNativeHierarchy bool
++	resolvedOverride   *NativeScope
++}
++
++type fixtureMapping struct {
++	domain Scope
++	native NativeScope
++	active bool
++}
++
++var interrupted = errors.New("test crash/ambiguous commit")
++var testScope = Scope{id(11), id(12), id(13)}
++var testNativeScope = NativeScope{"test-source", "org-a", "company-a", "branch-a"}
++
++func id(n int) string             { return fmt.Sprintf("00000000-0000-4000-8000-%012x", n) }
++func testKey() ed25519.PrivateKey { return ed25519.NewKeyFromSeed(bytes.Repeat([]byte{0x24}, 32)) }
++func principal() Principal {
++	return Principal{Kind: "branch-service", NativeScope: testNativeScope, DeviceID: id(41)}
++}
++func newStore() *memoryStore {
++	return &memoryStore{state: newState(), mappings: []fixtureMapping{{testScope, testNativeScope, true}}}
++}
++func scopeKey(s Scope) string {
++	return s.OrganizationID + "\x00" + s.CompanyID + "\x00" + s.BranchID + "\x00"
++}
++func opKey(s Scope, op string) string { return scopeKey(s) + op }
++
++func payload(n int, seq string) Payload {
++	return Payload{
++		SchemaVersion: "1", DomainID: id(100 + n), Scope: testScope, OperationID: id(200 + n),
++		AuthorityEpoch: "1", JournalSequence: seq, OriginMasterDeviceID: id(42), SigningKeyID: id(43), AuthorityProofID: id(44), OriginalActorID: id(45),
++		CatalogRevision: "9007199254740993", PolicyRevision: "1", MasterCommittedAt: "2026-10-23T10:20:30.100Z",
++		Effects: []Effect{
++			{EffectID: id(300 + n), Kind: "cashPosted", ResourceID: id(65), Revision: "9223372036854775807", Money: &Money{"EGP", "9007199254740993"}},
++			{EffectID: id(400 + n), Kind: "stockPosted", ResourceID: id(66), Revision: "1", Quantity: &Quantity{id(67), "-1234567", 6}},
++		}, Result: Result{DocumentID: id(500 + n), Revision: "9223372036854775807"},
++	}
++}
++
++func signPayload(t *testing.T, p Payload) Envelope {
++	t.Helper()
++	canonical, err := CanonicalPayload(p)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return Envelope{p, ContentHash(canonical), base64.StdEncoding.EncodeToString(ed25519.Sign(testKey(), signatureMessage(canonical)))}
++}
++func batch(envelopes ...Envelope) Batch { return Batch{SchemaVersion: "1", Envelopes: envelopes} }
++
++func (s *memoryStore) WithinTransaction(ctx context.Context, fn func(Transaction) error) error {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	staged := s.state.copy()
++	if err := fn(&memoryTx{s, &staged}); err != nil {
++		return err
++	}
++	if s.retryCallback {
++		staged = s.state.copy()
++		if err := fn(&memoryTx{s, &staged}); err != nil {
++			return err
++		}
++	}
++	s.state = staged
++	if s.dropAfterCommit {
++		s.dropAfterCommit = false
++		return interrupted
++	}
++	return nil
++}
++
++type memoryTx struct {
++	store *memoryStore
++	state *memoryState
++}
++
++func (tx *memoryTx) step(name string) error {
++	if tx.store.failAt == name {
++		return interrupted
++	}
++	return nil
++}
++func (tx *memoryTx) AuthorizeUploader(_ context.Context, p Principal) error {
++	if tx.store.revoked || p.NativeScope != testNativeScope || p.DeviceID != id(41) {
++		return ErrUnauthorized
++	}
++	return nil
++}
++
++// A bounded fixture oracle for the REQUIRED adapter contract. The real store
++// must implement this using protected entity mappings, native parent reads and
++// installed indexes in one transaction; this test code cannot enable a route.
++func (tx *memoryTx) fixtureResolveScope(domain Scope) (NativeScope, error) {
++	var found *fixtureMapping
++	for i := range tx.store.mappings {
++		m := &tx.store.mappings[i]
++		if m.domain == domain {
++			if found != nil || !m.active {
++				return NativeScope{}, ErrUnauthorized
++			}
++			found = m
++		}
++	}
++	if found == nil || tx.store.badNativeHierarchy {
++		return NativeScope{}, ErrUnauthorized
++	}
++	// A unique full triple is insufficient: each domain org/company/branch
++	// must retain its own native identity and parent in both directions.
++	pairs := func(m fixtureMapping) [][2]string {
++		return [][2]string{
++			{m.domain.OrganizationID, m.native.SourceNamespace + "\x00organization\x00" + m.native.OrganizationID},
++			{m.domain.CompanyID, m.native.SourceNamespace + "\x00company\x00" + m.native.CompanyID},
++			{m.domain.BranchID, m.native.SourceNamespace + "\x00branch\x00" + m.native.BranchID},
++		}
++	}
++	for _, other := range tx.store.mappings {
++		left, right := pairs(*found), pairs(other)
++		for i := range left {
++			if (left[i][0] == right[i][0]) != (left[i][1] == right[i][1]) {
++				return NativeScope{}, ErrUnauthorized
++			}
++			if i > 0 && left[i][0] == right[i][0] && left[i-1] != right[i-1] {
++				return NativeScope{}, ErrUnauthorized
++			}
++		}
++	}
++	if tx.store.resolvedOverride != nil {
++		return *tx.store.resolvedOverride, nil
++	}
++	return found.native, nil
++}
++
++func (tx *memoryTx) ResolveOrigin(_ context.Context, p Payload) (OriginAuthorization, error) {
++	native, err := tx.fixtureResolveScope(p.Scope)
++	if err != nil {
++		return OriginAuthorization{}, err
++	}
++	if p.SigningKeyID != id(43) || p.OriginMasterDeviceID != id(42) || p.AuthorityProofID != id(44) || p.OriginalActorID != id(45) || p.CatalogRevision != "9007199254740993" || p.PolicyRevision != "1" {
++		return OriginAuthorization{}, ErrUnauthorized
++	}
++	for _, e := range p.Effects {
++		if e.ResourceID != id(65) && e.ResourceID != id(66) {
++			return OriginAuthorization{}, ErrUnauthorized
++		}
++		if e.Quantity != nil && (e.Quantity.UnitID != id(67) || e.Quantity.Scale != 6) {
++			return OriginAuthorization{}, ErrUnauthorized
++		}
++	}
++	origin := OriginAuthorization{PublicKey: testKey().Public().(ed25519.PublicKey), Disposition: Accepted, NativeScope: native}
++	if p.JournalSequence == tx.store.quarantineSequence {
++		origin.Disposition = Quarantined
++		origin.Reason = "retired_authority_cut"
++	}
++	return origin, nil
++}
++func (tx *memoryTx) FindReceipt(_ context.Context, scope Scope, operation string) (Receipt, bool, error) {
++	r, found := tx.state.receipts[opKey(scope, operation)]
++	return r, found, nil
++}
++func (tx *memoryTx) FindPosition(_ context.Context, scope Scope, epoch, sequence string) (Receipt, bool, error) {
++	for key, r := range tx.state.receipts {
++		if strings.HasPrefix(key, scopeKey(scope)) && r.AuthorityEpoch == epoch && r.JournalSequence == sequence {
++			return r, true, nil
++		}
++	}
++	return Receipt{}, false, nil
++}
++func (tx *memoryTx) PutEvidence(_ context.Context, e Evidence) error {
++	tx.state.evidence[opKey(e.Envelope.Payload.Scope, e.Envelope.Payload.OperationID)] = e
++	return tx.step("evidence")
++}
++func (tx *memoryTx) PutReceipt(_ context.Context, scope Scope, receipt Receipt) error {
++	key := opKey(scope, receipt.OperationID)
++	if _, exists := tx.state.receipts[key]; exists {
++		return errors.New("duplicate test receipt")
++	}
++	tx.state.receipts[key] = receipt
++	return tx.step("receipt")
++}
++func (tx *memoryTx) PutProjectionJob(_ context.Context, job ProjectionJob) error {
++	tx.state.jobs[opKey(job.Scope, job.OperationID)+job.Destination] = job
++	return tx.step("outbox")
++}
++func (tx *memoryTx) PutQuarantine(_ context.Context, e Evidence, _ string) error {
++	tx.state.quarantine[opKey(e.Envelope.Payload.Scope, e.Envelope.Payload.OperationID)] = e
++	return tx.step("quarantine")
++}
++func (tx *memoryTx) PutConflict(_ context.Context, e Evidence, _ string) error {
++	tx.state.conflicts[opKey(e.Envelope.Payload.Scope, e.Envelope.Payload.OperationID)+e.Envelope.ContentHash] = e
++	return tx.step("conflict")
++}
++func (tx *memoryTx) Checkpoint(_ context.Context, scope Scope, epoch string) (Checkpoint, error) {
++	sequences := []string{}
++	for key, r := range tx.state.receipts {
++		if strings.HasPrefix(key, scopeKey(scope)) && r.AuthorityEpoch == epoch && r.Disposition == Accepted {
++			sequences = append(sequences, r.JournalSequence)
++		}
++	}
++	cp, err := ComputeCheckpoint(epoch, "0", sequences)
++	if err != nil {
++		return cp, err
++	}
++	tx.state.checkpoints[scopeKey(scope)+epoch] = cp
++	return cp, tx.step("checkpoint")
++}
++
++func TestAtomicEvidenceReceiptOutboxAndLostReply(t *testing.T) {
++	store := newStore()
++	service := Service{Store: store}
++	envelope := signPayload(t, payload(1, "1"))
++	store.dropAfterCommit = true
++	ack, err := service.Ingest(context.Background(), principal(), batch(envelope))
++	if !errors.Is(err, interrupted) || ack != nil {
++		t.Fatal("ambiguous commit was acknowledged", ack, err)
++	}
++	if len(store.state.evidence) != 1 || len(store.state.receipts) != 1 || len(store.state.jobs) != 1 {
++		t.Fatal("commit incomplete")
++	}
++	ack, err = service.Ingest(context.Background(), principal(), batch(envelope))
++	if err != nil || ack.Items[0] != store.state.receipts[opKey(testScope, envelope.Payload.OperationID)] {
++		t.Fatal("original receipt not returned", err)
++	}
++	if ack.Coverage != "central-accepted-evidence-only" || ack.Checkpoints[0].HighestContiguousAcceptedSequence != "1" {
++		t.Fatal("wrong coverage", ack)
++	}
++	if len(store.state.evidence) != 1 || len(store.state.jobs) != 1 {
++		t.Fatal("retry repeated effect/job")
++	}
++	stored := store.state.evidence[opKey(testScope, envelope.Payload.OperationID)]
++	if stored.Envelope.Payload.OriginalActorID != id(45) || stored.Envelope.Payload.OriginMasterDeviceID != id(42) {
++		t.Fatal("new uploader changed historic attribution")
++	}
++}
++
++func TestAtomicRollbackEveryPersistenceBoundary(t *testing.T) {
++	for _, failAt := range []string{"evidence", "outbox", "receipt", "checkpoint"} {
++		t.Run(failAt, func(t *testing.T) {
++			store := newStore()
++			store.failAt = failAt
++			service := Service{Store: store}
++			request := batch(signPayload(t, payload(1, "1")))
++			ack, err := service.Ingest(context.Background(), principal(), request)
++			if !errors.Is(err, interrupted) || ack != nil {
++				t.Fatal("crash acknowledged", ack, err)
++			}
++			if !reflect.DeepEqual(store.state, newState()) {
++				t.Fatal("transaction leaked partial rows")
++			}
++			store.failAt = ""
++			if _, err := service.Ingest(context.Background(), principal(), request); err != nil {
++				t.Fatal("retry failed", err)
++			}
++		})
++	}
++}
++
++func TestQuarantineAndOutOfOrderNeverAdvanceAcrossGaps(t *testing.T) {
++	store := newStore()
++	service := Service{Store: store}
++	ack, err := service.Ingest(context.Background(), principal(), batch(signPayload(t, payload(3, "3"))))
++	if err != nil {
++		t.Fatal(err)
++	}
++	want := Checkpoint{"1", "0", "3", []SequenceRange{{"1", "2"}}}
++	if !reflect.DeepEqual(ack.Checkpoints[0], want) {
++		t.Fatalf("max seen mistaken for contiguous: %#v", ack.Checkpoints[0])
++	}
++	_, err = service.Ingest(context.Background(), principal(), batch(signPayload(t, payload(1, "1"))))
++	if err != nil {
++		t.Fatal(err)
++	}
++	store.quarantineSequence = "2"
++	quarantine := signPayload(t, payload(2, "2"))
++	ack, err = service.Ingest(context.Background(), principal(), batch(quarantine))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if ack.Items[0].Disposition != Quarantined || ack.Checkpoints[0].HighestContiguousAcceptedSequence != "1" || len(store.state.jobs) != 2 || len(store.state.quarantine) != 1 {
++		t.Fatal("quarantine became accepted/projection evidence")
++	}
++	store.quarantineSequence = ""
++	ack, err = service.Ingest(context.Background(), principal(), batch(quarantine))
++	if err != nil || ack.Items[0].Disposition != Quarantined {
++		t.Fatal("retry silently promoted quarantine", err)
++	}
++}
++
++func TestIdentityAndJournalPositionConflictsAreDurable(t *testing.T) {
++	store := newStore()
++	service := Service{Store: store}
++	original := signPayload(t, payload(1, "1"))
++	if _, err := service.Ingest(context.Background(), principal(), batch(original)); err != nil {
++		t.Fatal(err)
++	}
++	changed := payload(1, "1")
++	changed.Effects[0].Money.Minor = "12"
++	crossEpoch := payload(1, "1")
++	crossEpoch.AuthorityEpoch = "2"
++	for _, p := range []Payload{changed, crossEpoch, payload(2, "1")} {
++		ack, err := service.Ingest(context.Background(), principal(), batch(signPayload(t, p)))
++		if err != nil || ack.Items[0].Disposition != Conflict {
++			t.Fatal("conflict not recorded", err)
++		}
++	}
++	if len(store.state.conflicts) != 3 || len(store.state.jobs) != 1 || len(store.state.evidence) != 1 {
++		t.Fatal("conflict altered accepted work")
++	}
++	if store.state.receipts[opKey(testScope, original.Payload.OperationID)].ContentHash != original.ContentHash {
++		t.Fatal("original receipt overwritten")
++	}
++}
++
++func TestQuarantineAndConflictPersistenceFailuresRollback(t *testing.T) {
++	t.Run("quarantine", func(t *testing.T) {
++		store := newStore()
++		store.quarantineSequence, store.failAt = "1", "quarantine"
++		request := batch(signPayload(t, payload(1, "1")))
++		ack, err := (Service{Store: store}).Ingest(context.Background(), principal(), request)
++		if ack != nil || !errors.Is(err, interrupted) || !reflect.DeepEqual(store.state, newState()) {
++			t.Fatal("quarantine crash leaked state/ACK", ack, err)
++		}
++		store.failAt = ""
++		if ack, err := (Service{Store: store}).Ingest(context.Background(), principal(), request); err != nil || ack.Items[0].Disposition != Quarantined {
++			t.Fatal("quarantine retry failed", err)
++		}
++	})
++	t.Run("conflict", func(t *testing.T) {
++		store := newStore()
++		service := Service{Store: store}
++		if _, err := service.Ingest(context.Background(), principal(), batch(signPayload(t, payload(1, "1")))); err != nil {
++			t.Fatal(err)
++		}
++		before := store.state.copy()
++		changed := payload(1, "1")
++		changed.Effects[0].Money.Minor = "12"
++		request := batch(signPayload(t, changed))
++		store.failAt = "conflict"
++		ack, err := service.Ingest(context.Background(), principal(), request)
++		if ack != nil || !errors.Is(err, interrupted) || !reflect.DeepEqual(store.state, before) {
++			t.Fatal("conflict crash changed original state/ACK", ack, err)
++		}
++		store.failAt = ""
++		if ack, err := service.Ingest(context.Background(), principal(), request); err != nil || ack.Items[0].Disposition != Conflict {
++			t.Fatal("conflict retry failed", err)
++		}
++	})
++}
++
++func TestQuarantinedPositionCannotBeReplacedByAnotherOperation(t *testing.T) {
++	store := newStore()
++	store.quarantineSequence = "1"
++	service := Service{Store: store}
++	if _, err := service.Ingest(context.Background(), principal(), batch(signPayload(t, payload(1, "1")))); err != nil {
++		t.Fatal(err)
++	}
++	store.quarantineSequence = ""
++	ack, err := service.Ingest(context.Background(), principal(), batch(signPayload(t, payload(2, "1"))))
++	if err != nil || ack.Items[0].Disposition != Conflict || ack.Checkpoints[0].HighestAcceptedSequence != "0" || len(store.state.evidence) != 0 || len(store.state.jobs) != 0 || len(store.state.quarantine) != 1 || len(store.state.conflicts) != 1 {
++		t.Fatal("quarantined journal position was replaced or projected", ack, err)
++	}
++}
++
++func TestAuthenticationScopeOriginAndSignatureAreMandatory(t *testing.T) {
++	for _, which := range []string{"human", "local-employee", "revoked", "otherScope", "badKey", "badResource", "badUnit", "badScale", "signature"} {
++		t.Run(which, func(t *testing.T) {
++			store := newStore()
++			service := Service{Store: store}
++			actor := principal()
++			p := payload(2, "2")
++			switch which {
++			case "human":
++				actor.Kind = "central-human"
++			case "local-employee":
++				actor.Kind = "local-employee"
++			case "revoked":
++				store.revoked = true
++			case "otherScope":
++				p.Scope.CompanyID = id(999)
++			case "badKey":
++				p.SigningKeyID = id(999)
++			case "badResource":
++				p.Effects[0].ResourceID = id(999)
++			case "badUnit":
++				p.Effects[1].Quantity.UnitID = id(999)
++			case "badScale":
++				p.Effects[1].Quantity.Scale = 3
++			}
++			e := signPayload(t, p)
++			if which == "signature" {
++				e.Signature = base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
++			}
++			ack, err := service.Ingest(context.Background(), actor, batch(signPayload(t, payload(1, "1")), e))
++			if err == nil || ack != nil {
++				t.Fatal("untrusted evidence acknowledged")
++			}
++			if !reflect.DeepEqual(store.state, newState()) {
++				t.Fatal("mixed batch produced partial writes")
++			}
++		})
++	}
++	if _, err := (Service{}).Ingest(context.Background(), principal(), Batch{}); !errors.Is(err, ErrUnavailable) {
++		t.Fatal("nil store did not fail closed")
++	}
++}
++
++func TestConcurrentRetriesAndDriverCallbackRetry(t *testing.T) {
++	store := newStore()
++	store.retryCallback = true
++	service := Service{Store: store}
++	request := batch(signPayload(t, payload(1, "1")))
++	var wg sync.WaitGroup
++	for i := 0; i < 20; i++ {
++		wg.Add(1)
++		go func() {
++			defer wg.Done()
++			ack, err := service.Ingest(context.Background(), principal(), request)
++			if err != nil || len(ack.Items) != 1 {
++				t.Errorf("retry acknowledgement: %v %#v", err, ack)
++			}
++		}()
++	}
++	wg.Wait()
++	if len(store.state.receipts) != 1 || len(store.state.jobs) != 1 || len(store.state.evidence) != 1 {
++		t.Fatal("duplicate effect under concurrent retry")
++	}
++}
++
++func TestExplicitDomainNativeMappingAdmissionAndReplay(t *testing.T) {
++	for _, which := range []string{"missing", "disabled", "duplicate-domain", "reverse-alias", "organization-split", "company-split", "cross-source-organization-split", "cross-source-company-split", "wrong-native-parent", "different-native-scope", "different-source", "empty-resolved-scope"} {
++		t.Run(which, func(t *testing.T) {
++			store := newStore()
++			switch which {
++			case "missing":
++				store.mappings = nil
++			case "disabled":
++				store.mappings[0].active = false
++			case "duplicate-domain":
++				store.mappings = append(store.mappings, store.mappings[0])
++			case "reverse-alias":
++				store.mappings = append(store.mappings, fixtureMapping{Scope{id(21), id(22), id(23)}, testNativeScope, true})
++			case "organization-split", "company-split":
++				other := fixtureMapping{Scope{testScope.OrganizationID, testScope.CompanyID, id(23)}, NativeScope{"test-source", "other-org", "other-company", "other-branch"}, true}
++				if which == "company-split" {
++					other.native.OrganizationID = testNativeScope.OrganizationID
++				} else {
++					other.domain.CompanyID = id(22)
++				}
++				store.mappings = append(store.mappings, other)
++			case "cross-source-organization-split", "cross-source-company-split":
++				other := fixtureMapping{Scope{testScope.OrganizationID, id(22), id(23)}, testNativeScope, true}
++				other.native.SourceNamespace = "another-environment"
++				if which == "cross-source-company-split" {
++					other.domain.OrganizationID, other.domain.CompanyID = id(21), testScope.CompanyID
++				}
++				store.mappings = append(store.mappings, other)
++			case "wrong-native-parent":
++				store.badNativeHierarchy = true
++			case "different-native-scope", "different-source", "empty-resolved-scope":
++				native := testNativeScope
++				if which == "different-native-scope" {
++					native.CompanyID = "other-company"
++				} else if which == "different-source" {
++					native.SourceNamespace = "another-environment"
++				} else {
++					native = NativeScope{}
++				}
++				store.resolvedOverride = &native
++			}
++			ack, err := (Service{Store: store}).Ingest(context.Background(), principal(), batch(signPayload(t, payload(1, "1"))))
++			if ack != nil || !errors.Is(err, ErrUnauthorized) || !reflect.DeepEqual(store.state, newState()) {
++				t.Fatal("unadmitted domain/native mapping produced an ACK or writes", ack, err)
++			}
++		})
++	}
++	store := newStore()
++	// Native texts may legitimately repeat in independent source namespaces.
++	// They are not aliases unless their fully-qualified identities match.
++	other := fixtureMapping{Scope{id(21), id(22), id(23)}, testNativeScope, true}
++	other.native.SourceNamespace = "another-environment"
++	store.mappings = append(store.mappings, other)
++	service := Service{Store: store}
++	request := batch(signPayload(t, payload(1, "1")))
++	ack, err := service.Ingest(context.Background(), principal(), request)
++	if err != nil || ack.Scope != testScope || store.mappings[0].native != testNativeScope {
++		t.Fatal("explicit mapping/native strings not preserved", ack, err)
++	}
++	before := store.state.copy()
++	store.mappings[0].active = false
++	ack, err = service.Ingest(context.Background(), principal(), request)
++	if ack != nil || !errors.Is(err, ErrUnauthorized) || !reflect.DeepEqual(store.state, before) {
++		t.Fatal("replay bypassed current mapping admission", ack, err)
++	}
++}
++
++func TestEvidenceV1TimeBoundAndKotlinCanonicalFractions(t *testing.T) {
++	for _, value := range []string{"0000-01-01T00:00:00Z", "9999-12-31T23:59:59.999999999Z", "2026-10-23T10:20:30Z", "2026-10-23T10:20:30.100Z", "2026-10-23T10:20:30.123400Z", "2026-10-23T10:20:30.123456700Z"} {
++		if err := ValidateEvidenceV1Time(value); err != nil {
++			t.Fatal("valid evidence-v1 time rejected", value, err)
++		}
++	}
++	for _, value := range []string{"-0001-01-01T00:00:00Z", "+10000-01-01T00:00:00Z", "2026-10-23T10:20:30.1Z", "2026-10-23T10:20:30.1234Z", "2026-10-23T10:20:30.1234567Z", "2026-10-23T10:20:30.100000Z", "2026-10-23T10:20:30.000Z", "2026-10-23T10:20:30+00:00", "2026-02-29T00:00:00Z"} {
++		if ValidateEvidenceV1Time(value) == nil {
++			t.Fatal("noncanonical/out-of-contract time accepted", value)
++		}
++	}
++}
++
++func TestCheckpointExactInt64Boundaries(t *testing.T) {
++	for _, tc := range []struct {
++		previous string
++		accepted []string
++		want     string
++	}{
++		{"0", []string{"3", "2", "1", "3"}, "3"},
++		{"9007199254740992", []string{"9007199254740993"}, "9007199254740993"},
++		{"9223372036854775806", []string{"9223372036854775807"}, "9223372036854775807"},
++		{"9223372036854775807", nil, "9223372036854775807"},
++	} {
++		cp, err := ComputeCheckpoint("1", tc.previous, tc.accepted)
++		if err != nil || cp.HighestContiguousAcceptedSequence != tc.want {
++			t.Fatal(cp, err)
++		}
++	}
++	for _, value := range []string{"-1", "01", "+1", "1e2", "9223372036854775808"} {
++		if _, err := ComputeCheckpoint("1", "0", []string{value}); err == nil {
++			t.Fatal("noncanonical accepted", value)
++		}
++	}
++}
++
++func TestScalarAndUnionValidation(t *testing.T) {
++	for _, value := range []string{"-9223372036854775808", "9223372036854775807", "9007199254740993"} {
++		p := payload(1, "1")
++		p.Effects[0].Money.Minor = value
++		if err := p.Validate(); err != nil {
++			t.Fatal("valid exact scalar rejected", err)
++		}
++	}
++	for _, value := range []string{"0", "-0", "+1", "01", "1.1", "1e3", "NaN", "9223372036854775808", "-9223372036854775809"} {
++		p := payload(1, "1")
++		p.Effects[0].Money.Minor = value
++		if p.Validate() == nil {
++			t.Fatal("bad minor accepted", value)
++		}
++	}
++	for _, mutate := range []func(*Payload){
++		func(p *Payload) { p.Effects[0].Quantity = &Quantity{id(67), "1", 0} },
++		func(p *Payload) { p.Effects[1].Quantity.Scale = 7 },
++		func(p *Payload) { p.Effects[1].Quantity.Scale = -1 },
++		func(p *Payload) { p.Effects[1].Quantity.UnitID = "native-unit" },
++		func(p *Payload) { p.Effects[0].Kind = "bankCharge" },
++		func(p *Payload) { p.Effects[0].Money.Currency = "USD" },
++		func(p *Payload) { p.Effects[1].EffectID = p.Effects[0].EffectID },
++		func(p *Payload) { p.MasterCommittedAt = "2026-10-23T10:20:30+00:00" },
++		func(p *Payload) { p.DomainID = "00000000-0000-4000-8000-00000000000G" },
++		func(p *Payload) { p.Scope.OrganizationID = "org-a" },
++	} {
++		p := payload(1, "1")
++		mutate(&p)
++		if p.Validate() == nil {
++			t.Fatal("invalid payload accepted")
++		}
++	}
++}
++
++func TestStrictJSONAndInProcessHTTPOnly(t *testing.T) {
++	envelope := signPayload(t, payload(1, "1"))
++	raw, _ := json.Marshal(batch(envelope))
++	if _, err := DecodeBatch(bytes.NewReader(raw)); err != nil {
++		t.Fatal(err)
++	}
++	for _, bad := range [][]byte{
++		bytes.Replace(raw, []byte(`"schemaVersion":"1"`), []byte(`"schemaVersion":"1","schemaVersion":"1"`), 1),
++		bytes.Replace(raw, []byte(`"schemaVersion"`), []byte(`"SchemaVersion"`), 1),
++		bytes.Replace(raw, []byte(`"minor":"9007199254740993"`), []byte(`"minor":9007199254740993`), 1),
++		bytes.Replace(raw, []byte(`"scale":6`), []byte(`"scale":"6"`), 1),
++		bytes.Replace(raw, []byte(`"scale":6`), []byte(`"scale":6.0`), 1),
++		bytes.Replace(raw, []byte(`"scale":6`), []byte(`"scale":6e0`), 1),
++		bytes.Replace(raw, []byte(`"scale":6`), []byte(`"scale":-0`), 1),
++		bytes.Replace(raw, []byte(`,"scale":6`), nil, 1),
++		bytes.Replace(raw, []byte(`"unitId":"`+id(67)+`",`), nil, 1),
++		append(append([]byte{}, raw...), []byte(` {}`)...),
++		[]byte(`{"schemaVersion":"1","envelopes":null}`),
++		[]byte(`{"schemaVersion":"1","envelopes":[],"extra":true}`),
++		bytes.Repeat([]byte{' '}, MaxBatchBytes+1),
++	} {
++		if _, err := DecodeBatch(bytes.NewReader(bad)); err == nil {
++			t.Fatal("invalid JSON accepted")
++		}
++	}
++	store := newStore()
++	handler := HTTPHandler{Authenticator: testAuthenticator{}, Service: Service{Store: store}}
++	recorder := httptest.NewRecorder()
++	req := httptest.NewRequest(http.MethodPost, IngestionPath, bytes.NewReader(raw))
++	req.Header.Set("Content-Type", "application/json")
++	handler.ServeHTTP(recorder, req)
++	if recorder.Code != http.StatusOK || recorder.Header().Get("Cache-Control") != "no-store" {
++		t.Fatal("typed handler", recorder.Code, recorder.Body.String())
++	}
++	recorder = httptest.NewRecorder()
++	(HTTPHandler{}).ServeHTTP(recorder, req)
++	if recorder.Code != http.StatusServiceUnavailable || recorder.Header().Get("Content-Type") != "application/json" || !json.Valid(recorder.Body.Bytes()) {
++		t.Fatal("unconfigured handler did not fail closed")
++	}
++	store.dropAfterCommit = true
++	newRaw, _ := json.Marshal(batch(signPayload(t, payload(2, "2"))))
++	recorder = httptest.NewRecorder()
++	req = httptest.NewRequest(http.MethodPost, IngestionPath, bytes.NewReader(newRaw))
++	req.Header.Set("Content-Type", "application/json")
++	handler.ServeHTTP(recorder, req)
++	if recorder.Code != http.StatusServiceUnavailable || strings.Contains(recorder.Body.String(), "test crash") {
++		t.Fatal("uncertain commit acknowledged/leaked", recorder.Body.String())
++	}
++}
++
++type testAuthenticator struct{}
++
++func (testAuthenticator) Authenticate(*http.Request) (Principal, error) { return principal(), nil }
++
++func TestNodeProducedCanonicalGolden(t *testing.T) {
++	dir := os.Getenv("BRANCHPOS_GOLDEN_DIR")
++	if dir == "" {
++		dir = "../../../../../backend/contracts/golden"
++	}
++	raw, err := os.ReadFile(filepath.Join(dir, "evidence-v1.json"))
++	if err != nil {
++		t.Fatal("required cross-language golden (BRANCHPOS_GOLDEN_DIR)", err)
++	}
++	type signedGolden struct {
++		CanonicalPayload string   `json:"canonicalPayload"`
++		Envelope         Envelope `json:"envelope"`
++	}
++	var golden struct {
++		signedGolden
++		PublicKey   string          `json:"publicKey"`
++		Batch       json.RawMessage `json:"batch"`
++		TimeVectors struct {
++			Valid   []string `json:"valid"`
++			Invalid []string `json:"invalid"`
++		} `json:"timeVectors"`
++		Variants []struct {
++			signedGolden
++			Name string `json:"name"`
++		} `json:"variants"`
++	}
++	if err := json.Unmarshal(raw, &golden); err != nil {
++		t.Fatal(err)
++	}
++	key, _ := base64.StdEncoding.DecodeString(golden.PublicKey)
++	verify := func(t *testing.T, value signedGolden) {
++		t.Helper()
++		canonical, err := CanonicalPayload(value.Envelope.Payload)
++		if err != nil {
++			t.Fatal(err)
++		}
++		if string(canonical) != value.CanonicalPayload || ContentHash(canonical) != value.Envelope.ContentHash {
++			t.Fatal("Node/Go canonical bytes or SHA256 differ")
++		}
++		if err := VerifySignature(key, canonical, value.Envelope.Signature); err != nil {
++			t.Fatal("Node Ed25519 not verified in Go", err)
++		}
++	}
++	verify(t, golden.signedGolden)
++	for _, variant := range golden.Variants {
++		t.Run(variant.Name, func(t *testing.T) { verify(t, variant.signedGolden) })
++	}
++	if len(golden.Variants) != 6 {
++		t.Fatal("required time-bound/fraction variant missing")
++	}
++	for _, value := range golden.TimeVectors.Valid {
++		if err := ValidateEvidenceV1Time(value); err != nil {
++			t.Fatal(value, err)
++		}
++	}
++	for _, value := range golden.TimeVectors.Invalid {
++		if ValidateEvidenceV1Time(value) == nil {
++			t.Fatal("invalid Node time vector accepted", value)
++		}
++	}
++	decoded, err := DecodeBatch(bytes.NewReader(golden.Batch))
++	if err != nil || !reflect.DeepEqual(decoded, batch(golden.Envelope)) {
++		t.Fatal("Node batch fails actual strict wire decoder", err)
++	}
++	ackRaw, err := os.ReadFile(filepath.Join(dir, "ack-v1.json"))
++	if err != nil {
++		t.Fatal("required ACK example", err)
++	}
++	var wantAck Acknowledgement
++	if err := json.Unmarshal(ackRaw, &wantAck); err != nil {
++		t.Fatal(err)
++	}
++	actualAck, err := (Service{Store: newStore()}).Ingest(context.Background(), principal(), decoded)
++	if err != nil || actualAck == nil || !reflect.DeepEqual(*actualAck, wantAck) {
++		t.Fatal("ACK example differs from actual typed ingestion result", err)
++	}
++	if !reflect.DeepEqual(golden.Envelope, signPayload(t, payload(1, "1"))) {
++		t.Fatal("Node/Go signed envelope differs")
++	}
++}
+diff --git a/internal/helpers/db_functions/branch_pos_guard_test.go b/internal/helpers/db_functions/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..f033e0b
+--- /dev/null
++++ b/internal/helpers/db_functions/branch_pos_guard_test.go
+@@ -0,0 +1,51 @@
++package db_functions_test
++
++import (
++	"context"
++	"reflect"
++	"testing"
++
++	"go-viki/internal/document"
++	"go-viki/internal/helpers/db_functions"
++	"go-viki/internal/helpers/modelguard"
++	"go-viki/types"
++)
++
++func TestBranchPosGenericPrimitivesBeforeAnyDatabase(t *testing.T) {
++	const module = "branch_pos__operation_evidence"
++	ctx := context.WithValue(context.Background(), "server_key", true)
++	// Prove protection even if a future registry includes the name, not merely
++	// because current runtime configuration has not been installed.
++	previous, existed := document.Document[module]
++	document.Document[module] = reflect.TypeFor[struct{}]()
++	t.Cleanup(func() {
++		if existed {
++			document.Document[module] = previous
++		} else {
++			delete(document.Document, module)
++		}
++	})
++	if _, _, ok := db_functions.GetModel(module); ok {
++		t.Fatal("raw generic registry lookup exposed protected model")
++	}
++	for name, fn := range map[string]func() error{
++		"count":  func() error { _, err := db_functions.CountModelWithFilter(ctx, module, types.D{}); return err },
++		"bulk":   func() error { _, _, err := db_functions.BulkWrite(ctx, module, nil); return err },
++		"delete": func() error { _, err := db_functions.DeleteModelWithFilter(ctx, module, types.D{}); return err },
++		"update": func() error {
++			_, err := db_functions.UpdateModelWithFilter(ctx, module, types.D{}, types.D{})
++			return err
++		},
++		"aggregate": func() error { _, err := db_functions.AggregateModelWithFilter(ctx, module, []any{}); return err },
++		"cross_aggregate": func() error {
++			_, err := db_functions.AggregateModelWithFilter(ctx, "org__company", []any{map[string]any{"$merge": module}})
++			return err
++		},
++	} {
++		t.Run(name, func(t *testing.T) {
++			if !modelguard.IsProtected(fn()) {
++				t.Fatal("generic primitive did not deny protected target")
++			}
++		})
++	}
++}
+diff --git a/internal/helpers/modelguard/configured/check.go b/internal/helpers/modelguard/configured/check.go
+new file mode 100644
+index 0000000..950dad2
+--- /dev/null
++++ b/internal/helpers/modelguard/configured/check.go
+@@ -0,0 +1,30 @@
++// Package configured connects namespace-only target validation to the real
++// runtime relation metadata. It does not call Mongo or load configuration.
++package configured
++
++import (
++	"go-viki/internal/config/models_config"
++	"go-viki/internal/helpers/modelguard"
++)
++
++func Relations(model string) map[string]string {
++	refs := map[string]string{}
++	for field, cfg := range models_config.ModuleConfigs[model].Fields {
++		if cfg.Model != "" {
++			refs[field] = cfg.Model
++		}
++	}
++	return refs
++}
++
++func Writes(models any) error { return modelguard.CheckWrites(models, Relations) }
++
++func Envelope(body map[string]any) error {
++	if err := modelguard.CheckSync(body["settings"]); err != nil {
++		return err
++	}
++	if body["data"] == nil {
++		return nil
++	}
++	return Writes(body["data"])
++}
+diff --git a/internal/helpers/modelguard/guard.go b/internal/helpers/modelguard/guard.go
+new file mode 100644
+index 0000000..8e5548c
+--- /dev/null
++++ b/internal/helpers/modelguard/guard.go
+@@ -0,0 +1,367 @@
++// Package modelguard reserves BranchPos for separately authorized typed paths.
++// These checks deliberately do not inspect credentials, app grants, server keys,
++// or environment flags. None of those can enable generic BranchPos access.
++package modelguard
++
++import (
++	"errors"
++	"fmt"
++	"reflect"
++	"strings"
++)
++
++const (
++	MaxDepth   = 32
++	MaxTargets = 4096
++)
++
++var ErrBounds = errors.New("generic model target preflight limit exceeded")
++var ErrShape = errors.New("invalid generic model target shape")
++
++type ProtectedNamespaceError struct{}
++
++func (*ProtectedNamespaceError) Error() string {
++	return "branch_pos generic access is disabled; use an authorized typed contract"
++}
++
++func IsProtected(err error) bool {
++	var target *ProtectedNamespaceError
++	return errors.As(err, &target)
++}
++
++// Reserved includes unknown future models and the schema/group aliases. A
++// namespace boundary is required: branch_position and other ordinary data are
++// not BranchPos models. Canonical runtime collection names are branch_pos__*.
++func Reserved(name string) bool {
++	name = strings.ToLower(strings.TrimSpace(name))
++	return name == "branchpos" || name == "branch_pos" ||
++		strings.HasPrefix(name, "branch_pos__") ||
++		strings.HasPrefix(name, "branchpos__") ||
++		strings.HasPrefix(name, "branchpos\\")
++}
++
++func CheckModel(name string) error {
++	if Reserved(name) {
++		return &ProtectedNamespaceError{}
++	}
++	return nil
++}
++
++// Relations returns the configured collection target for each actual relation
++// field. It must not infer targets from untrusted field values or raw JSON.
++type Relations func(model string) map[string]string
++
++type check struct{ targets int }
++
++func (c *check) step(depth int) error {
++	c.targets++
++	if depth > MaxDepth || c.targets > MaxTargets {
++		return ErrBounds
++	}
++	return nil
++}
++
++// CheckWrites walks authoritative model-map keys and configured cascade fields
++// only. Preflight the WHOLE batch before executing any item or file upload.
++// Text such as {note: "branch_pos__operation_evidence"} remains ordinary data.
++func CheckWrites(models any, relations Relations) error {
++	c := &check{}
++	return c.modelMap(models, relations, 0, false)
++}
++
++// CheckQueries additionally examines include model keys. It never treats a
++// filter value or a projected/raw business string as a collection name.
++func CheckQueries(models any) error {
++	c := &check{}
++	return c.modelMap(models, nil, 0, true)
++}
++
++func (c *check) modelMap(models any, relations Relations, depth int, query bool) error {
++	if err := c.step(depth); err != nil {
++		return err
++	}
++	m, ok := object(models)
++	if !ok {
++		return ErrShape
++	}
++	// First inspect all outer targets; no caller can depend on map ordering.
++	for model := range m {
++		if err := CheckModel(model); err != nil {
++			return err
++		}
++	}
++	for model, items := range m {
++		if query {
++			if items == nil {
++				continue // legacy empty options contain no secondary target
++			}
++			opts, ok := object(items)
++			if !ok {
++				// In particular, do not silently skip an oversized/duplicate
++				// options object that still has include/aggregate selectors.
++				return ErrShape
++			}
++			if inc, exists := opts["include"]; exists {
++				if err := c.modelMap(inc, nil, depth+1, true); err != nil {
++					return err
++				}
++			}
++			if pipeline, exists := opts["aggregate"]; exists {
++				if err := c.pipeline(pipeline, depth+1); err != nil {
++					return err
++				}
++			}
++		} else if err := c.document(model, items, relations, depth+1); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++func (c *check) document(model string, value any, relations Relations, depth int) error {
++	if err := c.step(depth); err != nil {
++		return err
++	}
++	if err := CheckModel(model); err != nil {
++		return err
++	}
++	r := reflect.ValueOf(value)
++	if r.IsValid() && (r.Kind() == reflect.Slice || r.Kind() == reflect.Array || r.Kind() == reflect.Map) && r.Len() > MaxTargets {
++		return ErrBounds
++	}
++	if list, ok := array(value); ok {
++		for _, item := range list {
++			if err := c.document(model, item, relations, depth+1); err != nil {
++				return err
++			}
++		}
++		return nil
++	}
++	data, ok := object(value)
++	if !ok || relations == nil {
++		return nil
++	}
++	for field, target := range relations(model) {
++		child, exists := data[field]
++		if !exists {
++			continue
++		}
++		// A plain related ID is a target too, not permission to cross scope.
++		if err := CheckModel(target); err != nil {
++			return err
++		}
++		if err := c.document(target, child, relations, depth+1); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++// CheckSync examines only settings.sync.mutations[].module. Mutation data is
++// separately checked by CheckWrites. No receipt/sequence may be consumed first.
++func CheckSync(settings any) error {
++	if settings == nil {
++		return nil
++	}
++	s, ok := object(settings)
++	if !ok {
++		return ErrShape
++	}
++	if s["sync"] == nil {
++		return nil
++	}
++	sy, ok := object(s["sync"])
++	if !ok {
++		return ErrShape
++	}
++	r := reflect.ValueOf(sy["mutations"])
++	if r.IsValid() && (r.Kind() == reflect.Slice || r.Kind() == reflect.Array) && r.Len() > MaxTargets {
++		return ErrBounds
++	}
++	mutations, ok := array(sy["mutations"])
++	if !ok {
++		return nil
++	} // existing protocol validator diagnoses other shapes
++	if len(mutations) > MaxTargets {
++		return ErrBounds
++	}
++	for _, item := range mutations {
++		m, ok := object(item)
++		if !ok {
++			return ErrShape
++		}
++		target, ok := m["module"].(string)
++		if !ok {
++			return ErrShape
++		}
++		if err := CheckModel(target); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++// CheckPipeline inspects collection selectors in actual aggregation stages,
++// including nested $facet/$lookup/$unionWith pipelines and write destinations.
++// Other stage expressions ($literal, $match data, ordinary strings) are data.
++func CheckPipeline(pipeline any) error { return (&check{}).pipeline(pipeline, 0) }
++
++func (c *check) pipeline(pipeline any, depth int) error {
++	if err := c.step(depth); err != nil {
++		return err
++	}
++	stages, ok := array(pipeline)
++	if !ok {
++		return ErrShape
++	}
++	for _, raw := range stages {
++		if err := c.step(depth + 1); err != nil {
++			return err
++		}
++		stage, ok := object(raw)
++		if !ok || len(stage) != 1 {
++			return ErrShape
++		}
++		for op, value := range stage {
++			switch op {
++			case "$changeStream", "$currentOp", "$listLocalSessions", "$listSessions", "$listSampledQueries":
++				// These can inspect a database/cluster rather than this checked
++				// collection. A generic grant cannot expose a reserved namespace.
++				return fmt.Errorf("%w: database-wide aggregation stage", ErrShape)
++			case "$lookup", "$graphLookup":
++				args, ok := object(value)
++				if !ok {
++					return ErrShape
++				}
++				if from, exists := args["from"]; exists {
++					if err := collection(from); err != nil {
++						return err
++					}
++				}
++				if inner, exists := args["pipeline"]; exists {
++					if err := c.pipeline(inner, depth+1); err != nil {
++						return err
++					}
++				}
++			case "$unionWith":
++				if name, ok := value.(string); ok {
++					if err := CheckModel(name); err != nil {
++						return err
++					}
++					continue
++				}
++				args, ok := object(value)
++				if !ok {
++					return ErrShape
++				}
++				if coll, exists := args["coll"]; exists {
++					if err := collection(coll); err != nil {
++						return err
++					}
++				}
++				if inner, exists := args["pipeline"]; exists {
++					if err := c.pipeline(inner, depth+1); err != nil {
++						return err
++					}
++				}
++			case "$out":
++				if err := collection(value); err != nil {
++					return err
++				}
++			case "$merge":
++				if name, ok := value.(string); ok {
++					if err := CheckModel(name); err != nil {
++						return err
++					}
++				} else {
++					args, ok := object(value)
++					if !ok {
++						return ErrShape
++					}
++					if err := collection(args["into"]); err != nil {
++						return err
++					}
++				}
++			case "$facet":
++				facets, ok := object(value)
++				if !ok {
++					return ErrShape
++				}
++				for _, inner := range facets {
++					if err := c.pipeline(inner, depth+1); err != nil {
++						return err
++					}
++				}
++			}
++		}
++	}
++	return nil
++}
++
++func collection(value any) error {
++	if name, ok := value.(string); ok {
++		return CheckModel(name)
++	}
++	// $out/$merge may use {db, coll}. A different database is not a bypass.
++	if m, ok := object(value); ok {
++		if name, ok := m["coll"].(string); ok {
++			return CheckModel(name)
++		}
++	}
++	return fmt.Errorf("%w: collection selector", ErrShape)
++}
++
++// Reflection supports JSON maps as well as named map/slice types (types.D,
++// bson.M/A/D) without importing Mongo or pulling the monolith into pure tests.
++func object(value any) (map[string]any, bool) {
++	r := reflect.ValueOf(value)
++	if !r.IsValid() {
++		return nil, false
++	}
++	if r.Kind() == reflect.Map && r.Type().Key().Kind() == reflect.String {
++		if r.Len() > MaxTargets {
++			return nil, false
++		}
++		out := make(map[string]any, r.Len())
++		it := r.MapRange()
++		for it.Next() {
++			out[it.Key().String()] = it.Value().Interface()
++		}
++		return out, true
++	}
++	// bson.D is []bson.E{Key:string, Value:any}; reject duplicate selectors.
++	if r.Kind() == reflect.Slice && r.Type().Elem().Kind() == reflect.Struct {
++		if r.Len() > MaxTargets {
++			return nil, false
++		}
++		out := make(map[string]any, r.Len())
++		for i := 0; i < r.Len(); i++ {
++			key, val := r.Index(i).FieldByName("Key"), r.Index(i).FieldByName("Value")
++			if !key.IsValid() || key.Kind() != reflect.String || !val.IsValid() || !val.CanInterface() {
++				return nil, false
++			}
++			if _, duplicate := out[key.String()]; duplicate {
++				return nil, false
++			}
++			out[key.String()] = val.Interface()
++		}
++		return out, true
++	}
++	return nil, false
++}
++
++func array(value any) ([]any, bool) {
++	r := reflect.ValueOf(value)
++	if !r.IsValid() || (r.Kind() != reflect.Slice && r.Kind() != reflect.Array) || r.Len() > MaxTargets {
++		return nil, false
++	}
++	// A bson.D is an object, never an array of documents.
++	if r.Type().Elem().Kind() == reflect.Struct {
++		return nil, false
++	}
++	out := make([]any, r.Len())
++	for i := range out {
++		out[i] = r.Index(i).Interface()
++	}
++	return out, true
++}
+diff --git a/internal/helpers/modelguard/guard_test.go b/internal/helpers/modelguard/guard_test.go
+new file mode 100644
+index 0000000..045e67b
+--- /dev/null
++++ b/internal/helpers/modelguard/guard_test.go
+@@ -0,0 +1,165 @@
++package modelguard
++
++import (
++	"errors"
++	"fmt"
++	"testing"
++)
++
++const protected = "branch_pos__operation_evidence"
++
++func TestReservedNamespaceNotData(t *testing.T) {
++	for _, target := range []string{protected, "branch_pos__future_unknown", "branch_pos", "BranchPos", "BRANCH_POS__SALE", "BranchPos\\Sale"} {
++		if !IsProtected(CheckModel(target)) {
++			t.Errorf("not denied: %q", target)
++		}
++	}
++	for _, target := range []string{"pos__item", "branch_position__note", "ordinary_branch_pos__note", "", "a note mentioning branch_pos__operation_evidence"} {
++		if err := CheckModel(target); err != nil {
++			t.Errorf("ordinary target %q: %v", target, err)
++		}
++	}
++	data := map[string]any{"org__company": []any{map[string]any{
++		"note": protected,
++		"raw":  map[string]any{"model": protected, "$lookup": map[string]any{"from": protected}},
++	}}}
++	if err := CheckWrites(data, nil); err != nil {
++		t.Fatalf("ordinary data string was treated as a target: %v", err)
++	}
++}
++
++func TestMixedAndNestedMutationTargets(t *testing.T) {
++	relations := func(model string) map[string]string {
++		switch model {
++		case "org__company":
++			return map[string]string{"child": "org__branch"}
++		case "org__branch":
++			return map[string]string{"evidence": protected}
++		}
++		return nil
++	}
++	tests := []any{
++		map[string]any{"org__company": []any{map[string]any{"name": "normal"}}, protected: []any{}},
++		map[string][]any{"org__company": {}, "branch_pos__not_registered": {}},
++		map[string]any{"org__company": map[string]any{"child": map[string]any{"evidence": "existing-id"}}},
++		map[string]any{"org__company": []any{map[string]any{"child": []any{map[string]any{"evidence": map[string]any{"x": 1}}}}}},
++	}
++	for i, value := range tests {
++		writes := 0
++		err := CheckWrites(value, relations)
++		if err == nil {
++			writes++
++		}
++		if !IsProtected(err) || writes != 0 {
++			t.Errorf("case %d escaped complete preflight: %v", i, err)
++		}
++	}
++}
++
++func TestQueriesAndSync(t *testing.T) {
++	if err := CheckQueries(map[string]any{"org__company": map[string]any{"filters": map[string]any{"note": protected}}}); err != nil {
++		t.Fatal(err)
++	}
++	if !IsProtected(CheckQueries(map[string]any{"org__company": map[string]any{"include": map[string]any{protected: map[string]any{}}}})) {
++		t.Fatal("include target escaped")
++	}
++	settings := map[string]any{"sync": map[string]any{"mutations": []any{map[string]any{"module": protected}}}}
++	if !IsProtected(CheckSync(settings)) {
++		t.Fatal("sync mutation target escaped")
++	}
++	if err := CheckSync(map[string]any{"sync": map[string]any{"mutations": []any{map[string]any{"module": "org__company", "id": protected}}}}); err != nil {
++		t.Fatal("sync id was treated as target", err)
++	}
++}
++
++func TestAggregationTargets(t *testing.T) {
++	stages := []any{
++		map[string]any{"$lookup": map[string]any{"from": protected}},
++		map[string]any{"$graphLookup": map[string]any{"from": protected}},
++		map[string]any{"$unionWith": protected},
++		map[string]any{"$unionWith": map[string]any{"coll": protected}},
++		map[string]any{"$out": protected},
++		map[string]any{"$out": map[string]any{"db": "other", "coll": protected}},
++		map[string]any{"$merge": protected},
++		map[string]any{"$merge": map[string]any{"into": protected}},
++		map[string]any{"$merge": map[string]any{"into": map[string]any{"db": "other", "coll": protected}}},
++	}
++	for i, stage := range stages {
++		for _, wrap := range []func(any) any{
++			func(s any) any { return []any{s} },
++			func(s any) any { return []any{map[string]any{"$facet": map[string]any{"items": []any{s}}}} },
++			func(s any) any {
++				return []any{map[string]any{"$lookup": map[string]any{"from": "org__company", "pipeline": []any{s}}}}
++			},
++			func(s any) any {
++				return []any{map[string]any{"$unionWith": map[string]any{"coll": "org__company", "pipeline": []any{s}}}}
++			},
++		} {
++			if err := CheckPipeline(wrap(stage)); !IsProtected(err) {
++				t.Errorf("case %d escaped: %v", i, err)
++			}
++		}
++	}
++	ordinary := []any{map[string]any{"$match": map[string]any{"note": protected}}, map[string]any{"$project": map[string]any{"note": map[string]any{"$literal": protected}}}}
++	if err := CheckPipeline(ordinary); err != nil {
++		t.Fatal("literal data was rejected", err)
++	}
++	if err := CheckPipeline([]any{map[string]any{"$changeStream": map[string]any{"allChangesForCluster": true}}}); err == nil {
++		t.Fatal("database-wide stream must not bypass checked collection")
++	}
++}
++
++func TestNamedBsonShapedTypesAndBounds(t *testing.T) {
++	type E struct {
++		Key   string
++		Value any
++	}
++	type D []E
++	type A []any
++	type M map[string]any
++	pipeline := A{D{{"$lookup", D{{"from", protected}}}}}
++	if !IsProtected(CheckPipeline(pipeline)) {
++		t.Fatal("bson-shaped target escaped")
++	}
++	if !IsProtected(CheckQueries(M{protected: M{}})) {
++		t.Fatal("named map target escaped")
++	}
++	if err := CheckPipeline(A{D{{"$lookup", M{"from": "org__company"}}, {"$lookup", M{"from": protected}}}}); err == nil {
++		t.Fatal("duplicate selectors accepted")
++	}
++	var deep any = []any{map[string]any{"$match": map[string]any{}}}
++	for i := 0; i < MaxDepth+1; i++ {
++		deep = []any{map[string]any{"$facet": map[string]any{"items": deep}}}
++	}
++	if !errors.Is(CheckPipeline(deep), ErrBounds) {
++		t.Fatal("depth bound not enforced")
++	}
++	tooMany := make(map[string]any, MaxTargets+1)
++	for i := 0; i <= MaxTargets; i++ {
++		tooMany[fmt.Sprintf("org__company_%d", i)] = nil
++	}
++	if CheckWrites(tooMany, nil) == nil {
++		t.Fatal("target bound not enforced")
++	}
++	if CheckSync(map[string]any{"sync": map[string]any{"mutations": make([]any, MaxTargets+1)}}) == nil {
++		t.Fatal("oversized sync list accepted")
++	}
++	if CheckWrites(map[string]any{"org__company": make([]any, MaxTargets+1)}, nil) == nil {
++		t.Fatal("oversized relation list accepted")
++	}
++	wideOptions := make(map[string]any, MaxTargets+1)
++	for i := 0; i < MaxTargets; i++ {
++		wideOptions[fmt.Sprintf("unused_%d", i)] = nil
++	}
++	wideOptions["aggregate"] = []any{map[string]any{"$out": protected}}
++	if CheckQueries(map[string]any{"org__company": wideOptions}) == nil {
++		t.Fatal("oversized query options silently skipped a collection target")
++	}
++	wideOptions["sync"] = map[string]any{"mutations": []any{map[string]any{"module": protected}}}
++	if CheckSync(wideOptions) == nil {
++		t.Fatal("oversized sync settings silently skipped a collection target")
++	}
++	if CheckSync(map[string]any{"sync": wideOptions}) == nil {
++		t.Fatal("oversized nested sync settings silently skipped preflight")
++	}
++}
+diff --git a/internal/helpers/models/permissions/branch_pos_access_test.go b/internal/helpers/models/permissions/branch_pos_access_test.go
+new file mode 100644
+index 0000000..3d4a5db
+--- /dev/null
++++ b/internal/helpers/models/permissions/branch_pos_access_test.go
+@@ -0,0 +1,33 @@
++package per_document
++
++import (
++	"context"
++	"testing"
++
++	"go-viki/internal/helpers/modelguard"
++)
++
++func TestBranchPosNeverUsesGenericTrustBypasses(t *testing.T) {
++	t.Cleanup(ResetEnforceModelAccess)
++	for _, enforce := range []bool{false, true} {
++		SetEnforceModelAccess(enforce)
++		contexts := []context.Context{
++			nil,
++			context.Background(),
++			context.WithValue(context.Background(), "server_key", "not-a-credential-test-marker"),
++			context.WithValue(context.Background(), "skip_filters", true),
++			context.WithValue(context.Background(), "user", map[string]any{"is_super_admin": true}),
++			context.WithValue(context.Background(), "app", map[string]any{"id": "test-app", "models": map[string]any{"branch_pos": "write"}}),
++		}
++		for _, ctx := range contexts {
++			for _, level := range []AccessLevel{AccessRead, AccessWrite} {
++				for _, name := range []string{"branch_pos__operation_evidence", "branch_pos__future_unknown"} {
++					err := CheckModelAccess(ctx, name, level)
++					if !modelguard.IsProtected(err) || !IsAccessDenied(err) {
++						t.Fatalf("BranchPos escaped enforcement=%v level=%v: %v", enforce, level, err)
++					}
++				}
++			}
++		}
++	}
++}
+diff --git a/internal/helpers/sync/branch_pos_guard_test.go b/internal/helpers/sync/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..de36aa9
+--- /dev/null
++++ b/internal/helpers/sync/branch_pos_guard_test.go
+@@ -0,0 +1,26 @@
++package sync
++
++import (
++	"context"
++	"testing"
++
++	"go-viki/internal/config/models_config"
++	"go-viki/internal/helpers/modelguard"
++)
++
++func TestBranchPosPullAndManifestIgnoreGenericOfflineEnablement(t *testing.T) {
++	ctx := context.WithValue(context.Background(), "server_key", true)
++	_, _, err := Pull(ctx, PullRequest{Modules: map[string]PullModuleRequest{"branch_pos__operation_evidence": {}}})
++	if !modelguard.IsProtected(err) {
++		t.Fatal("pull did not deny before DB cursor lookup", err)
++	}
++	previous := models_config.ModuleConfigs
++	t.Cleanup(func() { models_config.ModuleConfigs = previous })
++	models_config.ModuleConfigs = map[string]models_config.ModelConfig{
++		"branch_pos__operation_evidence": {Offline: &models_config.OfflineConfig{Mode: "full"}},
++	}
++	manifest, _, err := Manifest(ctx)
++	if err != nil || len(manifest) != 0 {
++		t.Fatal("generic offline flag bypassed namespace guard", manifest, err)
++	}
++}
+diff --git a/services/app/grpc/branch_pos_guard_test.go b/services/app/grpc/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..ce29a14
+--- /dev/null
++++ b/services/app/grpc/branch_pos_guard_test.go
+@@ -0,0 +1,36 @@
++package app_grpc
++
++import (
++	"context"
++	"strings"
++	"testing"
++
++	"google.golang.org/protobuf/types/known/structpb"
++)
++
++func TestBranchPosGenericGRPCMethodsBeforeAnyDatabase(t *testing.T) {
++	server := &MultiServiceServer{}
++	ctx := context.WithValue(context.Background(), "server_key", true)
++	for _, tc := range []struct {
++		name   string
++		body   map[string]any
++		invoke func(context.Context, *structpb.Struct) (*structpb.Struct, error)
++	}{
++		{"query", map[string]any{"branch_pos__operation_evidence": map[string]any{}}, server.MultiQuery},
++		{"count", map[string]any{"branch_pos__operation_evidence": map[string]any{}}, server.CountModels},
++		{"reset", map[string]any{"branch_pos__operation_evidence": map[string]any{}}, server.ResetModels},
++		{"update_many", map[string]any{"branch_pos__operation_evidence": map[string]any{}}, server.UpdateManyModels},
++		{"mixed_write", map[string]any{"data": map[string]any{"org__company": []any{map[string]any{"name": "must-not-write"}}, "branch_pos__future_unknown": []any{}}}, server.UpdateModels},
++	} {
++		t.Run(tc.name, func(t *testing.T) {
++			request, err := structpb.NewStruct(tc.body)
++			if err != nil {
++				t.Fatal(err)
++			}
++			result, err := tc.invoke(ctx, request)
++			if result != nil || err == nil || !strings.Contains(err.Error(), "branch_pos generic access is disabled") {
++				t.Fatal("gRPC accepted protected target", result, err)
++			}
++		})
++	}
++}
+diff --git a/services/app/handlers/branch_pos_guard_test.go b/services/app/handlers/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..bff25ae
+--- /dev/null
++++ b/services/app/handlers/branch_pos_guard_test.go
+@@ -0,0 +1,83 @@
++package app_handlers
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/gofiber/fiber/v2"
++	"go-viki/internal/config/models_config"
++	api "go-viki/internal/helpers/apis/handlers"
++)
++
++func TestBranchPosActualHTTPHandlersBeforeAnyDatabaseOrUpload(t *testing.T) {
++	const model = "branch_pos__operation_evidence"
++	const parent = "branch_guard_test__parent"
++	previous, existed := models_config.ModuleConfigs[parent]
++	models_config.ModuleConfigs[parent] = models_config.ModelConfig{Fields: models_config.FieldMap{"evidence": {Type: "relation", Model: model}}}
++	t.Cleanup(func() {
++		if existed {
++			models_config.ModuleConfigs[parent] = previous
++		} else {
++			delete(models_config.ModuleConfigs, parent)
++		}
++	})
++	cases := []struct {
++		name, route, target, body string
++		handler                   fiber.Handler
++	}{
++		{"multi_query", "/multi_query/", "/multi_query/", `{"branch_pos__operation_evidence":{}}`, MultiQuery},
++		{"nested_include", "/multi_query/", "/multi_query/", `{"org__company":{"include":{"branch_pos__operation_evidence":{}}}}`, MultiQuery},
++		{"count", "/count-data/", "/count-data/", `{"branch_pos__operation_evidence":{}}`, CountModels},
++		{"reset", "/reset-data/", "/reset-data/", `{"branch_pos__operation_evidence":{}}`, ResetModels},
++		{"update_many", "/update-many/", "/update-many/", `{"branch_pos__operation_evidence":{"update":{"$set":{"x":1}}}}`, UpdateManyModels},
++		{"cross_lookup", "/update-many/", "/update-many/", `{"org__company":{"aggregate":[{"$lookup":{"from":"branch_pos__operation_evidence","as":"x"}}]}}`, UpdateManyModels},
++		{"update_one", "/update_one/", "/update_one/", `{"branch_pos__operation_evidence":{}}`, UpdateOneModel},
++		{"nested_cascade", "/update_one/", "/update_one/", `{"branch_guard_test__parent":{"evidence":{"name":"x"}}}`, UpdateOneModel},
++		{"mixed_bulk", "/update_models/", "/update_models/", `{"data":{"org__company":[{"name":"must-not-write"}],"branch_pos__operation_evidence":[]}}`, UpdateModels},
++		{"multi_cascade", "/multi_updates_models/", "/multi_updates_models/", `{"data":{"org__company":[{"name":"must-not-write"}],"branch_pos__operation_evidence":[]}}`, MultiUpdatesModels},
++		{"sync_push", "/multi_updates_models/", "/multi_updates_models/", `{"data":{},"settings":{"sync":{"mutations":[{"module":"branch_pos__future_unknown"}]}}}`, MultiUpdatesModels},
++		{"sync_pull", "/sync/pull/", "/sync/pull/", `{"modules":{"branch_pos__operation_evidence":{}}}`, SyncPull},
++		{"full_query", "/full_query/", "/full_query/", `{"model":"branch_pos__operation_evidence","id":"known"}`, FullQuery},
++		{"unique", "/check-unique/", "/check-unique/", `{"module":"branch_pos__operation_evidence","field":"operation_id","value":"known"}`, CheckUnique},
++		{"translation", "/trans/", "/trans/", `{"model":"branch_pos__operation_evidence","id":"known"}`, Translations},
++		{"module_update", "/:modules/update_one/", "/branch_pos__operation_evidence/update_one/", `{}`, ModuleUpdateOne},
++		{"module_query", "/:modules/multi_query/", "/branch_pos__future_unknown/multi_query/", `{}`, ModuleMultiQuery},
++		{"module_schema", "/:modules/schema/", "/branch_pos/schema/", `{}`, ModuleSchema},
++		{"crud_create", "/create/:module/:model/", "/create/branch_pos/operation_evidence/", `{}`, api.CreateUpdateSingle},
++		{"crud_find", "/find/:module/:model/:id", "/find/branch_pos/operation_evidence/known", `{}`, api.CrudFindAll},
++		{"crud_single", "/:module/:model/single/", "/branch_pos/operation_evidence/single/", `{}`, api.CrudFindSingle},
++	}
++	for _, privileged := range []bool{false, true} {
++		for _, tc := range cases {
++			t.Run(tc.name+map[bool]string{false: "/no_app", true: "/privileged"}[privileged], func(t *testing.T) {
++				app := fiber.New(fiber.Config{DisableStartupMessage: true})
++				app.Use(func(c *fiber.Ctx) error {
++					ctx := context.Background()
++					if privileged {
++						c.Locals("server_key", true)
++						c.Locals("user", map[string]any{"is_super_admin": true})
++						ctx = context.WithValue(ctx, "server_key", true)
++					}
++					c.SetUserContext(ctx)
++					return c.Next()
++				})
++				app.Post(tc.route, tc.handler)
++				request := httptest.NewRequest(http.MethodPost, tc.target, strings.NewReader(tc.body))
++				request.Header.Set("Content-Type", "application/json")
++				response, err := app.Test(request, -1)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer response.Body.Close()
++				raw, _ := io.ReadAll(response.Body)
++				if response.StatusCode < 400 || response.StatusCode >= 500 || !strings.Contains(string(raw), "branch_pos generic access is disabled") {
++					t.Fatalf("handler did not fail before DB/upload: %d %s", response.StatusCode, raw)
++				}
++			})
++		}
++	}
++}
+diff --git a/services/graphql/resolvers/branch_pos_guard_test.go b/services/graphql/resolvers/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..9588215
+--- /dev/null
++++ b/services/graphql/resolvers/branch_pos_guard_test.go
+@@ -0,0 +1,33 @@
++package resolvers
++
++import (
++	"context"
++	"testing"
++
++	"github.com/graphql-go/graphql"
++	"go-viki/internal/helpers/modelguard"
++)
++
++func TestBranchPosGraphQLAllReadPathsWithoutDatabase(t *testing.T) {
++	ctx := context.WithValue(context.Background(), "server_key", true)
++	for _, module := range []string{"branch_pos__operation_evidence", "branch_pos__future_unknown"} {
++		for name, invoke := range map[string]func() error{
++			"list": func() error { _, err := GenericListResolver(module)(graphql.ResolveParams{Context: ctx}); return err },
++			"direct_id": func() error {
++				_, err := GenericSingleResolver(module)(graphql.ResolveParams{Context: ctx, Args: map[string]any{"id": "known"}})
++				return err
++			},
++			"relation_ids":     func() error { _, err := batchFetchByIDs(ctx, module, []string{"known"}); return err },
++			"inverse_relation": func() error { _, err := batchFetchByField(ctx, module, "parent", []string{"known"}); return err },
++		} {
++			t.Run(module+"/"+name, func(t *testing.T) {
++				if !modelguard.IsProtected(invoke()) {
++					t.Fatal("protected query did not fail closed")
++				}
++			})
++		}
++		if ids := searchRelatedModel(ctx, module, "name", "x", "exact", false); len(ids) != 0 {
++			t.Fatal("raw relation search exposed protected data")
++		}
++	}
++}
+diff --git a/services/import_export/handlers/branch_pos_guard_test.go b/services/import_export/handlers/branch_pos_guard_test.go
+new file mode 100644
+index 0000000..dda446a
+--- /dev/null
++++ b/services/import_export/handlers/branch_pos_guard_test.go
+@@ -0,0 +1,83 @@
++package import_export_handlers
++
++import (
++	"bytes"
++	"context"
++	"mime/multipart"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/gofiber/fiber/v2"
++	"go-viki/internal/document/common"
++	"go-viki/internal/helpers/modelguard"
++	"go-viki/services/import_export/helpers/functions/imports"
++	insert_models "go-viki/services/import_export/helpers/models/inserts"
++	"go-viki/services/import_export/helpers/service"
++	"go.mongodb.org/mongo-driver/mongo"
++)
++
++func TestBranchPosImportExportBeforeAnyDatabase(t *testing.T) {
++	app := fiber.New(fiber.Config{DisableStartupMessage: true})
++	app.Post("/export/direct", DirectExportHandler)
++	req := httptest.NewRequest(http.MethodPost, "/export/direct", strings.NewReader(`{"module":"branch_pos__operation_evidence","format":"csv"}`))
++	req.Header.Set("Content-Type", "application/json")
++	res, err := app.Test(req, -1)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer res.Body.Close()
++	if res.StatusCode != http.StatusForbidden {
++		t.Fatal("protected export was not forbidden", res.StatusCode)
++	}
++	if _, err := imports.GetHandler("branch_pos__future_unknown"); !modelguard.IsProtected(err) {
++		t.Fatal("reserved import type not denied", err)
++	}
++	rows := &insert_models.Inserts{Ctx: context.Background(), Inserts: map[string][]mongo.WriteModel{
++		"org__company":                   {mongo.NewInsertOneModel().SetDocument(map[string]any{"name": "must not write"})},
++		"branch_pos__operation_evidence": {mongo.NewInsertOneModel().SetDocument(map[string]any{})},
++	}}
++	if err := rows.FlushInserts(); !modelguard.IsProtected(err) {
++		t.Fatal("mixed import targets not denied before writes", err)
++	}
++	if err := service.ImportProcessUpload(context.Background(), "must-not-open", "branch_pos__future_unknown", "test", false); !modelguard.IsProtected(err) {
++		t.Fatal("protected import created metadata or opened input", err)
++	}
++	if _, err := service.ImportAnalysisSheet(context.Background(), &common.UploadSheetModel{UploadType: "branch_pos__future_unknown"}, false); !modelguard.IsProtected(err) {
++		t.Fatal("protected import deleted/updated metadata before preflight", err)
++	}
++	if err := service.ExportDataToSheet(context.Background(), &common.ExportSheetModel{Module: "branch_pos__future_unknown"}, false); !modelguard.IsProtected(err) {
++		t.Fatal("protected export changed metadata before preflight", err)
++	}
++}
++
++func TestBranchPosImportUploadBeforeSavingAnyFile(t *testing.T) {
++	var body bytes.Buffer
++	w := multipart.NewWriter(&body)
++	if err := w.WriteField("type", "branch_pos__future_unknown"); err != nil {
++		t.Fatal(err)
++	}
++	file, err := w.CreateFormFile("file", "not-created-branch-pos.csv")
++	if err != nil {
++		t.Fatal(err)
++	}
++	if _, err := file.Write([]byte("test,data\n")); err != nil {
++		t.Fatal(err)
++	}
++	if err := w.Close(); err != nil {
++		t.Fatal(err)
++	}
++	app := fiber.New(fiber.Config{DisableStartupMessage: true})
++	app.Post("/collect/upload", ImportUploadHandler)
++	req := httptest.NewRequest(http.MethodPost, "/collect/upload", &body)
++	req.Header.Set("Content-Type", w.FormDataContentType())
++	res, err := app.Test(req, -1)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer res.Body.Close()
++	if res.StatusCode != http.StatusForbidden {
++		t.Fatal("reserved upload not denied before save/DB", res.StatusCode)
++	}
++}

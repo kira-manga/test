@@ -1,0 +1,71 @@
+{
+  "applicationAcceptance": false,
+  "appliesAfterTree": "bb7208a52d97a3132ac8a0a0ab89b3290a3d904a",
+  "applyCheck": "temporary isolated Git index; exact pinned tree; whitespace-error check; apply; every owned byte/mode verified; no shared index/working-tree update",
+  "authoredTests": 4,
+  "baseCommit": "3ef2c6155abd66292011c3775b30fb71d280e9c7",
+  "baseTree": "95c9b7c295856a81f509d47fe11f8a15e60c1529",
+  "blockedDependencies": [
+    "org.slf4j:slf4j-api:2.0.7",
+    "org.jetbrains.kotlinx:kotlinx-serialization-json-io:1.11.0",
+    "org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm:1.11.0"
+  ],
+  "candidateTree": "e7157d2a02183caeb459f914a5f30cb9d297e5e3",
+  "completeLockWriterAttempted": false,
+  "coordinates": "local.ukkera.pos.p2pkit:<module>:0.8.0-SNAPSHOT",
+  "files": {
+    "library/p2p-core/SCOPED-DISCLOSURE.md": {
+      "beforeSha256": "1c667a912bd77d573104ef6b419207f79c1bdce6cc3c13f02bcc1e1a85705d48",
+      "bytes": 13200,
+      "gitMode": "100644",
+      "sha256": "df58bdd126e898eb26a0ea5aa87e889989931c8e7ad991f349082e50f036c426"
+    },
+    "library/p2p-core/build.gradle.kts": {
+      "beforeSha256": "ef5b4a00e02d0e08afabddd63d18a55f6e23a674212d68b9d7b60908d195e32c",
+      "bytes": 9325,
+      "gitMode": "100644",
+      "sha256": "ccf99bd2dc96d0dfc5b53a2fc2b9ac157ea3f8beb9d84e29d2dddce0e5be28b9"
+    },
+    "library/p2p-core/src/commonTest/kotlin/dev/p2pkit/core/internal/ScopedRpcSdkIntegrationTest.kt": {
+      "beforeSha256": null,
+      "bytes": 24910,
+      "gitMode": "100644",
+      "sha256": "bf1b09de7a743e4aeb624a973127ba6f9c9be482ae415622a1b17928343dfde5"
+    }
+  },
+  "label": "rc6+ukkera-scope1",
+  "locksAndVerificationUnchangedFromBase": {
+    "buildscript-gradle.lockfile": "7fadc91a2e7baa694c2b840af86b5593a7553d193dcf757517cc1baf5d260097",
+    "gradle.lockfile": "ef94f2832dc3ffb543e1a08b0fc19dd1abe636e96d0c281ba808979707a1edd6",
+    "gradle/verification-metadata.xml": "e9c24bb830590613447a29ba02f511b3dea7587987535f23cde5508de48c8ce7",
+    "library/p2p-core/gradle.lockfile": "6e77394d33c3b99cbf8c92d64b086ae2fbbae184732ee2be0998f37214db28bd",
+    "library/p2p-network-provisioning-android/gradle.lockfile": "172f8edf146f24a939cc13c9a2e27e4c2e7e4f6c502b3f25e71ae2e0691f8aca",
+    "library/p2p-network-provisioning-desktop/gradle.lockfile": "b77fdd5829d305897969ca3e9e1bbb8e1a6183d3ac1a061795a58a671ff825b1",
+    "library/p2p-rpc/gradle.lockfile": "283ffcfd7b5cc14b583de0d39668d96e8f5ae808fb57e1d87c5c14abe87d833b",
+    "library/p2p-transport-lan/gradle.lockfile": "11bf329497ca7fc3297106fbd613e7306c673b96b08a64fa83b024e28a2a43c8",
+    "samples/p2p-sample-android/gradle.lockfile": "382f296fa30135d8c8cb1c5a52965f2d948e4eea706bcbe5101b387c080bfc9b",
+    "samples/p2p-sample-desktop-ui/gradle.lockfile": "ba2e83e7b20839eda7176fbed240c8eb78693ac91ca3658b90bfb93b06e601c9",
+    "samples/p2p-sample-desktop/gradle.lockfile": "90a1b812f211080a659871dfb0252629ce0bbf4089486b2b3b327c4dd49ec914",
+    "samples/p2p-sample-diagnostics/gradle.lockfile": "716f0da77abccd70a4fe3edddb766416a3880d913b5af46d5921b3fe1cb96448",
+    "samples/p2p-sample-rpc/gradle.lockfile": "f9826c4da0903da86b5c274a80815f7f0740beaf760af999644d8fa8e6409072",
+    "samples/sample-kmp-shared/gradle.lockfile": "ba9eba2120869c07affa36da4271380f8c2b8e31483891cb5a47c0c715d7d1ee",
+    "settings-gradle.lockfile": "5e2d075903b5cd264613e7538c7c51b1484fe2ed489d4ead3e6b4ba0cf3911c4"
+  },
+  "mode": "LOCAL_ONLY",
+  "patch": "sdk-public-integration-pending.patch",
+  "patchBytes": 29165,
+  "patchSha256": "ea5c4767c21a74114ab4f65a42311546ccc2e9c875b91ed5cc3af98656490766",
+  "requiredBeforeAdmission": "canonical complete resolveAndLockAll maintenance with reviewed platform API/ABI and dependency inputs; then strict fresh SDK integration test runs; no manual/partial lock edits or task/classpath bypass",
+  "schema": "ukkera.isolated-source-patch/v1",
+  "separateActualFailures": [
+    "partial --write-locks invocation rejected by graph guard",
+    "core Android ABI baseline comparison failed",
+    "RPC Android ABI baseline comparison failed"
+  ],
+  "status": "UNAPPLIED_OVERLAY_COMPILED_NOT_EXECUTED",
+  "testCompilation": [
+    "JVM passed",
+    "Android-host passed"
+  ],
+  "testExecution": "NOT RUN: both runtime classpaths rejected missing locked dependency memberships"
+}

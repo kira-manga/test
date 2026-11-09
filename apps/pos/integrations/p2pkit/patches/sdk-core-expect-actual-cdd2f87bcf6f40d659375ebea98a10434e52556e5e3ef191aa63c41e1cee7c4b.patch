@@ -1,0 +1,14 @@
+diff --git a/library/p2p-core/build.gradle.kts b/library/p2p-core/build.gradle.kts
+--- a/library/p2p-core/build.gradle.kts
++++ b/library/p2p-core/build.gradle.kts
+@@ -141,6 +141,10 @@
+ }
+ 
+ kotlin {
++    compilerOptions {
++        freeCompilerArgs.add("-Xexpect-actual-classes")
++    }
++
+     @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
+     abiValidation()
+ 

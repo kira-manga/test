@@ -1,0 +1,75 @@
+{
+  "recordedDate": "2026-10-23",
+  "mode": "LOCAL ONLY",
+  "sourceCheckouts": [
+    {
+      "repository": "common-main-r",
+      "localPath": ".workspace/sources/common-main-r",
+      "revision": "5298c0e7b08e0bce6fc4f115d3442f89d2401223",
+      "push": "DISABLED",
+      "sourceChanges": "none at clone"
+    },
+    {
+      "repository": "main-next",
+      "localPath": ".workspace/sources/main-next",
+      "revision": "34c6ffc50d7f9c552f6e293a1746b4dc4ba7bd8e",
+      "push": "DISABLED",
+      "sourceChanges": "isolated BranchPos generation corrections; exported backend/patches/main-next.patch, apply-checked; see backend/evidence/local-verification.json"
+    },
+    {
+      "repository": "module-manager",
+      "localPath": ".workspace/sources/module-manager",
+      "revision": "310dcbfd5e22f8e2095f91d9762fc4e6c72789b0",
+      "push": "DISABLED",
+      "sourceChanges": "none at clone"
+    },
+    {
+      "repository": "modules",
+      "localPath": ".workspace/sources/modules",
+      "revision": "3cec39f9d2a96980d2b917fa020fddafe986233c",
+      "push": "DISABLED",
+      "sourceChanges": "none at clone"
+    },
+    {
+      "repository": "viki-go",
+      "localPath": ".workspace/sources/viki-go",
+      "revision": "80125bc8795b5ea807d9b18aa25f686572bf29bd",
+      "push": "DISABLED",
+      "sourceChanges": "isolated generic-route guards and typed ingestion probe; exported backend/patches/viki-go.patch, apply-checked; route unmounted, production persistence/auth absent"
+    },
+    {
+      "repository": "p2pkit",
+      "localPath": ".workspace/sources/p2pkit",
+      "revision": "3ef2c6155abd66292011c3775b30fb71d280e9c7",
+      "push": "DISABLED",
+      "coordinates": "local.ukkera.pos.p2pkit:<module>:0.8.0-SNAPSHOT",
+      "provenanceLabel": "rc6+ukkera-scope1",
+      "sourceChanges": "isolated SDK lifetime and strict invoke-only RPC BASE: core927/126 and RPC125/118 JVM/Android-host passed with unchanged source/locks; full API/native qualification absent; no sensitive POS binding",
+      "provenanceFile": ".workspace/sources/p2pkit/UKKERA-LOCAL-PROVENANCE.md",
+      "exportedBaseManifest": "integrations/p2pkit/patches/manifest.json",
+      "exportedBasePatchSha256": "64e9fd9f59e1d01b55f20db2879845f8a69484296a17eb2f295fb35695c2f898",
+      "candidateTree": "bb7208a52d97a3132ac8a0a0ab89b3290a3d904a",
+      "pendingSdkIntegrationOverlay": {
+        "manifest": "integrations/p2pkit/patches/sdk-public-integration-pending.json",
+        "patchSha256": "ea5c4767c21a74114ab4f65a42311546ccc2e9c875b91ed5cc3af98656490766",
+        "status": "UNAPPLIED: four tests compiled JVM/Android, neither runtime executed because new memberships are not locked; complete supported lock/API maintenance remains required, full writer not attempted"
+      }
+    }
+  ],
+  "existingReadOnlyReferences": {
+    "kmp-apps": "95d3574a1f15ed8f1fcf5d2b97fa2955ad7bacc3",
+    "kmp-features": "ed3c0b63a8b31f627ee9c230648fb83dee121bd3",
+    "P2pKit-rc6": "3ef2c6155abd66292011c3775b30fb71d280e9c7",
+    "P2pKit-original-working-tree": {
+      "path": "/root/projects/p2pkit/P2pKit",
+      "trackedDiffSha256": "eb82e9a53e401bb7b71224c1976c0f44a0135458250a899d9c0b2153c1977e58",
+      "qualification": "unrelated existing dirty work preserved; candidate cloned from separately pinned rc6 commit"
+    }
+  },
+  "gradle": {
+    "version": "9.7.0",
+    "distributionSha256": "84fbba45c7f4c64abc77460e1c00f541e9f960e3c7ed2538f1ede19eacd873ae",
+    "status": "wrapper and bounded JVM/Android builds/tests verified; native klibrary compilation only, not full platform compatibility"
+  },
+  "runtimeQualification": "partial; see VERIFICATION_REPORT.md and INTEGRATION_STATUS.md; no production release"
+}

@@ -1,0 +1,47 @@
+--- a/gradle/ukkera-pos-compile-repository.init.gradle
++++ b/gradle/ukkera-pos-compile-repository.init.gradle
+@@ -6,6 +6,8 @@
+ import org.gradle.api.publish.maven.tasks.GenerateMavenPom
+ import org.gradle.api.publish.tasks.GenerateModuleMetadata
+ import org.gradle.api.tasks.Sync
++import java.nio.file.Files
++import java.nio.file.LinkOption
+ 
+ // This value is derived from the normalized source recipe, not a runtime override.
+ def expectedGroup = "local.ukkera.pos.p2pkit.s61dbf3d154db562f5e3e350d9de4baae11eed785c6b940cbd743e9fc1da7e427"
+@@ -38,8 +40,20 @@
+         description = "Copies genuine selected publications to a private compile-only repository; does not publish"
+         into(output)
+         doFirst {
+-            if (output.get().asFile.exists()) {
+-                throw new GradleException("Refuse repository replacement: use a fresh owned build copy and receipt")
++            // Gradle creates declared output directories BEFORE task actions. The
++            // no-replacement check therefore runs at graph readiness below; here
++            // only Gradle's empty, real output directory may be populated.
++            def destination = output.get().asFile.toPath()
++            if (!Files.isDirectory(destination, LinkOption.NOFOLLOW_LINKS)) {
++                throw new GradleException("Compile repository output is not a real directory")
++            }
++            def children = Files.newDirectoryStream(destination)
++            try {
++                if (children.iterator().hasNext()) {
++                    throw new GradleException("Refuse nonempty compile repository output")
++                }
++            } finally {
++                children.close()
+             }
+         }
+     }
+@@ -81,6 +95,12 @@
+     }
+     gradle.taskGraph.whenReady { graph ->
+         if (graph.hasTask(export.get())) {
++            // Run before PreCreateOutputParentsStep materializes Sync's output.
++            // Even an empty pre-existing destination (including a dangling link)
++            // is consumed work, never a permitted replacement/retry.
++            if (Files.exists(output.get().asFile.toPath(), LinkOption.NOFOLLOW_LINKS)) {
++                throw new GradleException("Refuse repository replacement: use a fresh owned build copy and receipt")
++            }
+             if (graph.allTasks.any { it.name.toLowerCase(Locale.ROOT).startsWith("publish") ||
+                 it.name.toLowerCase(Locale.ROOT).startsWith("sign") }) {
+                 throw new GradleException("No publication or signing task belongs to this compile repository graph")

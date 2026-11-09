@@ -1,0 +1,32 @@
+{
+  "contract": "branch-pos-domain-native-mapping-v1-candidate",
+  "status": "REQUIRED_PROTECTED_REGISTRY_ADAPTER_AND_INDEXES_NOT_IMPLEMENTED",
+  "wire": {
+    "scope": "domain organization/company/branch UUIDs assigned by explicit protected provisioning",
+    "nativeScope": "internal authenticated/resolved sourceNamespace + original string organization/company/branch IDs",
+    "genericAccess": "all branch_pos namespace models remain denied even to generic administrators/server keys"
+  },
+  "identityRequirements": [
+    "Qualify native identity by entity kind and source/environment namespace.",
+    "Enforce bidirectional uniqueness for each organization mapping, company mapping under its organization, and branch mapping under its company.",
+    "A unique full scope triple alone is insufficient: the same domain parent must not resolve to different native parents across child rows.",
+    "Verify the actual native Org -> Company -> Branch parent links and corresponding domain links in the same admission snapshot.",
+    "Identity mappings are immutable. Deactivation retains tombstones; no identifier reuse/re-pointing that would reinterpret historical signed evidence.",
+    "No hashing/casting legacy native IDs into UUIDs or ObjectIDs; no implicit allocation, auto-creation or mapping repair during ingestion."
+  ],
+  "transactionRequirements": [
+    "AuthorizeUploader validates current source/native-scope enrollment and revocation, not request-supplied roles.",
+    "ResolveOrigin resolves the domain scope, checks missing/ambiguous/disabled/reparented mappings, verifies native hierarchy, and returns authoritative NativeScope.",
+    "Ingest compares the resolved source/native scope to Principal.NativeScope before signature/receipt lookup/persistence.",
+    "All historic actor/resource/unit/SKU/scale/key/master/authority/config references must belong to the same admitted scope.",
+    "Receipt replay uses the same mapping/authentication admission; existing receipts do not bypass current device/mapping status."
+  ],
+  "localEvidence": {
+    "actualServiceChecks": "internal/branchpos.Service.Ingest",
+    "testOracle": "internal/branchpos.TestExplicitDomainNativeMappingAdmissionAndReplay",
+    "testedDenials": ["missing", "disabled", "duplicate-domain", "reverse-alias", "organization-split", "company-split", "cross-source-organization-split", "cross-source-company-split", "wrong-native-parent", "different-native-scope", "different-source", "empty-resolved-scope", "disabled-on-replay"],
+    "positiveCase": "Identical native text IDs in independent source namespaces do not become reverse aliases when domain identities are distinct.",
+    "limitation": "Explicit private fixture registry models the REQUIRED interface behavior. It does not prove a Mongo mapping implementation, installed indexes, or producer enrollment."
+  },
+  "storageDecision": "Current seven-model generation probe is not this registry. Select/generate the additional mapping persistence schema and unique indexes under separate review before runtime ingestion."
+}

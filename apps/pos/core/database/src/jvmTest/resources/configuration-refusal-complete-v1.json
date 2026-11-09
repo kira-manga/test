@@ -1,0 +1,2603 @@
+{
+  "designVersion": "configuration-refusal-complete-v1",
+  "freezeStatus": "READY_FOR_FREEZE",
+  "executionStatus": "NOT_RUN",
+  "issueReferences": [
+    "#35",
+    "#51"
+  ],
+  "deviceExecutionIssue": "#63",
+  "requirements": [
+    "../../contracts/LOCAL-CONFIGURATION-STALE-ORIGINAL.md",
+    "../../contracts/LOCAL-CONFIGURATION-REFUSAL-RECOVERY.md",
+    "../../requirements/OWNER-DEVICE-VERIFICATION.md",
+    "../../AGENTS.md"
+  ],
+  "historicalSupersession": "The prior stale-only CFG-022 unsupported-retirement recovery expectation is historical and superseded for warehouse retirement by the explicit refusal-recovery capability extension. Prior frozen outputs remain unchanged. Genuine other unsupported history remains held.",
+  "fixtureEncoding": {
+    "purpose": "Semantic specification only; existing public codecs remain unchanged.",
+    "revisions": "Canonical signed-64-bit nonnegative decimal strings; null represents absence or result null.",
+    "namesKeys": {
+      "en": "English LocalNamesV1 text",
+      "ar": "Arabic LocalNamesV1 text"
+    },
+    "resources": "KIND:UUID is documentation notation; compare exact semantic sets.",
+    "resultRevision": "Domain revision; there is no result storage-revision field.",
+    "authenticity": "Synthetic literals only. No native original bytes/hash/images/sequence/epoch are supplied or implied."
+  },
+  "baseline": {
+    "masterCurrentAuthority": "VALIDATE_AT_EXECUTION",
+    "interactiveLocalSessionAndDevice": "VALID_CURRENT_BOUND",
+    "branchScope": "EXACT",
+    "permissions": "ADMINISTER plus target-specific permission",
+    "otherValidationAndCapacity": "VALID_EXCEPT_LITERAL_STORAGE_SATURATION",
+    "network": "LOCAL_ONLY",
+    "central": "HELD",
+    "platform": "UNBOUND",
+    "minimumOS": "UNBOUND"
+  },
+  "commonRefusalAssertions": {
+    "resultId": null,
+    "resultRevision": null,
+    "targetBusinessChanges": 0,
+    "businessAggregateWrites": 0,
+    "claims": 0,
+    "domainJobs": 0,
+    "approval": null,
+    "finalDeadline": null,
+    "increment": 0,
+    "overflow": false,
+    "partialWrite": false,
+    "newDecisionDuringRecovery": false
+  },
+  "publicHandlerGroupCount": 8,
+  "publicHandlerFixtureCount": 21,
+  "publicHandlerFixtures": [
+    {
+      "id": "CFR-001-W",
+      "group": "CFR-001",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "actor_equals_target",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "names": {
+            "en": "Last Revision Store New",
+            "ar": "مخزن المراجعة الأخيرة الجديد"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "9223372036854775807"
+      },
+      "originalContext": {
+        "operationId": "b41808fe-8ecf-40f3-9fa2-e8078492ee95",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "names": {
+            "en": "Last Revision Store",
+            "ar": "مخزن المراجعة الأخيرة"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775807",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "b41808fe-8ecf-40f3-9fa2-e8078492ee95",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.capacity_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+            "names": {
+              "en": "Last Revision Store",
+              "ar": "مخزن المراجعة الأخيرة"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:8912ca27-9b64-4d95-beb1-9ed19057a449"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-001-T",
+      "group": "CFR-001",
+      "status": "NOT_RUN",
+      "type": "tender",
+      "resourceAlias": "actor_equals_original_authorizer",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureTender",
+        "targetType": "LocalTenderV1",
+        "target": {
+          "id": "325a5d12-5c26-46dd-94ce-89b089ea5cd3",
+          "names": {
+            "en": "Capped Voucher Inactive",
+            "ar": "القسيمة عند الحد غير النشطة"
+          },
+          "kind": "OTHER",
+          "requiresTerminal": false,
+          "requiresReference": true,
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775807"
+      },
+      "originalContext": {
+        "operationId": "25c2d38e-3e03-478c-80d7-627777aec3f6",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "325a5d12-5c26-46dd-94ce-89b089ea5cd3",
+          "names": {
+            "en": "Capped Card",
+            "ar": "البطاقة عند الحد"
+          },
+          "kind": "CARD",
+          "requiresTerminal": true,
+          "requiresReference": false,
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "8912ca27-9b64-4d95-beb1-9ed19057a449"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775807",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "325a5d12-5c26-46dd-94ce-89b089ea5cd3",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "25c2d38e-3e03-478c-80d7-627777aec3f6",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "TENDER_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.capacity_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "325a5d12-5c26-46dd-94ce-89b089ea5cd3",
+            "names": {
+              "en": "Capped Card",
+              "ar": "البطاقة عند الحد"
+            },
+            "kind": "CARD",
+            "requiresTerminal": true,
+            "requiresReference": false,
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:325a5d12-5c26-46dd-94ce-89b089ea5cd3"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-001-S",
+      "group": "CFR-001",
+      "status": "NOT_RUN",
+      "type": "supplier",
+      "resourceAlias": "target_equals_original_authorizer",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureSupplier",
+        "targetType": "LocalSupplierV1",
+        "target": {
+          "id": "b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "names": {
+            "en": "",
+            "ar": "مورد القمة غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775807"
+      },
+      "originalContext": {
+        "operationId": "6130fbec-7ab1-4a13-8412-48a4d6af19af",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "names": {
+            "en": "Peak Supplier",
+            "ar": "مورد القمة"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775807",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "b09e5d83-86dd-405f-a270-8256d8e1897c",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "6130fbec-7ab1-4a13-8412-48a4d6af19af",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "SUPPLIER_ADMINISTRATION"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.capacity_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "b09e5d83-86dd-405f-a270-8256d8e1897c",
+            "names": {
+              "en": "Peak Supplier",
+              "ar": "مورد القمة"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-002-W",
+      "group": "CFR-002",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "e635a31a-53d3-42b2-90ee-ea1c4da80e5e",
+          "names": {
+            "en": "Cedar Store Later",
+            "ar": "مخزن الأرز اللاحق"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "5edf4b62-9a34-4af2-9bdc-7655d9d2ae8d",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "e635a31a-53d3-42b2-90ee-ea1c4da80e5e",
+          "names": {
+            "en": "Cedar Store",
+            "ar": "مخزن الأرز"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "e635a31a-53d3-42b2-90ee-ea1c4da80e5e",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "5edf4b62-9a34-4af2-9bdc-7655d9d2ae8d",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "e635a31a-53d3-42b2-90ee-ea1c4da80e5e",
+            "names": {
+              "en": "Cedar Store",
+              "ar": "مخزن الأرز"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:e635a31a-53d3-42b2-90ee-ea1c4da80e5e",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:e635a31a-53d3-42b2-90ee-ea1c4da80e5e"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-002-T",
+      "group": "CFR-002",
+      "status": "NOT_RUN",
+      "type": "tender",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureTender",
+        "targetType": "LocalTenderV1",
+        "target": {
+          "id": "9dc20dc3-361a-4d3e-9791-979bb7cddf19",
+          "names": {
+            "en": "Cedar Wallet Inactive",
+            "ar": "محفظة الأرز غير النشطة"
+          },
+          "kind": "EXTERNAL_WALLET",
+          "requiresTerminal": false,
+          "requiresReference": true,
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "bc5e3028-2c7c-4ba8-9d21-55ca027b5cac",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "9dc20dc3-361a-4d3e-9791-979bb7cddf19",
+          "names": {
+            "en": "Cedar Card",
+            "ar": "بطاقة الأرز"
+          },
+          "kind": "CARD",
+          "requiresTerminal": true,
+          "requiresReference": false,
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "9dc20dc3-361a-4d3e-9791-979bb7cddf19",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "bc5e3028-2c7c-4ba8-9d21-55ca027b5cac",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "TENDER_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "9dc20dc3-361a-4d3e-9791-979bb7cddf19",
+            "names": {
+              "en": "Cedar Card",
+              "ar": "بطاقة الأرز"
+            },
+            "kind": "CARD",
+            "requiresTerminal": true,
+            "requiresReference": false,
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:9dc20dc3-361a-4d3e-9791-979bb7cddf19",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-002-S",
+      "group": "CFR-002",
+      "status": "NOT_RUN",
+      "type": "supplier",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureSupplier",
+        "targetType": "LocalSupplierV1",
+        "target": {
+          "id": "7b9e3d9d-7891-4d7e-902f-1f95e6cbeb86",
+          "names": {
+            "en": "Cedar Farms Inactive",
+            "ar": "مزارع الأرز غير النشطة"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "6130b5ae-63a5-44ee-91f9-ddc20eb4b41a",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "7b9e3d9d-7891-4d7e-902f-1f95e6cbeb86",
+          "names": {
+            "en": "Cedar Farms",
+            "ar": "مزارع الأرز"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "7b9e3d9d-7891-4d7e-902f-1f95e6cbeb86",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "6130b5ae-63a5-44ee-91f9-ddc20eb4b41a",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "SUPPLIER_ADMINISTRATION"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "7b9e3d9d-7891-4d7e-902f-1f95e6cbeb86",
+            "names": {
+              "en": "Cedar Farms",
+              "ar": "مزارع الأرز"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:7b9e3d9d-7891-4d7e-902f-1f95e6cbeb86",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-003-W",
+      "group": "CFR-003",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "dfddf97d-1a7b-4a45-9b26-63c5092e9d2e",
+          "names": {
+            "en": "Hill Store Extension",
+            "ar": "توسعة مخزن التل"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": null
+      },
+      "originalContext": {
+        "operationId": "b09802ad-1ccf-43c1-bacd-2aa4f364ac7a",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "dfddf97d-1a7b-4a45-9b26-63c5092e9d2e",
+          "names": {
+            "en": "Hill Store",
+            "ar": "مخزن التل"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": null,
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "dfddf97d-1a7b-4a45-9b26-63c5092e9d2e",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "b09802ad-1ccf-43c1-bacd-2aa4f364ac7a",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "dfddf97d-1a7b-4a45-9b26-63c5092e9d2e",
+            "names": {
+              "en": "Hill Store",
+              "ar": "مخزن التل"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:dfddf97d-1a7b-4a45-9b26-63c5092e9d2e",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:dfddf97d-1a7b-4a45-9b26-63c5092e9d2e"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-003-T",
+      "group": "CFR-003",
+      "status": "NOT_RUN",
+      "type": "tender",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureTender",
+        "targetType": "LocalTenderV1",
+        "target": {
+          "id": "bf6bc3b1-ebf7-4b79-b652-61e959d69e79",
+          "names": {
+            "en": "Hill Card",
+            "ar": "بطاقة التل"
+          },
+          "kind": "CARD",
+          "requiresTerminal": true,
+          "requiresReference": false,
+          "active": true
+        },
+        "expectedStorageRevision": null
+      },
+      "originalContext": {
+        "operationId": "bca876f9-d290-4ed3-908d-431af350eb7a",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "bf6bc3b1-ebf7-4b79-b652-61e959d69e79",
+          "names": {
+            "en": "Hill Wallet",
+            "ar": "محفظة التل"
+          },
+          "kind": "EXTERNAL_WALLET",
+          "requiresTerminal": false,
+          "requiresReference": true,
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": null,
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "bf6bc3b1-ebf7-4b79-b652-61e959d69e79",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "bca876f9-d290-4ed3-908d-431af350eb7a",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "TENDER_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "bf6bc3b1-ebf7-4b79-b652-61e959d69e79",
+            "names": {
+              "en": "Hill Wallet",
+              "ar": "محفظة التل"
+            },
+            "kind": "EXTERNAL_WALLET",
+            "requiresTerminal": false,
+            "requiresReference": true,
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:bf6bc3b1-ebf7-4b79-b652-61e959d69e79",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-003-S",
+      "group": "CFR-003",
+      "status": "NOT_RUN",
+      "type": "supplier",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureSupplier",
+        "targetType": "LocalSupplierV1",
+        "target": {
+          "id": "21d41f6e-bf4a-4291-b1a8-c321bedfd9e8",
+          "names": {
+            "en": "Hill Produce East",
+            "ar": "محاصيل التل الشرقية"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": null
+      },
+      "originalContext": {
+        "operationId": "c8a8dbb6-d4a1-457f-a58d-262e33841f44",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "21d41f6e-bf4a-4291-b1a8-c321bedfd9e8",
+          "names": {
+            "en": "Hill Produce",
+            "ar": "محاصيل التل"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": null,
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "21d41f6e-bf4a-4291-b1a8-c321bedfd9e8",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "c8a8dbb6-d4a1-457f-a58d-262e33841f44",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "SUPPLIER_ADMINISTRATION"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.stale_revision",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "21d41f6e-bf4a-4291-b1a8-c321bedfd9e8",
+            "names": {
+              "en": "Hill Produce",
+              "ar": "محاصيل التل"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:21d41f6e-bf4a-4291-b1a8-c321bedfd9e8",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-004-M",
+      "group": "CFR-004",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_three_equal",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+          "names": {
+            "en": "Final Store Inactive",
+            "ar": "المخزن الأخير غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775807"
+      },
+      "originalContext": {
+        "operationId": "459c6520-5daf-48da-9dc3-394e5b33b3b9",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+          "names": {
+            "en": "Final Store",
+            "ar": "المخزن الأخير"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775807",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+        "targetId": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "459c6520-5daf-48da-9dc3-394e5b33b3b9",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+            "names": {
+              "en": "Final Store",
+              "ar": "المخزن الأخير"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51",
+          "STOCK:fe0eb4a9-1d6f-4a0a-90dd-47b1a0e32c51"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-004-S",
+      "group": "CFR-004",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4",
+          "names": {
+            "en": "Final Rear Store Inactive",
+            "ar": "المخزن الخلفي الأخير غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "bfa5e01a-6879-4870-891e-6e0996dbe6d3",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4",
+          "names": {
+            "en": "Final Rear Store",
+            "ar": "المخزن الخلفي الأخير"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "bfa5e01a-6879-4870-891e-6e0996dbe6d3",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4",
+            "names": {
+              "en": "Final Rear Store",
+              "ar": "المخزن الخلفي الأخير"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:3e8a29db-dd03-4d21-b8c7-cc5d8287a1d4"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-004-N",
+      "group": "CFR-004",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "1e680d60-297b-40eb-9d82-86b3d6ecc3c1",
+          "names": {
+            "en": "Final Front Store Inactive",
+            "ar": "المخزن الأمامي الأخير غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": null
+      },
+      "originalContext": {
+        "operationId": "c6f3a90e-7221-4afb-9c75-d853c74b8c38",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "1e680d60-297b-40eb-9d82-86b3d6ecc3c1",
+          "names": {
+            "en": "Final Front Store",
+            "ar": "المخزن الأمامي الأخير"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775807",
+        "domainRevision": "9223372036854775806",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": null,
+        "actualStorageRevision": "9223372036854775807",
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "1e680d60-297b-40eb-9d82-86b3d6ecc3c1",
+        "previousDomainRevision": "9223372036854775806",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "c6f3a90e-7221-4afb-9c75-d853c74b8c38",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "1e680d60-297b-40eb-9d82-86b3d6ecc3c1",
+            "names": {
+              "en": "Final Front Store",
+              "ar": "المخزن الأمامي الأخير"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:1e680d60-297b-40eb-9d82-86b3d6ecc3c1",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:1e680d60-297b-40eb-9d82-86b3d6ecc3c1"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-005-N",
+      "group": "CFR-005",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+          "names": {
+            "en": "Planned Store Inactive",
+            "ar": "المخزن المخطط غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": null
+      },
+      "originalContext": {
+        "operationId": "606467ce-fcdc-4a5b-aa91-a658102aa813",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": false,
+        "definition": null,
+        "storageRevision": null,
+        "domainRevision": null,
+        "authorizedBy": null
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": null,
+        "actualStorageRevision": null,
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+        "previousDomainRevision": "0",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "606467ce-fcdc-4a5b-aa91-a658102aa813",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": false,
+          "definition": null,
+          "storageRevision": null,
+          "domainRevision": null
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+          "STOCK:5c98e5c5-f037-4a9c-9c14-a691b8f7466b"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-005-Z",
+      "group": "CFR-005",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "6720e939-a330-4d09-9bfe-56bc3beac17a",
+          "names": {
+            "en": "Future Store Inactive",
+            "ar": "المخزن المستقبلي غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "0"
+      },
+      "originalContext": {
+        "operationId": "1a3c2456-3550-4470-98a0-ce0c8792a1b9",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": false,
+        "definition": null,
+        "storageRevision": null,
+        "domainRevision": null,
+        "authorizedBy": null
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "0",
+        "actualStorageRevision": null,
+        "matches": false
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "6720e939-a330-4d09-9bfe-56bc3beac17a",
+        "previousDomainRevision": "0",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "1a3c2456-3550-4470-98a0-ce0c8792a1b9",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": false,
+          "definition": null,
+          "storageRevision": null,
+          "domainRevision": null
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:6720e939-a330-4d09-9bfe-56bc3beac17a",
+          "STOCK:6720e939-a330-4d09-9bfe-56bc3beac17a"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-006-W",
+      "group": "CFR-006",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+          "names": {
+            "en": "Boundary Store Final",
+            "ar": "مخزن الحد الأخير"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "c388c7c1-4540-4ff5-aab6-9578afc17bd1",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+          "names": {
+            "en": "Boundary Store",
+            "ar": "مخزن الحد"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775806",
+        "domainRevision": "9223372036854775805",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775806",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+        "previousDomainRevision": "9223372036854775805",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "c388c7c1-4540-4ff5-aab6-9578afc17bd1",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+          "revision": "9223372036854775806"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+            "names": {
+              "en": "Boundary Store Final",
+              "ar": "مخزن الحد الأخير"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:c4d8a9e2-fd98-4dab-b8d9-37e14050d574",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:c4d8a9e2-fd98-4dab-b8d9-37e14050d574"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-006-T",
+      "group": "CFR-006",
+      "status": "NOT_RUN",
+      "type": "tender",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureTender",
+        "targetType": "LocalTenderV1",
+        "target": {
+          "id": "894e108f-614e-493b-a498-2e8f572e348a",
+          "names": {
+            "en": "Boundary Card Final",
+            "ar": "بطاقة الحد الأخيرة"
+          },
+          "kind": "CARD",
+          "requiresTerminal": true,
+          "requiresReference": false,
+          "active": true
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "2d9b6b0d-3496-49a2-9c9f-2d9781a8c36d",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "894e108f-614e-493b-a498-2e8f572e348a",
+          "names": {
+            "en": "Boundary Voucher",
+            "ar": "قسيمة الحد"
+          },
+          "kind": "OTHER",
+          "requiresTerminal": false,
+          "requiresReference": true,
+          "active": true
+        },
+        "storageRevision": "9223372036854775806",
+        "domainRevision": "9223372036854775805",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775806",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "894e108f-614e-493b-a498-2e8f572e348a",
+        "previousDomainRevision": "9223372036854775805",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "2d9b6b0d-3496-49a2-9c9f-2d9781a8c36d",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "TENDER_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "894e108f-614e-493b-a498-2e8f572e348a",
+          "revision": "9223372036854775806"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "894e108f-614e-493b-a498-2e8f572e348a",
+            "names": {
+              "en": "Boundary Card Final",
+              "ar": "بطاقة الحد الأخيرة"
+            },
+            "kind": "CARD",
+            "requiresTerminal": true,
+            "requiresReference": false,
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:894e108f-614e-493b-a498-2e8f572e348a",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-006-S",
+      "group": "CFR-006",
+      "status": "NOT_RUN",
+      "type": "supplier",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureSupplier",
+        "targetType": "LocalSupplierV1",
+        "target": {
+          "id": "7b49bb34-9343-44e2-a288-e2d95a2c16be",
+          "names": {
+            "en": "Boundary Growers Final",
+            "ar": "مزارعو الحد الأخيرون"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "9223372036854775806"
+      },
+      "originalContext": {
+        "operationId": "5e67ee71-e067-4443-9399-df3d0a61f94a",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "7b49bb34-9343-44e2-a288-e2d95a2c16be",
+          "names": {
+            "en": "Boundary Growers",
+            "ar": "مزارعو الحد"
+          },
+          "active": true
+        },
+        "storageRevision": "9223372036854775806",
+        "domainRevision": "9223372036854775805",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "9223372036854775806",
+        "actualStorageRevision": "9223372036854775806",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "7b49bb34-9343-44e2-a288-e2d95a2c16be",
+        "previousDomainRevision": "9223372036854775805",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "5e67ee71-e067-4443-9399-df3d0a61f94a",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "SUPPLIER_ADMINISTRATION"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "7b49bb34-9343-44e2-a288-e2d95a2c16be",
+          "revision": "9223372036854775806"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "7b49bb34-9343-44e2-a288-e2d95a2c16be",
+            "names": {
+              "en": "Boundary Growers Final",
+              "ar": "مزارعو الحد الأخيرون"
+            },
+            "active": true
+          },
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775806"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:7b49bb34-9343-44e2-a288-e2d95a2c16be",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-007-W",
+      "group": "CFR-007",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+          "names": {
+            "en": "Regular Store Revised",
+            "ar": "المخزن العادي المعدل"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "5"
+      },
+      "originalContext": {
+        "operationId": "8f5a0f3e-7e85-40fc-bcc6-30aa4b142658",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+          "names": {
+            "en": "Regular Store",
+            "ar": "المخزن العادي"
+          },
+          "active": true
+        },
+        "storageRevision": "5",
+        "domainRevision": "4",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "5",
+        "actualStorageRevision": "5",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+        "previousDomainRevision": "4",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "8f5a0f3e-7e85-40fc-bcc6-30aa4b142658",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+          "revision": "5"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+            "names": {
+              "en": "Regular Store Revised",
+              "ar": "المخزن العادي المعدل"
+            },
+            "active": true
+          },
+          "storageRevision": "6",
+          "domainRevision": "5"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:1453fcf9-1f02-4d7e-a39c-91e2e25e8e59",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:1453fcf9-1f02-4d7e-a39c-91e2e25e8e59"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-007-T",
+      "group": "CFR-007",
+      "status": "NOT_RUN",
+      "type": "tender",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureTender",
+        "targetType": "LocalTenderV1",
+        "target": {
+          "id": "d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+          "names": {
+            "en": "Regular Wallet",
+            "ar": "المحفظة العادية"
+          },
+          "kind": "EXTERNAL_WALLET",
+          "requiresTerminal": false,
+          "requiresReference": true,
+          "active": true
+        },
+        "expectedStorageRevision": "5"
+      },
+      "originalContext": {
+        "operationId": "f7b965d2-2145-416b-9e83-1f31c4a97b27",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+          "names": {
+            "en": "Regular Card",
+            "ar": "البطاقة العادية"
+          },
+          "kind": "CARD",
+          "requiresTerminal": true,
+          "requiresReference": false,
+          "active": true
+        },
+        "storageRevision": "5",
+        "domainRevision": "4",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "5",
+        "actualStorageRevision": "5",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+        "previousDomainRevision": "4",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "f7b965d2-2145-416b-9e83-1f31c4a97b27",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "TENDER_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+          "revision": "5"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+            "names": {
+              "en": "Regular Wallet",
+              "ar": "المحفظة العادية"
+            },
+            "kind": "EXTERNAL_WALLET",
+            "requiresTerminal": false,
+            "requiresReference": true,
+            "active": true
+          },
+          "storageRevision": "6",
+          "domainRevision": "5"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:d69251b6-448c-4494-8a66-b1b8e7f98b7b",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-007-S",
+      "group": "CFR-007",
+      "status": "NOT_RUN",
+      "type": "supplier",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureSupplier",
+        "targetType": "LocalSupplierV1",
+        "target": {
+          "id": "c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+          "names": {
+            "en": "Regular Mills Revised",
+            "ar": "المطاحن العادية المعدلة"
+          },
+          "active": true
+        },
+        "expectedStorageRevision": "5"
+      },
+      "originalContext": {
+        "operationId": "e991f98f-e49e-4cd5-87e1-ddf3bc59e5d4",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+          "names": {
+            "en": "Regular Mills",
+            "ar": "المطاحن العادية"
+          },
+          "active": true
+        },
+        "storageRevision": "5",
+        "domainRevision": "4",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "5",
+        "actualStorageRevision": "5",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+        "previousDomainRevision": "4",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "e991f98f-e49e-4cd5-87e1-ddf3bc59e5d4",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "SUPPLIER_ADMINISTRATION"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "configuration.applied",
+          "id": "c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+          "revision": "5"
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+            "names": {
+              "en": "Regular Mills Revised",
+              "ar": "المطاحن العادية المعدلة"
+            },
+            "active": true
+          },
+          "storageRevision": "6",
+          "domainRevision": "5"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:c7e9e7db-fd59-4ccf-aaaf-9d9da7b7eae4",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c"
+        ],
+        "targetChange": "EXACT_REQUEST_DEFINITION_AND_EXPECTED_REVISIONS",
+        "rejectionBusinessEffects": "NOT_A_REFUSAL",
+        "refusalRecovery": "OUT_OF_SCOPE_SUCCESS_CONTROL"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    },
+    {
+      "id": "CFR-008-W",
+      "group": "CFR-008",
+      "status": "NOT_RUN",
+      "type": "warehouse",
+      "resourceAlias": "all_original_roles_distinct",
+      "command": {
+        "name": "local.configuration.write",
+        "version": 1,
+        "subtype": "ConfigureWarehouse",
+        "targetType": "LocalWarehouseV1",
+        "target": {
+          "id": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+          "names": {
+            "en": "Everyday Store Inactive",
+            "ar": "المخزن اليومي غير النشط"
+          },
+          "active": false
+        },
+        "expectedStorageRevision": "3"
+      },
+      "originalContext": {
+        "operationId": "312e952c-9b48-4888-a45d-9749d0346af4",
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "deviceId": "609c25eb-4f4d-4cf7-8b08-1a26ef90cc2d",
+        "sessionId": "b7039d28-8927-451b-9f18-550c1b4d6d26"
+      },
+      "before": {
+        "exists": true,
+        "definition": {
+          "id": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+          "names": {
+            "en": "Everyday Store",
+            "ar": "المخزن اليومي"
+          },
+          "active": true
+        },
+        "storageRevision": "3",
+        "domainRevision": "2",
+        "authorizedBy": "b09e5d83-86dd-405f-a270-8256d8e1897c"
+      },
+      "expectedCAS": {
+        "requestedStorageRevision": "3",
+        "actualStorageRevision": "3",
+        "matches": true
+      },
+      "originalAuthorizationExpectation": {
+        "branchId": "47f13e9d-5bd4-497a-9a36-f9654d4e6b6f",
+        "actorId": "8912ca27-9b64-4d95-beb1-9ed19057a449",
+        "targetId": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+        "previousDomainRevision": "2",
+        "exactSemanticPayloadSource": "command",
+        "operationId": "312e952c-9b48-4888-a45d-9749d0346af4",
+        "reason": "local.configuration",
+        "requiredPermissions": [
+          "ADMINISTER",
+          "WAREHOUSE_CONFIGURE"
+        ],
+        "monetaryLimit": null,
+        "baseLimit": null,
+        "ownerLimit": null
+      },
+      "expected": {
+        "result": {
+          "type": "LocalConfigurationResultV1",
+          "code": "warehouse.controlled_retirement_required",
+          "id": null,
+          "revision": null
+        },
+        "target": {
+          "exists": true,
+          "definition": {
+            "id": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+            "names": {
+              "en": "Everyday Store",
+              "ar": "المخزن اليومي"
+            },
+            "active": true
+          },
+          "storageRevision": "3",
+          "domainRevision": "2"
+        },
+        "resultResources": [
+          "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+          "AUTHORIZATION:e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+          "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+          "STOCK:e832f74a-c9cc-4945-9f5e-26b2ec0392c2"
+        ],
+        "targetChange": "NONE",
+        "rejectionBusinessEffects": "NONE",
+        "refusalRecovery": "SUPPORTED_IF_COMPLETE_AUTHENTIC_ORIGINAL_AND_CURRENT_MASTER_ACCESS"
+      },
+      "handlerBinding": "UNBOUND",
+      "nativeOriginalBinding": "UNBOUND"
+    }
+  ],
+  "recoverySpecifications": [
+    {
+      "id": "CFR-009",
+      "status": "NOT_RUN",
+      "layer": "PUBLIC_NATIVE_DURABLE_REFUSAL_RECOVERY",
+      "fixtureRefs": [
+        "CFR-001-W",
+        "CFR-001-T",
+        "CFR-001-S",
+        "CFR-002-W",
+        "CFR-002-T",
+        "CFR-002-S",
+        "CFR-003-W",
+        "CFR-003-T",
+        "CFR-003-S",
+        "CFR-004-M",
+        "CFR-004-S",
+        "CFR-004-N",
+        "CFR-005-N",
+        "CFR-005-Z",
+        "CFR-008-W"
+      ],
+      "nativeOriginalBinding": "UNBOUND",
+      "expected": {
+        "actualOriginalCode": "EXACT_REFERENCED_FIXTURE_EXPECTED_RESULT_CODE",
+        "resultBytes": "BYTE_IDENTICAL_AUTHENTIC_ORIGINAL",
+        "resources": "EXACT_REFERENCED_FIXTURE_ORIGINAL_RESULT_RESOURCES",
+        "originalCustody": "IMMUTABLE_COMPLETE",
+        "targetAfterRecovery": "UNCHANGED_FROM_CURRENT_STATE",
+        "newDecision": false,
+        "businessEffects": 0
+      },
+      "laterAuthorizedActions": [
+        {
+          "originalFixtureRef": "CFR-008-W",
+          "actorId": "f7f78245-c7b7-42e6-94a9-1fb15cc04984",
+          "operationId": "cc94aa4e-6a40-4c2d-b2bb-116cc35d7a9d",
+          "expectedStorageRevision": "3",
+          "target": {
+            "id": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+            "names": {
+              "en": "Everyday Store Later",
+              "ar": "المخزن اليومي اللاحق"
+            },
+            "active": true
+          },
+          "expectedAppliedResult": {
+            "code": "configuration.applied",
+            "id": "e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+            "domainRevision": "3",
+            "storageRevision": "4"
+          },
+          "expectedRecoveredOriginalResult": {
+            "code": "warehouse.controlled_retirement_required",
+            "id": null,
+            "revision": null
+          },
+          "expectedOriginalResources": [
+            "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+            "AUTHORIZATION:e832f74a-c9cc-4945-9f5e-26b2ec0392c2",
+            "AUTHORIZATION:b09e5d83-86dd-405f-a270-8256d8e1897c",
+            "STOCK:e832f74a-c9cc-4945-9f5e-26b2ec0392c2"
+          ]
+        },
+        {
+          "originalFixtureRef": "CFR-005-N",
+          "actorId": "52d94988-202d-4393-a9aa-9b099bdbd8e6",
+          "operationId": "316e5474-a3b4-4af3-98a1-c0985dc76e35",
+          "expectedStorageRevision": null,
+          "target": {
+            "id": "5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+            "names": {
+              "en": "Planned Store Open",
+              "ar": "المخزن المخطط المفتوح"
+            },
+            "active": true
+          },
+          "expectedAppliedResult": {
+            "code": "configuration.applied",
+            "id": "5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+            "domainRevision": "0",
+            "storageRevision": "1"
+          },
+          "expectedRecoveredOriginalResult": {
+            "code": "warehouse.controlled_retirement_required",
+            "id": null,
+            "revision": null
+          },
+          "expectedOriginalResources": [
+            "AUTHORIZATION:8912ca27-9b64-4d95-beb1-9ed19057a449",
+            "AUTHORIZATION:5c98e5c5-f037-4a9c-9c14-a691b8f7466b",
+            "STOCK:5c98e5c5-f037-4a9c-9c14-a691b8f7466b"
+          ]
+        }
+      ],
+      "saturatedLaterEditObligation": "UNBOUND until a lawful genuine local workflow is identified. Never increment beyond MaxLong, downgrade storage directly, fabricate history or modify protected originals to simulate a later edit."
+    },
+    {
+      "id": "CFR-010",
+      "status": "NOT_RUN",
+      "layer": "PUBLIC_NATIVE_RECOVERY_CODE_SUBTYPE_ORIGINAL_STATE_CHECK",
+      "nativeOriginalBinding": "UNBOUND",
+      "challenges": [
+        {
+          "fixtureRef": "CFR-001-W",
+          "actualOriginalCode": "configuration.capacity_required",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-001-T",
+          "actualOriginalCode": "configuration.capacity_required",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-001-S",
+          "actualOriginalCode": "configuration.capacity_required",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-002-W",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-002-T",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-002-S",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-003-W",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-003-T",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-003-S",
+          "actualOriginalCode": "configuration.stale_revision",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-004-M",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-004-S",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-004-N",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-005-N",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-005-Z",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-006-W",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-006-T",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-006-S",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-007-W",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-007-T",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-007-S",
+          "actualOriginalCode": "configuration.applied",
+          "invalidRetainedCodes": [
+            "warehouse.controlled_retirement_required",
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        },
+        {
+          "fixtureRef": "CFR-008-W",
+          "actualOriginalCode": "warehouse.controlled_retirement_required",
+          "invalidRetainedCodes": [
+            "configuration.stale_revision",
+            "configuration.capacity_required"
+          ],
+          "expected": {
+            "acceptedSupportedRecovery": false,
+            "protectedInvalidResultDisclosure": false,
+            "originalRewrite": false,
+            "businessEffects": 0
+          }
+        }
+      ],
+      "candidateIsolation": "Change only a disposable derived candidate's retained semantic code (with internally coherent encoding/hash where possible); preserve authentic original. Candidate is not an authentic original.",
+      "expected": {
+        "retainedCodeAloneProof": false,
+        "acceptedWrongSubtypeOrCode": false,
+        "rewriteToDifferentRefusal": false,
+        "protectedInvalidResultDisclosure": false,
+        "businessEffects": 0
+      },
+      "transportFailureCode": "NOT_SPECIFIED_BY_PUBLIC_CONTRACT; DO_NOT_INVENT"
+    },
+    {
+      "id": "CFR-011",
+      "status": "NOT_RUN",
+      "layer": "PUBLIC_NATIVE_DUPLICATE_LOST_REPLY_RESTART_AND_PROTECTED_RELEASE",
+      "fixtureRefs": [
+        "CFR-001-W",
+        "CFR-001-T",
+        "CFR-001-S",
+        "CFR-002-W",
+        "CFR-002-T",
+        "CFR-002-S",
+        "CFR-004-M",
+        "CFR-005-N"
+      ],
+      "nativeOriginalBinding": "UNBOUND",
+      "deliveryVariants": [
+        "IDENTICAL_DUPLICATE_OPERATION_AND_CANONICAL_REQUEST",
+        "LOCAL_REPLY_LOST_AFTER_DURABLE_REFUSAL_COMMIT",
+        "PROCESS_RESTART_AFTER_DURABLE_COMMIT_BEFORE_RELEASE"
+      ],
+      "currentAccessVariants": [
+        "SESSION_INVALID",
+        "DEVICE_INVALID_OR_UNBOUND",
+        "ADMINISTER_LOST",
+        "TARGET_PERMISSION_LOST",
+        "CURRENT_BRANCH_ACCESS_LOST",
+        "VALID_ACCESS_RESTORED"
+      ],
+      "expected": {
+        "authorizedRecovery": "BYTE_IDENTICAL_ORIGINAL_EXACT_FIXTURE_REFUSAL_AND_RESOURCES",
+        "unauthorizedRelease": "NO_PROTECTED_RESULT_DISCLOSURE",
+        "unauthorizedNewOperation": "NO_NEW_AUTHORIZED_OPERATION",
+        "uncertainOriginal": "PRESERVED_HELD_NEVER_EMPTY_ACCEPTANCE",
+        "secondDecision": false,
+        "secondOriginalFiveMutationBundle": false,
+        "targetEdit": false,
+        "businessEffects": 0
+      }
+    },
+    {
+      "id": "CFR-012",
+      "status": "NOT_RUN",
+      "layer": "PUBLIC_NATIVE_COMPLETE_CUSTODY_RESOURCES_AND_UNSUPPORTED_HISTORY",
+      "fixtureRefs": [
+        "CFR-001-W",
+        "CFR-001-T",
+        "CFR-001-S",
+        "CFR-004-M",
+        "CFR-005-N"
+      ],
+      "nativeOriginalBinding": "UNBOUND",
+      "challengeClasses": [
+        "MISSING_OR_UNCERTAIN_ORIGINAL_BEFORE_AUTHORIZATION_REQUEST_RESULT_RESOURCES_OR_READ_DEPENDENCY",
+        "ORIGINAL_AUTHORIZATION_BRANCH_TARGET_PREVIOUS_DOMAIN_PAYLOAD_OPERATION_REASON_OR_LIMIT_MISMATCH",
+        "CANONICAL_RESULT_BYTES_OR_HASH_MISMATCH",
+        "FIVE_MUTATIONS_WITH_WRONG_OWNERSHIP_IMAGE_HASH_SEQUENCE_EPOCH_OR_EARLIER_DEPENDENCY",
+        "MISSING_REQUIRED_OR_EXTRA_UNRELATED_OR_WILDCARD_RESOURCE",
+        "LATEST_AUTHORIZER_REPLACES_ORIGINAL_AUTHORIZER",
+        "WAREHOUSE_STOCK_MISSING_OR_TENDER_SUPPLIER_STOCK_ADDED",
+        "FORBIDDEN_AGGREGATE_CLAIM_JOB_APPROVAL_OR_DEADLINE",
+        "GENUINE_OTHER_CONFIGURATION_SUBTYPE_OR_UNSUPPORTED_HISTORY",
+        "MIXED_SUPPORTED_WITH_UNSUPPORTED_OR_UNCERTAIN_HISTORY"
+      ],
+      "literalChallenges": {
+        "inconsistentSaturatedBefore": {
+          "fixtureRef": "CFR-001-W",
+          "storageRevision": "9223372036854775807",
+          "domainRevision": "9223372036854775807",
+          "expectedAcceptedSupportedRecovery": false
+        },
+        "extraUnrelatedAuthorizationId": "e272b5c3-7ad4-4744-bf0d-a4daa9a6f119",
+        "replacementLatestAuthorizerId": "f7f78245-c7b7-42e6-94a9-1fb15cc04984"
+      },
+      "expected": {
+        "invalidOriginalProof": "NEVER_ACCEPTED_OR_USED_FOR_PROTECTED_RESULT_RELEASE",
+        "missingOrUncertainHistory": "HELD_NEVER_EMPTY_ACCEPTANCE",
+        "genuineUnsupportedHistory": "HELD_UNSUPPORTED_NOT_MALFORMED_MERELY_FOR_UNSUPPORTED_SUBTYPE",
+        "authenticBaseline": "PRESERVED_IMMUTABLE",
+        "originalRewrite": false,
+        "businessEffects": 0
+      },
+      "challengeIsolation": "Disposable derived candidates only; do not mutate authentic protected originals."
+    }
+  ],
+  "nativeCustody": {
+    "status": "UNBOUND",
+    "execution": "NOT_RUN",
+    "genuineOriginalRequirement": "Real production Master command pipeline, durable storage and public recovery/release route using synthetic local business data.",
+    "requiredOriginalProof": [
+      "COMPLETE_AUTHENTIC_ORIGINAL_BEFORE_TARGET",
+      "EXACT_ORIGINAL_AUTHORIZATION",
+      "CANONICAL_REQUEST",
+      "EXACT_CANONICAL_REFUSAL_BYTES_AND_HASH",
+      "EXACT_DEDUPLICATED_ORIGINAL_RESOURCES",
+      "ALL_EARLIER_READ_DEPENDENCIES"
+    ],
+    "fiveNonbusinessMutations": [
+      "OPERATION_RESULT",
+      "JOURNAL",
+      "AUDIT",
+      "ORDINAL_0_JOURNAL_UPLOAD_OUTBOX",
+      "BRANCH_ADVANCE"
+    ],
+    "closure": [
+      "LITERAL_OWNERSHIP",
+      "BEFORE_AFTER_IMAGES",
+      "HASHES",
+      "SEQUENCE",
+      "EPOCH",
+      "ALL_EARLIER_READ_DEPENDENCIES"
+    ],
+    "currentMasterAccessAtProtectedRelease": "SEPARATE_REQUIRED_PROOF",
+    "bytesHashImagesSequenceEpoch": "UNBOUND_NOT_SUPPLIED",
+    "central": "HELD",
+    "deviceTesting": "#63; supported platform/minimum OS UNBOUND"
+  }
+}

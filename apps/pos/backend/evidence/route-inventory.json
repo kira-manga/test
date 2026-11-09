@@ -1,0 +1,108 @@
+{
+  "status": "LOCAL_SOURCE_AND_IN_PROCESS_BOUNDARY_EVIDENCE_NOT_LIVE_ROUTING_OR_TENANT_ACCEPTANCE",
+  "sourceRoot": ".workspace/sources/viki-go",
+  "namespace": "branch_pos__* including unknown future models; BranchPos/branch_pos schema aliases",
+  "testedTrustContexts": "No app/nil context; audit/enforced permission modes; server-key/super-admin/app-write grants cannot enable generic namespace access. Actual HTTP cases cover no-app and privileged contexts.",
+  "groups": [
+    {
+      "surface": "Generic CRUD and module helpers",
+      "method": "POST",
+      "paths": ["/api/v1/:module/:model/single/", "/api/v1/find/:module/:model/", "/api/v1/find/:module/:model/:id", "/api/v1/create/:module/:model/", "/api/v1/update_one/", "/api/v1/:modules/update_one/", "/api/v1/:modules/update_one"],
+      "routeSources": ["services/app/routes/crud.go", "services/app/routes/models.go", "services/app/routes/fast.go"],
+      "handlers": ["CrudFindSingle", "CrudFindAll", "CreateUpdateSingle", "UpdateOneModel", "ModuleUpdateOne"],
+      "guards": ["CheckModelAccess before generic trust bypass", "modelguard.CheckModel", "configured.Writes before cascading updates", "db_functions.GetModel refuses reserved namespace even when registered"],
+      "evidence": "Actual handlers exercised via Fiber app.Test, including direct-ID and configured nested relation target. Aliased route mounting itself is source-traced.",
+      "tests": ["services/app/handlers/branch_pos_guard_test.go:TestBranchPosActualHTTPHandlersBeforeAnyDatabaseOrUpload", "internal/helpers/db_functions/branch_pos_guard_test.go:TestBranchPosGenericPrimitivesBeforeAnyDatabase"]
+    },
+    {
+      "surface": "Query/count/unique/translation/schema/full-query",
+      "method": "POST",
+      "paths": ["/api/v1/multi_query/", "/api/v1/:modules/multi_query/", "/api/v1/:modules/multi_query", "/api/v1/count-data/", "/api/v1/check-unique/", "/api/v1/trans/", "/api/v1/full_query/", "/api/v1/:modules/schema/", "/api/v1/:modules/schema"],
+      "routeSources": ["services/app/routes/models.go", "services/app/routes/fast.go"],
+      "handlers": ["MultiQuery", "ModuleMultiQuery", "CountModels", "CheckUnique", "Translations", "FullQuery", "ModuleSchema"],
+      "guards": ["modelguard.CheckQueries checks all model/include targets", "early CheckModel before direct lookup or config loading", "db_functions.GetModel on lower-level related reads"],
+      "evidence": "Actual handlers exercised before DB/config-loader access, including unknown future model and nested include. No active service/authentication middleware tested.",
+      "tests": ["services/app/handlers/branch_pos_guard_test.go", "internal/helpers/modelguard/guard_test.go"]
+    },
+    {
+      "surface": "Bulk/cascade/reset/update-many/aggregation",
+      "method": "POST",
+      "paths": ["/api/v1/update_models/", "/api/v1/multi_updates_models/", "/api/v1/reset-data/", "/api/v1/update-many/"],
+      "routeSources": ["services/app/routes/models.go", "services/app/routes/fast.go"],
+      "handlers": ["UpdateModels", "MultiUpdatesModels", "ResetModels", "UpdateManyModels"],
+      "guards": ["configured.Envelope before UploadFiles", "configured.Writes before full batch/cascade execution", "modelguard.CheckQueries before reset/update-many loops", "CheckPipeline at authoritative aggregate boundary", "GetModel/BulkWrite/MainUpdateModels lower-level guards"],
+      "aggregationTargets": ["$lookup.from", "$graphLookup.from", "$unionWith string/coll", "$out string/{db,coll}", "$merge string/into/{db,coll}", "nested pipelines/facets"],
+      "limits": "Depth32/targets4096; oversized options/settings must not silently skip preflight. Database-wide change-stream/currentOp/session/sample-query stages are rejected.",
+      "evidence": "Actual handler and primitive tests; mixed ordinary+reserved batches and configured relation cascades deny before side effects. Pure tests retain ordinary raw/note/$literal strings as data.",
+      "tests": ["services/app/handlers/branch_pos_guard_test.go", "internal/helpers/db_functions/branch_pos_guard_test.go", "internal/helpers/modelguard/guard_test.go"]
+    },
+    {
+      "surface": "Offline sync",
+      "method": "POST",
+      "paths": ["/api/v1/multi_updates_models/", "/api/v1/sync/pull/", "/api/v1/sync/manifest/"],
+      "routeSources": ["services/app/routes/models.go", "services/app/routes/fast.go"],
+      "guards": ["CheckSync settings.sync.mutations[].module before receipt/sequence handling", "whole data batch configured.Writes", "Pull preflights all modules before SafeSV DB lookup", "Manifest inherits unconditional CheckModelAccess denial"],
+      "evidence": "Actual push/pull handlers; direct manifest/pull functions tested with deliberately enabled reserved offline config. HTTP manifest alias is source-traced, not separately invoked.",
+      "tests": ["services/app/handlers/branch_pos_guard_test.go", "internal/helpers/sync/branch_pos_guard_test.go:TestBranchPosPullAndManifestIgnoreGenericOfflineEnablement"]
+    },
+    {
+      "surface": "Generic gRPC and gateway aliases",
+      "methods": ["MultiServiceServer.MultiQuery", "MultiServiceServer.UpdateModels", "MultiServiceServer.CountModels", "MultiServiceServer.ResetModels", "MultiServiceServer.UpdateManyModels"],
+      "routeSources": ["services/app/grpc/server.go", "services/app/grpc/grpc.go", "services/app/app.go"],
+      "guards": ["same preflighted handlers_funs entry points as HTTP", "same lower-level model namespace guards"],
+      "evidence": "All five actual methods invoked with protobuf Struct and privileged context; no gRPC listener. Gateway.Handle forwarding to HTTP handlers is source-traced only. Existing wrappers may map denial to Internal rather than PermissionDenied; no successful response is produced.",
+      "tests": ["services/app/grpc/branch_pos_guard_test.go:TestBranchPosGenericGRPCMethodsBeforeAnyDatabase"]
+    },
+    {
+      "surface": "GraphQL",
+      "method": "POST",
+      "paths": ["/graphql", "/", "/api/graphql", "/api/v1/graphql", "/api/v1/:modules/graphql/", "/api/v1/:modules/graphql", "/graphql/collect/"],
+      "routeSources": ["services/graphql/server.go:RegisterStandaloneRoutes", "services/graphql/app.go", "services/graphql/module.go:ModuleGraphqlRoutes", "services/graphql/collect.go:RegisterCollectRoutes", "services/fast_testing/graphql/handler.go"],
+      "guards": ["GenericListResolver early CheckModel even without config", "GenericSingleResolver CheckModelAccess", "batchFetchByIDs/batchFetchByField CheckModelAccess", "searchRelatedModel early CheckModel before raw Collection access"],
+      "evidence": "Actual list/single/forward/inverse/raw relation resolvers invoked for real and future namespace names. HTTP aliases/schema builder/middleware not started; schema metadata may still list configured types.",
+      "absentSurfaces": "The inspected schema builds root queries, not generic mutations/subscriptions. None invented or claimed tested.",
+      "tests": ["services/graphql/resolvers/branch_pos_guard_test.go:TestBranchPosGraphQLAllReadPathsWithoutDatabase"]
+    },
+    {
+      "surface": "Global search",
+      "method": "GET",
+      "paths": ["/api/v1/search/global"],
+      "routeSources": ["services/graphql/server.go", "services/graphql/resolvers/global_search.go"],
+      "guards": ["per-collection MergeModuleFilters -> unconditional CheckModelAccess denial before search request", "hydrateHits accepts only collections in the prebuilt admitted scopes"],
+      "evidence": "SOURCE-TRACED ONLY. No search service/index or hydration integration test; no promise about pre-existing leaked search documents."
+    },
+    {
+      "surface": "Direct export and upload/import service entry",
+      "methods": ["POST"],
+      "paths": ["/api/v1/collect/export/direct", "/api/v1/import_export/export/direct", "/api/v1/collect/upload"],
+      "routeSources": ["services/import_export/routes/imports.go", "services/import_export/routes/fast.go"],
+      "guards": ["DirectExportHandler checks module before config/read/export", "ImportUploadHandler checks type before SaveFile", "ImportProcessUpload and ImportAnalysisSheet early type checks", "imports.GetHandler refuses reserved dispatch names", "Inserts.FlushInserts preflights all real collection targets before any bulk write", "ExportDataToSheet checks module before metadata changes/files/reads"],
+      "evidence": "Actual direct-export and multipart upload handlers, service entry functions, import registry and mixed flush batch tested in-process before DB/file persistence.",
+      "tests": ["services/import_export/handlers/branch_pos_guard_test.go:TestBranchPosImportExportBeforeAnyDatabase", "services/import_export/handlers/branch_pos_guard_test.go:TestBranchPosImportUploadBeforeSavingAnyFile"]
+    },
+    {
+      "surface": "Background import/export reprocess and metadata-backed download",
+      "paths": ["POST /api/v1/collect/reprocess/", "POST /api/v1/collect/export/reprocess/", "POST /api/v1/import_export/import/reprocess/", "POST /api/v1/import_export/export/reprocess/", "POST /api/v1/import_export/import/reprocess/list/", "POST /api/v1/import_export/export/reprocess/list/", "GET /api/v1/collect/download/:file_id/", "GET /api/v1/import_export/export/download/:file_id/", "GET /api/v1/import_export/import/download/:file_id/"],
+      "routeSources": ["services/import_export/routes/imports.go", "services/import_export/routes/fast.go"],
+      "guards": ["ImportReprocessSheet checks loaded UploadType before metadata mutation", "ExportReprocessSheet checks loaded Module before metadata mutation", "DownloadExportById/DownloadImportById check loaded target metadata before serving a path", "actual target batch primitives remain guarded"],
+      "evidence": "SOURCE-TRACED ONLY for metadata lookup/scheduling/download transport. No worker or database started. Common sheet metadata must first be read to discover the target; list scheduling is not claimed atomic across distinct sheets. Existing raw file service paths/stale files are outside this namespace proof."
+    },
+    {
+      "surface": "Non-model echo helper",
+      "paths": ["POST /api/v1/test"],
+      "routeSources": ["services/app/routes/models.go", "services/app/handlers/multi.go:TestModels"],
+      "evidence": "SOURCE-TRACED: echoes parsed request body, not a collection target or ingestion route. Ordinary strings are not namespace operations."
+    },
+    {
+      "surface": "Typed evidence ingestion candidate",
+      "paths": ["POST /api/v1/branch-pos/ingestion/v1"],
+      "routeSources": ["internal/branchpos/http.go"],
+      "status": "NOT_MOUNTED_IN_ACTUAL_SERVICE",
+      "guards": ["mandatory Authenticator and AtomicStore", "branch-service Principal.NativeScope", "domain/native mapping and authority/resource checks in ResolveOrigin transaction", "Ed25519 signature", "confirmed durable commit only before ACK"],
+      "evidence": "Only stdlib httptest and private test-store orchestration. Production transport, mapping registry, Mongo adapter/indexes, full recovery and projection worker remain missing.",
+      "tests": ["internal/branchpos/ingestion_test.go"]
+    }
+  ],
+  "crossCuttingTest": "internal/helpers/models/permissions/branch_pos_access_test.go:TestBranchPosNeverUsesGenericTrustBypasses",
+  "notClaimed": ["general tenant isolation for legacy namespaces", "live route/authentication coverage", "Mongo views or foreign collection aliases", "search-index/file cleanup", "mounted typed ingestion", "production branch enrollment/mapping", "real transaction durability", "complete recovery or writer fencing"]
+}

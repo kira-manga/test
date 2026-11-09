@@ -1,0 +1,379 @@
+{
+  "schema_version": "1",
+  "design_version": "supporting-inert-supplier-payment-data-v1",
+  "additive_to": "Existing independent supporting-inert-original-data-v1 contract; does not modify prior COS/refund cases or data",
+  "execution_status": "UNRUN",
+  "layer": "Narrow non-device supporting inert original DATA comparison only",
+  "case_ids": [
+    "CSP-DATA-001",
+    "CSP-DATA-002",
+    "CSP-DATA-003"
+  ],
+  "fixture_warning": "Opaque synthetic descriptors, not genuine native proof, certificates, credentials, accepted payables, current permission or captured payout evidence. Descriptor groups inherit an existing DATA contract only; no supplier-native machine profile, API or capability is invented. MATCH is agreement only.",
+  "reference_id": "D-SUPPLIER-A",
+  "reference_descriptor": {
+    "original_actor_descriptor": "ACTOR-SUPPLIER-PAYMENT-original",
+    "operation_id": "5ca55000-0300-4000-8000-000000000001",
+    "command_descriptor": "opaque-original-supplier-cash-payment-command",
+    "source_descriptor": {
+      "source_cut_label": "opaque-original-supplier-payable-source-S",
+      "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+      "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+      "supplier_payable_id": "5ca55000-0200-4000-8000-000000000003",
+      "designated_posting_branch_id": "5ca55000-0100-4000-8000-000000000003",
+      "receipt_invoice_allocation_id": "5ca55000-0200-4000-8000-000000000005",
+      "original_goods_receipt_id": "5ca55000-0200-4000-8000-000000000004",
+      "invoice_amount_minor": "35000",
+      "authorized_payment_minor": "35000",
+      "outstanding_payable_minor_at_start": "35000",
+      "currency": "EGP"
+    },
+    "captured_start_descriptor": {
+      "instruction_label": "opaque-original-supplier-cash-payout-instruction-S",
+      "original_actor_label": "ACTOR-SUPPLIER-PAYMENT-original",
+      "original_device_label": "DEVICE-SUPPLIER-PAYMENT-original",
+      "original_presentation_label": "opaque-original-supplier-payout-presentation-S",
+      "document_id": "5ca55000-0200-4000-8000-000000000003",
+      "document_version_label": "opaque-original-supplier-payable-version-S",
+      "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+      "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+      "amount_minor": "35000",
+      "currency": "EGP",
+      "tender": "CASH",
+      "paying_drawer_id": "5ca55000-0400-4000-8000-000000000001",
+      "paying_cash_session_id": "5ca55000-0400-4000-8000-000000000002",
+      "purpose_label": "SUPPLIER_INVENTORY_SETTLEMENT"
+    },
+    "captured_certificate_descriptor": "opaque-captured-supplier-payment-certificate-DATA-S",
+    "captured_requirement_descriptor": "opaque-captured-supplier-payment-requirement-DATA-S",
+    "captured_outcome_descriptor": {
+      "status": "SUCCESS",
+      "paid_minor": "35000",
+      "currency": "EGP",
+      "physical_reference_label": "opaque-original-successful-supplier-payout-S"
+    }
+  },
+  "identical_candidate": {
+    "id": "D-SUPPLIER-A-COPY",
+    "construction": "Separately constructed complete identical descriptor",
+    "descriptor": {
+      "original_actor_descriptor": "ACTOR-SUPPLIER-PAYMENT-original",
+      "operation_id": "5ca55000-0300-4000-8000-000000000001",
+      "command_descriptor": "opaque-original-supplier-cash-payment-command",
+      "source_descriptor": {
+        "source_cut_label": "opaque-original-supplier-payable-source-S",
+        "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+        "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+        "supplier_payable_id": "5ca55000-0200-4000-8000-000000000003",
+        "designated_posting_branch_id": "5ca55000-0100-4000-8000-000000000003",
+        "receipt_invoice_allocation_id": "5ca55000-0200-4000-8000-000000000005",
+        "original_goods_receipt_id": "5ca55000-0200-4000-8000-000000000004",
+        "invoice_amount_minor": "35000",
+        "authorized_payment_minor": "35000",
+        "outstanding_payable_minor_at_start": "35000",
+        "currency": "EGP"
+      },
+      "captured_start_descriptor": {
+        "instruction_label": "opaque-original-supplier-cash-payout-instruction-S",
+        "original_actor_label": "ACTOR-SUPPLIER-PAYMENT-original",
+        "original_device_label": "DEVICE-SUPPLIER-PAYMENT-original",
+        "original_presentation_label": "opaque-original-supplier-payout-presentation-S",
+        "document_id": "5ca55000-0200-4000-8000-000000000003",
+        "document_version_label": "opaque-original-supplier-payable-version-S",
+        "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+        "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+        "amount_minor": "35000",
+        "currency": "EGP",
+        "tender": "CASH",
+        "paying_drawer_id": "5ca55000-0400-4000-8000-000000000001",
+        "paying_cash_session_id": "5ca55000-0400-4000-8000-000000000002",
+        "purpose_label": "SUPPLIER_INVENTORY_SETTLEMENT"
+      },
+      "captured_certificate_descriptor": "opaque-captured-supplier-payment-certificate-DATA-S",
+      "captured_requirement_descriptor": "opaque-captured-supplier-payment-requirement-DATA-S",
+      "captured_outcome_descriptor": {
+        "status": "SUCCESS",
+        "paid_minor": "35000",
+        "currency": "EGP",
+        "physical_reference_label": "opaque-original-successful-supplier-payout-S"
+      }
+    },
+    "expected": "MATCH"
+  },
+  "self_comparison_expected": "MATCH",
+  "top_level_one_field_changes": [
+    {
+      "id": "SP-T01",
+      "field": "original_actor_descriptor",
+      "replacement": "different-original_actor_descriptor",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T02",
+      "field": "operation_id",
+      "replacement": "5ca55000-0700-4000-8000-000000000001",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T03",
+      "field": "command_descriptor",
+      "replacement": "different-command_descriptor",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T04",
+      "field": "source_descriptor",
+      "replacement": {
+        "source_cut_label": "different-top-level-source_descriptor",
+        "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+        "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+        "supplier_payable_id": "5ca55000-0200-4000-8000-000000000003",
+        "designated_posting_branch_id": "5ca55000-0100-4000-8000-000000000003",
+        "receipt_invoice_allocation_id": "5ca55000-0200-4000-8000-000000000005",
+        "original_goods_receipt_id": "5ca55000-0200-4000-8000-000000000004",
+        "invoice_amount_minor": "35000",
+        "authorized_payment_minor": "35000",
+        "outstanding_payable_minor_at_start": "35000",
+        "currency": "EGP"
+      },
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T05",
+      "field": "captured_start_descriptor",
+      "replacement": {
+        "instruction_label": "different-top-level-captured_start_descriptor",
+        "original_actor_label": "ACTOR-SUPPLIER-PAYMENT-original",
+        "original_device_label": "DEVICE-SUPPLIER-PAYMENT-original",
+        "original_presentation_label": "opaque-original-supplier-payout-presentation-S",
+        "document_id": "5ca55000-0200-4000-8000-000000000003",
+        "document_version_label": "opaque-original-supplier-payable-version-S",
+        "supplier_id": "5ca55000-0200-4000-8000-000000000001",
+        "supplier_invoice_id": "5ca55000-0200-4000-8000-000000000002",
+        "amount_minor": "35000",
+        "currency": "EGP",
+        "tender": "CASH",
+        "paying_drawer_id": "5ca55000-0400-4000-8000-000000000001",
+        "paying_cash_session_id": "5ca55000-0400-4000-8000-000000000002",
+        "purpose_label": "SUPPLIER_INVENTORY_SETTLEMENT"
+      },
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T06",
+      "field": "captured_certificate_descriptor",
+      "replacement": "different-captured_certificate_descriptor",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T07",
+      "field": "captured_requirement_descriptor",
+      "replacement": "different-captured_requirement_descriptor",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-T08",
+      "field": "captured_outcome_descriptor",
+      "replacement": {
+        "status": "NOT_PERFORMED",
+        "paid_minor": "35000",
+        "currency": "EGP",
+        "physical_reference_label": "opaque-original-successful-supplier-payout-S"
+      },
+      "expected": "DOES_NOT_MATCH"
+    }
+  ],
+  "nested_one_field_changes": [
+    {
+      "id": "SP-N01",
+      "field": "source_descriptor.source_cut_label",
+      "replacement": "different-source_cut_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N02",
+      "field": "source_descriptor.supplier_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000002",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N03",
+      "field": "source_descriptor.supplier_invoice_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000003",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N04",
+      "field": "source_descriptor.supplier_payable_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000004",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N05",
+      "field": "source_descriptor.designated_posting_branch_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000005",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N06",
+      "field": "source_descriptor.receipt_invoice_allocation_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000006",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N07",
+      "field": "source_descriptor.original_goods_receipt_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000007",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N08",
+      "field": "source_descriptor.invoice_amount_minor",
+      "replacement": "35001",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N09",
+      "field": "source_descriptor.authorized_payment_minor",
+      "replacement": "35001",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N10",
+      "field": "source_descriptor.outstanding_payable_minor_at_start",
+      "replacement": "different-outstanding_payable_minor_at_start",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N11",
+      "field": "source_descriptor.currency",
+      "replacement": "USD",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N12",
+      "field": "captured_start_descriptor.instruction_label",
+      "replacement": "different-instruction_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N13",
+      "field": "captured_start_descriptor.original_actor_label",
+      "replacement": "different-original_actor_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N14",
+      "field": "captured_start_descriptor.original_device_label",
+      "replacement": "different-original_device_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N15",
+      "field": "captured_start_descriptor.original_presentation_label",
+      "replacement": "different-original_presentation_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N16",
+      "field": "captured_start_descriptor.document_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000016",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N17",
+      "field": "captured_start_descriptor.document_version_label",
+      "replacement": "different-document_version_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N18",
+      "field": "captured_start_descriptor.supplier_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000018",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N19",
+      "field": "captured_start_descriptor.supplier_invoice_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000019",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N20",
+      "field": "captured_start_descriptor.amount_minor",
+      "replacement": "35001",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N21",
+      "field": "captured_start_descriptor.currency",
+      "replacement": "USD",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N22",
+      "field": "captured_start_descriptor.tender",
+      "replacement": "NON_CASH",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N23",
+      "field": "captured_start_descriptor.paying_drawer_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000023",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N24",
+      "field": "captured_start_descriptor.paying_cash_session_id",
+      "replacement": "5ca55000-0800-4000-8000-000000000024",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N25",
+      "field": "captured_start_descriptor.purpose_label",
+      "replacement": "different-purpose_label",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N26",
+      "field": "captured_outcome_descriptor.status",
+      "replacement": "NOT_PERFORMED",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N27",
+      "field": "captured_outcome_descriptor.paid_minor",
+      "replacement": "35001",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N28",
+      "field": "captured_outcome_descriptor.currency",
+      "replacement": "USD",
+      "expected": "DOES_NOT_MATCH"
+    },
+    {
+      "id": "SP-N29",
+      "field": "captured_outcome_descriptor.physical_reference_label",
+      "replacement": "different-physical_reference_label",
+      "expected": "DOES_NOT_MATCH"
+    }
+  ],
+  "comparison_effect_expectation": {
+    "current_authority_granted": false,
+    "accepted_payable_or_approval_created": false,
+    "session_or_admission_created": false,
+    "dispatch_permit_created": false,
+    "original_native_consumption_performed": false,
+    "new_cash_payout_instruction_published": false,
+    "physical_payout_executed": false,
+    "financial_application_executed": false,
+    "supplier_payable_or_allocation_executed": false,
+    "stock_or_value_execution_performed": false,
+    "additional_expense_execution_performed": false,
+    "private_result_authority_created": false,
+    "native_settlement_or_current_closure_proven": false
+  },
+  "result_labels": "MATCH/DOES_NOT_MATCH are semantic DATA expectations, not guessed production return types or machine codes",
+  "comparison_scope": "Supplier-specific immutable source, payable/invoice/receipt allocation, destination/purpose and current paying cash custody fields justify this additive DATA check. All workflow/native/business acceptance remains separate and UNRUN."
+}

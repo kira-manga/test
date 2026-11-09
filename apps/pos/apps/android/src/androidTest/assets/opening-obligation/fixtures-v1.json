@@ -1,0 +1,279 @@
+{
+  "version": "1",
+  "executionStatus": "NOT RUN",
+  "syntheticOnly": true,
+  "schemaMeaning": "Fixture notation only; no asserted production DTO, API, table, role or permission string.",
+  "seedLabel": "opening-obligation-independent-v1-20261030",
+  "ids": {
+    "organizationO1": "11111111-1111-4111-8111-111111111111",
+    "organizationO2": "22222222-2222-4222-8222-222222222222",
+    "companyC1": "31111111-1111-4111-8111-111111111111",
+    "companyC2": "32222222-2222-4222-8222-222222222222",
+    "companyOutsideO1": "33333333-3333-4333-8333-333333333333",
+    "branchB1": "41111111-1111-4111-8111-111111111111",
+    "branchB2": "42222222-2222-4222-8222-222222222222",
+    "branchC2": "43333333-3333-4333-8333-333333333333",
+    "branchOutsideO1": "44444444-4444-4444-8444-444444444444",
+    "supplierS1": "51111111-1111-4111-8111-111111111111",
+    "supplierS2": "52222222-2222-4222-8222-222222222222",
+    "supplierOtherCompany": "53333333-3333-4333-8333-333333333333",
+    "supplierOutsideOrganization": "54444444-4444-4444-8444-444444444444",
+    "authorizedActorA": "61111111-1111-4111-8111-111111111111",
+    "authorizedActorB": "62222222-2222-4222-8222-222222222222",
+    "sameHumanSeparateB2Account": "63333333-3333-4333-8333-333333333333",
+    "currentlyDeniedB1Actor": "64444444-4444-4444-8444-444444444444",
+    "operationA": "71111111-1111-4111-8111-111111111111",
+    "operationB": "72222222-2222-4222-8222-222222222222",
+    "operationC": "73333333-3333-4333-8333-333333333333",
+    "duplicateSourceOperation": "74444444-4444-4444-8444-444444444444"
+  },
+  "trustedRelationshipEdges": [
+    [
+      "companyC1",
+      "organizationO1"
+    ],
+    [
+      "companyC2",
+      "organizationO1"
+    ],
+    [
+      "companyOutsideO1",
+      "organizationO2"
+    ],
+    [
+      "branchB1",
+      "companyC1"
+    ],
+    [
+      "branchB2",
+      "companyC1"
+    ],
+    [
+      "branchC2",
+      "companyC2"
+    ],
+    [
+      "branchOutsideO1",
+      "companyOutsideO1"
+    ],
+    [
+      "supplierS1",
+      "companyC1"
+    ],
+    [
+      "supplierS2",
+      "companyC1"
+    ],
+    [
+      "supplierOtherCompany",
+      "companyC2"
+    ],
+    [
+      "supplierOutsideOrganization",
+      "companyOutsideO1"
+    ],
+    [
+      "authorizedActorA",
+      "branchB1"
+    ],
+    [
+      "authorizedActorB",
+      "branchB1"
+    ],
+    [
+      "sameHumanSeparateB2Account",
+      "branchB2"
+    ],
+    [
+      "currentlyDeniedB1Actor",
+      "branchB1"
+    ]
+  ],
+  "provisioningFacts": {
+    "master": "Already trustworthy provisioned/admitted active B1 Master; service identity is distinct from human actor.",
+    "actorA": "Enabled B1 local account/current valid session, semantically authorized by actual activated policy for opening creation, scoped financial read and original result recovery.",
+    "actorB": "Separate enabled B1 actor, independently authorized for same source concurrency; no shared-account session assumption.",
+    "P10": "Actual activated local policy with explicit lawful authorization/scope and any required supplied approval; monetary ceiling explicitly configured for these fixture amounts.",
+    "P11": "Actual activated policy denying fresh opening creation and sensitive financial reads to the tested actor. Old P10 token is not ongoing permission.",
+    "readOnly": "Actual authorized scoped financial read; fresh opening creation denied.",
+    "createOnly": "Actual authorized opening creation; financial read/export are independent grants, not inherited.",
+    "recovery": "Earlier-outcome resolution requires a genuinely authorized recovery projection and original actor retention; no universal stale rights.",
+    "training": "Distinct database and identity/transport/document-number namespace; cannot route into live evidence/fiscal/ingestion.",
+    "central": "Unavailable/held unless a separately explicit later authorization permits genuine isolated central execution. No fake service or real credentials."
+  },
+  "businessTimezone": "Africa/Cairo",
+  "currency": "EGP",
+  "masterObservationInstant": "2026-10-30T12:00:00Z",
+  "timeMeaning": "Deterministic synthetic observation time where a qualified clock fixture exists; original documentary dates remain separately as supplied. No opening cutoff is assumed.",
+  "originals": [
+    {
+      "label": "A",
+      "supplier": "supplierS1",
+      "operation": "operationA",
+      "sourceIdentity": "synthetic-opening-migration/source-0007",
+      "originalReference": " 0007 / OCT-26 ",
+      "originalDate": "2026-09-30",
+      "amountMinor": "125075",
+      "terms": "Original terms: due 2026-10-30; settlement authority is branch B1.",
+      "evidenceFile": "fixtures/evidence-a.txt",
+      "currency": "EGP",
+      "organization": "organizationO1",
+      "company": "companyC1",
+      "postingBranch": "branchB1",
+      "evidenceSha256": "72fa3dc34f946e755b0a207e48b2af8cc23cf496763153e90274d03cf04c6071",
+      "evidenceByteSize": 777
+    },
+    {
+      "label": "B",
+      "supplier": "supplierS1",
+      "operation": "operationB",
+      "sourceIdentity": "synthetic-opening-migration/source-0008",
+      "originalReference": "0008 / OCT-26",
+      "originalDate": "2026-10-05",
+      "amountMinor": "55270",
+      "terms": "Original terms: due 2026-11-04; settlement authority is branch B1.",
+      "evidenceFile": "fixtures/evidence-b.txt",
+      "currency": "EGP",
+      "organization": "organizationO1",
+      "company": "companyC1",
+      "postingBranch": "branchB1",
+      "evidenceSha256": "99adced139504fd38c653654d803713df8251ec09f9fb38bdbe8b871fb142ce0",
+      "evidenceByteSize": 773
+    },
+    {
+      "label": "C",
+      "supplier": "supplierS2",
+      "operation": "operationC",
+      "sourceIdentity": "synthetic-opening-migration/source-0012",
+      "originalReference": "0012 / OCT-26",
+      "originalDate": "2026-10-10",
+      "amountMinor": "99655",
+      "terms": "Original terms: due 2026-11-15; settlement authority is branch B1.",
+      "evidenceFile": "fixtures/evidence-c.txt",
+      "currency": "EGP",
+      "organization": "organizationO1",
+      "company": "companyC1",
+      "postingBranch": "branchB1",
+      "evidenceSha256": "d89d0f9d205847ca9d957508a15e0031023a4a2bd4389663ff01d157d44a2c83",
+      "evidenceByteSize": 773
+    }
+  ],
+  "cuts": {
+    "base-zero": {
+      "openingSupplierDueS1Minor": "0",
+      "openingSupplierDueS2Minor": "0",
+      "openingSupplierTotalMinor": "0",
+      "openingOriginalSourceSet": [],
+      "actualPurchaseCount": 0,
+      "actualGoodsReceiptCount": 0,
+      "actualSupplierSettlementCount": 0,
+      "saleCount": 0,
+      "salesRevenueMinor": "0",
+      "customerCashCollectionsMinor": "0",
+      "stockBaseUnits": "0",
+      "stockValueMinor": "0",
+      "drawerOpeningFloatMinor": "0",
+      "physicalDrawerCashMinor": "0",
+      "advanceAllocationMinor": "0",
+      "customerCreditBalanceMinor": "0"
+    },
+    "base-controls": {
+      "openingSupplierDueS1Minor": "0",
+      "openingSupplierDueS2Minor": "0",
+      "openingSupplierTotalMinor": "0",
+      "openingOriginalSourceSet": [],
+      "actualPurchaseCount": 0,
+      "actualGoodsReceiptCount": 0,
+      "actualSupplierSettlementCount": 0,
+      "saleCount": 0,
+      "salesRevenueMinor": "0",
+      "customerCashCollectionsMinor": "0",
+      "stockBaseUnits": "10",
+      "stockValueMinor": "20340",
+      "drawerOpeningFloatMinor": "40020",
+      "physicalDrawerCashMinor": "40020",
+      "advanceAllocationMinor": "0",
+      "customerCreditBalanceMinor": "0",
+      "separateOpeningStockOriginalCount": 1,
+      "separateCountedFloatOriginalCount": 1,
+      "controlBasis": "Separately evidenced counted opening stock and counted drawer float; no actual purchases, goods receipts, sale or collection. Capture their own immutable operation cut before debt submission."
+    }
+  },
+  "independentExpected": {
+    "afterA": {
+      "S1Minor": "125075",
+      "S2Minor": "0",
+      "totalMinor": "125075",
+      "sources": [
+        "A"
+      ]
+    },
+    "afterAB": {
+      "S1Minor": "180345",
+      "S2Minor": "0",
+      "totalMinor": "180345",
+      "sources": [
+        "A",
+        "B"
+      ]
+    },
+    "afterABC": {
+      "S1Minor": "180345",
+      "S2Minor": "99655",
+      "totalMinor": "280000",
+      "sources": [
+        "A",
+        "B",
+        "C"
+      ]
+    },
+    "sameIdChangedAmountAfterA": {
+      "submittedMinor": "125175",
+      "retainedMinor": "125075",
+      "additionalBalanceMinor": "0"
+    },
+    "sameIdAlternativeRace": [
+      {
+        "winnerSource": "A",
+        "S1Minor": "125075",
+        "S2Minor": "0",
+        "totalMinor": "125075"
+      },
+      {
+        "winnerSource": "B",
+        "S1Minor": "55270",
+        "S2Minor": "0",
+        "totalMinor": "55270"
+      }
+    ],
+    "rejectedFreshOperation": {
+      "openingBalanceDeltaMinor": "0",
+      "forbiddenEffectsDelta": "all zero"
+    },
+    "arithmetic": [
+      "125075 + 55270 = 180345",
+      "180345 + 99655 = 280000",
+      "10 * 2034 = 20340",
+      "40020 + 0 = 40020"
+    ],
+    "retainedOriginals": "Evidence/request/result/date/reference/terms/amount/actor stay immutable, including across authorized recovery; no table-row count asserted."
+  },
+  "scalarInvalidMinorStrings": [
+    "125075.1",
+    "1e4",
+    "NaN",
+    "Infinity",
+    "9223372036854775808",
+    "-9223372036854775809"
+  ],
+  "notAssumed": [
+    "production API/permission names",
+    "one obligation/record per supplier",
+    "opening date cutoff",
+    "negative/zero opening business eligibility",
+    "normalization aliases",
+    "company-wide offline source uniqueness",
+    "fictitious legacy production migrations",
+    "exact physical outbox/table row count"
+  ]
+}

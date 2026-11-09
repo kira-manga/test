@@ -1,0 +1,12 @@
+{
+  "source": "https://go.dev/dl/go1.27.3.linux-amd64.tar.gz",
+  "version": "go1.27.3",
+  "stable": true,
+  "filename": "go1.27.3.linux-amd64.tar.gz",
+  "size": 70588678,
+  "sha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
+  "verifiedSha256": "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
+  "verifiedSize": 70588678,
+  "installPath": ".workspace/toolchains/go1.27.3/go",
+  "globalInstall": false
+}

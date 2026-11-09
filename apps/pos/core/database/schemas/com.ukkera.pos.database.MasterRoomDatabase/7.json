@@ -1,0 +1,2608 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "a06a6ac54e0e94955d5e8ccb3236db07",
+    "entities": [
+      {
+        "tableName": "branch_authority",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `assignmentId` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `epoch` INTEGER NOT NULL, `revision` INTEGER NOT NULL, `sequence` INTEGER NOT NULL, `journalHash` TEXT NOT NULL, `writable` INTEGER NOT NULL, `recoveryJson` TEXT NOT NULL, PRIMARY KEY(`scope`))",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assignmentId",
+            "columnName": "assignmentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "epoch",
+            "columnName": "epoch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "journalHash",
+            "columnName": "journalHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "writable",
+            "columnName": "writable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recoveryJson",
+            "columnName": "recoveryJson",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope"
+          ]
+        }
+      },
+      {
+        "tableName": "operation_result",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `operationId` TEXT NOT NULL, `actorId` TEXT NOT NULL, `command` TEXT NOT NULL, `commandVersion` INTEGER NOT NULL, `digest` TEXT NOT NULL, `outcome` TEXT NOT NULL, `result` BLOB NOT NULL, `resultHash` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `epoch` INTEGER NOT NULL, `committedAt` TEXT NOT NULL, `authenticationId` TEXT NOT NULL, `policyRevision` INTEGER NOT NULL, PRIMARY KEY(`scope`, `operationId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "command",
+            "columnName": "command",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandVersion",
+            "columnName": "commandVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "digest",
+            "columnName": "digest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "outcome",
+            "columnName": "outcome",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "result",
+            "columnName": "result",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultHash",
+            "columnName": "resultHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "epoch",
+            "columnName": "epoch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "committedAt",
+            "columnName": "committedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authenticationId",
+            "columnName": "authenticationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "policyRevision",
+            "columnName": "policyRevision",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "operationId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_operation_result_scope_epoch_sequence",
+            "unique": true,
+            "columnNames": [
+              "scope",
+              "epoch",
+              "sequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_operation_result_scope_epoch_sequence` ON `${TABLE_NAME}` (`scope`, `epoch`, `sequence`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "aggregate_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `kind` TEXT NOT NULL, `id` TEXT NOT NULL, `revision` INTEGER NOT NULL, `schema` TEXT NOT NULL, `payload` BLOB NOT NULL, `payloadHash` TEXT NOT NULL, PRIMARY KEY(`scope`, `kind`, `id`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schema",
+            "columnName": "schema",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "kind",
+            "id"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "unique_claim",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `namespace` TEXT NOT NULL, `key` TEXT NOT NULL, `ownerId` TEXT NOT NULL, PRIMARY KEY(`scope`, `namespace`, `key`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "namespace",
+            "columnName": "namespace",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerId",
+            "columnName": "ownerId",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "namespace",
+            "key"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journal_envelope",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `operationId` TEXT NOT NULL, `assignmentId` TEXT NOT NULL, `epoch` INTEGER NOT NULL, `previousHash` TEXT NOT NULL, `hash` TEXT NOT NULL, `envelope` BLOB NOT NULL, PRIMARY KEY(`scope`, `epoch`, `sequence`), FOREIGN KEY(`scope`, `operationId`) REFERENCES `operation_result`(`scope`, `operationId`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "assignmentId",
+            "columnName": "assignmentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "epoch",
+            "columnName": "epoch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "previousHash",
+            "columnName": "previousHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hash",
+            "columnName": "hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "envelope",
+            "columnName": "envelope",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "epoch",
+            "sequence"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_journal_envelope_scope_operationId",
+            "unique": true,
+            "columnNames": [
+              "scope",
+              "operationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_journal_envelope_scope_operationId` ON `${TABLE_NAME}` (`scope`, `operationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "operation_result",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "operationId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "operationId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "audit_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `scope` TEXT NOT NULL, `operationId` TEXT NOT NULL, `kind` TEXT NOT NULL, `actorId` TEXT NOT NULL, `originalActorId` TEXT NOT NULL, `policyRevision` INTEGER NOT NULL, `recordedAt` TEXT NOT NULL, `digest` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalActorId",
+            "columnName": "originalActorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "policyRevision",
+            "columnName": "policyRevision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordedAt",
+            "columnName": "recordedAt",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "digest",
+            "columnName": "digest",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_audit_event_scope_operationId",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "operationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audit_event_scope_operationId` ON `${TABLE_NAME}` (`scope`, `operationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "outbox_intent",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `operationId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `kind` TEXT NOT NULL, `body` BLOB NOT NULL, `bodyHash` TEXT NOT NULL, PRIMARY KEY(`scope`, `operationId`, `ordinal`), FOREIGN KEY(`scope`, `operationId`) REFERENCES `operation_result`(`scope`, `operationId`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "body",
+            "columnName": "body",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyHash",
+            "columnName": "bodyHash",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "operationId",
+            "ordinal"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outbox_intent_scope_operationId",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "operationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_intent_scope_operationId` ON `${TABLE_NAME}` (`scope`, `operationId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "operation_result",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "operationId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "operationId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_account",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `actorId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `actorId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "actorId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_effective_policy",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `actorId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `actorId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "actorId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_device_admission",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `deviceId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `deviceId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "deviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "deviceId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_login_throttle",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `actorId` TEXT NOT NULL, `dimensionKey` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `actorId`, `dimensionKey`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dimensionKey",
+            "columnName": "dimensionKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "actorId",
+            "dimensionKey"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_access_issuance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `sessionId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "sessionId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_auth_configuration",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `actorId` TEXT NOT NULL, `loginKey` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `actorId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "actorId",
+            "columnName": "actorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "loginKey",
+            "columnName": "loginKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "actorId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_protected_local_auth_configuration_scope_loginKey",
+            "unique": true,
+            "columnNames": [
+              "scope",
+              "loginKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_protected_local_auth_configuration_scope_loginKey` ON `${TABLE_NAME}` (`scope`, `loginKey`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_refresh_issuance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `sessionId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "sessionId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_auth_event",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `eventId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `eventId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "eventId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_session_archive",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `sessionId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "sessionId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "protected_local_action_approval",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `approvalId` TEXT NOT NULL, `schemaVersion` INTEGER NOT NULL, `formatVersion` INTEGER NOT NULL, `algorithm` TEXT NOT NULL, `revision` INTEGER NOT NULL, `keyId` TEXT NOT NULL, `nonce` BLOB NOT NULL, `ciphertextAndTag` BLOB NOT NULL, PRIMARY KEY(`scope`, `approvalId`), FOREIGN KEY(`scope`) REFERENCES `branch_authority`(`scope`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "approvalId",
+            "columnName": "approvalId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "schemaVersion",
+            "columnName": "schemaVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "formatVersion",
+            "columnName": "formatVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "algorithm",
+            "columnName": "algorithm",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "revision",
+            "columnName": "revision",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyId",
+            "columnName": "keyId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nonce",
+            "columnName": "nonce",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertextAndTag",
+            "columnName": "ciphertextAndTag",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "approvalId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "branch_authority",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope"
+            ],
+            "referencedColumns": [
+              "scope"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "stock_position_index_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `recordKind` TEXT NOT NULL, `recordId` TEXT NOT NULL, `aggregateGeneration` INTEGER NOT NULL, `producerOperationId` TEXT NOT NULL, `payloadHash` TEXT NOT NULL, `skuId` TEXT NOT NULL, `warehouseId` TEXT NOT NULL, `ownership` INTEGER NOT NULL, `ownerId` TEXT NOT NULL, `custody` INTEGER NOT NULL, `lotId` TEXT NOT NULL, `serialId` TEXT NOT NULL, `expiryMillis` INTEGER, `expiryOrder` INTEGER NOT NULL, PRIMARY KEY(`scope`, `recordKind`, `recordId`), FOREIGN KEY(`scope`, `recordKind`, `recordId`) REFERENCES `aggregate_state`(`scope`, `kind`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordKind",
+            "columnName": "recordKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateGeneration",
+            "columnName": "aggregateGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "producerOperationId",
+            "columnName": "producerOperationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "skuId",
+            "columnName": "skuId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "warehouseId",
+            "columnName": "warehouseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownership",
+            "columnName": "ownership",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ownerId",
+            "columnName": "ownerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "custody",
+            "columnName": "custody",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lotId",
+            "columnName": "lotId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serialId",
+            "columnName": "serialId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiryMillis",
+            "columnName": "expiryMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "expiryOrder",
+            "columnName": "expiryOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "recordKind",
+            "recordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "stock_position_coordinate_v2",
+            "unique": true,
+            "columnNames": [
+              "scope",
+              "skuId",
+              "warehouseId",
+              "ownership",
+              "ownerId",
+              "custody",
+              "lotId",
+              "serialId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `stock_position_coordinate_v2` ON `${TABLE_NAME}` (`scope`, `skuId`, `warehouseId`, `ownership`, `ownerId`, `custody`, `lotId`, `serialId`)"
+          },
+          {
+            "name": "stock_position_fefo_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "skuId",
+              "warehouseId",
+              "expiryOrder",
+              "lotId",
+              "serialId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_position_fefo_v2` ON `${TABLE_NAME}` (`scope`, `skuId`, `warehouseId`, `expiryOrder`, `lotId`, `serialId`, `recordId`)"
+          },
+          {
+            "name": "stock_position_lot_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "skuId",
+              "lotId",
+              "warehouseId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_position_lot_v2` ON `${TABLE_NAME}` (`scope`, `skuId`, `lotId`, `warehouseId`, `recordId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "aggregate_state",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "recordKind",
+              "recordId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "stock_allocation_index_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `recordKind` TEXT NOT NULL, `recordId` TEXT NOT NULL, `aggregateGeneration` INTEGER NOT NULL, `producerOperationId` TEXT NOT NULL, `payloadHash` TEXT NOT NULL, `reservationId` TEXT NOT NULL, `allocationId` TEXT NOT NULL, `lineId` TEXT NOT NULL, `positionId` TEXT NOT NULL, `holdReason` INTEGER NOT NULL, PRIMARY KEY(`scope`, `recordKind`, `recordId`), FOREIGN KEY(`scope`, `recordKind`, `recordId`) REFERENCES `aggregate_state`(`scope`, `kind`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordKind",
+            "columnName": "recordKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateGeneration",
+            "columnName": "aggregateGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "producerOperationId",
+            "columnName": "producerOperationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reservationId",
+            "columnName": "reservationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allocationId",
+            "columnName": "allocationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lineId",
+            "columnName": "lineId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionId",
+            "columnName": "positionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "holdReason",
+            "columnName": "holdReason",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "recordKind",
+            "recordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "stock_allocation_position_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "positionId",
+              "recordKind",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_allocation_position_v2` ON `${TABLE_NAME}` (`scope`, `positionId`, `recordKind`, `recordId`)"
+          },
+          {
+            "name": "stock_allocation_reservation_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "reservationId",
+              "recordKind",
+              "lineId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_allocation_reservation_v2` ON `${TABLE_NAME}` (`scope`, `reservationId`, `recordKind`, `lineId`, `recordId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "aggregate_state",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "recordKind",
+              "recordId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "stock_reservation_index_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `recordKind` TEXT NOT NULL, `recordId` TEXT NOT NULL, `aggregateGeneration` INTEGER NOT NULL, `producerOperationId` TEXT NOT NULL, `payloadHash` TEXT NOT NULL, `orderId` TEXT NOT NULL, `collectionId` TEXT NOT NULL, `originalActorId` TEXT NOT NULL, `status` INTEGER NOT NULL, `exposure` INTEGER NOT NULL, `expiresAtMillis` INTEGER, PRIMARY KEY(`scope`, `recordKind`, `recordId`), FOREIGN KEY(`scope`, `recordKind`, `recordId`) REFERENCES `aggregate_state`(`scope`, `kind`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordKind",
+            "columnName": "recordKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateGeneration",
+            "columnName": "aggregateGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "producerOperationId",
+            "columnName": "producerOperationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orderId",
+            "columnName": "orderId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "collectionId",
+            "columnName": "collectionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalActorId",
+            "columnName": "originalActorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exposure",
+            "columnName": "exposure",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "recordKind",
+            "recordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "stock_reservation_order_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "orderId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_reservation_order_v2` ON `${TABLE_NAME}` (`scope`, `orderId`, `recordId`)"
+          },
+          {
+            "name": "stock_reservation_collection_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "collectionId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_reservation_collection_v2` ON `${TABLE_NAME}` (`scope`, `collectionId`, `recordId`)"
+          },
+          {
+            "name": "stock_reservation_owner_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "originalActorId",
+              "status",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_reservation_owner_v2` ON `${TABLE_NAME}` (`scope`, `originalActorId`, `status`, `recordId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "aggregate_state",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "recordKind",
+              "recordId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "stock_value_index_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `recordKind` TEXT NOT NULL, `recordId` TEXT NOT NULL, `aggregateGeneration` INTEGER NOT NULL, `producerOperationId` TEXT NOT NULL, `payloadHash` TEXT NOT NULL, `poolId` TEXT NOT NULL, `sourceId` TEXT NOT NULL, `parentEventId` TEXT NOT NULL, `issueId` TEXT NOT NULL, `allocationId` TEXT NOT NULL, `linkedPoolId` TEXT NOT NULL, `eventOrdinal` INTEGER NOT NULL, PRIMARY KEY(`scope`, `recordKind`, `recordId`), FOREIGN KEY(`scope`, `recordKind`, `recordId`) REFERENCES `aggregate_state`(`scope`, `kind`, `id`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordKind",
+            "columnName": "recordKind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recordId",
+            "columnName": "recordId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aggregateGeneration",
+            "columnName": "aggregateGeneration",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "producerOperationId",
+            "columnName": "producerOperationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "poolId",
+            "columnName": "poolId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceId",
+            "columnName": "sourceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentEventId",
+            "columnName": "parentEventId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "issueId",
+            "columnName": "issueId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "allocationId",
+            "columnName": "allocationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "linkedPoolId",
+            "columnName": "linkedPoolId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventOrdinal",
+            "columnName": "eventOrdinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "recordKind",
+            "recordId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "stock_value_pool_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "poolId",
+              "eventOrdinal",
+              "recordKind",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_value_pool_v2` ON `${TABLE_NAME}` (`scope`, `poolId`, `eventOrdinal`, `recordKind`, `recordId`)"
+          },
+          {
+            "name": "stock_value_source_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "sourceId",
+              "recordKind",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_value_source_v2` ON `${TABLE_NAME}` (`scope`, `sourceId`, `recordKind`, `recordId`)"
+          },
+          {
+            "name": "stock_value_issue_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "issueId",
+              "allocationId",
+              "recordKind",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_value_issue_v2` ON `${TABLE_NAME}` (`scope`, `issueId`, `allocationId`, `recordKind`, `recordId`)"
+          },
+          {
+            "name": "stock_value_link_v2",
+            "unique": false,
+            "columnNames": [
+              "scope",
+              "linkedPoolId",
+              "poolId",
+              "recordId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `stock_value_link_v2` ON `${TABLE_NAME}` (`scope`, `linkedPoolId`, `poolId`, `recordId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "aggregate_state",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "recordKind",
+              "recordId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "kind",
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "journal_fragment_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`scope` TEXT NOT NULL, `operationId` TEXT NOT NULL, `ordinal` INTEGER NOT NULL, `byteCount` INTEGER NOT NULL, `payload` BLOB NOT NULL, `payloadHash` TEXT NOT NULL, PRIMARY KEY(`scope`, `operationId`, `ordinal`), FOREIGN KEY(`scope`, `operationId`) REFERENCES `operation_result`(`scope`, `operationId`) ON UPDATE NO ACTION ON DELETE NO ACTION )",
+        "fields": [
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "operationId",
+            "columnName": "operationId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "byteCount",
+            "columnName": "byteCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadHash",
+            "columnName": "payloadHash",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "scope",
+            "operationId",
+            "ordinal"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "operation_result",
+            "onDelete": "NO ACTION",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "scope",
+              "operationId"
+            ],
+            "referencedColumns": [
+              "scope",
+              "operationId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "runtime_history_head_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`singleton` INTEGER NOT NULL, `scope` TEXT NOT NULL, `profile` TEXT NOT NULL, `storageId` TEXT NOT NULL, `bindingDigest` TEXT NOT NULL, `installationGenesisDigest` TEXT NOT NULL, `sequence` INTEGER NOT NULL, `eventDigest` TEXT NOT NULL, `commandEpoch` INTEGER NOT NULL, `commandSequence` INTEGER NOT NULL, `commandDigest` TEXT NOT NULL, `roleCommitment` TEXT NOT NULL, `recoveryCommitment` TEXT NOT NULL, PRIMARY KEY(`singleton`))",
+        "fields": [
+          {
+            "fieldPath": "singleton",
+            "columnName": "singleton",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scope",
+            "columnName": "scope",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "profile",
+            "columnName": "profile",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "storageId",
+            "columnName": "storageId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bindingDigest",
+            "columnName": "bindingDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "installationGenesisDigest",
+            "columnName": "installationGenesisDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventDigest",
+            "columnName": "eventDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandEpoch",
+            "columnName": "commandEpoch",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandSequence",
+            "columnName": "commandSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandDigest",
+            "columnName": "commandDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "roleCommitment",
+            "columnName": "roleCommitment",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recoveryCommitment",
+            "columnName": "recoveryCommitment",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "singleton"
+          ]
+        }
+      },
+      {
+        "tableName": "runtime_history_event_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sequence` INTEGER NOT NULL, `transactionId` TEXT NOT NULL, `parentKind` INTEGER NOT NULL, `parentSequence` INTEGER NOT NULL, `parentDigest` TEXT NOT NULL, `eventDigest` TEXT NOT NULL, `changeCount` INTEGER NOT NULL, `chunkCount` INTEGER NOT NULL, `payloadBytes` INTEGER NOT NULL, `encodedBytes` INTEGER NOT NULL, `header` BLOB NOT NULL, PRIMARY KEY(`sequence`))",
+        "fields": [
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionId",
+            "columnName": "transactionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentKind",
+            "columnName": "parentKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentSequence",
+            "columnName": "parentSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentDigest",
+            "columnName": "parentDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventDigest",
+            "columnName": "eventDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "changeCount",
+            "columnName": "changeCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkCount",
+            "columnName": "chunkCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadBytes",
+            "columnName": "payloadBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encodedBytes",
+            "columnName": "encodedBytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "header",
+            "columnName": "header",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sequence"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_runtime_history_event_v2_transactionId",
+            "unique": true,
+            "columnNames": [
+              "transactionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_runtime_history_event_v2_transactionId` ON `${TABLE_NAME}` (`transactionId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "runtime_history_row_version_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sequence` INTEGER NOT NULL, `ordinal` INTEGER NOT NULL, `tableTag` INTEGER NOT NULL, `key` BLOB NOT NULL, `version` INTEGER NOT NULL, `previousSequence` INTEGER, `previousOrdinal` INTEGER, `previousVersion` INTEGER, `mutationKind` INTEGER NOT NULL, `beforeRowId` INTEGER, `beforeDigest` TEXT, `afterRowId` INTEGER, `afterDigest` TEXT, `afterKind` INTEGER NOT NULL, `imageOffset` INTEGER, `imageBytes` INTEGER, PRIMARY KEY(`sequence`, `ordinal`))",
+        "fields": [
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tableTag",
+            "columnName": "tableTag",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "previousSequence",
+            "columnName": "previousSequence",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "previousOrdinal",
+            "columnName": "previousOrdinal",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "previousVersion",
+            "columnName": "previousVersion",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "mutationKind",
+            "columnName": "mutationKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beforeRowId",
+            "columnName": "beforeRowId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "beforeDigest",
+            "columnName": "beforeDigest",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "afterRowId",
+            "columnName": "afterRowId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "afterDigest",
+            "columnName": "afterDigest",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "afterKind",
+            "columnName": "afterKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "imageOffset",
+            "columnName": "imageOffset",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "imageBytes",
+            "columnName": "imageBytes",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sequence",
+            "ordinal"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_runtime_history_row_version_v2_tableTag_key_version",
+            "unique": true,
+            "columnNames": [
+              "tableTag",
+              "key",
+              "version"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_runtime_history_row_version_v2_tableTag_key_version` ON `${TABLE_NAME}` (`tableTag`, `key`, `version`)"
+          }
+        ]
+      },
+      {
+        "tableName": "runtime_history_chunk_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`sequence` INTEGER NOT NULL, `ordinal` INTEGER NOT NULL, `digest` TEXT NOT NULL, `bytes` BLOB NOT NULL, PRIMARY KEY(`sequence`, `ordinal`))",
+        "fields": [
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "digest",
+            "columnName": "digest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bytes",
+            "columnName": "bytes",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "sequence",
+            "ordinal"
+          ]
+        }
+      },
+      {
+        "tableName": "runtime_history_row_tip_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`tableTag` INTEGER NOT NULL, `key` BLOB NOT NULL, `version` INTEGER NOT NULL, `sequence` INTEGER NOT NULL, `ordinal` INTEGER NOT NULL, `tombstone` INTEGER NOT NULL, `targetRowId` INTEGER, `rowDigest` TEXT, PRIMARY KEY(`tableTag`, `key`))",
+        "fields": [
+          {
+            "fieldPath": "tableTag",
+            "columnName": "tableTag",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "key",
+            "columnName": "key",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ordinal",
+            "columnName": "ordinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tombstone",
+            "columnName": "tombstone",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetRowId",
+            "columnName": "targetRowId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rowDigest",
+            "columnName": "rowDigest",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "tableTag",
+            "key"
+          ]
+        }
+      },
+      {
+        "tableName": "runtime_history_write_frame_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`singleton` INTEGER NOT NULL, `frameId` TEXT NOT NULL, `transactionId` TEXT NOT NULL, `purposeTag` INTEGER NOT NULL, `parentKind` INTEGER NOT NULL, `parentSequence` INTEGER NOT NULL, `parentDigest` TEXT NOT NULL, `nextSequence` INTEGER NOT NULL, `originalIntentDigest` TEXT NOT NULL, PRIMARY KEY(`singleton`))",
+        "fields": [
+          {
+            "fieldPath": "singleton",
+            "columnName": "singleton",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frameId",
+            "columnName": "frameId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionId",
+            "columnName": "transactionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "purposeTag",
+            "columnName": "purposeTag",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentKind",
+            "columnName": "parentKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentSequence",
+            "columnName": "parentSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentDigest",
+            "columnName": "parentDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextSequence",
+            "columnName": "nextSequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalIntentDigest",
+            "columnName": "originalIntentDigest",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "singleton"
+          ]
+        }
+      },
+      {
+        "tableName": "runtime_history_capture_v2",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`captureOrdinal` INTEGER NOT NULL, `frameId` TEXT NOT NULL, `tableTag` INTEGER NOT NULL, `mutationKind` INTEGER NOT NULL, `beforeRowId` INTEGER, `afterRowId` INTEGER, `beforeKey1` BLOB, `beforeKey2Text` BLOB, `beforeKey2Integer` INTEGER, `beforeKey3Text` BLOB, `beforeKey3Integer` INTEGER, `afterKey1` BLOB, `afterKey2Text` BLOB, `afterKey2Integer` INTEGER, `afterKey3Text` BLOB, `afterKey3Integer` INTEGER, PRIMARY KEY(`captureOrdinal`))",
+        "fields": [
+          {
+            "fieldPath": "captureOrdinal",
+            "columnName": "captureOrdinal",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "frameId",
+            "columnName": "frameId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tableTag",
+            "columnName": "tableTag",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mutationKind",
+            "columnName": "mutationKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "beforeRowId",
+            "columnName": "beforeRowId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "afterRowId",
+            "columnName": "afterRowId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "beforeKey1",
+            "columnName": "beforeKey1",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "beforeKey2Text",
+            "columnName": "beforeKey2Text",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "beforeKey2Integer",
+            "columnName": "beforeKey2Integer",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "beforeKey3Text",
+            "columnName": "beforeKey3Text",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "beforeKey3Integer",
+            "columnName": "beforeKey3Integer",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "afterKey1",
+            "columnName": "afterKey1",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "afterKey2Text",
+            "columnName": "afterKey2Text",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "afterKey2Integer",
+            "columnName": "afterKey2Integer",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "afterKey3Text",
+            "columnName": "afterKey3Text",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "afterKey3Integer",
+            "columnName": "afterKey3Integer",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "captureOrdinal"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'a06a6ac54e0e94955d5e8ccb3236db07')"
+    ]
+  }
+}

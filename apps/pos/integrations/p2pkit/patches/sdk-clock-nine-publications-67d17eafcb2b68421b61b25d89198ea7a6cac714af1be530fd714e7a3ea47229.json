@@ -1,0 +1,65 @@
+{
+  "schema": 1,
+  "sourceRecipeSha256": "67d17eafcb2b68421b61b25d89198ea7a6cac714af1be530fd714e7a3ea47229",
+  "parentSourceRecipeSha256": "45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619",
+  "sourceDelta": {
+    "files": {
+      "gradle/ukkera-pos-compile-repository.init.gradle": {
+        "normalizedPostimage": {
+          "bytes": 4413,
+          "mode": 384,
+          "sha256": "0bf4b484b18229e6dae7f8b1dba8e696d7a2c2d3ebce2b38857d2efcb8f7599d"
+        },
+        "preimage": {
+          "bytes": 3985,
+          "mode": 384,
+          "sha256": "607f240bded603fd3699b8790acdd5179676cbf8a87502eb5560321ee0414761"
+        }
+      },
+      "library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt": {
+        "normalizedPostimage": {
+          "bytes": 1678,
+          "mode": 384,
+          "sha256": "125623a28d37375b973523223be163d6d805465556a74a4f3e9af2810e6d8860"
+        },
+        "preimage": {
+          "bytes": 2338,
+          "mode": 384,
+          "sha256": "32dc7825200c3932209739321088b57382ef169cfbd93c9fa5bc2b2404527b3c"
+        }
+      }
+    },
+    "normalization": "Exporter active recipe literal is __DERIVED_SOURCE_RECIPE_SHA256__; no SDK group override",
+    "parentSourceRecipeSha256": "45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619",
+    "purpose": "SOURCE_TOOL_CORRECTION_NOT_PRODUCER_OR_QUALIFICATION_EVIDENCE",
+    "schema": 1,
+    "scope": "TWO_SDK_SOURCE_REPLACEMENTS_EXACT_NINE_REAL_PUBLICATIONS_AND_DOCUMENTED_SUSPEND_INCLUSIVE_DARWIN_CLOCK"
+  },
+  "sourceDeltaCanonicalSha256": "286bcaaebeda5d241461db5d47086d4ea60ed034d4c363ea6b580b088d774e20",
+  "sourcePatch": "integrations/p2pkit/patches/sdk-clock-nine-publications-67d17eafcb2b68421b61b25d89198ea7a6cac714af1be530fd714e7a3ea47229.patch",
+  "sourcePatchSha256": "06e6b698782cd6afdf8f8fb21215ffdfd13a98b314c6557482969f84ec22f1bb",
+  "derivedGroupReplacement": {
+    "expectedOccurrenceCount": 1,
+    "expectedPostimage": {
+      "bytes": 1933,
+      "mode": 384,
+      "sha256": "d35bf6bffcd1debcb6a923c748ec002a84726a306e2e2ac9ca3ac35f0ff89fda"
+    },
+    "ownership": "LEAD_NEW_COPY_OPERATION_ONLY_NOT_HELPER_POSTIMAGE",
+    "preimage": {
+      "bytes": 1933,
+      "mode": 384,
+      "sha256": "d12d3b6a5bf8094a896ea8351380a1242366a3b77f93de724a031b98f415b19e"
+    },
+    "relative": "gradle.properties",
+    "replacement": "GROUP=local.ukkera.pos.p2pkit.s67d17eafcb2b68421b61b25d89198ea7a6cac714af1be530fd714e7a3ea47229\n",
+    "search": "GROUP=local.ukkera.pos.p2pkit.s45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619\n"
+  },
+  "sourceAuthor": "/root/sdk_rpc_continuation",
+  "sourceReviewerAndRegistrar": "/root",
+  "sourceReview": "SOURCE_ONLY_NOT_RUNTIME_QUALIFICATION",
+  "completedPacketSealSha256": "046829aa8e4cabfee9af73cafa0bf5cf5c53c3749534eaf355fadf585a85a619",
+  "sdkMaterialization": "NOT_PERFORMED_BY_REGISTRATION",
+  "consumerDependencyAndRpcAdmission": "HELD",
+  "centralImplementationAndVerification": "HELD"
+}

@@ -1,0 +1,16 @@
+.gradle/
+.kotlin/
+**/build/
+.workspace/
+local.properties
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.mobileprovision
+.DS_Store
+.idea/
+__pycache__/
+*.py[cod]

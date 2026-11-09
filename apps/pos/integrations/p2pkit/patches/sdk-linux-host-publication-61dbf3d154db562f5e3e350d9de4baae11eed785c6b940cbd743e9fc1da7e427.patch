@@ -1,0 +1,52 @@
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -23,6 +23,10 @@
+ android.useAndroidX=true
+ android.nonTransitiveRClass=true
+ kotlin.mpp.enableCInteropCommonization=true
++# This private compile-only profile must respect actual host native capabilities.
++# Apple targets and C interops remain configured; build/qualify them on macOS/Xcode.
++# Do not compile Apple consumers on Linux while their C-interop dependencies skip.
++kotlin.native.enableKlibsCrossCompilation=false
+ # Apple Silicon can cross-compile and publish iosX64, but cannot execute its
+ # x64-only Kotlin/Native test binary. Suppress only that host-mismatch warning;
+ # release publication and the fat simulator XCFramework still compile/inspect
+--- a/gradle/ukkera-pos-compile-repository.init.gradle
++++ b/gradle/ukkera-pos-compile-repository.init.gradle
+@@ -16,11 +16,21 @@
+     ":p2p-network-provisioning-android": [kotlinMultiplatform: "p2p-network-provisioning-android",
+                                          android: "p2p-network-provisioning-android-android"],
+ ]
++// Only the private Linux compile repository has this documentation scope. Keep the
++// real Dokka output/artifacts, without resolving Apple C-interop classpaths on Linux.
++// Native API/target/cinterop configuration and release documentation are unchanged.
++def unsupportedLinuxDocumentation = [
++    "nativeMain", "appleMain", "iosMain", "iosX64Main", "iosArm64Main", "iosSimulatorArm64Main",
++] as Set
+ gradle.projectsEvaluated {
+     def root = gradle.rootProject
+     if (Runtime.version().feature() != 17 || root.group.toString() != expectedGroup ||
+         root.version.toString() != "0.8.0" || gradle.startParameter.isWriteDependencyLocks()) {
+         throw new GradleException("Compile repository requires the exact JDK17/source coordinate and unchanged locks")
++    }
++    if (System.getProperty("os.name") != "Linux" ||
++        root.providers.gradleProperty("kotlin.native.enableKlibsCrossCompilation").orNull != "false") {
++        throw new GradleException("This private compile recipe requires Linux and supported-host native compilation")
+     }
+     def output = root.layout.buildDirectory.dir("ukkera-pos-compile-repository")
+     def export = root.tasks.register("assembleUkkeraPosCompileRepository", Sync) {
+@@ -35,6 +45,14 @@
+     }
+     selectedPublications.each { projectPath, names ->
+         def owner = root.project(projectPath)
++        // Dokka 2.2 otherwise admits metadata compilations without checking native
++        // host capability. Suppress only these source sets, never a producer task,
++        // artifact, common/Android/JVM documentation or the warning/offline policy.
++        owner.extensions.getByName("dokka").dokkaSourceSets.configureEach { sourceSet ->
++            if (unsupportedLinuxDocumentation.contains(sourceSet.name)) {
++                sourceSet.suppress.set(true)
++            }
++        }
+         def publications = owner.extensions.getByType(PublishingExtension).publications
+         names.each { publicationName, expectedArtifactId ->
+             // Missing or differently named plugin variants fail; never synthesize a replacement POM/AAR.

@@ -1,0 +1,14 @@
+{
+  "name": "ukkera-pos-backend-isolation",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0 <25" },
+  "scripts": {
+    "generate": "node generate.mjs",
+    "test": "node --test generator.test.mjs"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0",
+    "lodash-es": "4.17.21"
+  }
+}

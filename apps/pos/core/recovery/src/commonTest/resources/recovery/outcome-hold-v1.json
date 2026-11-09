@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "evidenceLevel": "L1_MODEL_ONLY_NOT_PHYSICAL_RECOVERY_PROOF",
+  "cases": [
+    {"name":"healthy-absent","history":"HEALTHY","known":"NONE","readmitted":[],"resource":"STOCK","expectedOutcome":"NOT_RECORDED","expectedAdmission":"ADMITTED"},
+    {"name":"unknown-tail-absent","history":"UNKNOWN_TAIL","known":"NONE","readmitted":[],"resource":"STOCK","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"positive-sale-under-hold","history":"UNKNOWN_TAIL","known":"COMMITTED","readmitted":[],"resource":"STOCK","expectedOutcome":"COMMITTED","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"known-rejection-not-bank-reversal","history":"UNKNOWN_TAIL","known":"REJECTED","readmitted":[],"resource":"CASH_CUSTODY","expectedOutcome":"REJECTED","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"known-pending-attestation","history":"UNKNOWN_TAIL","known":"IN_PROGRESS","readmitted":[],"resource":"CASH_CUSTODY","expectedOutcome":"IN_PROGRESS","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"stock-count-does-not-restore-auth","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["STOCK"],"resource":"STOCK","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"stock-and-auth-explicitly-readmitted","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["STOCK","AUTHORIZATION"],"resource":"STOCK","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"ADMITTED"},
+    {"name":"stock-count-does-not-restore-refunds","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["STOCK","AUTHORIZATION"],"resource":"REFUND_ENTITLEMENT","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"fresh-po-id-does-not-restore-allowance","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["AUTHORIZATION"],"resource":"PO_ALLOWANCE","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"fresh-cash-id-does-not-restore-custody","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["AUTHORIZATION"],"resource":"CASH_CUSTODY","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"supplier-obligation-is-not-an-unused-allowance","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["AUTHORIZATION"],"resource":"SUPPLIER_SETTLEMENT","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"RESOURCE_RECONCILIATION_REQUIRED"},
+    {"name":"refund-rights-reconstructed-not-stock-counted","history":"UNKNOWN_TAIL","known":"NONE","readmitted":["REFUND_ENTITLEMENT","AUTHORIZATION"],"resource":"REFUND_ENTITLEMENT","expectedOutcome":"HISTORY_INCOMPLETE","expectedAdmission":"ADMITTED"}
+  ]
+}

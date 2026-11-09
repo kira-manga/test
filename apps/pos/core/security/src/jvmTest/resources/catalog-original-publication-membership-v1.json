@@ -1,0 +1,642 @@
+{
+  "designVersion": "catalog-original-publication-membership-v1",
+  "freezeStatus": "READY_FOR_FREEZE",
+  "executionStatus": "NOT_RUN",
+  "scope": {
+    "implementationIssues": [
+      "#62",
+      "#35",
+      "#51"
+    ],
+    "originalScenarioReferences": [
+      "LF-CAT-03",
+      "LF-RES-05"
+    ],
+    "portableNonDeviceIntegration": "#59",
+    "nativeDirectRuntime": "#63",
+    "companyGlobalCompletenessClaim": false
+  },
+  "publicContract": "../../contracts/LOCAL-CATALOG-ORIGINAL-PUBLICATION-MEMBERSHIP.md",
+  "notation": {
+    "identityAndContextKeys": "Abstract semantic fixture dimensions; not proposed API fields, schemas or wire encodings.",
+    "stateLabels": "Observable fixture states, not newly specified wire enums.",
+    "rootGenerationFrameAnchorPayloadTokens": "Synthetic identity/equality labels; actual public/native representations UNBOUND.",
+    "opaqueHexValues": "Arbitrary portable test blobs only; not canonical native outputs, dependencies or signatures.",
+    "outcomeLabels": "Semantic Apply/durable-refusal/source-unavailable controls; actual canonical result bytes and refusal code UNBOUND.",
+    "authenticity": "No native keys, signed children, intents, dependency commitments or authentic custody are supplied."
+  },
+  "baseline": {
+    "companyRoot": "Exact original context",
+    "localSourceScope": "Native-local completed membership only",
+    "existingActivationAndAuthorityPrerequisites": "VALID, except explicit challenged dimension",
+    "centralServices": "HELD",
+    "network": "LOCAL_ONLY",
+    "platform": "UNBOUND",
+    "minimumOS": "UNBOUND",
+    "allExecution": "NOT_RUN"
+  },
+  "originalBindingInputs": {
+    "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+    "rootIdentityToken": "root-original-A",
+    "generationToken": "generation-original-17",
+    "frameIdentityToken": "frame-original-17",
+    "originalAnchorToken": "anchor-original-A",
+    "operationId": "fba6dc27-d3b9-4c2b-ab28-3e92e08aac16",
+    "actorId": "c85d1f45-0dd5-4b71-8ac6-a1b0b17c43e3",
+    "semanticPayloadToken": "exact-original-catalog-activation-payload-A",
+    "nativeParentId": "476b63cf-5c02-4d7a-9e21-c389e0d4f8c9",
+    "signedChildId": "92e3e8af-37f2-4716-98ce-07c281e3b7b4",
+    "intentId": "be9f7cba-e765-4d12-b4e1-08d8e751b8e2",
+    "opaquePortableDependencyBytesHex": "004ab5c108"
+  },
+  "completedAndPendingOutputInputs": [
+    {
+      "fixtureId": "OUT-A",
+      "identity": "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+      "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+      "rootIdentityToken": "root-original-A",
+      "state": "COMPLETED",
+      "activatedInBranch": false,
+      "contentToken": "completed-output-alpha-original-content",
+      "opaquePortableContentHex": "10a001ff02"
+    },
+    {
+      "fixtureId": "OUT-B",
+      "identity": "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b",
+      "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+      "rootIdentityToken": "root-original-A",
+      "state": "COMPLETED",
+      "activatedInBranch": true,
+      "contentToken": "completed-output-beta-original-content",
+      "opaquePortableContentHex": "10b002ee03"
+    },
+    {
+      "fixtureId": "OUT-P",
+      "identity": "57921041-93cd-43bc-a0f0-54f3bc8f7a09",
+      "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+      "rootIdentityToken": "root-original-A",
+      "state": "PREPARED",
+      "activatedInBranch": false,
+      "contentToken": "prepared-output-original-content",
+      "opaquePortableContentHex": "10c003dd04"
+    },
+    {
+      "fixtureId": "OUT-S",
+      "identity": "da92c06d-d8d3-4f64-ae64-8deecb1eb6ed",
+      "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+      "rootIdentityToken": "root-original-A",
+      "state": "SIGNING_INTENT",
+      "activatedInBranch": false,
+      "contentToken": "signing-intent-original-content",
+      "opaquePortableContentHex": "10d004cc05"
+    },
+    {
+      "fixtureId": "OUT-L",
+      "identity": "ea50dd6a-274f-4f94-a76d-8180dd1f6732",
+      "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+      "rootIdentityToken": "root-original-A",
+      "state": "COMPLETED_AFTER_ORIGINAL_CUT",
+      "activatedInBranch": false,
+      "contentToken": "later-completed-output-original-content",
+      "opaquePortableContentHex": "10e005bb06"
+    }
+  ],
+  "boundaryGenerator": {
+    "id": "BOUNDARY-COMPLETED-OUTPUTS",
+    "indices": "1 through requested count, at most 257",
+    "identityPrefix": "c5906f2e-9a82-4d0b-98ca-",
+    "identitySuffix": "index in lowercase hexadecimal padded to 12 characters",
+    "contentToken": "portable-completed-output- plus index in ordinary decimal",
+    "companyId": "4f0cdb9a-0683-4e38-9bfd-4e139d607a17",
+    "rootIdentityToken": "root-original-A",
+    "state": "COMPLETED",
+    "activatedInBranch": false,
+    "purpose": "Deterministic exact synthetic test data; not a native publication or new canonical content format."
+  },
+  "portableGroupCount": 6,
+  "nativeGroupCount": 4,
+  "totalGroupCount": 10,
+  "portableDataCodecBindingCases": [
+    {
+      "id": "CPM-P01",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Source completeness and completed-membership partition",
+      "variants": [
+        {
+          "id": "COMPLETE_NONEMPTY",
+          "source": "COMPLETE_KNOWN",
+          "inputOutputRefs": [
+            "OUT-A",
+            "OUT-B",
+            "OUT-P",
+            "OUT-S"
+          ],
+          "expected": {
+            "observation": "COMPLETE_NONEMPTY",
+            "completedOutputIdentities": [
+              "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+              "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+            ],
+            "completedCount": 2,
+            "preparedIncluded": false,
+            "signingIntentIncluded": false,
+            "unactivatedCompletedIncluded": true
+          }
+        },
+        {
+          "id": "COMPLETE_EMPTY",
+          "source": "COMPLETE_KNOWN",
+          "inputOutputRefs": [],
+          "expected": {
+            "observation": "COMPLETE_KNOWN_EMPTY",
+            "completedOutputIdentities": [],
+            "completedCount": 0,
+            "unavailable": false
+          }
+        },
+        {
+          "id": "COMPLETE_PREPARED_ONLY",
+          "source": "COMPLETE_KNOWN",
+          "inputOutputRefs": [
+            "OUT-P",
+            "OUT-S"
+          ],
+          "expected": {
+            "observation": "COMPLETE_KNOWN_EMPTY",
+            "completedOutputIdentities": [],
+            "completedCount": 0,
+            "unavailable": false
+          }
+        },
+        {
+          "id": "UNAVAILABLE_NO_ROWS",
+          "source": "UNAVAILABLE_OR_UNCERTAIN",
+          "inputOutputRefs": [],
+          "expected": {
+            "observation": "UNAVAILABLE",
+            "completeKnownEmpty": false,
+            "durableUnitHistoryRefusalCreated": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        },
+        {
+          "id": "UNAVAILABLE_WITH_PARTIAL_ROWS",
+          "source": "UNAVAILABLE_OR_UNCERTAIN",
+          "inputOutputRefs": [
+            "OUT-A"
+          ],
+          "expected": {
+            "observation": "UNAVAILABLE",
+            "partialRowsAcceptedAsComplete": false,
+            "completeKnownEmpty": false,
+            "durableUnitHistoryRefusalCreated": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        }
+      ]
+    },
+    {
+      "id": "CPM-P02",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Existing bounded membership data/codec behavior",
+      "inputGeneratorRef": "BOUNDARY-COMPLETED-OUTPUTS",
+      "variants": [
+        {
+          "count": 0,
+          "expected": {
+            "acceptedAsCompleteBoundedData": true,
+            "count": 0
+          }
+        },
+        {
+          "count": 1,
+          "expected": {
+            "acceptedAsCompleteBoundedData": true,
+            "count": 1
+          }
+        },
+        {
+          "count": 256,
+          "expected": {
+            "acceptedAsCompleteBoundedData": true,
+            "count": 256,
+            "allIdentitiesAndContentPreserved": true
+          }
+        },
+        {
+          "count": 257,
+          "expected": {
+            "acceptedAsCompleteBoundedData": false,
+            "truncation": false,
+            "knownEmptyFabricated": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        }
+      ],
+      "codecBinding": "UNBOUND_EXISTING_PUBLIC_CODEC",
+      "wireBytes": "UNBOUND_NOT_GUESSED",
+      "roundTripExpectation": "Exact original context, output identities/content and complete-versus-unavailable distinction; no new wire format."
+    },
+    {
+      "id": "CPM-P03",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Immutable original membership and referenced-output preservation",
+      "originalOutputRefs": [
+        "OUT-A",
+        "OUT-B",
+        "OUT-P",
+        "OUT-S"
+      ],
+      "expectedOriginalIdentities": [
+        "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+        "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+      ],
+      "laterChanges": [
+        {
+          "change": "OUT-P completes after original cut",
+          "expectedOriginalIdentities": [
+            "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+            "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+          ]
+        },
+        {
+          "change": "OUT-L completes and branch activation/generation advance",
+          "expectedOriginalIdentities": [
+            "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+            "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+          ]
+        },
+        {
+          "change": "OUT-A missing while today's outputs remain present",
+          "expected": {
+            "originalProofAccepted": false,
+            "currentOutputsMayRepairOriginal": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        },
+        {
+          "change": "OUT-A same identity but changed content",
+          "replacementContentToken": "completed-output-alpha-changed-content",
+          "replacementOpaquePortableContentHex": "10a001ff03",
+          "expected": {
+            "originalProofAccepted": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        }
+      ],
+      "nativeCutClaim": false
+    },
+    {
+      "id": "CPM-P04",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Exact portable original-context binding validation",
+      "baselineRef": "originalBindingInputs",
+      "baselineExpected": {
+        "sameContextEqualitySatisfied": true,
+        "nativeCustodyEstablished": false,
+        "employeeAuthorizationEstablished": false
+      },
+      "singleDimensionChallenges": [
+        {
+          "dimension": "companyId",
+          "replacement": "f287e147-81b5-4ed5-8f8b-7c53a2bed7ab"
+        },
+        {
+          "dimension": "rootIdentityToken",
+          "replacement": "root-other-B"
+        },
+        {
+          "dimension": "generationToken",
+          "replacement": "generation-other-18"
+        },
+        {
+          "dimension": "frameIdentityToken",
+          "replacement": "frame-other-18"
+        },
+        {
+          "dimension": "originalAnchorToken",
+          "replacement": "anchor-other-B"
+        },
+        {
+          "dimension": "operationId",
+          "replacement": "98cc0786-1ee7-4e54-8c41-c335517c3567"
+        },
+        {
+          "dimension": "actorId",
+          "replacement": "d88a1247-21b7-4b2a-874e-483f47d68d03"
+        },
+        {
+          "dimension": "semanticPayloadToken",
+          "replacement": "different-catalog-activation-payload-B"
+        },
+        {
+          "dimension": "nativeParentId",
+          "replacement": "386dbc98-01b6-4c54-b3f1-17744bfeefb5"
+        },
+        {
+          "dimension": "signedChildId",
+          "replacement": "c7f06392-5efe-4205-92e5-bdf63db8456c"
+        },
+        {
+          "dimension": "intentId",
+          "replacement": "8a2d8a77-71c3-4dbb-83eb-1d63e3b47461"
+        },
+        {
+          "dimension": "opaquePortableDependencyBytesHex",
+          "replacement": "004ab5c109"
+        },
+        {
+          "dimension": "actualDependencyCommitment",
+          "replacement": "UNBOUND_ONE_BIT_CHANGE_TO_BOUND_ACTUAL_COMMITMENT"
+        }
+      ],
+      "eachChallengeExpected": {
+        "originalBindingAccepted": false,
+        "protectedResultReleaseAuthorized": false,
+        "businessMutations": 0,
+        "claims": 0,
+        "jobs": 0
+      },
+      "insufficientEvidenceVariants": [
+        "SUPPLIED_COMPLETE_FLAG_ONLY",
+        "DIGEST_ONLY",
+        "CURRENT_SNAPSHOT_ONLY"
+      ],
+      "insufficientEvidenceExpected": {
+        "authenticHistoricalMembershipEstablished": false,
+        "employeeAuthorizationEstablished": false
+      },
+      "cryptographicCommitmentAndNativeOwnerBinding": "UNBOUND"
+    },
+    {
+      "id": "CPM-P05",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Apply/refusal conservation and source-unavailable separation",
+      "observationOutputRefs": [
+        "OUT-A",
+        "OUT-B"
+      ],
+      "variants": [
+        {
+          "originalOutcome": "APPLY",
+          "expected": {
+            "retainedOriginalObservationIdentities": [
+              "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+              "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+            ],
+            "observationPreservedExactly": true,
+            "originalRequestResultIdentitiesPreserved": true,
+            "legitimateOriginalApplyBusinessEffects": "UNBOUND_TO_EXISTING_PUBLIC_ACTIVATION_RULES",
+            "additionalRecoveryBusinessMutations": 0,
+            "additionalRecoveryClaims": 0,
+            "additionalRecoveryJobs": 0
+          }
+        },
+        {
+          "originalOutcome": "DURABLE_UNIT_HISTORY_REFUSAL",
+          "expected": {
+            "retainedOriginalObservationIdentities": [
+              "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+              "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+            ],
+            "observationPreservedExactly": true,
+            "result": "EXACT_ORIGINAL_CANONICAL_REFUSAL_UNBOUND_BYTES_CODE",
+            "authorizationRequirement": "EXACT_ORIGINAL_UNBOUND_RESOURCE_SCHEMA",
+            "resources": "EXACT_ORIGINAL_RESOURCE_SET_UNBOUND",
+            "nonbusinessMutationCount": 5,
+            "literalNonbusinessCustody": "UNBOUND",
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        },
+        {
+          "originalOutcome": "SOURCE_UNAVAILABLE",
+          "expected": {
+            "completeKnownEmpty": false,
+            "durableUnitHistoryRefusalCreated": false,
+            "fiveChangeUnitHistoryRefusalFabricated": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        }
+      ],
+      "unitArithmetic": "OUT_OF_SCOPE; outcome prerequisites bind to original public rules, not implementation reasoning."
+    },
+    {
+      "id": "CPM-P06",
+      "status": "NOT_RUN",
+      "issue": "#59",
+      "purpose": "Legacy observation absence compatibility and missing-evidence hold",
+      "observationField": "ABSENT",
+      "variants": [
+        {
+          "id": "LEGACY_ENCODING_COMPATIBILITY",
+          "legacyLedgerVersion": 1,
+          "expected": {
+            "businessLedgerV1SchemaChanged": false,
+            "requestResultIdentitiesChanged": false,
+            "legacyAnchorBytesChanged": false,
+            "legacyIntentBytesChanged": false,
+            "emptyObservationFieldInserted": false
+          },
+          "legacyGoldenBytes": "UNBOUND_EXISTING_LEGACY_BYTES"
+        },
+        {
+          "id": "LEGACY_ORIGINAL_NEEDS_NEVER_CAPTURED_MEMBERSHIP",
+          "currentEvidenceVariants": [
+            "COMPLETE_KNOWN_EMPTY",
+            "COMPLETE_NONEMPTY",
+            "RETAINED_REFUSAL_CODE_ONLY"
+          ],
+          "expected": {
+            "recovery": "HELD",
+            "currentMembershipRepairsOriginal": false,
+            "retainedCodeRepairsOriginal": false,
+            "protectedOriginalResultReleasedFromMissingProof": false,
+            "businessMutations": 0,
+            "claims": 0,
+            "jobs": 0
+          }
+        }
+      ]
+    }
+  ],
+  "nativeCustodyRestartObligations": [
+    {
+      "id": "CPM-N07",
+      "status": "NOT_RUN",
+      "issue": "#63",
+      "purpose": "Actual original native exclusion and completed-cut capture",
+      "binding": "UNBOUND",
+      "originalOutcomeVariants": [
+        "APPLY",
+        "DURABLE_UNIT_HISTORY_REFUSAL"
+      ],
+      "timingVariants": [
+        {
+          "completionTiming": "OUT-A/OUT-B definitively completed before actual original native observation",
+          "expectedIncluded": [
+            "d5f09b81-0be0-4846-8923-c98ca69a25b7",
+            "e16c27c1-1ecb-4eaa-8bdf-93d5aa6f049b"
+          ]
+        },
+        {
+          "completionTiming": "OUT-P is only prepared at observation, completes definitively after cut",
+          "expectedExcluded": [
+            "57921041-93cd-43bc-a0f0-54f3bc8f7a09"
+          ]
+        },
+        {
+          "completionTiming": "OUT-S is only signing intent at observation",
+          "expectedExcluded": [
+            "da92c06d-d8d3-4f64-ae64-8deecb1eb6ed"
+          ]
+        },
+        {
+          "completionTiming": "OUT-L completes definitively after original cut",
+          "expectedExcluded": [
+            "ea50dd6a-274f-4f94-a76d-8180dd1f6732"
+          ]
+        },
+        {
+          "completionTiming": "completion order or native source state is uncertain",
+          "expected": {
+            "evidence": "UNAVAILABLE",
+            "fabricatedKnownEmpty": false,
+            "durableUnitHistoryRefusalCreated": false
+          }
+        }
+      ],
+      "requirements": [
+        "Actual native transaction exclusion, not supplied locking/completeness flags",
+        "Real native owner validates the same observation and actual dependency bytes/commitment",
+        "Exact original operation/payload/actor/native parent/signed child/intent/frame/company/root/generation/anchor bound",
+        "Complete referenced immutable native completed outputs retained"
+      ],
+      "expected": {
+        "applyAndRefusalObservationSymmetry": true,
+        "refusalCanonicalResultAuthorizationResources": "EXACT_ORIGINAL_UNBOUND",
+        "refusalNonbusinessMutations": 5,
+        "refusalBusinessMutations": 0,
+        "refusalClaims": 0,
+        "refusalJobs": 0
+      }
+    },
+    {
+      "id": "CPM-N08",
+      "status": "NOT_RUN",
+      "issue": "#63",
+      "purpose": "Recovery authenticates retained original cut after later approvals/activation/generation",
+      "binding": "UNBOUND",
+      "originalOutcomeVariants": [
+        "APPLY",
+        "DURABLE_UNIT_HISTORY_REFUSAL"
+      ],
+      "laterVariants": [
+        "OUT-P completes",
+        "OUT-L completes",
+        "Branch activation changes",
+        "Today's ledger generation changes"
+      ],
+      "expected": {
+        "selectedMembership": "EXACT_AUTHENTIC_ORIGINAL_ONLY",
+        "referencedOutputs": "EACH_ORIGINAL_IMMUTABLE_OUTPUT_AUTHENTICATED",
+        "laterMembershipIncluded": false,
+        "originalResult": "BYTE_IDENTICAL_AUTHENTIC_ORIGINAL",
+        "originalAuthorizationResources": "UNCHANGED",
+        "businessReapplication": false,
+        "newBusinessMutations": 0,
+        "newClaims": 0,
+        "newJobs": 0
+      }
+    },
+    {
+      "id": "CPM-N09",
+      "status": "NOT_RUN",
+      "issue": "#63",
+      "purpose": "Genuine native custody and closed rejection of invalid/uncertain evidence",
+      "binding": "UNBOUND",
+      "challenges": [
+        "CPM-P04 identity/payload/child/intent/dependency binding mismatch",
+        "Missing referenced original completed output",
+        "Same output identity with changed content",
+        "Native source/custody unavailable or uncertain",
+        "Actual dependency bytes/commitment mismatch",
+        "Complete flag/current snapshot/digest substituted for real owner's retained observation",
+        "Five nonbusiness changes counted but literal original custody does not close",
+        "Legacy original requires evidence it never captured"
+      ],
+      "expected": {
+        "invalidHistoricalMembershipAccepted": false,
+        "currentEvidenceRepairsOriginal": false,
+        "protectedResultFromInvalidProof": false,
+        "uncertainOrLegacyMissingProof": "HELD",
+        "newBusinessMutations": 0,
+        "newClaims": 0,
+        "newJobs": 0
+      },
+      "challengeIsolation": "Preserve authentic original; manipulate disposable derived candidates only."
+    },
+    {
+      "id": "CPM-N10",
+      "status": "NOT_RUN",
+      "issue": "#63",
+      "purpose": "Duplicate/lost reply/installed restart and independent current authority/admission",
+      "binding": "UNBOUND",
+      "originalOutcomeVariants": [
+        "APPLY",
+        "DURABLE_UNIT_HISTORY_REFUSAL"
+      ],
+      "failureVariants": [
+        "IDENTICAL_DUPLICATE_ORIGINAL_REQUEST",
+        "LOST_REPLY_AFTER_DURABLE_ORIGINAL_COMMIT",
+        "PROCESS_TERMINATION_AND_INSTALLED_RESTART_WITH_ACTUAL_NATIVE_KEYS_STORAGE"
+      ],
+      "authorityVariants": [
+        "Current Master protected-release permission denied",
+        "Original actor's session revoked",
+        "Restart has no writer admission",
+        "Current authorization valid and separate recovery admission satisfied"
+      ],
+      "expected": {
+        "validAuthorizedRecovery": "BYTE_IDENTICAL_ORIGINAL_OUTCOME_WITH_ORIGINAL_MEMBERSHIP",
+        "secondDecision": false,
+        "secondBusinessEffects": false,
+        "protectedReleaseWithoutCurrentAuthorization": false,
+        "sessionRestoredByProof": false,
+        "permissionGrantedByProof": false,
+        "restartAuthorizedAsWriterByProof": false,
+        "uncertainOriginalErased": false
+      }
+    }
+  ],
+  "unboundRepresentations": [
+    "Existing public bounded membership codec/schema",
+    "Canonical original request/result bytes and exact refusal code",
+    "Actual native company/root/frame/anchor/generation representation",
+    "Actual dependency serialization and commitment algorithm/value",
+    "Signed-child/intent/native-parent custody and keys",
+    "Exact original authorization/resource schema and five literal mutations",
+    "Existing legacy V1 anchor/intent golden bytes",
+    "Platform/minimum OS and concrete runtime binding"
+  ],
+  "freezeRule": "Freeze semantic inputs/assertions/outcomes before wiring. Bind existing representations without weakening requirements; any specification change requires a separately versioned independent rationale.",
+  "verificationBoundary": "Portable checks do not establish genuine native custody, original employee authority, current release permission, installed restart or writer admission. Missing implementation/failed required non-device checks remain development work."
+}

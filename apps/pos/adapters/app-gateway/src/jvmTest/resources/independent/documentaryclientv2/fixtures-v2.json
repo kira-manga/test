@@ -1,0 +1,785 @@
+{
+  "fixtureVersion": "purchasing-documentary-intake-v2",
+  "applicationExecutionStatus": "NOT_RUN",
+  "purpose": "Exact synthetic documentary inputs and independent numeric expectations; no application test result or native-custody claim.",
+  "wireContractVersion": 1,
+  "profile": {
+    "id": "purchasing-document-capture/v1",
+    "hashAlgorithm": "SHA-256",
+    "hashFormat": "purchasing-document-exact-bytes/v1",
+    "primaryMaxBytes": 524288,
+    "supplementMaxBytes": 262144,
+    "completedChildrenMax": 4,
+    "completedSupplementalBytesMax": 1048576,
+    "binaryChunkBytes": 8192,
+    "primaryChunksMax": 64,
+    "supplementChunksMax": 32,
+    "mutationInputMaxBytes": 32768,
+    "protectedOutputMaxBytes": 32768,
+    "metadataPageRows": 5,
+    "supplierReferenceMaxCharacters": 192,
+    "fileNameMaxCharacters": 192,
+    "correctionReasonMaxCharacters": 256,
+    "declaredMedia": [
+      "JPEG",
+      "PNG",
+      "PDF"
+    ],
+    "purposeVocabulary": [
+      "SUPPLIER_DELIVERY",
+      "OWNERSHIP_ATTESTATION",
+      "INSPECTION",
+      "PURCHASE_AGREEMENT",
+      "SUPPLIER_INVOICE",
+      "SUPPLIER_DISPATCH",
+      "CLAIM_SUPPORT"
+    ],
+    "duplicateGroupingFormat": "purchasing-document-exact-reference/v1",
+    "duplicateCandidateIdsMax": 5
+  },
+  "identityLabels": {
+    "O-A": "Synthetic organization containing C-A and C-B.",
+    "O-B": "Unrelated synthetic organization.",
+    "C-A": "Synthetic current company containing B-A1 and B-A2.",
+    "C-B": "Other company in O-A.",
+    "B-A1": "Trusted current branch with sole active Master.",
+    "B-A2": "Other branch with its own branch-local accounts.",
+    "SYN-SUP-01": "Already usable C-A/B-A1 supplier; genuinely provision before execution.",
+    "SYN-SUP-FOREIGN": "Supplier outside trusted company/branch access.",
+    "DEVICE-A": "Currently admitted client for B-A1.",
+    "DEVICE-FOREIGN": "Unadmitted, retired or foreign-branch device variant."
+  },
+  "bindingTokens": {
+    "SUPPLIER-ID": "Actual supported public ID for SYN-SUP-01, fixed in the execution binding.",
+    "SUPPLIER-REVISION-S": "Actual revision returned by the genuine usable-supplier fixture; no fabricated snapshot.",
+    "PARENT-REVISION-R": "Actual parent attachment revision read after the case setup; a fresh R+1 is the deliberately wrong CAS input.",
+    "RECOVERY-SCOPE-A": "Existing explicit operation-result recovery scope permitting STAFF-A to resolve STAFF-A original operations in B-A1.",
+    "NATIVE-BINDING": "Actual OS/minimum version/architecture, native source/storage/output/cache/backup adapters and their prerequisites."
+  },
+  "permissionProfiles": {
+    "STAFF-A": {
+      "employee": "Initiating enabled B-A1 employee.",
+      "grants": [
+        "PURCHASING_DOCUMENT_CAPTURE / PERFORM",
+        "PURCHASING_DOCUMENT_ATTACH / PERFORM",
+        "PURCHASING_DOCUMENT_READ / PERFORM",
+        "PURCHASING_DOCUMENT_READ / EXPORT"
+      ],
+      "recovery": "Explicit RECOVERY-SCOPE-A, bound separately."
+    },
+    "STAFF-X": {
+      "employee": "Different enabled B-A1 employee with the same dedicated capture/attach/read/export grants; no A original-actor recovery scope.",
+      "grants": [
+        "PURCHASING_DOCUMENT_CAPTURE / PERFORM",
+        "PURCHASING_DOCUMENT_ATTACH / PERFORM",
+        "PURCHASING_DOCUMENT_READ / PERFORM",
+        "PURCHASING_DOCUMENT_READ / EXPORT"
+      ]
+    },
+    "READ-ONLY": {
+      "employee": "Enabled B-A1 employee with sufficient current completed-document scope.",
+      "grants": [
+        "PURCHASING_DOCUMENT_READ / PERFORM"
+      ]
+    },
+    "EXPORT-ONLY": {
+      "employee": "Enabled B-A1 employee; export action alone.",
+      "grants": [
+        "PURCHASING_DOCUMENT_READ / EXPORT"
+      ]
+    },
+    "QUANTITY-ONLY": {
+      "employee": "Enabled B-A1 employee with quantity access and no dedicated documentary grants.",
+      "grants": []
+    },
+    "OTHER-PURCHASING-GRANTS": {
+      "employee": "Enabled B-A1 employee with approval, quantity, cost or report permissions only; no dedicated documentary grants.",
+      "grants": []
+    },
+    "RECOVERY-ONLY-A": {
+      "employee": "The same original STAFF-A employee after fresh local authentication; only explicitly sufficient original-operation recovery scope.",
+      "grants": [],
+      "recovery": "RECOVERY-SCOPE-A; no new transfer authority."
+    },
+    "NO-RECOVERY-A": {
+      "employee": "Same STAFF-A employee without any current operation-result recovery grant.",
+      "grants": []
+    }
+  },
+  "BASELINE": {
+    "capturedPrimaryOriginals": 0,
+    "completedSupplementalFiles": 0,
+    "sellableQuantity": "10",
+    "quarantineQuantity": "3",
+    "rejectedHeldQuantity": "2",
+    "physicalCustodyQuantity": "15",
+    "inventoryValueEGPMinor": "25000",
+    "reservedQuantity": "0",
+    "poRemainingQuantity": "24",
+    "poConsumedQuantity": "0",
+    "poInspectionPendingQuantity": "0",
+    "postedGoodsReceipts": 0,
+    "recognizedSupplierInvoices": 0,
+    "recognizedPayableEGPMinor": "0",
+    "receiptInvoiceAllocations": 0,
+    "supplierSettlements": 0,
+    "supplierAdvances": 0,
+    "supplierCredits": 0,
+    "drawerEGPMinor": "100000",
+    "safeEGPMinor": "80000",
+    "sellingPriceEGPMinor": "10000"
+  },
+  "metadata": {
+    "supplierId": "SUPPLIER-ID",
+    "expectedSupplierRevision": "SUPPLIER-REVISION-S",
+    "supplierReferenceOriginal": "0007-A",
+    "documentDate": "2026-10-21",
+    "purpose": "SUPPLIER_INVOICE",
+    "originalFileName": "supplier-0007-A.pdf"
+  },
+  "documents": {
+    "PRIMARY-A": {
+      "ordinal": 101,
+      "documentId": "00000000-0000-4000-8000-000000000101",
+      "file": "PDF-MULTI",
+      "kind": "PRIMARY",
+      "beginOperationId": "10000000-0000-4000-8000-000000101001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000101100",
+        "10000000-0000-4000-8000-000000101101",
+        "10000000-0000-4000-8000-000000101102"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000101900"
+    },
+    "PRIMARY-B": {
+      "ordinal": 102,
+      "documentId": "00000000-0000-4000-8000-000000000102",
+      "file": "PDF-B",
+      "kind": "PRIMARY",
+      "beginOperationId": "10000000-0000-4000-8000-000000102001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000102100"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000102900"
+    },
+    "BAD-FULL-HASH": {
+      "ordinal": 103,
+      "documentId": "00000000-0000-4000-8000-000000000103",
+      "file": "PDF-MULTI",
+      "kind": "PRIMARY",
+      "beginOperationId": "10000000-0000-4000-8000-000000103001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000103100",
+        "10000000-0000-4000-8000-000000103101",
+        "10000000-0000-4000-8000-000000103102"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000103900"
+    },
+    "CORRECTION-B": {
+      "ordinal": 104,
+      "documentId": "00000000-0000-4000-8000-000000000104",
+      "file": "PDF-B",
+      "kind": "PRIMARY",
+      "beginOperationId": "10000000-0000-4000-8000-000000104001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000104100"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000104900",
+      "correctionOf": "PRIMARY-A",
+      "correctionReason": "Supplier sent a revised documentary claim."
+    },
+    "PARENT": {
+      "ordinal": 105,
+      "documentId": "00000000-0000-4000-8000-000000000105",
+      "file": "PDF-A",
+      "kind": "PRIMARY",
+      "beginOperationId": "10000000-0000-4000-8000-000000105001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000105100"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000105900"
+    },
+    "CHILD-1": {
+      "ordinal": 106,
+      "documentId": "00000000-0000-4000-8000-000000000106",
+      "file": "PDF-SUPPLEMENT-MAX",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000106001",
+      "completeOperationId": "10000000-0000-4000-8000-000000106900",
+      "parentOriginalId": "PARENT",
+      "initialChunkOperationCount": 32,
+      "initialChunkOperationRule": "Expand operationIdentityRule.initialChunk for this document ordinal."
+    },
+    "CHILD-2": {
+      "ordinal": 107,
+      "documentId": "00000000-0000-4000-8000-000000000107",
+      "file": "PDF-SUPPLEMENT-MAX",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000107001",
+      "completeOperationId": "10000000-0000-4000-8000-000000107900",
+      "parentOriginalId": "PARENT",
+      "initialChunkOperationCount": 32,
+      "initialChunkOperationRule": "Expand operationIdentityRule.initialChunk for this document ordinal."
+    },
+    "CHILD-3": {
+      "ordinal": 108,
+      "documentId": "00000000-0000-4000-8000-000000000108",
+      "file": "PDF-SUPPLEMENT-MAX",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000108001",
+      "completeOperationId": "10000000-0000-4000-8000-000000108900",
+      "parentOriginalId": "PARENT",
+      "initialChunkOperationCount": 32,
+      "initialChunkOperationRule": "Expand operationIdentityRule.initialChunk for this document ordinal."
+    },
+    "RACE-X": {
+      "ordinal": 109,
+      "documentId": "00000000-0000-4000-8000-000000000109",
+      "file": "PDF-SUPPLEMENT-MAX",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000109001",
+      "completeOperationId": "10000000-0000-4000-8000-000000109900",
+      "parentOriginalId": "PARENT",
+      "initialChunkOperationCount": 32,
+      "initialChunkOperationRule": "Expand operationIdentityRule.initialChunk for this document ordinal.",
+      "initiatingEmployee": "STAFF-A"
+    },
+    "RACE-Y": {
+      "ordinal": 110,
+      "documentId": "00000000-0000-4000-8000-000000000110",
+      "file": "PDF-SUPPLEMENT-MAX",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000110001",
+      "completeOperationId": "10000000-0000-4000-8000-000000110900",
+      "parentOriginalId": "PARENT",
+      "initialChunkOperationCount": 32,
+      "initialChunkOperationRule": "Expand operationIdentityRule.initialChunk for this document ordinal.",
+      "initiatingEmployee": "STAFF-X"
+    },
+    "SMALL-CHILD": {
+      "ordinal": 111,
+      "documentId": "00000000-0000-4000-8000-000000000111",
+      "file": "PNG-A",
+      "kind": "SUPPLEMENTAL",
+      "beginOperationId": "10000000-0000-4000-8000-000000111001",
+      "initialChunkOperationIds": [
+        "10000000-0000-4000-8000-000000111100"
+      ],
+      "completeOperationId": "10000000-0000-4000-8000-000000111900",
+      "parentOriginalId": "PRIMARY-A"
+    }
+  },
+  "operationIdentityRule": {
+    "documentId": "For listed ordinal d: 00000000-0000-4000-8000- followed by d as exactly 12 decimal digits.",
+    "operationId": "10000000-0000-4000-8000- followed by (1000*d+s) as exactly 12 decimal digits.",
+    "steps": {
+      "begin": 1,
+      "initialChunk": "100+i for zero-based i",
+      "newCorrectedRejectedChunk": "200+i; resolve old operation first",
+      "complete": 900,
+      "newRefreshedRejectedComplete": 901,
+      "newConflictingBegin": 902
+    },
+    "meaning": "Fixed synthetic case IDs only. Each original step body is retained before send; no native origin/history values are supplied by this rule."
+  },
+  "pageFixture": {
+    "primaryCount": 12,
+    "ordinalStart": 120,
+    "ordinalEnd": 131,
+    "referenceRule": "PAGE-01 through PAGE-12 in ordinal order",
+    "supplementalChildCount": 1,
+    "supplementalFile": "PNG-A",
+    "expectedPageSizes": [
+      5,
+      5,
+      2
+    ],
+    "ordering": "Public cursor ordering remains unbound; assert the unordered union of twelve distinct permitted primary IDs.",
+    "firstPrimaryFile": "PDF-MULTI",
+    "remainingPrimaryFile": "PDF-A",
+    "fileRule": "Ordinal 120 uses PDF-MULTI; ordinals 121 through 131 use PDF-A. The PNG child belongs to ordinal 120."
+  },
+  "files": {
+    "PDF-A": {
+      "media": "PDF",
+      "byteLength": 640,
+      "exactBytesDigest": "96c72b8140b230b776d119cce2bac959aa9f2211af5e85e9b5652571568c1728",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 640,
+          "sha256": "96c72b8140b230b776d119cce2bac959aa9f2211af5e85e9b5652571568c1728"
+        }
+      ],
+      "representation": {
+        "kind": "base64",
+        "value": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMjAwXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggOTcgPj4Kc3RyZWFtCkJUIC9GMSAxMCBUZiAyMCAxNzAgVGQgKFN5bnRoZXRpYyBzdXBwbGllciByZWZlcmVuY2UgMDAwNy1BKSBUaiAwIC0xNiBUZCAoQ2xhaW06IDI0IHVuaXRzKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzExIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDU3CiUlRU9GCg=="
+      },
+      "note": "Synthetic claim only; no invoice recognition or supplier authenticity."
+    },
+    "PDF-B": {
+      "media": "PDF",
+      "byteLength": 640,
+      "exactBytesDigest": "b9c7954c51321b8d8139f019fa011b090e80e5f0fdac3f905a91f774b3edd104",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 640,
+          "sha256": "b9c7954c51321b8d8139f019fa011b090e80e5f0fdac3f905a91f774b3edd104"
+        }
+      ],
+      "representation": {
+        "kind": "base64",
+        "value": "JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUl0gL0NvdW50IDEgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCAzMDAgMjAwXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA0IDAgUiA+PiA+PiAvQ29udGVudHMgNSAwIFIgPj4KZW5kb2JqCjQgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggOTcgPj4Kc3RyZWFtCkJUIC9GMSAxMCBUZiAyMCAxNzAgVGQgKFN5bnRoZXRpYyBzdXBwbGllciByZWZlcmVuY2UgMDAwNy1BKSBUaiAwIC0xNiBUZCAoQ2xhaW06IDIyIHVuaXRzKSBUaiBFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCA2CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAwOSAwMDAwMCBuIAowMDAwMDAwMDU4IDAwMDAwIG4gCjAwMDAwMDAxMTUgMDAwMDAgbiAKMDAwMDAwMDI0MSAwMDAwMCBuIAowMDAwMDAwMzExIDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgNiAvUm9vdCAxIDAgUiA+PgpzdGFydHhyZWYKNDU3CiUlRU9GCg=="
+      },
+      "note": "Distinct exact original with the same synthetic supplier reference/date."
+    },
+    "PNG-A": {
+      "media": "PNG",
+      "byteLength": 69,
+      "exactBytesDigest": "be82c36a6dd76c6ed5ae06589c17f2ce8f50e24dcac22ea4e0cc9ab396374203",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 69,
+          "sha256": "be82c36a6dd76c6ed5ae06589c17f2ce8f50e24dcac22ea4e0cc9ab396374203"
+        }
+      ],
+      "representation": {
+        "kind": "base64",
+        "value": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mNoaGgAAAMEAYF1LgG8AAAAAElFTkSuQmCC"
+      },
+      "note": "Synthetic one-pixel RGB PNG; exact stored base64 is authoritative."
+    },
+    "JPEG-A": {
+      "media": "JPEG",
+      "byteLength": 155,
+      "exactBytesDigest": "3f93bab029856dfaa0d8d9eceeceaa5977e4381e9209ed61f6f7af51c622147f",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 155,
+          "sha256": "3f93bab029856dfaa0d8d9eceeceaa5977e4381e9209ed61f6f7af51c622147f"
+        }
+      ],
+      "representation": {
+        "kind": "base64",
+        "value": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAALCAABAAEBAREA/8QAJgABAAAAAAAAAAAAAAAAAAAAABABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQAAPwA//9k="
+      },
+      "note": "Synthetic one-pixel grayscale baseline JPEG; exact stored base64 is authoritative."
+    },
+    "PDF-MULTI": {
+      "media": "PDF",
+      "byteLength": 16407,
+      "exactBytesDigest": "4b41fe413290807cdf3b6f60a34b68e06d0e7cb092b9ffde0ef022d24b375bbe",
+      "chunkCount": 3,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "f8ca02c69621dd84cd1212ebfd7d6cdc9ba6ad658854f29567723531912d1a35"
+        },
+        {
+          "firstIndex": 2,
+          "count": 1,
+          "byteLength": 23,
+          "sha256": "e49ff8fc09127f458830d7328b0aaabed46cab5bbeb1a22e4c93d762025be281"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 15765,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-SLOT-8192": {
+      "media": "PDF",
+      "byteLength": 8192,
+      "exactBytesDigest": "d343f9fddf495ebc0c68067a5f6a8c8e36b032050e3270e8970a77b77f9d8b6f",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "d343f9fddf495ebc0c68067a5f6a8c8e36b032050e3270e8970a77b77f9d8b6f"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 7550,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-SLOT-8193": {
+      "media": "PDF",
+      "byteLength": 8193,
+      "exactBytesDigest": "068f0e8cd71bd1f5912f6bab2ee938f5813b480153f7b1ab4a2a63615c09800c",
+      "chunkCount": 2,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 1,
+          "byteLength": 1,
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 7551,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-PRIMARY-MAX": {
+      "media": "PDF",
+      "byteLength": 524288,
+      "exactBytesDigest": "d4be1f2da7c46e33c380f0ef1888792ced5455bbe63c9d893065f9d720ea6f75",
+      "chunkCount": 64,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 62,
+          "byteLength": 8192,
+          "sha256": "f8ca02c69621dd84cd1212ebfd7d6cdc9ba6ad658854f29567723531912d1a35"
+        },
+        {
+          "firstIndex": 63,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "e657b9d3fe62b6088694966042a878effe01a7575805c7c90543ce85864e5539"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 523646,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-PRIMARY-OVER": {
+      "media": "PDF",
+      "byteLength": 524289,
+      "exactBytesDigest": "dd2ccfdfa848838a6c65b60211d910e0f09c4c9dd8ecd3f05019e83021b8434e",
+      "chunkCount": 65,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 63,
+          "byteLength": 8192,
+          "sha256": "f8ca02c69621dd84cd1212ebfd7d6cdc9ba6ad658854f29567723531912d1a35"
+        },
+        {
+          "firstIndex": 64,
+          "count": 1,
+          "byteLength": 1,
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 523647,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-SUPPLEMENT-MAX": {
+      "media": "PDF",
+      "byteLength": 262144,
+      "exactBytesDigest": "71aa3b6df241580eadb03902c9f420af717264875b5c012fd11fd18ad6490863",
+      "chunkCount": 32,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 30,
+          "byteLength": 8192,
+          "sha256": "f8ca02c69621dd84cd1212ebfd7d6cdc9ba6ad658854f29567723531912d1a35"
+        },
+        {
+          "firstIndex": 31,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "e657b9d3fe62b6088694966042a878effe01a7575805c7c90543ce85864e5539"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 261502,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "PDF-SUPPLEMENT-OVER": {
+      "media": "PDF",
+      "byteLength": 262145,
+      "exactBytesDigest": "541b2238c593272ccfcef3ff2fbc40a8b4ca46c47b28385cd1fe9b8814ca5c69",
+      "chunkCount": 33,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 8192,
+          "sha256": "6b266d19a750c70aa21a4615af76e12c961e9cb0eeafe0c247490f3e6f2b79db"
+        },
+        {
+          "firstIndex": 1,
+          "count": 31,
+          "byteLength": 8192,
+          "sha256": "f8ca02c69621dd84cd1212ebfd7d6cdc9ba6ad658854f29567723531912d1a35"
+        },
+        {
+          "firstIndex": 32,
+          "count": 1,
+          "byteLength": 1,
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        }
+      ],
+      "representation": {
+        "kind": "base-plus-padding",
+        "baseFile": "PDF-A",
+        "prefixHex": "25",
+        "repeatHex": "41",
+        "repeatCount": 261503,
+        "suffixHex": "0a"
+      },
+      "note": "Padding is an exact synthetic comment following the base PDF; media acceptance asserts signature/integrity only, not rendering or authenticity."
+    },
+    "EMPTY": {
+      "media": "PDF",
+      "byteLength": 0,
+      "exactBytesDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "chunkCount": 0,
+      "chunkRuns": [],
+      "representation": {
+        "kind": "base64",
+        "value": ""
+      },
+      "note": "Negative input only; never expected to be a complete recognized original."
+    },
+    "ONE-INVALID-PDF": {
+      "media": "PDF",
+      "byteLength": 1,
+      "exactBytesDigest": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd",
+      "chunkCount": 1,
+      "chunkRuns": [
+        {
+          "firstIndex": 0,
+          "count": 1,
+          "byteLength": 1,
+          "sha256": "559aead08264d5795d3909718cdd05abd49572e84fe55590eef31a88a08fdffd"
+        }
+      ],
+      "representation": {
+        "kind": "base64",
+        "value": "QQ=="
+      },
+      "note": "Negative input only; never expected to be a complete recognized original."
+    }
+  },
+  "negativeInputs": {
+    "FALSE-FULL-DIGEST": {
+      "exactBytesDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+      "chunkDigests": "Correct expanded PDF-MULTI chunkRuns; bytes remain exact PDF-MULTI."
+    },
+    "CORRUPT-CHUNK-0": {
+      "file": "PDF-MULTI",
+      "chunkIndex": 0,
+      "construction": "XOR the first byte of the exact 8192-byte slot with 01; all other bytes unchanged.",
+      "byteLength": 8192,
+      "submittedSha256": "fb10e42630e1398e122566669d9c8cca9e8b72f4293c08070aaa5ea24b956797"
+    },
+    "SHORT-CHUNK-0": {
+      "file": "PDF-MULTI",
+      "chunkIndex": 0,
+      "construction": "Take exactly the first 8191 bytes of slot zero.",
+      "byteLength": 8191,
+      "submittedSha256": "1dead01e28b3338571de95679976a03129c1f2803c16049829bd57ff823290a6"
+    },
+    "WRONG-MEDIA": {
+      "file": "PNG-A",
+      "declaredMedia": "PDF",
+      "digestAndChunkDigests": "Correct PNG-A values."
+    },
+    "WRONG-BEGIN": {
+      "document": "PRIMARY-A",
+      "beginOperationId": "10000000-0000-4000-8000-000000102001"
+    },
+    "OUT-OF-RANGE-CHUNK": {
+      "document": "PRIMARY-A",
+      "chunkIndex": 3,
+      "chunkHex": "41"
+    },
+    "WRONG-PARENT-CAS": {
+      "expectedParentAttachmentsRevision": "R+1, chosen while actual revision remains R; no competing mutation in this isolated subcase."
+    },
+    "MALFORMED-HEX": {
+      "values": [
+        "0",
+        "gg",
+        "AF"
+      ],
+      "meaning": "Odd length, nonhex, or uppercase; malformed family, no durable complete slot."
+    },
+    "MALFORMED-DIGEST": {
+      "values": [
+        "000000000000000000000000000000000000000000000000000000000000000",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg"
+      ],
+      "meaning": "Wrong digest length, uppercase, or nonhex; malformed family."
+    },
+    "CONTROL-TEXT": {
+      "supplierReferenceOriginal": "0007-A\n",
+      "originalFileName": "invoice\u0000.pdf",
+      "correctionReason": "Changed\rreason"
+    }
+  },
+  "textBoundaries": {
+    "supplierReference192": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "supplierReference193": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "fileName192": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.pdf",
+    "fileName193": "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff.pdf",
+    "correctionReason256": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "correctionReason257": "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "counting": "ASCII corpus avoids unresolved non-BMP character-count semantics."
+  },
+  "numericExpectations": {
+    "multiChunkLengths": [
+      8192,
+      8192,
+      23
+    ],
+    "primaryMaxChunks": 64,
+    "supplementMaxChunks": 32,
+    "threeMaxChildrenBytes": 786432,
+    "fourMaxChildrenBytes": 1048576,
+    "fiveMaxChildrenBytesWouldBe": 1310720,
+    "oneSlotHexCharacters": 16384,
+    "supplementByteBoundRelation": "4 * 262144 = 1048576. With individual and count ceilings enforced, a distinct aggregate-over-capacity state is unreachable; do not weaken either limit to manufacture one."
+  },
+  "bindingNotes": [
+    "Bind identity/session/device/supplier labels through genuine synthetic local provisioning; no credentials or live data are supplied.",
+    "Expand a chunk run at firstIndex into count consecutive slots with exactly its byteLength and sha256; the last slot uses its actual remaining length.",
+    "For a chunk body use lowercase hex of the exact file slice at index*8192; do not transcode, normalize, render, or hash a platform object.",
+    "Base64/recipe bytes and published SHA-256 values are fixture artifacts only; all application cases and platform variants remain NOT_RUN.",
+    "No accepted evidence qualification, supplier authenticity, old-reader compatibility, native custody, backup usability or grant-provisioning result is claimed."
+  ],
+  "duplicateFixture": {
+    "sameGroupOrdinals": [
+      140,
+      141,
+      142,
+      143,
+      144,
+      145,
+      146
+    ],
+    "sameGroupFile": "PDF-A",
+    "sameGroupReference": "0007-A",
+    "sameGroupDate": "2026-10-21",
+    "selectedDocumentId": "00000000-0000-4000-8000-000000000146",
+    "expectedCandidatesForLastCompletion": [
+      "00000000-0000-4000-8000-000000000140",
+      "00000000-0000-4000-8000-000000000141",
+      "00000000-0000-4000-8000-000000000142",
+      "00000000-0000-4000-8000-000000000143",
+      "00000000-0000-4000-8000-000000000144"
+    ],
+    "additionalCandidatesForLastCompletion": true,
+    "otherCases": [
+      {
+        "ordinal": 147,
+        "reference": " 0007-A",
+        "documentDate": "2026-10-21",
+        "expectedCandidateIds": []
+      },
+      {
+        "ordinal": 148,
+        "reference": "0007-a",
+        "documentDate": "2026-10-21",
+        "expectedCandidateIds": []
+      },
+      {
+        "ordinal": 149,
+        "reference": "0007-A",
+        "documentDate": "2026-10-22",
+        "expectedCandidateIds": []
+      },
+      {
+        "ordinal": 150,
+        "reference": "0007-A",
+        "documentDate": null,
+        "expectedCandidateIds": []
+      },
+      {
+        "ordinal": 151,
+        "reference": "0007-A",
+        "documentDate": null,
+        "expectedCandidateIds": [
+          "00000000-0000-4000-8000-000000000150"
+        ]
+      }
+    ],
+    "candidateOrder": "Ascending document ID; selected ID excluded; first five plus truthful additional-candidate flag.",
+    "noNormalization": "Exact reference text and supplied date, including absence; no trim, case fold or normalization."
+  }
+}

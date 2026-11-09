@@ -1,0 +1,108 @@
+--- a/gradle/ukkera-pos-compile-repository.init.gradle
++++ b/gradle/ukkera-pos-compile-repository.init.gradle
+@@ -8,10 +8,13 @@
+ import org.gradle.api.tasks.Sync
+ 
+ // This value is derived from the normalized source recipe, not a runtime override.
+-def expectedGroup = "local.ukkera.pos.p2pkit.s45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619"
++def expectedGroup = "local.ukkera.pos.p2pkit.s67d17eafcb2b68421b61b25d89198ea7a6cac714af1be530fd714e7a3ea47229"
+ def selectedPublications = [
+-    ":p2p-core": ["kotlinMultiplatform", "jvm", "android"],
+-    ":p2p-transport-lan": ["kotlinMultiplatform", "android"],
++    ":p2p-core": [kotlinMultiplatform: "p2p-core", jvm: "p2p-core-jvm", android: "p2p-core-android"],
++    ":p2p-transport-lan": [kotlinMultiplatform: "p2p-transport-lan", android: "p2p-transport-lan-android"],
++    ":p2p-rpc": [kotlinMultiplatform: "p2p-rpc", android: "p2p-rpc-android"],
++    ":p2p-network-provisioning-android": [kotlinMultiplatform: "p2p-network-provisioning-android",
++                                         android: "p2p-network-provisioning-android-android"],
+ ]
+ gradle.projectsEvaluated {
+     def root = gradle.rootProject
+@@ -33,11 +36,13 @@
+     selectedPublications.each { projectPath, names ->
+         def owner = root.project(projectPath)
+         def publications = owner.extensions.getByType(PublishingExtension).publications
+-        names.each { publicationName ->
++        names.each { publicationName, expectedArtifactId ->
+             // Missing or differently named plugin variants fail; never synthesize a replacement POM/AAR.
+             def publication = publications.getByName(publicationName)
+             if (!(publication instanceof MavenPublication) || publication.groupId != expectedGroup ||
+-                publication.version != "0.8.0") throw new GradleException("Unbound publication identity")
++                publication.version != "0.8.0" || publication.artifactId != expectedArtifactId) {
++                throw new GradleException("Unbound publication identity")
++            }
+             def stem = "${publication.artifactId}-${publication.version}"
+             def directory = "${expectedGroup.replace('.', '/')}/${publication.artifactId}/${publication.version}"
+             def suffix = publicationName.substring(0, 1).toUpperCase(Locale.ROOT) + publicationName.substring(1)
+--- a/library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt
++++ b/library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt
+@@ -2,25 +2,19 @@
+ 
+ package dev.p2pkit.core.internal
+ 
+-import kotlinx.cinterop.alloc
+-import kotlinx.cinterop.memScoped
+-import kotlinx.cinterop.ptr
+ import kotlinx.coroutines.flow.MutableStateFlow
+-import platform.darwin.mach_continuous_time
+-import platform.darwin.mach_timebase_info
+-import platform.darwin.mach_timebase_info_data_t
++import platform.posix.CLOCK_MONOTONIC_RAW
++import platform.posix.clock_gettime_nsec_np
+ 
+ internal actual class DisclosureClock private constructor(
+     actual val initialMillis: Long,
+-    private val numerator: ULong,
+-    private val denominator: ULong,
+ ) {
+     private val retired = MutableStateFlow(false)
+     actual val isAvailable: Boolean get() = !retired.value
+ 
+     actual fun sampleMillis(): Long {
+         if (retired.value) return INVALID_DISCLOSURE_CLOCK_SAMPLE
+-        val value = continuousMillis(numerator, denominator)
++        val value = continuousMillis()
+         if (value < 0) retire()
+         return if (retired.value) INVALID_DISCLOSURE_CLOCK_SAMPLE else value
+     }
+@@ -28,30 +22,22 @@
+     actual fun retire() { retired.value = true }
+ 
+     companion object {
+-        fun prepare(): DisclosureClock? = memScoped {
+-            val info = alloc<mach_timebase_info_data_t>()
+-            if (mach_timebase_info(info.ptr) != 0 || info.numer == 0u || info.denom == 0u) return@memScoped null
+-            val numerator = info.numer.toULong()
+-            val denominator = info.denom.toULong()
+-            val initial = continuousMillis(numerator, denominator)
+-            if (initial < 0) null else DisclosureClock(initial, numerator, denominator)
++        fun prepare(): DisclosureClock? {
++            // Prepare the actual native API before any session/disclosure locks.
++            val initial = continuousMillis()
++            return if (initial < 0) null else DisclosureClock(initial)
+         }
+     }
+ }
+ 
+ internal actual fun prepareDisclosureClock(): DisclosureClock? = DisclosureClock.prepare()
+ 
+-private fun continuousMillis(numerator: ULong, denominator: ULong): Long {
+-    // Continuous Mach time includes sleep. Timebase IO/init was completed before this sample.
+-    val ticks = mach_continuous_time()
+-    val whole = ticks / denominator
+-    val remainder = ticks % denominator
+-    if (whole > ULong.MAX_VALUE / numerator || remainder > ULong.MAX_VALUE / numerator) {
+-        return INVALID_DISCLOSURE_CLOCK_SAMPLE
+-    }
+-    val nanos = whole * numerator
+-    val tail = remainder * numerator / denominator
+-    if (tail > ULong.MAX_VALUE - nanos) return INVALID_DISCLOSURE_CLOCK_SAMPLE
+-    val millis = (nanos + tail) / 1_000_000uL
++private fun continuousMillis(): Long {
++    // Darwin's exact RAW wrapper uses mach_continuous_time, including sleep.
++    // UPTIME_RAW, approximate clocks and ordinary elapsed-clock fallbacks are forbidden.
++    val nanos = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
++    // The native API documents zero as failure, not a valid replacement clock sample.
++    if (nanos == 0uL) return INVALID_DISCLOSURE_CLOCK_SAMPLE
++    val millis = nanos / 1_000_000uL
+     return if (millis > Long.MAX_VALUE.toULong()) INVALID_DISCLOSURE_CLOCK_SAMPLE else millis.toLong()
+ }

@@ -1,0 +1,11 @@
+--- a/library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt
++++ b/library/p2p-core/src/iosMain/kotlin/dev/p2pkit/core/internal/DisclosureClock.ios.kt
+@@ -35,7 +35,7 @@
+ private fun continuousMillis(): Long {
+     // Darwin's exact RAW wrapper uses mach_continuous_time, including sleep.
+     // UPTIME_RAW, approximate clocks and ordinary elapsed-clock fallbacks are forbidden.
+-    val nanos = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
++    val nanos = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW.toUInt())
+     // The native API documents zero as failure, not a valid replacement clock sample.
+     if (nanos == 0uL) return INVALID_DISCLOSURE_CLOCK_SAMPLE
+     val millis = nanos / 1_000_000uL

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1",
+  "scope": {
+    "organizationId": "00000000-0000-4000-8000-00000000000b",
+    "companyId": "00000000-0000-4000-8000-00000000000c",
+    "branchId": "00000000-0000-4000-8000-00000000000d"
+  },
+  "coverage": "central-accepted-evidence-only",
+  "items": [
+    {
+      "operationId": "00000000-0000-4000-8000-0000000000c9",
+      "contentHash": "sha256:070da7cf4fd7fed76953b38330bc689e3e75a1bc8aa4720f88a37488001e471c",
+      "authorityEpoch": "1",
+      "journalSequence": "1",
+      "disposition": "accepted"
+    }
+  ],
+  "checkpoints": [
+    {
+      "authorityEpoch": "1",
+      "highestContiguousAcceptedSequence": "1",
+      "highestAcceptedSequence": "1",
+      "missingRanges": []
+    }
+  ]
+}

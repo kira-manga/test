@@ -1,0 +1,304 @@
+{
+  "design_version": "1",
+  "status": "DRAFT_NOT_FROZEN_NOT_RUN",
+  "purpose": "Synthetic requirements facts and exact observables, not production schema, wire payloads, authority proofs or execution evidence",
+  "decimal_rule": "Every amount, rate, quantity, revision and sequence is a decimal string; independently compare exact values, never floating-point tolerances",
+  "identity_rule": "Logical labels bind to legitimate fresh production IDs; original semantic actor/operation identity is unchanged across retries",
+  "source_version_label_rule": "C-STD-5 and C-STD-6 label revisions5 and6 of the same stable COMP-FOOD/P-RED/V-RED/STANDARD company price rule/context. They do not require changing stable rule, context, product or variant identity. O-STD-5 and O-STD-6 are distinct accepted branch changes bound to those source versions. Do not bind supersession to unrelated rules or contexts.",
+  "fixtures": {
+    "F-BASE": {
+      "sources": ["S-AUTH", "S-REV", "S-RESET", "S-NUM"],
+      "currency": "EGP",
+      "organization": "ORG-A",
+      "company": "COMP-FOOD",
+      "branch": "A1",
+      "other_same_company_branch": "A2",
+      "other_company": "COMP-CLOTHING",
+      "other_company_branch": "B1",
+      "policy_revision": "5",
+      "standard": {"product": "P-RED", "variant": "V-RED", "context": "STANDARD", "rule": "C-STD-5", "company_revision": "5", "company_unit": "100.00", "tax_included": false, "tax_rate": "0", "branch_override": "O-STD-5", "branch_unit": "120.00", "base_revision": "5"},
+      "unrelated_product": {"product": "P-OTHER", "variant": "V-OTHER", "context": "STANDARD", "rule": "C-OTHER-2", "company_revision": "2", "company_unit": "50.00", "branch_override": "O-OTHER-2", "branch_unit": "60.00", "base_revision": "2"},
+      "other_variant": {"product": "P-RED", "variant": "V-BLUE", "context": "STANDARD", "rule": "C-BLUE-4", "company_revision": "4", "company_unit": "80.00", "branch_override": "O-BLUE-4", "branch_unit": "90.00", "base_revision": "4"},
+      "delivery_override": {"product": "P-RED", "variant": "V-RED", "context": "DELIVERY", "rule": "C-DELIVERY-3", "company_revision": "3", "company_unit": "130.00", "branch_override": "O-DELIVERY-3", "branch_unit": "140.00", "base_revision": "3"},
+      "A2_standard": {"company_revision": "5", "current_source": "C-STD-5", "unit": "100.00", "branch_override": null},
+      "B1_standard": {"product": "P-CLOTHING", "variant": "V-CLOTHING", "context": "STANDARD", "company_revision": "5", "unit": "100.00", "current_source": "C-CLOTHING-5"},
+      "no_price_admin_business_deltas": {"sales": "0", "collections": "0", "refunds": "0", "stock_quantity": "0", "stock_value": "0", "reservations": "0", "kitchen_issues": "0", "cash_custody_movements": "0", "entitlement_consumption": "0"}
+    },
+    "F-REVISION": {
+      "sources": ["S-REV", "S-RESET", "S-ACT", "S-OP"],
+      "received_release": "RELEASE-6",
+      "company": "COMP-FOOD",
+      "target_branch": "A1",
+      "product": "P-RED",
+      "variant": "V-RED",
+      "context": "STANDARD",
+      "stable_rule_identity": "C-STD",
+      "new_rule": "C-STD-6",
+      "new_company_revision": "6",
+      "new_unit": "150.00",
+      "pre_activation": {"company_revision": "5", "current_source": "O-STD-5", "current_unit": "120.00", "two_unit_quote": "240.00"},
+      "post_activation": {"company_revision": "6", "current_source": "C-STD-6", "current_unit": "150.00", "new_two_unit_quote": "300.00"},
+      "late_new_edit": {"operation": "OP-LATE-R5", "actor": "E-A1", "base_revision": "5", "proposed_unit": "125.00", "expected": "STALE_REVISION_REFUSAL_NO_EFFECT"},
+      "new_authorized_override": {"operation": "OP-SET160-R6", "actor": "E-A1", "base_revision": "6", "override": "O-STD-6", "unit": "160.00"},
+      "reset_after_r6": {"operation": "OP-RESET-R6", "current_source": "C-STD-6", "unit": "150.00"},
+      "equal_amount_override": {"operation": "OP-EQUAL100-R5", "override": "O-EQUAL-5", "base_revision": "5", "unit": "100.00", "source_before_reset": "O-EQUAL-5", "source_after_reset": "C-STD-5"}
+    },
+    "F-SCOPE": {
+      "sources": ["S-REV", "S-RESET", "S-AUTH"],
+      "after_A1_standard_activation": {"A1_STANDARD": "150.00", "A1_DELIVERY": "140.00", "A1_P_OTHER": "60.00", "A1_V_BLUE": "90.00", "A2_STANDARD": "100.00", "B1_STANDARD": "100.00"},
+      "repeat_isolated_contexts": ["STANDARD", "DINE_IN", "TAKEAWAY", "DELIVERY", "QUANTITY_TIER", "DATED_RULE", "VARIANT_RULE"],
+      "unrelated_changes": ["product description only", "unrelated policy field with no relevant price revision"]
+    },
+    "F-ATOMIC": {
+      "sources": ["S-ACT", "S-AUTH", "S-REV", "S-SEC", "S-OP"],
+      "old": {"company_revision": "5", "current_source": "O-STD-5", "unit": "120.00", "policy_revision": "5", "E_A1_branch_set_allowed": true},
+      "new": {"company_revision": "6", "current_source": "C-STD-6", "unit": "150.00", "policy_revision": "6", "E_A1_branch_set_allowed": false},
+      "race_request": {"operation": "OP-RACE125-R5", "actor": "E-A1", "base_revision": "5", "unit": "125.00"},
+      "allowed_race_results": [
+        {"ordering": "edit before activation", "edit": "COMMITTED_ORIGINAL125_R5", "final_current_source": "C-STD-6", "final_unit": "150.00", "final_policy_revision": "6"},
+        {"ordering": "activation before edit", "edit": "REFUSED_CURRENT_PERMISSION_OR_REVISION_NO_EFFECT", "final_current_source": "C-STD-6", "final_unit": "150.00", "final_policy_revision": "6"}
+      ],
+      "allowed_complete_observer_pairs": [
+        {"unit": "120.00", "policy_revision": "5"},
+        {"unit": "125.00", "policy_revision": "5", "condition": "preceding edit committed"},
+        {"unit": "150.00", "policy_revision": "6"}
+      ]
+    },
+    "F-INVALID": {
+      "sources": ["S-ACT", "S-AUTH", "S-NUM", "S-OP"],
+      "authentic_production_envelope": "UNBOUND:B-RELEASE",
+      "variants": [
+        "wrong company", "wrong branch for branch-scoped package", "unsupported schema", "missing required dependency", "conflicting reused receipt identity", "unvalidated source", "truncated incomplete download", "out-of-order r7 with required r6 absent", "late r5 after active r6", "unit price 100.123456789 with unsupported ninth fractional digit"
+      ],
+      "expected_before_r6": {"company_revision": "5", "policy_revision": "5", "current_source": "O-STD-5", "unit": "120.00"},
+      "expected_after_r6": {"company_revision": "6", "current_source": "C-STD-6", "unit": "150.00"},
+      "refusal_effect": "No successful price/configuration or downstream business effect; safe inbox/refusal/audit metadata is permitted"
+    },
+    "F-CONTEXTS": {
+      "sources": ["S-CONTEXT", "S-REV", "S-NUM"],
+      "fixture_scope": "Independent context-selection release without baseline branch overrides unless a row explicitly supplies one",
+      "tax_rate": "0",
+      "charges": "0.00",
+      "semantic_priority": ["dated eligible rule before tier", "tier before channel", "explicit variant rule before product", "declared product rule before category", "standard fallback when no eligible optional rule"],
+      "rules": [
+        {"id": "C-STD-5", "context": "STANDARD", "revision": "5", "unit": "100.00"},
+        {"id": "C-DINE-2", "context": "DINE_IN", "revision": "2", "unit": "110.00", "requires_explicit_enable": true},
+        {"id": "C-TAKE-2", "context": "TAKEAWAY", "revision": "2", "unit": "90.00", "requires_explicit_enable": true},
+        {"id": "C-DELIVERY-3", "context": "DELIVERY", "revision": "3", "unit": "130.00", "requires_explicit_enable": true},
+        {"id": "C-TIER-2", "context": "QUANTITY_TIER", "revision": "2", "unit": "95.00", "eligible_quantities": ["5", "6", "7", "8", "9"]},
+        {"id": "C-DATE-2", "context": "DATED_RULE", "revision": "2", "unit": "75.00", "period_start_utc": "2026-11-01T10:00:00Z", "period_end_utc": "2026-11-02T10:00:00Z", "endpoint_inclusivity": "UNBOUND:B-ORDER"},
+        {"id": "C-CATEGORY-2", "context": "CATEGORY_RULE", "revision": "2", "unit": "90.00", "priority": "lower than the expressly declared product rule"},
+        {"id": "C-PRODUCT-2", "context": "PRODUCT_RULE", "revision": "2", "unit": "100.00", "priority": "higher than category"},
+        {"id": "C-VARIANT-2", "context": "VARIANT_RULE", "revision": "2", "variant": "V-BLUE", "unit": "85.00", "priority": "expressly higher than product/category"}
+      ],
+      "context_queries": [
+        {"id": "DEFAULT-DINE", "phase": "optional channel prices disabled", "channel": "DINE_IN", "quantity": "1", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "100.00"},
+        {"id": "DEFAULT-TAKE", "phase": "optional channel prices disabled", "channel": "TAKEAWAY", "quantity": "1", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "100.00"},
+        {"id": "DEFAULT-DELIVERY", "phase": "optional channel prices disabled", "channel": "DELIVERY", "quantity": "1", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "100.00"},
+        {"id": "ENABLED-DINE", "phase": "enabled channel rules", "channel": "DINE_IN", "quantity": "1", "current_source": "C-DINE-2", "context_revision": "2", "unit": "110.00", "payable": "110.00"},
+        {"id": "ENABLED-TAKE", "phase": "enabled channel rules", "channel": "TAKEAWAY", "quantity": "1", "current_source": "C-TAKE-2", "context_revision": "2", "unit": "90.00", "payable": "90.00"},
+        {"id": "ENABLED-DELIVERY", "phase": "enabled channel rules", "channel": "DELIVERY", "quantity": "1", "current_source": "C-DELIVERY-3", "context_revision": "3", "unit": "130.00", "payable": "130.00"},
+        {"id": "BELOW-TIER", "phase": "tier plus standard", "channel": "STANDARD", "quantity": "4", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "400.00"},
+        {"id": "AT-TIER", "phase": "tier plus standard", "channel": "STANDARD", "quantity": "5", "current_source": "C-TIER-2", "context_revision": "2", "unit": "95.00", "payable": "475.00"},
+        {"id": "DATE-BEFORE", "phase": "dated plus standard", "instant_utc": "2026-11-01T09:00:00Z", "channel": "STANDARD", "quantity": "1", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "100.00"},
+        {"id": "DATE-INSIDE", "phase": "dated plus standard", "instant_utc": "2026-11-01T14:00:00Z", "channel": "STANDARD", "quantity": "1", "current_source": "C-DATE-2", "context_revision": "2", "unit": "75.00", "payable": "75.00"},
+        {"id": "DATE-AFTER", "phase": "dated plus standard", "instant_utc": "2026-11-02T11:00:00Z", "channel": "STANDARD", "quantity": "1", "current_source": "C-STD-5", "context_revision": "5", "unit": "100.00", "payable": "100.00"},
+        {"id": "PRODUCT-PRIORITY", "phase": "product/category declared overlap", "variant": "V-RED", "channel": "STANDARD", "quantity": "1", "current_source": "C-PRODUCT-2", "context_revision": "2", "unit": "100.00", "payable": "100.00"},
+        {"id": "VARIANT-PRIORITY", "phase": "variant/product/category declared overlap", "variant": "V-BLUE", "channel": "STANDARD", "quantity": "1", "current_source": "C-VARIANT-2", "context_revision": "2", "unit": "85.00", "payable": "85.00"}
+      ]
+    },
+    "F-PREVIEW": {
+      "sources": ["S-CONTEXT", "S-ACT", "S-SNAPSHOT"],
+      "protected_original_quote": "120.00",
+      "priority_rules": [{"id": "R-CATEGORY", "unit": "90.00", "semantic_priority": "lower"}, {"id": "R-PRODUCT", "unit": "100.00", "semantic_priority": "higher"}],
+      "expected_source": "R-PRODUCT",
+      "expected_unit": "100.00",
+      "incompatible_overlap": "UNBOUND:B-PUBLIC published incompatible overlap/required validation classification; must be flagged, failing required validation remains unapplied",
+      "tie_rules": [{"id": "R-TIE-A", "unit": "100.00"}, {"id": "R-TIE-B", "unit": "100.00"}],
+      "tie_expected_source": "UNBOUND:B-ORDER",
+      "tie_expected_unit": "100.00"
+    },
+    "F-AUTH": {
+      "sources": ["S-AUTH", "S-ACT", "S-SEC"],
+      "local_editor": {"label": "E-A1", "company": "COMP-FOOD", "branch": "A1", "enabled": true, "company_branch_edit_allowed": true, "explicit_actions": ["branch price set", "branch price inheritance/reset"], "eligible_product": "P-RED", "eligible_variant": "V-RED", "eligible_context": "STANDARD", "monetary_ceiling": "explicit company-authorized no monetary ceiling for these scoped actions", "company_publication_grant": false},
+      "cashier": {"label": "C-A1", "branch": "A1", "normal_effective_price_sale_allowed": true, "free_form_discount_allowed": false, "price_admin_allowed": false},
+      "manager": {"label": "M-A1", "branch": "A1", "approval_scope": "explicitly granted manual-line-discount for another authorized requestor", "policy_admin": false, "branch_price_admin": false, "self_approval": false},
+      "self_approver": {"label": "S-A1", "branch": "A1", "named_company_self_approval": "manual-line-discount only within limits", "policy_admin": false, "branch_price_admin": false, "master_recovery": false},
+      "company_admin": {"label": "CA-FOOD", "company": "COMP-FOOD", "central_company_publication_grant": true, "branch_local_account": null, "local_branch_work": false},
+      "authority_matrix": [
+        {"id": "POLICY-AND-GRANT", "company_branch_edit": true, "employee_explicit_branch_set": true, "scope": "A1/P-RED/V-RED/STANDARD", "expected": "ALLOW120_R5"},
+        {"id": "COMPANY-DENY", "company_branch_edit": false, "employee_explicit_branch_set": true, "expected": "REFUSE_NO_EFFECT"},
+        {"id": "EMPLOYEE-NO-GRANT", "company_branch_edit": true, "employee_explicit_branch_set": false, "expected": "REFUSE_NO_EFFECT"},
+        {"id": "GENERIC-MANAGER", "actor": "M-A1", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "CENTRAL-NO-LOCAL-ACCOUNT", "actor": "CA-FOOD", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "ADMISSION-ONLY", "local_session": null, "expected": "REFUSE_NO_EFFECT"},
+        {"id": "WRONG-BRANCH", "requested_branch": "A2", "expected": "REFUSE_NO_EFFECT_NO_FOREIGN_DATA"},
+        {"id": "WRONG-COMPANY", "requested_company": "COMP-CLOTHING", "expected": "REFUSE_NO_EFFECT_NO_FOREIGN_DATA"},
+        {"id": "WRONG-CONTEXT", "requested_context": "DELIVERY", "actor_scope": "STANDARD only", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "SESSION-EXPIRED", "session_state": "expired", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "ACCOUNT-DISABLED", "session_state": "disabled", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "SELF-ELEVATION", "attempt": "author enlarges delegated price/policy scope", "expected": "REFUSE_NO_EFFECT_SAFE_AUDIT"},
+        {"id": "LOCAL-COMPANY-PUBLISH", "actor": "E-A1", "attempt": "publish a company base price from only a local grant", "expected": "REFUSE_NO_EFFECT"}
+      ]
+    },
+    "F-LIMITS": {
+      "sources": ["S-AUTH", "S-NUM", "S-CONTEXT"],
+      "action": "Original manual-line-discount on one unpromoted tax-free unit, not a universal branch-deviation formula",
+      "base_payable": "100.00",
+      "quantity": "1",
+      "charges": "0.00",
+      "rows": [
+        {"id": "BOTH-AT-BOUND", "amount_ceiling": "20.00", "percentage_ceiling": "20", "discount": "20.00", "discount_percentage": "20", "payable_if_allowed": "80.00", "expected": "ALLOW"},
+        {"id": "BOTH-OVER", "amount_ceiling": "20.00", "percentage_ceiling": "20", "discount": "20.01", "discount_percentage": "20.01", "payable_if_allowed": "79.99", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "AMOUNT-ONLY-OVER", "amount_ceiling": "15.00", "percentage_ceiling": "20", "discount": "16.00", "discount_percentage": "16", "payable_if_allowed": "84.00", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "PERCENT-ONLY-OVER", "amount_ceiling": "20.00", "percentage_ceiling": "10", "discount": "11.00", "discount_percentage": "11", "payable_if_allowed": "89.00", "expected": "REFUSE_NO_EFFECT"},
+        {"id": "OMITTED-LIMIT", "amount_ceiling": "UNCONFIGURED", "percentage_ceiling": "UNCONFIGURED", "discount": "20.00", "expected": "NEEDS_VISIBLE_ACTION_SETUP_RESOLUTION_NOT_UNLIMITED"},
+        {"id": "EXPLICIT-NO-CEILING", "amount_ceiling": "explicit company no monetary ceiling", "percentage_ceiling": "explicit company no percentage ceiling", "discount": "20.00", "discount_percentage": "20", "payable_if_allowed": "80.00", "expected": "ALLOW_ONLY_WITH_ACTION_AND_SCOPE_GRANTS"}
+      ]
+    },
+    "F-APPROVAL": {
+      "sources": ["S-AUTH", "S-SEC", "S-OP"],
+      "company": "COMP-FOOD", "branch": "A1", "requestor": "E-A1", "approver": "M-A1", "action": "manual-line-discount", "document": "Q1", "document_version": "1", "line": "L1", "discount": "20.00", "reason": "synthetic permitted reason", "expected_valid_payable": "80.00",
+      "invalidating_changes": ["amount20 to19", "lineL1 toL2", "requestor", "branch", "action", "reason", "document version", "relevant policy/revision outside approved values"],
+      "named_self_action": "manual-line-discount only",
+      "named_self_other_actions_refused": ["branch-price-set", "branch-price-reset", "company-policy", "cash-writeoff", "master-recovery"]
+    },
+    "F-ORDERS": {
+      "sources": ["S-SNAPSHOT", "S-REV", "S-OP"],
+      "quantity": "2", "old_unit": "120.00", "old_source": "O-STD-5", "old_base_revision": "5", "old_total": "240.00", "new_unit": "150.00", "new_source": "C-STD-6", "new_company_revision": "6", "eligible_repriced_total": "300.00", "new_line_quantity": "1", "new_line_total": "150.00", "preserved_plus_new_total": "390.00",
+      "protected_states": ["customer-committed quote", "collection-locked", "partially collected", "posted paid sale"],
+      "eligible_states_when_explicitly_enabled": ["unpaid unlocked draft", "unpaid unlocked parked order not expressly excluded"],
+      "default_existing_line_total": "240.00",
+      "lock_race_allowed": [{"ordering": "lock before repricing", "locked_total": "240.00"}, {"ordering": "reprice before lock", "locked_total": "300.00"}]
+    },
+    "F-SALE-RETURN": {
+      "sources": ["S-RETURN", "S-SNAPSHOT", "S-NUM", "S-OP"],
+      "scope": "same selling branch A1",
+      "tax_rate": "0", "discount": "0.00", "charges": "0.00", "initial_stock_quantity": "10", "unit_cost": "40.00", "initial_stock_value": "400.00", "recorded_opening_cash": "1000.00",
+      "sale": {"operation": "OP-SALE-240", "actor": "C-A1", "quantity": "2", "unit_price": "120.00", "current_source_at_sale": "O-STD-5", "base_revision": "5", "payable": "240.00", "recorded_cash_collection": "240.00", "cost": "80.00", "stock_after": "8", "stock_value_after": "320.00"},
+      "later_current": {"source": "C-STD-6", "unit_price": "150.00", "revision": "6"},
+      "return_policy": "Synthetic original-price permitted same-branch return, successful required inspection and sellable release",
+      "return": {"operation": "OP-RETURN-1", "actor": "R-A1", "quantity": "1", "original_paid_allocation": "120.00", "inspection": "accepted sellable", "stock_after_release": "9", "stock_value_after_release": "360.00"},
+      "refund": {"operation": "OP-REFUND-120", "amount": "120.00", "tender": "synthetic recorded actual cash outcome", "effect_count": "1", "recorded_cash_after": "1120.00"},
+      "remaining_entitlement": {"quantity": "1", "original_paid_amount": "120.00"},
+      "physical_cash_proof": "UNBOUND:B-NATIVE separately witnessed1000 plus240 minus120"
+    },
+    "F-NUMERIC": {
+      "sources": ["S-NUM", "S-OP"],
+      "rounding": "Default half-up at EGP two-digit posting boundary, tax-free fixture and no fiscal adapter override",
+      "supported": [{"unit_price": "100.00500000", "quantity": "1", "posted_payable": "100.01", "posted_minor": "10001"}, {"unit_price": "100.00000001", "quantity": "1", "posted_payable": "100.00", "posted_minor": "10000"}],
+      "unsupported_unit_price": ["100.123456789", "NaN", "Infinity", "-Infinity"],
+      "unsupported_quantity": "0.2500001",
+      "overflow": {"unit_price": "92233720368547758.08000000", "quantity": "1", "would_post_minor": "9223372036854775808", "max_signed64_minor": "9223372036854775807", "expected": "REFUSE_BEFORE_WRITE"}
+    },
+    "F-WEIGHT-COST": {
+      "sources": ["S-WEIGHT-COST", "S-NUM", "S-REV"],
+      "decoded_quantity_kg": "0.250000",
+      "old_price_per_kg": "100.00", "old_payable": "25.00", "new_price_per_kg": "150.00", "new_payable": "37.50", "new_source": "C-STD-6", "old_embedded_payable": "25.00", "embedded_price_company_context": "not enabled", "old_embedded_expected": "REFUSE_CURRENT_AMOUNT_BYPASS_AND_REQUIRE_APPROVED_CONTEXT_OR_RELABEL_REWEIGH",
+      "raw_barcode_and_checksum": "UNBOUND:B-NATIVE approved production format; no invented encoding",
+      "supplier_cost_before": "40.00", "supplier_cost_after": "50.00", "selling_price_after_cost_change": "150.00", "selling_source_after_cost_change": "C-STD-6"
+    },
+    "F-TAX": {
+      "sources": ["S-NUM"],
+      "rate_percent": "14", "rate_scope": "illustrative synthetic rate, not a universal Egyptian tax decision",
+      "lines": [{"id": "TAX-I", "quantity": "1", "unit_price": "114.00", "tax_included": true, "net": "100.00", "tax": "14.00", "gross": "114.00"}, {"id": "TAX-E", "quantity": "1", "unit_price": "100.00", "tax_included": false, "net": "100.00", "tax": "14.00", "gross": "114.00"}],
+      "total_net": "200.00", "total_tax": "28.00", "total_payable": "228.00", "other_charges": "0.00"
+    },
+    "F-OPERATIONS": {
+      "sources": ["S-OP", "S-REV", "S-RECOVERY", "S-SEC"],
+      "rows": [
+        {"operation": "OP-RECEIVE-R6", "kind": "legitimate receipt", "actor": "bound legitimate company release source", "original_expected": "original unique received/staged status or applied status at its original cut", "later_transition": "later valid activation", "binding": "B-RELEASE"},
+        {"operation": "OP-ACTIVATE-R6", "kind": "atomic activation", "actor": "bound legitimate activation context", "original_source": "C-STD-6", "original_revision": "6", "original_unit": "150.00", "later_transition": "valid company r7 activation after original r6", "binding": "B-RELEASE"},
+        {"operation": "OP-SET120-R5", "kind": "branch set", "actor": "E-A1", "original_source": "O-STD-5", "original_base_revision": "5", "original_unit": "120.00", "later_transition": "company150/r6"},
+        {"operation": "OP-RESET100-R5", "kind": "branch reset", "actor": "E-A1", "original_source": "C-STD-5", "original_revision": "5", "original_unit": "100.00", "later_transition": "company150/r6"}
+      ],
+      "same_identity_expected_effect_count": "1",
+      "changed_identity_content": ["different amount", "different product/variant/context", "different expected revision", "different original actor"],
+      "legitimate_transient_changes": ["transport request ID", "session refresh with same original actor", "connection incarnation", "approved routing authority change with coherent original-result recovery"]
+    },
+    "F-REFUSAL": {
+      "sources": ["S-OP", "S-AUTH", "S-REV"],
+      "operation": "OP-RECORDED-LIMIT-REFUSAL", "actor": "E-A1", "action": "manual-line-discount", "original_base_payable": "100.00", "proposed_discount": "20.01", "original_limits": {"amount": "20.00", "percentage": "20"}, "original_outcome": "conclusive recorded REJECTED limit refusal", "original_payable_unchanged": "100.00",
+      "later_authorized_limits": {"amount": "25.00", "percentage": "25"},
+      "retry_original_outcome": "same original REJECTED, no discount or other business effect",
+      "fresh_request": {"operation": "OP-FRESH-DISCOUNT2001", "actor": "E-A1", "discount": "20.01", "payable": "79.99", "expected": "COMMITTED_ONCE_IF_CURRENT_SCOPE_APPROVAL_VALID"},
+      "not_a_refusal_fixture": "Transient storage/transport failure before conclusive result; recover using original identity rather than permanently cache not-found"
+    },
+    "F-RECOVERY": {
+      "sources": ["S-RECOVERY", "S-OP", "S-SEC"],
+      "required_price_workflow_cut": ["active company/branch price/policy dependencies", "received pending valid releases and invalid receipt reasons", "original committed operation IDs/results", "recorded original refusal", "original source/quote/sale/return snapshots", "collection locks and original actors", "retained company/branch price history", "durable local inbox/outbox and audit identities", "authority/numbering coverage and compatible reader versions"],
+      "invalid_variants": ["truncated", "corrupt", "wrong branch/company", "unsupported schema", "wrong-key under the existing qualified recovery contract"],
+      "corrupt_expected": "Old usable state intact, explicit rejection/gap, no destructive reset",
+      "incomplete_independent_copy_expected": "Exact retained cut and possible missing tail disclosed, no zero-loss claim or automatic re-execution",
+      "native_backup_or_crypto_input": "UNBOUND:B-NATIVE existing qualified recovery contract; no new algorithms or private identity cloning"
+    },
+    "F-HISTORY": {
+      "sources": ["S-READ", "S-REV", "S-RESET", "S-OP"],
+      "scope": "COMP-FOOD/A1/P-RED/V-RED/STANDARD selected logical price facts",
+      "records": [
+        {"id": "H1", "order": "1", "fact": "original company r5 activation", "company_revision": "5", "source": "C-STD-5", "unit": "100.00"},
+        {"id": "H2", "order": "2", "fact": "accepted branch set", "operation": "OP-SET120-R5", "company_revision": "5", "base_revision": "5", "source": "O-STD-5", "unit": "120.00"},
+        {"id": "H3", "order": "3", "fact": "relevant company r6 activation", "company_revision": "6", "source": "C-STD-6", "unit": "150.00"},
+        {"id": "H4", "order": "4", "fact": "accepted branch set", "operation": "OP-SET160-R6", "company_revision": "6", "base_revision": "6", "source": "O-STD-6", "unit": "160.00"},
+        {"id": "H5", "order": "5", "fact": "accepted reset/inheritance", "operation": "OP-RESET-R6", "company_revision": "6", "source": "C-STD-6", "unit": "150.00"}
+      ],
+      "fixed_cut": "after H4 before H5",
+      "row_budget": "2",
+      "ascending_fixed_pages": [["H1", "H2"], ["H3", "H4"]],
+      "descending_fixed_pages": [["H4", "H3"], ["H2", "H1"]],
+      "fixed_selected_count": "4",
+      "source_at_fixed_cut": {"source": "O-STD-6", "unit": "160.00", "company_revision": "6", "base_revision": "6"},
+      "live_source_after_H5": {"source": "C-STD-6", "unit": "150.00", "company_revision": "6"},
+      "fresh_cut_selected_count": "5",
+      "high_water_wire_or_cursor": "UNBOUND:B-HISTORY; fixture cut is a logical authorized consistent observation, not a mandated API field"
+    },
+    "F-HISTORY-BOUNDS": {
+      "sources": ["S-READ", "S-NUM", "S-AUTH", "S-SEC"],
+      "row_budget": "2", "byte_budget": "UNBOUND:B-HISTORY supported explicit production count/byte contract",
+      "counts": [{"selected": "0", "expected_page_row_counts": ["0"]}, {"selected": "1", "expected_page_row_counts": ["1"]}, {"selected": "2", "expected_page_row_counts": ["2"]}, {"selected": "3", "expected_page_row_counts": ["2", "1"]}],
+      "count_page_assumption": "These exact row splits require the bound byte budget to admit two complete selected rows; otherwise byte-bounded splits still conserve exact membership",
+      "exact_sequences": ["9007199254740992", "9007199254740993", "9223372036854775807"],
+      "first_sequence_difference": "1",
+      "unsupported_next_sequence": "9223372036854775808",
+      "expired_journal_cursor_expected": "CURSOR_EXPIRED and a fresh authorized snapshot route, no incomplete silent history",
+      "retention_duration": "UNBOUND:B-RETENTION; no price TTL is invented",
+      "foreign_filters": ["COMP-CLOTHING", "A2", "V-BLUE", "DELIVERY"]
+    },
+    "F-SCALE": {
+      "sources": ["S-SCALE", "S-READ", "S-OP"],
+      "profile": "original provisional P2",
+      "active_skus": "100000", "retained_journal_events": "1000000", "queued_local_sync_events": "250000", "configured_client_capacity": "25", "open_order_target": "2000", "sales_per_day_target": "20000",
+      "target_scope": "COMP-FOOD/A1/P-RED/V-RED/STANDARD",
+      "target_company_source": "C-STD-5", "target_company_revision": "5", "target_company_unit": "100.00",
+      "target_accepted_override_count": "640",
+      "override_generation": "For integer i from1 through640, a distinct accepted original branch set has exact unit100.00 + i/100 EGP and base revision5",
+      "first_original_override_unit": "100.01", "last_original_override_unit": "106.40", "final_reset_source": "C-STD-5", "final_reset_unit": "100.00", "selected_final_price_fact_count": "642",
+      "decoy_scopes": ["other company", "other branch", "other product", "other variant", "other enabled price context"],
+      "page_row_budget": "64", "page_byte_budget": "UNBOUND:B-HISTORY documented supported budget",
+      "memory_budget": "UNBOUND:B-DRIVER original qualified per-platform budget; no single universal JVM heap number",
+      "measurements": ["actual production query plans", "bounded exact membership paging", "current source and original-result lookup", "foreground writer progress", "cancellation/teardown resources", "qualified original latency metrics"],
+      "data_generation": "Qualified synthetic setup may provision valid data quickly; measured operation runs use real production commands and storage, never an in-memory stand-in or fake central service"
+    }
+  },
+  "native_bindings": {
+    "status": "UNBOUND_NOT_RUN",
+    "platforms": [
+      {"target": "Windows", "master": true, "client": true, "minimum_os": "UNBOUND", "candidate": "UNBOUND", "driver_adapter": "UNBOUND"},
+      {"target": "macOS", "master": true, "client": true, "minimum_os": "UNBOUND", "candidate": "UNBOUND", "driver_adapter": "UNBOUND"},
+      {"target": "Android", "master": true, "client": true, "minimum_os": "UNBOUND", "candidate": "UNBOUND", "driver_adapter": "UNBOUND"},
+      {"target": "physical iPhone", "master": true, "client": true, "minimum_os": "UNBOUND", "candidate": "UNBOUND", "driver_adapter": "UNBOUND"},
+      {"target": "physical iPad", "master": true, "client": true, "minimum_os": "UNBOUND", "candidate": "UNBOUND", "driver_adapter": "UNBOUND"}
+    ],
+    "package_authentication_fixture": "UNBOUND:B-RELEASE",
+    "barcode_format_and_scale_scanner_models": "UNBOUND",
+    "printer_drawer_models_and_witnessed_cash": "UNBOUND",
+    "network_topology_and_mobile_hosting_settings": "UNBOUND",
+    "native_qualified_recovery_checkpoint": "UNBOUND",
+    "central_authoring_publication_ingestion_and_recovery": "CENTRAL_DEFERRED_UNAUTHORIZED_TO_EXECUTE"
+  },
+  "case_inventory": {
+    "portable": ["LP-01", "LP-02", "LP-03", "LP-04", "LP-05", "LP-06", "LP-07", "LP-08", "LP-09", "LP-10", "LP-11", "LP-12", "LP-13", "LP-14", "LP-15", "LP-16", "LP-17", "LP-18"],
+    "native_device": ["LP-N01", "LP-N02", "LP-N03", "LP-N04", "LP-N05"],
+    "all_actual_results": "NOT_RUN"
+  }
+}

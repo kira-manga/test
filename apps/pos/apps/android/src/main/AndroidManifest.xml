@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <application
+        android:name=".PosApplication"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:theme="@style/AppTheme">
+        <!-- Local setup/original cohost. Existing-only reopening is gated by the shared
+             retained intent and original native role; no external service intent is accepted. -->
+        <service
+            android:name=".AndroidLocalBranchService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-started offline branch POS master; retains authorized local work independently of the cashier screen." />
+        </service>
+        <!-- Application-process-owned synthetic training notice. This service never opens,
+             closes, publishes or stops a training original; the shared setup owner retains
+             the exact native/profile lifetime until its genuine confirmed close. -->
+        <service
+            android:name=".AndroidLocalTrainingBranchService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-started synthetic training composition; retains a training-only foreground notice independently of the cashier screen and never publishes live data." />
+        </service>
+        <provider
+            android:name="com.ukkera.pos.app.files.AndroidLocalBranchReportDocumentsProvider"
+            android:authorities="${applicationId}.reports"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+        <provider
+            android:name="com.ukkera.pos.app.files.AndroidTrainingBranchReportDocumentsProvider"
+            android:authorities="${applicationId}.training.reports"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS">
+            <intent-filter>
+                <action android:name="android.content.action.DOCUMENTS_PROVIDER" />
+            </intent-filter>
+        </provider>
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
