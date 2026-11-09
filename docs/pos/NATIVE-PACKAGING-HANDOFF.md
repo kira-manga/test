@@ -356,3 +356,27 @@ retains both APKs, manifests, instrumentation output and native/crash logs,
 including failed instrumentation runs. API 24, 35 and 37 use the same unchanged
 N18/N19/N20 methods. These three native file-I/O slices do not qualify original
 identity, keys, setup, business operations or owner acceptance.
+
+## Android bounded cold-original backend executor
+
+`pos-android-cold-original.yml` runs the existing, unchanged
+`NativeColdOriginalTest.cos001NativeCashOriginalAcrossTwoColdReopens` method
+against the staged pair on one fresh disposable emulator. It requires the exact
+APK manifest/signature/hash checks above and refuses an existing installation.
+Select API `24`, `35`, or `37.0`; the recorded SDK must match the choice.
+
+```sh
+gh workflow run pos-android-cold-original.yml --repo kira-manga/test --ref <snapshot-branch> \
+  -f apk_source_revision=<full-app-revision-from-apk-pair.json> -f api_level=35
+```
+
+The selector exercises genuine original setup, fresh employee sessions, physical
+cash recording, separate financial application and normalized finalization,
+then original-only lookup after two confirmed owner closes/reopens. Its frozen
+UI, payment-receipt, network and failure-variant obligations remain unbound;
+a passing bounded selector does not qualify the whole COS-001 case or owner
+acceptance. The executor retains exact APK inputs, provenance, instrumentation
+output, bounded native/crash logs and a nonsecret summary. It withholds saved
+requests/results and private native cuts from the artifact. Source preparation
+and configuration validation alone are not native execution evidence; consult
+the dated run record for any actual result.

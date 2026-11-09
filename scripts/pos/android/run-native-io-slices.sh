@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Execute existing native I/O, key or selected original-ACK slices on a disposable emulator.
-# Only the ACK group creates a fresh synthetic original through the genuine native owner.
+# Execute existing native I/O, key, original-ACK or cold-original slices on a disposable emulator.
+# ACK and cold-original groups create a fresh synthetic original through the genuine native owner.
 # No group supplies fake authority or changes the frozen method assertions.
 set -euo pipefail
 [[ $# -eq 4 ]] || { echo 'usage: run-native-io-slices.sh APP_APK TEST_APK OUTPUT_DIRECTORY APK_PAIR_MANIFEST' >&2; exit 2; }
@@ -94,9 +94,9 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
 PHASE=install
-if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack ]]; then
+if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original ]]; then
   existing="$("${ADB[@]}" shell pm path com.ukkera.pos.local.testing 2>/dev/null || true)"
-  [[ -z "${existing//$'\r'/}" ]] || { echo 'Original ACK segment requires a fresh isolated installation.' >&2; exit 2; }
+  [[ -z "${existing//$'\r'/}" ]] || { echo 'Original setup slices require a fresh isolated installation.' >&2; exit 2; }
 fi
 "${ADB[@]}" install -r "$APP_APK"
 "${ADB[@]}" install -r "$TEST_APK"
@@ -192,6 +192,55 @@ record=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert record['status']==sys.argv[2]+'_SEGMENT_EXECUTED_NOT_WHOLE_NAC_CASE'
 PYACKPASS
     printf '%s\n' 'PASS: one unchanged frozen original ACK segment on a fresh isolated installation; not a whole NAC/SAS/OSR case, native platform completion or owner acceptance.' > "$OUT/summary.txt"
+    cat "$OUT/summary.txt"
+    exit 0 ;;
+  cold-original)
+    PHASE=cold-original
+    set +e
+    timeout 1200s "${ADB[@]}" shell am instrument -w -r \
+      -e class com.ukkera.pos.android.independent.coldoriginalstartv1.NativeColdOriginalTest#cos001NativeCashOriginalAcrossTwoColdReopens \
+      -e syntheticNativeColdOriginalCos001 true -e keyProtection OS_ISOLATED \
+      com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
+      | tee "$OUT/cold-original.txt"
+    status=$?
+    set -e
+    "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    "${ADB[@]}" logcat -d -s UkkeraNativeOwner:I UkkeraEnrollment:W '*:S' > "$OUT/native-owner-log.txt"
+    "${ADB[@]}" root > "$OUT/evidence-adb-context.txt" 2>&1 || true
+    timeout 90s "${ADB[@]}" wait-for-device
+    # Retain only bounded nonsecret observations; requests, results and private cuts stay local.
+    raw_evidence="${RUNNER_TEMP:?}/pos-native-cold-original-selected.json"
+    "${ADB[@]}" exec-out cat /data/user/0/com.ukkera.pos.local.testing/no_backup/cold-original-start-v1-backend-intent.json > "$raw_evidence" || true
+    python3 - "$raw_evidence" "$OUT/cold-original-summary.json" <<'PYCOLD'
+import hashlib,json,pathlib,sys
+raw=pathlib.Path(sys.argv[1]).read_bytes()
+try:
+    record=json.loads(raw)
+except (ValueError,UnicodeError):
+    summary={'result':'EVIDENCE_UNAVAILABLE'}
+else:
+    assert record['design']=='cold-original-start-v1' and record['case']=='COS-001'
+    summary={key:record.get(key) for key in ('design','case','qualification','protection','status','unboundFrozenAssertions')}
+    summary['events']=[event.get('step') for event in record.get('events',[])]
+    cleanup=[event.get('facts',{}) for event in record.get('events',[]) if event.get('step')=='FINAL_CLEANUP']
+    summary['cleanup']=[{key:event.get(key) for key in ('nativeCloseConfirmed','failureClass')} for event in cleanup]
+    summary['raw_evidence_sha256']=hashlib.sha256(raw).hexdigest()
+pathlib.Path(sys.argv[2]).write_text(json.dumps(summary,indent=2)+'\n')
+PYCOLD
+    [[ "$status" -eq 0 ]]
+    grep -Fq 'OK (1 test)' "$OUT/cold-original.txt"
+    [[ "$(grep -c '^INSTRUMENTATION_STATUS_CODE: 0' "$OUT/cold-original.txt")" -eq 1 ]]
+    if grep -Eq '^INSTRUMENTATION_STATUS_CODE: -(1|2|3|4)|FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$OUT/cold-original.txt"; then
+      echo 'Cold-original selector failed or skipped.' >&2; exit 1
+    fi
+    python3 - "$OUT/cold-original-summary.json" <<'PYCOLDPASS'
+import json,pathlib,sys
+record=json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert record['status']=='BOUNDED_NATIVE_ASSERTIONS_OBSERVED_WHOLE_CASE_NOT_QUALIFIED'
+assert record['events'].count('COLD_REOPEN_ORIGINAL_RECOVERY_OBSERVED')==2
+assert record['cleanup']==[{'nativeCloseConfirmed':True,'failureClass':None}]
+PYCOLDPASS
+    printf '%s\n' 'PASS: unchanged COS-001 bounded native backend selector with two confirmed owner reopens; full frozen UI, receipt, LAN, failure variants and owner acceptance remain unqualified.' > "$OUT/summary.txt"
     cat "$OUT/summary.txt"
     exit 0 ;;
   *) echo 'Unknown native slice group.' >&2; exit 2 ;;
