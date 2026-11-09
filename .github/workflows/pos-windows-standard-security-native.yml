@@ -36,6 +36,15 @@ jobs:
           $errors = $null
           [Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/pos/windows/run-standard-user-identity-store.ps1), [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count -ne 0) { throw 'Executor has PowerShell syntax errors' }
+      - name: Install pinned shared Android configuration prerequisites
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The test account needs read access only. Install tooling through the
+          # runner administrator before its unchanged Gradle configuration runs.
+          $manager = Join-Path $env:ANDROID_HOME 'cmdline-tools/latest/bin/sdkmanager.bat'
+          & $manager --install 'ndk;27.2.12479018' 'cmake;3.22.1' *> native-security-output/android-toolchain.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned Android toolchain installation failed' }
       - name: Execute unchanged native cases under a fresh standard user
         shell: pwsh
         run: ./scripts/pos/windows/run-standard-user-identity-store.ps1
