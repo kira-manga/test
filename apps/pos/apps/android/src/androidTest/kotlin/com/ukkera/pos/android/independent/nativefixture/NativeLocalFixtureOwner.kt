@@ -223,8 +223,15 @@ internal class NativeLocalFixtureOwner<C : NativeLocalFixtureClient>(
         acquisitionUnconfirmed = true
         val opened = if (preparing) AndroidSelfOwnedInstallationOwner.prepareOriginal(application)
             else AndroidSelfOwnedInstallationOwner.openOriginal(application)
-        context = (opened as? SelfOwnedNativeOpenResult.Opened)?.context
-            ?: error("The original native context is unavailable")
+        context = when (opened) {
+            is SelfOwnedNativeOpenResult.Opened -> opened.context
+            is SelfOwnedNativeOpenResult.Unresolved -> {
+                // Diagnostic only: unresolved acquisition still retains the ownership guard.
+                evidence.event("NATIVE_CONTEXT_UNRESOLVED", JSONObject()
+                    .put("preparing", preparing).put("reason", opened.reason.name))
+                error("The original native context is unavailable: ${opened.reason}")
+            }
+        }
         acquisitionUnconfirmed = false
         material?.let {
             requireSameNativeFixtureCoordinates(it.coordinates, checkNotNull(context).materialAtOpen.coordinates)

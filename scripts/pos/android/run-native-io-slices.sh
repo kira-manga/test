@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Wire the three unchanged frozen Android API24 native-I/O slices to a disposable emulator.
-# This does not enroll an installation, create an original, or exercise business authority.
+# Execute existing native I/O, key or selected original-ACK slices on a disposable emulator.
+# Only the ACK group creates a fresh synthetic original through the genuine native owner.
+# No group supplies fake authority or changes the frozen method assertions.
 set -euo pipefail
 [[ $# -eq 4 ]] || { echo 'usage: run-native-io-slices.sh APP_APK TEST_APK OUTPUT_DIRECTORY APK_PAIR_MANIFEST' >&2; exit 2; }
 APP_APK="$1"
@@ -172,6 +173,8 @@ else:
     assert record['syntheticOnly'] is True
     summary={key:record.get(key) for key in ('fixture','selectedSegment','status','runtime','keyProtectionRequested','syntheticOnly','failure','unbound')}
     summary['events']=[event.get('event') for event in record.get('events',[])]
+    summary['native_context_refusals']=[{key:event.get('facts',{}).get(key) for key in ('preparing','reason')}
+        for event in record.get('events',[]) if event.get('event')=='NATIVE_CONTEXT_UNRESOLVED']
     summary['raw_evidence_sha256']=hashlib.sha256(raw).hexdigest()
 pathlib.Path(sys.argv[2]).write_text(json.dumps(summary,indent=2)+'\n')
 PYACK
