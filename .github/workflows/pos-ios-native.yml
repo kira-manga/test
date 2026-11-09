@@ -18,6 +18,17 @@ on:
         required: true
         default: false
         type: boolean
+      build_simulator:
+        description: Build the simulator app (disable for a device-only archive)
+        required: true
+        default: true
+        type: boolean
+      device_archive_configuration:
+        description: Native device archive configuration (Debug is a test build)
+        required: true
+        default: Release
+        type: choice
+        options: [Release, Debug]
       xcode_developer_dir:
         description: Optional Xcode developer directory; empty uses xcode-select
         required: false
@@ -127,6 +138,8 @@ jobs:
           POS_ROOT: ${{ steps.pos.outputs.root }}
           SIMULATOR_SMOKE: ${{ inputs.simulator_smoke && '1' || '0' }}
           RUN_IOS_KOTLIN_TESTS: ${{ inputs.run_ios_kotlin_tests && '1' || '0' }}
+          BUILD_SIMULATOR: ${{ inputs.build_simulator && '1' || '0' }}
+          DEVICE_ARCHIVE_CONFIGURATION: ${{ inputs.device_archive_configuration }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
           XCODE_DEVELOPER_DIR: ${{ inputs.xcode_developer_dir }}
         run: |

@@ -14,6 +14,8 @@ WORK_DIR="$REPO_ROOT/build/pos-artifacts/work/ios"
 SIMULATOR_SMOKE="${SIMULATOR_SMOKE:-1}"
 RUN_IOS_KOTLIN_TESTS="${RUN_IOS_KOTLIN_TESTS:-0}"
 SOURCE_REVISION="${SOURCE_REVISION:-}"
+BUILD_SIMULATOR="${BUILD_SIMULATOR:-1}"
+DEVICE_ARCHIVE_CONFIGURATION="${DEVICE_ARCHIVE_CONFIGURATION:-Release}"
 
 usage() {
   cat <<'EOF'
@@ -45,6 +47,9 @@ done
 
 fail() { echo "error: $*" >&2; exit 2; }
 
+[[ "$BUILD_SIMULATOR" == "0" || "$BUILD_SIMULATOR" == "1" ]] || fail "BUILD_SIMULATOR must be 0 or 1."
+[[ "$DEVICE_ARCHIVE_CONFIGURATION" == "Release" || "$DEVICE_ARCHIVE_CONFIGURATION" == "Debug" ]] || fail "Device configuration must be Release or Debug."
+[[ "$BUILD_SIMULATOR" != "0" || "$SIMULATOR_SMOKE" == "0" ]] || fail "A device-only archive cannot request simulator smoke."
 [[ "$(uname -s)" == "Darwin" ]] || fail "iOS builds require macOS with Xcode."
 [[ -d "$POS_ROOT" ]] || fail "POS root does not exist: $POS_ROOT"
 [[ -f "$POS_ROOT/gradlew" ]] || fail "POS Gradle wrapper not found: $POS_ROOT/gradlew"
@@ -190,8 +195,10 @@ iphonesimulator_sdk: $SDK_SIMULATOR
 iphoneos_sdk: $SDK_DEVICE
 simulator: ${SIM_DEVICE:-none} / ${SIM_RUNTIME:-none}
 simulator_smoke: $SMOKE_STATUS
+build_simulator: $BUILD_SIMULATOR
+device_archive_configuration: $DEVICE_ARCHIVE_CONFIGURATION
 
-Contents:
+Contents when produced (see manifest.json for the actual inventory):
 - UkkeraPos-simulator.app.zip: unsigned simulator app. Install only in an iOS Simulator.
 - UkkeraPos-unsigned-device.xcarchive.zip: device archive built with
   CODE_SIGNING_ALLOWED=NO. It has no provisioning profile and is NOT
@@ -216,6 +223,8 @@ EOF
     "--metadata" "simulator_device=$SIM_DEVICE"
     "--metadata" "simulator_runtime=$SIM_RUNTIME"
     "--metadata" "device_archive=unsigned-not-installable"
+    "--metadata" "device_archive_configuration=$DEVICE_ARCHIVE_CONFIGURATION"
+    "--metadata" "build_simulator=$BUILD_SIMULATOR"
     "--metadata" "workflow=${GITHUB_WORKFLOW:-local}"
     "--metadata" "run_id=${GITHUB_RUN_ID:-local}"
     "--metadata" "run_attempt=${GITHUB_RUN_ATTEMPT:-local}"
@@ -270,6 +279,7 @@ if [[ "$RUN_IOS_KOTLIN_TESTS" == "1" ]]; then
   done
 fi
 
+if [[ "$BUILD_SIMULATOR" == "1" ]]; then
 if [[ "$SIMULATOR_SMOKE" == "1" ]]; then
   echo "Creating disposable iPhone simulator..."
   SIM_JSON="$DIAG/simulator-selection.json"
@@ -371,16 +381,18 @@ if [[ "$SIMULATOR_SMOKE" == "1" ]]; then
   xcrun simctl shutdown "$SIM_UDID" > "$DIAG/simulator-shutdown.txt" 2>&1 || true
 fi
 
+fi # BUILD_SIMULATOR
+
 DEVICE_RESULT="$WORK_DIR/result-bundles/device-archive.xcresult"
 ARCHIVE="$WORK_DIR/UkkeraPos-unsigned.xcarchive"
 rm -rf "$DEVICE_RESULT" "$ARCHIVE"
-echo "Archiving unsigned device app (Release)..."
+echo "Archiving unsigned device app ($DEVICE_ARCHIVE_CONFIGURATION)..."
 (
   set -o pipefail
   xcodebuild \
     -project "$PROJECT" \
     -scheme UkkeraPos \
-    -configuration Release \
+    -configuration "$DEVICE_ARCHIVE_CONFIGURATION" \
     -destination "generic/platform=iOS" \
     -archivePath "$ARCHIVE" \
     -derivedDataPath "$WORK_DIR/derived-data-device" \
@@ -428,9 +440,10 @@ cat > "$DIAG/summary.txt" <<EOF
 
 - Xcode: $XCODE_VERSION ($XCODE_BUILD), iOS simulator SDK $SDK_SIMULATOR, device SDK $SDK_DEVICE
 - Simulator smoke: $SMOKE_STATUS
-- Unsigned device archive: packaged; not installable
+- Unsigned device archive: packaged ($DEVICE_ARCHIVE_CONFIGURATION); not installable
 - Source revision: $SOURCE_REVISION
-- Artifacts: \`UkkeraPos-simulator.app.zip\`, \`UkkeraPos-unsigned-device.xcarchive.zip\`
+- Simulator build requested: $BUILD_SIMULATOR
+- Artifacts: see \`manifest.json\` for the exact produced file inventory
 - Hashes: \`SHA256SUMS\`, metadata: \`manifest.json\`
 EOF
 cp "$DIAG/summary.txt" "$OUT_DIR/diagnostics/summary.txt"
