@@ -71,6 +71,9 @@ jobs:
           $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'native-security-output\execute-native.ps1'
           @'
           $ErrorActionPreference = 'Stop'
+          # The parent uses PowerShell 7; its inherited module path cannot load
+          # Windows PowerShell 5.1 security modules in this child.
+          $env:PSModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules;$env:ProgramFiles\WindowsPowerShell\Modules"
           $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
           $profileInfo = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $currentUser.User.Value)
           $profileRoot = [Environment]::ExpandEnvironmentVariables($profileInfo.ProfileImagePath)
