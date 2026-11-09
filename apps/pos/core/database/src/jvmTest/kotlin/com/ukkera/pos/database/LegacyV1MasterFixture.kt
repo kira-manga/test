@@ -69,11 +69,16 @@ internal class LegacyV1MasterFixture(
     )
 
     /** Seeds explicit valid v1 records via its real DAO; it does not execute a v2 kernel. */
-    suspend fun seed() {
-        database.useWriterConnection { connection ->
+    suspend fun seed() = seedSyntheticRowsInto(database, database.facts())
+
+    /**
+     * Reuse the exact synthetic v1 facts in a separately created controlled database.
+     * This is test seeding, not migration, original-history import or native admission.
+     */
+    suspend fun seedSyntheticRowsInto(target: RoomDatabase, dao: MasterDao) {
+        target.useWriterConnection { connection ->
             requireDurableWriter(connection)
             connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
-                val dao = database.facts()
                 val envelopeHash = sha256(envelope).value
                 dao.insertBranch(BranchRow(
                     TEST_SCOPE.storageKey(), TEST_AUTHORITY.assignmentId.value, TEST_AUTHORITY.deviceId.value,

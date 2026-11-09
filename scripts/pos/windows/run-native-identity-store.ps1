@@ -5,6 +5,29 @@ $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_REPOSITORY -ne 'kira-manga/test' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') {
     throw 'This executor requires the authorized disposable GitHub-hosted runner'
 }
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+public static class PosDisposableDirectoryOwner {
+    [DllImport("advapi32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern uint SetNamedSecurityInfoW(string name, uint kind, uint information,
+        IntPtr owner, IntPtr group, IntPtr dacl, IntPtr sacl);
+    public static void SetOwnerOnly(string path, string sidText) {
+        var sid = new SecurityIdentifier(sidText);
+        var bytes = new byte[sid.BinaryLength];
+        sid.GetBinaryForm(bytes, 0);
+        var owner = Marshal.AllocHGlobal(bytes.Length);
+        try {
+            Marshal.Copy(bytes, 0, owner, bytes.Length);
+            // SE_FILE_OBJECT / OWNER_SECURITY_INFORMATION: no DACL/group/SACL write.
+            uint result = SetNamedSecurityInfoW(path, 1, 1, owner,
+                IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
+            if (result != 0) throw new InvalidOperationException("Owner-only setup failed: " + result);
+        } finally { Marshal.FreeHGlobal(owner); }
+    }
+}
+'@
 $localFolder = [Environment]::GetFolderPath('LocalApplicationData')
 if ([string]::IsNullOrWhiteSpace($localFolder)) { throw 'Hosted account has no genuine LocalAppData' }
 $folder = Get-Item -LiteralPath $localFolder
@@ -21,9 +44,7 @@ try {
         # Hosted admin profiles may have Administrators as owner. The production
         # guard correctly refuses those profiles. Configure this disposable account
         # explicitly; do not relax the guard or rewrite/redirect a known folder.
-        $ownerOnly = [Security.AccessControl.DirectorySecurity]::new()
-        $ownerOnly.SetOwner($currentIdentity.User)
-        Set-Acl -LiteralPath $localFolder -AclObject $ownerOnly
+        [PosDisposableDirectoryOwner]::SetOwnerOnly($localFolder, $currentIdentity.User.Value)
         $ownerChanged = $true
     }
     $configuredAcl = Get-Acl -LiteralPath $localFolder
@@ -57,9 +78,7 @@ scope=no ordinary-nonadministrator-profile or ACL/other-user qualification
     throw
 } finally {
     if ($ownerChanged) {
-        $restoreOwner = [Security.AccessControl.DirectorySecurity]::new()
-        $restoreOwner.SetOwner($originalOwner)
-        Set-Acl -LiteralPath $localFolder -AclObject $restoreOwner
+        [PosDisposableDirectoryOwner]::SetOwnerOnly($localFolder, $originalOwner.Value)
         $restoredAcl = Get-Acl -LiteralPath $localFolder
         if ($restoredAcl.GetOwner([Security.Principal.SecurityIdentifier]).Value -ne $originalOwner.Value -or
             $restoredAcl.GetSecurityDescriptorSddlForm([Security.AccessControl.AccessControlSections]::Access) -cne $originalDacl) {

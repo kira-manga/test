@@ -156,17 +156,18 @@ class StoreRecoveryAdversarialTest {
         } finally { f.close() }
     }
 
-    @Test fun publicFactoryDefaultsNeverAdmitNewWorkOrNegativeExistence() = runTest {
+    @Test fun unavailableControlledAdaptersNeverAdmitNewWorkOrNegativeExistence() = runTest {
         val f = StoreFixture()
         try {
             f.seed()
             val principal = testPrincipal()
             for (configuration in 0..2) {
-                // Deliberately omit the relevant argument, testing the public defaults.
+                // Omit the relevant adapter in the controlled fixture. The production
+                // legacy opener itself is retired and must not adopt owned schema 7.
                 val store = when (configuration) {
-                    0 -> openLocalMasterStore(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler))
-                    1 -> openLocalMasterStore(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler), runtime = f.runtime)
-                    else -> openLocalMasterStore(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler), authorization = f.auth)
+                    0 -> openControlledMasterDefaultsFixture(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler))
+                    1 -> openControlledMasterDefaultsFixture(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler), runtime = f.runtime)
+                    else -> openControlledMasterDefaultsFixture(f.path, TEST_SCOPE, TEST_AUTHORITY, listOf(f.handler), authorization = f.auth)
                 }
                 try {
                     val request = f.request(350 + configuration)

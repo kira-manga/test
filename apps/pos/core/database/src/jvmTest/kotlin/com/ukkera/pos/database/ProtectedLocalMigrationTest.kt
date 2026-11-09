@@ -70,10 +70,17 @@ class ProtectedLocalMigrationTest {
 
     @Test fun migratedSyntheticKernelReplaysOriginalResultWithoutEffectsThenCanAppendNewWork() = runTest {
         val legacy = LegacyV1MasterFixture(); legacy.seed(); legacy.close()
-        val current = StoreFixture(legacy.path)
+        // Execute the genuine supported 1-to-2 migration first. Schema 7 deliberately
+        // has no legacy adoption path: seed its separate controlled fixture with the
+        // identical synthetic facts rather than inventing a production 1-to-7 migration.
+        val migrated = open(legacy)
+        val migratedRows = try { legacyRowSnapshot(migrated) } finally { migrated.close() }
+        val current = StoreFixture()
         try {
+            legacy.seedSyntheticRowsInto(current.database, current.database.facts())
             // Synthetic fixture authorization only. Empty security tables do not authenticate a user.
             val beforeReplay = legacyRowSnapshot(current.database)
+            assertEquals(migratedRows, beforeReplay)
             val replay = assertIs<MutationReply.Recorded>(current.store().execute(testPrincipal(), legacy.request))
             assertTrue(replay.replayed)
             assertContentEquals(legacy.resultBytes, replay.result.copyBytes())

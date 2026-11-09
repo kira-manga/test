@@ -23,3 +23,21 @@ internal fun buildControlledMasterRoomFixture(
         .addCallback(LocalActionApprovalSchemaCallback),
     driver,
 )
+
+/**
+ * Controlled counterpart of the retired legacy opener's unavailable-adapter defaults.
+ * This exercises kernel refusal reasons without claiming the production opener can
+ * adopt schema 7. The production guard and all production defaults remain untouched.
+ */
+internal fun openControlledMasterDefaultsFixture(
+    path: java.nio.file.Path,
+    scope: com.ukkera.pos.security.BranchScope,
+    authority: com.ukkera.pos.recovery.AuthorityIdentity,
+    handlers: List<MasterCommandHandler>,
+    authorization: TransactionAuthorizationSource = UnavailableTransactionAuthorization,
+    runtime: MasterRuntimeVerifier = UnqualifiedMasterRuntime,
+): AtomicMasterStore {
+    val database = buildControlledMasterRoomFixture(androidx.room3.Room.databaseBuilder<MasterRoomDatabase>(
+        path.toString(), MasterRoomConstructor::initialize))
+    return AtomicMasterStore(database, scope, authority, handlers, authorization, runtime, MasterClock { TEST_TIME })
+}
