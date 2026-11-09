@@ -109,11 +109,13 @@ public sealed interface SelfOwnedInstalledTargetBindingV1 {
         public fun decode(bytes: ByteArray): SelfOwnedInstalledIdentityResultV2<SelfOwnedInstalledTargetBindingV1> =
             SelfOwnedInstalledTargetBindingWireV1.decode(bytes)
 
-        /** Approved P1 iOS binding decode; the result is still DATA, not identity admission. */
+        /** Approved P1 decode requires the exact target and a current native observation. */
         public fun decodeApprovedIos(
             bytes: ByteArray,
+            expected: SelfOwnedIosActiveAppIdentityV2,
+            evidence: SelfOwnedIosNativeCodeSignatureEvidenceV1,
         ): SelfOwnedInstalledIdentityResultV2<SelfOwnedIosInstalledTargetBindingV1> =
-            SelfOwnedInstalledTargetBindingWireV1.decodeApprovedIos(bytes)
+            SelfOwnedInstalledTargetBindingWireV1.decodeApprovedIos(bytes, expected, evidence)
 
         private fun native(
             target: SelfOwnedInstalledIdentityTargetV2,
