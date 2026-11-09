@@ -50,7 +50,7 @@ jobs:
             '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
             -Pkotlin.compiler.execution.strategy=in-process \
             :core:security:compileTestKotlinJvm --console=plain
-      - name: Execute frozen cases with a private synthetic known-folder root
+      - name: Execute frozen cases with disposable account ownership configured
         shell: pwsh
         run: ./scripts/pos/windows/run-native-identity-store.ps1
       - name: Require all ten native cases, no skips
