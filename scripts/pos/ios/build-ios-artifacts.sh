@@ -228,6 +228,7 @@ cat > "$DIAG/environment.txt" <<EOF
 uname: $(uname -s -m -r)
 macos: $(sw_vers -productVersion) ($(sw_vers -buildVersion))
 cpus: $(sysctl -n hw.ncpu)
+memory_bytes: $(sysctl -n hw.memsize)
 xcode-select: $(xcode-select -p)
 xcode: $XCODE_VERSION ($XCODE_BUILD)
 swift: $(swift --version 2>&1 | head -n 1)
@@ -366,6 +367,8 @@ if [[ "$SIMULATOR_SMOKE" == "1" ]]; then
   xcrun simctl spawn "$SIM_UDID" log show --last 5m --style compact \
     --predicate 'process == "UkkeraPos"' 2>&1 | tail -n 4000 > "$DIAG/simulator-app-log.txt" || true
   xcrun simctl terminate "$SIM_UDID" "$BUNDLE_ID" > "$DIAG/simulator-terminate.txt" 2>&1 || true
+  # Release the disposable simulator memory before optimized device framework linking.
+  xcrun simctl shutdown "$SIM_UDID" > "$DIAG/simulator-shutdown.txt" 2>&1 || true
 fi
 
 DEVICE_RESULT="$WORK_DIR/result-bundles/device-archive.xcresult"
