@@ -89,14 +89,14 @@ jobs:
           # This disposable noninteractive profile has no Explorer first-logon setup.
           # Configure only its LocalAppData through the public shell API. Production
           # still resolves the real known folder and verifies its owner and ACLs.
-          Add-Type -TypeDefinition @'
+          Add-Type -TypeDefinition @"
           using System;
           using System.Runtime.InteropServices;
           public static class PosDisposableKnownFolder {
             [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
             public static extern int SHSetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, string path);
           }
-          '@
+          "@
           $localFolderId = [Guid]'F1B32785-6FBA-4FCF-9D55-7B8E7F157091'
           $folderResult = [PosDisposableKnownFolder]::SHSetKnownFolderPath([ref]$localFolderId, 0, [IntPtr]::Zero, $env:LOCALAPPDATA)
           if ($folderResult -ne 0) { throw ('Disposable known-folder setup failed: 0x{0:X8}' -f $folderResult) }
