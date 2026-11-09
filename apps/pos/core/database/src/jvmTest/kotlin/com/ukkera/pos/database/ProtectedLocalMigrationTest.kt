@@ -75,6 +75,11 @@ class ProtectedLocalMigrationTest {
         // identical synthetic facts rather than inventing a production 1-to-7 migration.
         val migrated = open(legacy)
         val migratedRows = try { legacyRowSnapshot(migrated) } finally { migrated.close() }
+        val historicalV4 = buildLegacyV4MasterRoom(legacy.path)
+        try {
+            assertEquals(migratedRows, legacyRowSnapshot(historicalV4))
+            assertEmptyHistoricalV4ProtectedSchema(historicalV4)
+        } finally { historicalV4.close() }
         val current = StoreFixture()
         try {
             legacy.seedSyntheticRowsInto(current.database, current.database.facts())
@@ -98,7 +103,7 @@ class ProtectedLocalMigrationTest {
             assertTrue(old.replayed); assertContentEquals(legacy.resultBytes, old.result.copyBytes())
             assertEquals(afterAppend, legacyRowSnapshot(current.database))
             // This replay exercises the CURRENT kernel, not the separately preserved 1-to-2 target.
-            assertEmptyCurrentProtectedSchema(current.database)
+            assertEmptyProtectedRowsAndGuards(current.database)
         } finally { current.close() }
     }
 
@@ -279,8 +284,14 @@ class ProtectedLocalMigrationTest {
         }
     }
 
-    private suspend fun assertEmptyCurrentProtectedSchema(database: MasterRoomDatabase) {
+    private suspend fun assertEmptyHistoricalV4ProtectedSchema(database: LegacyV4MasterDatabase) {
+        // Keep the original version-4 / five-table oracle on its genuine historical
+        // target; do not make it follow the owned current schema.
         assertVersionAndProtectedTableCount(database, 4, 5)
+        assertEmptyProtectedRowsAndGuards(database)
+    }
+
+    private suspend fun assertEmptyProtectedRowsAndGuards(database: RoomDatabase) {
         database.useWriterConnection { connection ->
             for (table in ProtectedLocalSchemaCallback.tableNames + "protected_local_access_issuance") {
                 connection.usePrepared("SELECT count(*) FROM $table") { check(it.step()); assertEquals(0L, it.getLong(0)) }

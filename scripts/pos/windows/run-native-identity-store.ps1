@@ -67,7 +67,7 @@ scope=no ordinary-nonadministrator-profile or ACL/other-user qualification
 "@ | Set-Content native-security-output\profile.txt
     Push-Location apps\pos
     try {
-        & .\gradlew.bat --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' -Pkotlin.compiler.execution.strategy=in-process :core:security:jvmTest --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' --console=plain *> ..\..\native-security-output\gradle.txt
+        & .\gradlew.bat --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' '-Pkotlin.compiler.execution.strategy=in-process' :core:security:jvmTest --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' --console=plain *> ..\..\native-security-output\gradle.txt
         $nativeStatus = $LASTEXITCODE
     } finally { Pop-Location }
     Get-Content native-security-output\gradle.txt -Tail 100
