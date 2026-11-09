@@ -347,6 +347,9 @@ internal class AndroidSelfOwnedDatabaseNamespace(
             known(OsConstants.S_ISREG(observed.mode) && observed.mode and 4095 == FILE_MODE &&
                 observed.uid == environment.uid && observed.links == 1L && observed.size >= 0 &&
                 observed.device == requireNotNull(databaseStamp).device)
+            // Pinned Room3 creates this exact empty coordination file beside the DB.
+            // It carries no native ownership, history, absence or recovery evidence.
+            if (name == ROOM_COORDINATION_LOCK) known(observed.size == 0L)
         }
     }
 
@@ -547,7 +550,11 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         private const val HISTORY_ORIGIN = "native-history-origin.v2"
         private const val DIRECTORY_MODE = 448 // 0700
         private const val FILE_MODE = 384 // 0600
-        private val DATABASE_NAMES = setOf("master.db", "master.db-wal", "master.db-shm", "master.db-journal")
+        // Room3 3.0.3 BaseRoomConnectionManager -> ExclusiveMutex -> FileLock
+        // uses the resolved database filename plus ".lck" and leaves it on unlock.
+        // The independent native namespace lease remains the ownership authority.
+        private const val ROOM_COORDINATION_LOCK = "master.db.lck"
+        private val DATABASE_NAMES = setOf("master.db", "master.db-wal", "master.db-shm", "master.db-journal", ROOM_COORDINATION_LOCK)
     }
 }
 

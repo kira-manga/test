@@ -67,6 +67,14 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
+**Known original-setup defect:** the downloadable startup-qualified APK predates
+the AndroidKeyStore history-IV correction and failed the reproduced original
+setup path. The corrected native acquisition now returns, but a later original
+Room-open failure remains under investigation; [source-bound failures and
+limits](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md)
+are retained. Use this package for its stated startup/UI/native-I/O scope. Do not
+reset or retry an unresolved original to force setup completion.
+
 Automated evidence covers N18/N19/N20 native file I/O on API 24/35/37, two native
 key slices per API, and API 37 application startup. The key runs observed
 **SOFTWARE / OS_ISOLATED** evidence; hardware/StrongBox and an independently
@@ -93,9 +101,12 @@ captured pre/post-restart identity comparison are not established.
 Hosted package verification extracted the MSI, inspected the executable and ran
 its packaged `--smoke-exit` path. That is bounded startup evidence, not installed
 full setup or service qualification. Separately, all ten native SDK-store methods
-passed against real HKCU/DPAPI on a disposable hosted administrative account, with
-the temporary directory owner restored and DACL unchanged. This does not qualify
-an ordinary nonadministrator installation profile or cross-process contention.
+passed against real HKCU/DPAPI under a genuine nonadministrator account in
+[run 42710676090](https://github.com/kira-manga/test/actions/runs/42710676090).
+The OS-known LocalAppData owner and production DACL checks remained enforced;
+no owner normalization was used. This qualifies the bounded SDK-store methods
+on that profile, not installed full setup, native STORAGE/PEPPER keys,
+cross-process contention or owner acceptance.
 
 ## macOS
 
