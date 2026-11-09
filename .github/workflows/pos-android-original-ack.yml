@@ -6,6 +6,12 @@ on:
         description: Exact primary app source recorded in the retained APK pair
         required: true
         type: string
+      segment:
+        description: Existing frozen selector; select one for acquisition diagnostics
+        required: true
+        type: choice
+        default: BOTH
+        options: [BOTH, INSTALLATION_ONLY_CONFIRMED_READ_REPEAT, CONFIRMED_CLOSE_REOPEN_REPEAT]
 permissions:
   contents: read
 jobs:
@@ -16,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        segment: [INSTALLATION_ONLY_CONFIRMED_READ_REPEAT, CONFIRMED_CLOSE_REOPEN_REPEAT]
+        segment: ${{ fromJSON(inputs.segment == 'BOTH' && '["INSTALLATION_ONLY_CONFIRMED_READ_REPEAT","CONFIRMED_CLOSE_REOPEN_REPEAT"]' || format('["{0}"]', inputs.segment)) }}
     steps:
       - uses: actions/checkout@v4
         with:

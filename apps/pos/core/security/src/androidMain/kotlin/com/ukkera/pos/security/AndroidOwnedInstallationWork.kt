@@ -578,8 +578,13 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     private fun logUnavailableNativeAction(failure: Throwable) {
         try {
             // Never log exception messages/causes, file paths, inputs, identities or key data.
-            // Only static source locations and a native errno help locate a refused action.
-            val locations = failure.stackTrace.take(4).joinToString(" <- ") {
+            // Provider exceptions can fill the first frames with framework internals.
+            // Keep the bounded originating native callers as well; these are static code
+            // locations, with no exception messages, arguments or native resource values.
+            val frames = failure.stackTrace
+            val locations = (frames.take(2) + frames.filter {
+                it.className.startsWith("com.ukkera.pos.security.")
+            }.take(4)).distinct().joinToString(" <- ") {
                 "${it.className}.${it.methodName}:${it.lineNumber}"
             }
             val errno = (failure as? ErrnoException)?.errno?.let { "; errno=$it" }.orEmpty()
