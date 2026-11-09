@@ -1,0 +1,59 @@
+name: POS Apple exact-source compilation (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision staged in this snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  apple-compile:
+    if: github.repository == 'kira-manga/test'
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: pos-apple-compile-${{ runner.arch }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-ios-${{ runner.os }}-${{ runner.arch }}-
+      - name: Compile real Apple targets at exact staged source
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p apple-compile-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt apple-compile-output/
+          git rev-parse HEAD > apple-compile-output/HARNESS-REVISION.txt
+          xcodebuild -version > apple-compile-output/xcode.txt
+          java -version 2> apple-compile-output/java.txt
+          cd apps/pos
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :adapters:app-gateway:compileKotlinIosArm64 \
+            :adapters:app-gateway:compileKotlinIosSimulatorArm64 \
+            :ui:app:compileKotlinIosArm64 \
+            :ui:app:compileKotlinIosSimulatorArm64 \
+            --console=plain 2>&1 | tee ../../apple-compile-output/gradle.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-apple-compile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: apple-compile-output
+          retention-days: 14
