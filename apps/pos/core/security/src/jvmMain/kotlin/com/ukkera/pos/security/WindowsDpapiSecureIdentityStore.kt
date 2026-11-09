@@ -76,20 +76,22 @@ public class WindowsDpapiSecureIdentityStore private constructor(
 
     override fun toString(): String = "WindowsDpapiSecureIdentityStore([REDACTED])"
 
-    /** An exclusive native handle serializes read/create/recovery/reset across processes.
-     * The lock name is permanent; process death releases its handle, never its evidence. */
-    private fun <T> withNamespace(target: WindowsIdentityNamespace, work: () -> T): T {
-        validateStoreDirectory()
-        ensureNoLegacyFileValues()
-        val handle = WindowsSecureIdentityNative.openNamespaceLock(
-            targetPath(target.lockName), accountSid)
-        return WindowsSecureIdentityNative.useHandle(handle) { opened ->
-            validateRegularFile(opened, singleLink = true)
+    /** Local callers share bounded monitors, including independently opened stores.
+     * The exclusive native handle still excludes other processes; a foreign/uncertain
+     * handle is refused, never retried or treated as ownership. Lock files are permanent. */
+    private fun <T> withNamespace(target: WindowsIdentityNamespace, work: () -> T): T =
+        synchronized(namespaceMonitors[(target.valueName.hashCode() and Int.MAX_VALUE) % namespaceMonitors.size]) {
             validateStoreDirectory()
             ensureNoLegacyFileValues()
-            work().also { validateStoreDirectory() }
+            val handle = WindowsSecureIdentityNative.openNamespaceLock(
+                targetPath(target.lockName), accountSid)
+            WindowsSecureIdentityNative.useHandle(handle) { opened ->
+                validateRegularFile(opened, singleLink = true)
+                validateStoreDirectory()
+                ensureNoLegacyFileValues()
+                work().also { validateStoreDirectory() }
+            }
         }
-    }
 
     private fun <T> withRegistryKey(work: (Pointer) -> T): T {
         val handle = WindowsSecureIdentityNative.openRegistryKey(accountSid)
@@ -255,6 +257,9 @@ public class WindowsDpapiSecureIdentityStore private constructor(
             return store
         }
 
+        // Fixed stripes avoid retaining attacker-controlled namespace strings. Hash
+        // collisions only serialize extra local work; all native checks still run.
+        private val namespaceMonitors = Array(64) { Any() }
         private val STORE_PATH = listOf("Ukkera", "POS", "secure-identity-v1")
     }
 }

@@ -50,76 +50,9 @@ jobs:
             '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
             -Pkotlin.compiler.execution.strategy=in-process \
             :core:security:compileTestKotlinJvm --console=plain
-      - name: Execute frozen cases in an ordinary disposable user profile
+      - name: Execute frozen cases with a private synthetic known-folder root
         shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Hosted runneradmin is elevated and its pre-created profile has a different owner.
-          # Use a genuine non-administrator profile; production owner checks stay unchanged.
-          $nativeUser = 'posnative' + $env:GITHUB_RUN_ATTEMPT
-          $nativePassword = [Guid]::NewGuid().ToString('N') + 'aA9!'
-          $securePassword = ConvertTo-SecureString $nativePassword -AsPlainText -Force
-          $account = New-LocalUser -Name $nativeUser -Password $securePassword -AccountNeverExpires
-          $nativeCredential = [PSCredential]::new("$env:COMPUTERNAME\$nativeUser", $securePassword)
-          $nativeSid = $account.SID.Value
-          $nativeHome = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
-          New-Item -ItemType Directory -Force -Path $nativeHome | Out-Null
-          & icacls.exe $env:GITHUB_WORKSPACE /grant "*${nativeSid}:(OI)(CI)M" /T /Q | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Workspace permission preparation failed' }
-          & icacls.exe $nativeHome /grant "*${nativeSid}:(OI)(CI)F" /T /Q | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw 'Disposable Gradle directory preparation failed' }
-          $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'native-security-output\execute-native.ps1'
-          @'
-          $ErrorActionPreference = 'Stop'
-          # The parent uses PowerShell 7; its inherited module path cannot load
-          # Windows PowerShell 5.1 security modules in this child.
-          $env:PSModulePath = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\Modules;$env:ProgramFiles\WindowsPowerShell\Modules"
-          $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-          $profileInfo = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $currentUser.User.Value)
-          $profileRoot = [Environment]::ExpandEnvironmentVariables($profileInfo.ProfileImagePath)
-          # Alternate-credential processes inherit the launching environment. Restore the
-          # actual loaded profile before the JVM or Known Folder APIs observe those values.
-          $env:USERPROFILE = $profileRoot
-          $env:LOCALAPPDATA = Join-Path $profileRoot 'AppData\Local'
-          $env:APPDATA = Join-Path $profileRoot 'AppData\Roaming'
-          $env:TEMP = Join-Path $profileRoot 'AppData\Local\Temp'
-          $env:TMP = $env:TEMP
-          New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
-          $env:GRADLE_USER_HOME = Join-Path $env:RUNNER_TEMP 'pos-native-gradle'
-          # This disposable noninteractive profile has no Explorer first-logon setup.
-          # Configure only its LocalAppData through the public shell API. Production
-          # still resolves the real known folder and verifies its owner and ACLs.
-          Add-Type -TypeDefinition @"
-          using System;
-          using System.Runtime.InteropServices;
-          public static class PosDisposableKnownFolder {
-            [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
-            public static extern int SHSetKnownFolderPath(ref Guid folder, uint flags, IntPtr token, string path);
-          }
-          "@
-          $localFolderId = [Guid]'F1B32785-6FBA-4FCF-9D55-7B8E7F157091'
-          $folderResult = [PosDisposableKnownFolder]::SHSetKnownFolderPath([ref]$localFolderId, 0, [IntPtr]::Zero, $env:LOCALAPPDATA)
-          if ($folderResult -ne 0) { throw ('Disposable known-folder setup failed: 0x{0:X8}' -f $folderResult) }
-          $localData = [Environment]::GetFolderPath('LocalApplicationData', 'Create')
-          if ([string]::IsNullOrWhiteSpace($localData)) { throw 'Windows did not resolve the disposable known folder' }
-          $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-          $isAdmin = ([Security.Principal.WindowsPrincipal]::new($currentUser)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-          if ($isAdmin) { throw 'Native qualification requires the ordinary disposable account' }
-          "administrative_token=$isAdmin`nprofile_owner=$((Get-Acl $localData).Owner)" | Set-Content native-security-output\profile.txt
-          Set-Location apps\pos
-          & .\gradlew.bat --no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' -Pkotlin.compiler.execution.strategy=in-process :core:security:jvmTest --tests 'com.ukkera.pos.security.independent.windowsdpapi.WindowsDpapiSecureIdentityStoreNativeTest' --console=plain *> ..\..\native-security-output\gradle.txt
-          exit $LASTEXITCODE
-          '@ | Set-Content -Path $scriptPath
-          try {
-            $nativeProcess = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $nativeCredential -LoadUserProfile -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE 'native-security-output\child-stdout.txt') -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE 'native-security-output\child-stderr.txt') -Wait -PassThru
-            Get-Content native-security-output\child-stdout.txt,native-security-output\child-stderr.txt,native-security-output\gradle.txt -Tail 100 -ErrorAction SilentlyContinue
-            if ($nativeProcess.ExitCode -ne 0) { throw "Native store tests exited $($nativeProcess.ExitCode)" }
-          } finally {
-            Remove-LocalUser -Name $nativeUser
-            $nativePassword = $null
-            $securePassword = $null
-            $nativeCredential = $null
-          }
+        run: ./scripts/pos/windows/run-native-identity-store.ps1
       - name: Require all ten native cases, no skips
         shell: python
         run: |
