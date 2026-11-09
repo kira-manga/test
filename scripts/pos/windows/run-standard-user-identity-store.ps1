@@ -72,10 +72,12 @@ public static class PosOrdinaryProfile {
             throw new InvalidOperationException("OS profile lookup failed: " + Marshal.GetLastWin32Error());
         return path.ToString();
     }
-    public static string Known(string id, IntPtr token) {
+    public static string Known(string id) {
         var folder = new Guid(id);
         IntPtr path;
-        int status = SHGetKnownFolderPath(ref folder, 0, token, out path);
+        // The child already proved its exact ordinary identity. NULL requests the
+        // current process profile without cross-token impersonation privileges.
+        int status = SHGetKnownFolderPath(ref folder, 0, IntPtr.Zero, out path);
         try {
             if (status < 0 || path == IntPtr.Zero)
                 throw new InvalidOperationException("OS known-folder lookup failed: " + status);
@@ -86,9 +88,9 @@ public static class PosOrdinaryProfile {
 "@
     $profile = [PosOrdinaryProfile]::Profile($identity.Token)
     $env:USERPROFILE = $profile
-    $local = [PosOrdinaryProfile]::Known('F1B32785-6FBA-4FCF-9D55-7B8E7F157091', $identity.Token)
+    $local = [PosOrdinaryProfile]::Known('F1B32785-6FBA-4FCF-9D55-7B8E7F157091')
     $env:LOCALAPPDATA = $local
-    $env:APPDATA = [PosOrdinaryProfile]::Known('3EB685DB-65F9-4CF6-A03A-E3EF65729F3D', $identity.Token)
+    $env:APPDATA = [PosOrdinaryProfile]::Known('3EB685DB-65F9-4CF6-A03A-E3EF65729F3D')
     if ([string]::IsNullOrWhiteSpace($profile) -or [string]::IsNullOrWhiteSpace($local)) {
         throw 'Ordinary account OS-known folders are unavailable'
     }
