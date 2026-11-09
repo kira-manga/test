@@ -125,6 +125,16 @@ class MainActivity : ComponentActivity() {
     }
     private lateinit var setup: AndroidSetupConnection
     private val trainingScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var lanPermissionGranted by mutableStateOf(false)
+    private val lanPermissionRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        // Observe current OS state; a callback is never branch/device authority.
+        lanPermissionGranted = AndroidLocalNetworkPermission.isGranted(this)
+    }
+    private fun requestLanPermission() {
+        if (!visible) return
+        lanPermissionGranted = AndroidLocalNetworkPermission.isGranted(this)
+        if (!lanPermissionGranted) lanPermissionRequest.launch(AndroidLocalNetworkPermission.NAME)
+    }
     private var visible = false
     private var route by mutableStateOf(EntryRoute.CHOICE)
     private var language by mutableStateOf(AppLanguage.ENGLISH)
@@ -135,6 +145,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setup = AndroidSetupConnection(this)
+        lanPermissionGranted = AndroidLocalNetworkPermission.isGranted(this)
         // Only non-sensitive route/language are restored. No controller, native action,
         // credential, readiness flag or private review enters Android saved state.
         route = EntryRoute.entries.firstOrNull { it.name == savedInstanceState?.getString("local.entry.route") }
@@ -180,7 +191,8 @@ class MainActivity : ComponentActivity() {
                         }
                         LocalSetupScreen(owner.controller, language, { language = it },
                             onBack = { owner.lockPresentation(); choose(EntryRoute.CHOICE) },
-                            compositionMode = LocalSetupCompositionMode.TRAINING)
+                            compositionMode = LocalSetupCompositionMode.TRAINING,
+                            lanPermissionGranted = lanPermissionGranted, onRequestLanPermission = ::requestLanPermission)
                         BackHandler { owner.lockPresentation(); choose(EntryRoute.CHOICE) }
                     }
                 }
@@ -191,7 +203,8 @@ class MainActivity : ComponentActivity() {
                         onRetry = { if (visible) { setup.disconnect(); setup.connect() } },
                         onBack = { choose(EntryRoute.CHOICE) })
                     else LocalSetupScreen(actual, language, { language = it },
-                        onBack = { choose(EntryRoute.CHOICE) })
+                        onBack = { choose(EntryRoute.CHOICE) },
+                        lanPermissionGranted = lanPermissionGranted, onRequestLanPermission = ::requestLanPermission)
                     BackHandler { choose(EntryRoute.CHOICE) }
                 }
                 EntryRoute.EMPLOYEE -> UkkeraApp(runtime, onExitRequest = { choose(EntryRoute.CHOICE) },
@@ -240,6 +253,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        lanPermissionGranted = AndroidLocalNetworkPermission.isGranted(this)
         documentFileHost?.onResume()
         trainingDocumentFileHost?.onResume()
         pairingDocumentHost?.onResume()

@@ -137,7 +137,7 @@ class MasterReplacementRegressionTest {
 
     private suspend fun withReplacementDatabase(block: suspend (MasterRoomDatabase, Transactor) -> Unit) {
         val path = Files.createTempDirectory("ukkera-replacement-regression-").resolve("master.db")
-        val database = buildMasterRoom(
+        val database = buildControlledMasterRoomFixture(
             Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize),
             BundledSQLiteDriver(),
         )

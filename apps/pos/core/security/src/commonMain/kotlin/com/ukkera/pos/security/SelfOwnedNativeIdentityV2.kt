@@ -185,6 +185,8 @@ internal class SelfOwnedNativeSourceV2 internal constructor(
             SelfOwnedInstalledTargetPlatformV1.MACOS -> SelfOwnedNativePlatformV2.MACOS
             SelfOwnedInstalledTargetPlatformV1.ANDROID ->
                 throw IllegalArgumentException("Android is not a V2 native target")
+            SelfOwnedInstalledTargetPlatformV1.IOS ->
+                throw IllegalArgumentException("iOS active-app identity is not a V2 native key target")
         }
         coordinates = packet.coordinates
         root = packet.root
@@ -338,6 +340,8 @@ internal data class SelfOwnedNativeBindingBodyV2(
             SelfOwnedInstalledTargetPlatformV1.MACOS -> SelfOwnedNativePlatformV2.MACOS
             SelfOwnedInstalledTargetPlatformV1.ANDROID ->
                 throw IllegalArgumentException("Android is not a V2 native target")
+            SelfOwnedInstalledTargetPlatformV1.IOS ->
+                throw IllegalArgumentException("iOS active-app identity is not a V2 native key target")
         }
         require(namespace.platform == platform && bootSession.platform == platform)
         require(keys.map { it.role } == SelfOwnedTargetKeyRoleV1.entries.toList())

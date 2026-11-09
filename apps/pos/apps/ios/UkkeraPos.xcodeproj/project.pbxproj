@@ -45,7 +45,7 @@
             outputPaths = ();
             runOnlyForDeploymentPostprocessing = 0;
             shellPath = /bin/sh;
-            shellScript = "set -eu\ncd \"$SRCROOT/../..\"\n./gradlew :ui:app:embedAndSignAppleFrameworkForXcode\n";
+            shellScript = "/bin/bash \"$SRCROOT/xcode-build-framework.sh\"\n";
         };
         A1000000000000000000000A = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
         A1000000000000000000000B = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };

@@ -17,7 +17,11 @@ The two nonexported special-use foreground services retain the LIVE owner or
 present the training hosting notice. Ordinary screen disposal does not commit a
 master STOP. Explicit STOP/RESUME follows the durable lifecycle intent and binding
 path. Backups and cleartext traffic are disabled, the window uses `FLAG_SECURE`,
-and backgrounding locks the employee presentation. Separate protected DocumentsUI
+and backgrounding locks the employee presentation. On Android 17/API 37+, the
+LAN section requests local-network access explicitly and keeps Host/Connect
+disabled until the current OS grant is present. The native layer checks again
+before acquiring transport and opening sockets; granting permission starts no
+connection and supplies no employee/device authority. Separate protected DocumentsUI
 providers expose LIVE and training reports.
 
 For a local debug UI build, run `./gradlew :apps:android:assembleDebug`. The genuine

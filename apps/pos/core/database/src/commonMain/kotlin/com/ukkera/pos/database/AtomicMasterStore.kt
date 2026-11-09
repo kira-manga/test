@@ -1488,7 +1488,11 @@ public class AtomicMasterStore internal constructor(
                     }
                 }
             }
-            if (!preflight) fault.at(StoreFaultPoint.AFTER_COMMIT)
+            // Typed rollback returns normally from Room. It did not commit a new result,
+            // so it must not cross the post-commit fault/crash cut (nor may a replay do so).
+            if (!preflight && stored is KernelReply.Recorded && !stored.replayed) {
+                fault.at(StoreFaultPoint.AFTER_COMMIT)
+            }
             currentCoroutineContext().ensureActive()
             stored
         } catch (cancelled: CancellationException) {

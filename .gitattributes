@@ -1,0 +1,30 @@
+* text=auto
+
+.gitattributes text eol=lf
+.gitignore text eol=lf
+*.gradle.kts text eol=lf
+*.json text eol=lf
+*.kt text eol=lf
+*.kts text eol=lf
+*.md text eol=lf
+*.pbxproj text eol=lf
+*.plist text eol=lf
+*.properties text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.toml text eol=lf
+*.xcscheme text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.template text eol=lf
+docs/contracts/** text eol=lf
+gradlew text eol=lf
+gradlew.bat text eol=lf
+*.jar binary
+# Frozen POS requirements, plans and independent QA are byte-preserved archives.
+# Do not normalize their recorded line endings when staging or checking out.
+docs/pos/original-handoff/** -text
+docs/pos/plan-review/** -text
+qa/pos/** -text
+# Inert, source-only pause patches retain their sealed bytes (including context).
+docs/pos/paused-work/2026-10-28/*.patch -text

@@ -114,7 +114,7 @@ internal class LocalSecurityStoreFixture(
     val bootId = testId(9101)
     val keyReference = ProtectedStorageKeyReference(testId(9102))
     val protection = TestLocalStorageAead(keyReference)
-    val database = buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize), driver)
+    val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize), driver)
     val store = RoomLocalSecurityStore(database, protection, keyReference)
 
     fun defaultAccount(

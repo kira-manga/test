@@ -47,7 +47,8 @@ import com.ukkera.pos.types.DomainId
 @Composable
 public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, view: LocalSetupView,
     language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit, modifier: Modifier = Modifier,
-    onBack: (() -> Unit)? = null) {
+    onBack: (() -> Unit)? = null, lanPermissionGranted: Boolean = true,
+    onRequestLanPermission: (() -> Unit)? = null) {
     val profile = controller.compositionProfile
     val selected = view.freshDevicePairing
     val retiredChallenge = selected?.retirement?.originalChallenge
@@ -82,7 +83,7 @@ public fun LocalSetupFreshDevicePairingScreen(controller: LocalSetupController, 
                     view.problem?.let { Notice(problemText(it), caution = true,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
                     view.nativeProblem?.let { Notice(problemText(it), caution = true) }
-                    LocalSetupLanSection(controller, view)
+                    LocalSetupLanSection(controller, view, lanPermissionGranted, onRequestLanPermission)
                     if (lanClientOwnsTarget) Notice(t(
                         "The retained LAN Client owns this target's transfer attempt. Earlier target pairing actions are disabled. Use the LAN attachment's explicit refresh or close controls.",
                         "يملك عميل الشبكة المحلية المحفوظ محاولة نقل هذا الهدف. تُعطَّل إجراءات اقتران الهدف السابقة. استخدم عناصر تحديث اتصال الشبكة المحلية أو إغلاقه الصريحة."), caution = true)

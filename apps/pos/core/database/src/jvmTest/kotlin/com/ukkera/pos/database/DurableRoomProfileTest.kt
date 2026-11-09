@@ -23,13 +23,13 @@ class DurableRoomProfileTest {
         try {
             val pooled = object : SQLiteDriver by BundledSQLiteDriver() { override val hasConnectionPool = true }
             assertFailsWith<IllegalArgumentException> {
-                buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(f.path.resolveSibling("pooled.db").toString(), MasterRoomConstructor::initialize), pooled)
+                buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(f.path.resolveSibling("pooled.db").toString(), MasterRoomConstructor::initialize), pooled)
             }
         } finally { f.close() }
     }
 
     @Test fun inMemoryDatabaseCannotPassFinancialWriterProfile() = runTest {
-        val db = buildMasterRoom(Room.inMemoryDatabaseBuilder<MasterRoomDatabase>(MasterRoomConstructor::initialize))
+        val db = buildControlledMasterRoomFixture(Room.inMemoryDatabaseBuilder<MasterRoomDatabase>(MasterRoomConstructor::initialize))
         try { db.useWriterConnection { assertFailsWith<IllegalStateException> { requireDurableWriter(it) } } }
         finally { db.close() }
     }

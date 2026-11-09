@@ -359,9 +359,11 @@ public class SelfOwnedInstalledIdentitySignedDocumentV2 internal constructor(
 }
 
 /**
- * Shared factory/matcher/consumer surface. `accept*` returns bounded DATA only. The iOS
- * active-app factory is intentionally hard-refused `REFUSE_POLICY_PENDING` while P1 is
- * unanswered; there is no caller-supplied policy switch or accepting fallback.
+ * Shared factory/matcher/consumer surface. `accept*` returns bounded DATA only. This historical
+ * surface intentionally hard-refuses the iOS active-app factory with `REFUSE_POLICY_PENDING`;
+ * there is no caller-supplied policy switch or accepting fallback here. The distinct
+ * owner-approved P1 boundary is [SelfOwnedInstalledIdentityIosPolicyV1] and still requires
+ * native code-signature evidence, exact expected-target matching, and separate key custody.
  */
 public object SelfOwnedInstalledIdentityV2 {
     /** Full parsed-target factory check. Wrong platform wins over role mismatch. */

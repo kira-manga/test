@@ -4,13 +4,13 @@ package com.ukkera.pos.security
  * Explicit installed-target DATA for an original setup/context boundary. It never grants native
  * custody, key possession, installability or a current writer. A platform is part of the value;
  * there is no accepting `OTHER`/`UNKNOWN`/Android-V2 discriminator and no fabricated Android UID,
- * APK signer or AndroidId commitment for Windows/macOS.
+ * APK signer or AndroidId commitment for Windows/macOS/iOS.
  *
  * Android keeps the exact legacy four-field [SelfOwnedTargetDescriptorV1]. Windows/macOS retain
- * their existing V2 target record unchanged. These are two explicit alternatives, not a
- * reinterpretation of either old format.
+ * their existing V2 target record unchanged. iOS uses the additive owner-approved P1 policy
+ * boundary; the historical factory/decode paths still refuse it with `REFUSE_POLICY_PENDING`.
  */
-public enum class SelfOwnedInstalledTargetPlatformV1 { ANDROID, WINDOWS, MACOS }
+public enum class SelfOwnedInstalledTargetPlatformV1 { ANDROID, WINDOWS, MACOS, IOS }
 
 public sealed interface SelfOwnedInstalledTargetBindingV1 {
     public val platform: SelfOwnedInstalledTargetPlatformV1
@@ -18,10 +18,10 @@ public sealed interface SelfOwnedInstalledTargetBindingV1 {
     /** Frozen discriminator text; the Android legacy record has no V2 kind. */
     public val targetKind: String
 
-    /** Android-only legacy projection; null for a native Windows/macOS binding. */
+    /** Android-only legacy projection; null for a native Windows/macOS/iOS binding. */
     public val androidTarget: SelfOwnedTargetDescriptorV1? get() = null
 
-    /** Windows/macOS V2 target DATA; null for the legacy Android binding. */
+    /** Windows/macOS/iOS V2 target DATA; null for the legacy Android binding. */
     public val nativeTarget: SelfOwnedInstalledIdentityTargetV2? get() = null
 
     /** Exact platform-local target match. Cross-platform values never match by default. */
@@ -39,9 +39,10 @@ public sealed interface SelfOwnedInstalledTargetBindingV1 {
 
         /**
          * Apply the existing closed V2 factory/kind/role matrix first, then wrap its Windows or
-         * macOS result as DATA. iOS remains outside this binding: the current P1 state still
-         * refuses the iOS active-app factory with `REFUSE_POLICY_PENDING` and the extension
-         * factories with their existing native-unavailable/platform results.
+         * macOS result as DATA. This historical surface still refuses the iOS active-app factory
+         * with `REFUSE_POLICY_PENDING` and the extension factories with their existing
+         * native-unavailable/platform results. Use [acceptApprovedIos] for the distinct
+         * owner-approved P1 boundary.
          */
         public fun accept(
             factory: SelfOwnedInstalledIdentityFactoryV2,
@@ -65,9 +66,54 @@ public sealed interface SelfOwnedInstalledTargetBindingV1 {
                     SelfOwnedInstalledIdentityResultV2.Refused(result.code)
             }
 
-        /** Bounded pure DATA decode; never a custody, signer-trust or readiness result. */
+        /**
+         * Owner-approved P1 iOS active-app binding. [evidence] is the native
+         * code-signature-backed observation; it is not a caller Boolean. The returned binding is
+         * DATA and does not prove key custody or Master authority.
+         */
+        public fun acceptApprovedIos(
+            target: SelfOwnedIosActiveAppIdentityV2,
+            evidence: SelfOwnedIosNativeCodeSignatureEvidenceV1,
+        ): SelfOwnedInstalledIdentityResultV2<SelfOwnedIosInstalledTargetBindingV1> =
+            when (val accepted = SelfOwnedInstalledIdentityIosPolicyV1.acceptTarget(target, evidence)) {
+                is SelfOwnedInstalledIdentityResultV2.Data ->
+                    SelfOwnedInstalledIdentityResultV2.Data(
+                        SelfOwnedIosInstalledTargetBindingV1(accepted.value),
+                    )
+                is SelfOwnedInstalledIdentityResultV2.Refused ->
+                    SelfOwnedInstalledIdentityResultV2.Refused(accepted.code)
+            }
+
+        /** Parse the canonical V2 target, then apply the approved P1 native evidence boundary. */
+        public fun acceptApprovedIosTarget(
+            bytes: ByteArray,
+            expected: SelfOwnedIosActiveAppIdentityV2,
+            evidence: SelfOwnedIosNativeCodeSignatureEvidenceV1,
+        ): SelfOwnedInstalledIdentityResultV2<SelfOwnedIosInstalledTargetBindingV1> =
+            when (val accepted =
+                SelfOwnedInstalledIdentityIosPolicyV1.acceptTarget(bytes, expected, evidence)
+            ) {
+                is SelfOwnedInstalledIdentityResultV2.Data ->
+                    SelfOwnedInstalledIdentityResultV2.Data(
+                        SelfOwnedIosInstalledTargetBindingV1(accepted.value),
+                    )
+                is SelfOwnedInstalledIdentityResultV2.Refused ->
+                    SelfOwnedInstalledIdentityResultV2.Refused(accepted.code)
+            }
+
+        /**
+         * Bounded pure DATA decode. The historical iOS policy boundary is preserved: an iOS
+         * binding is refused `REFUSE_POLICY_PENDING`; use [decodeApprovedIos] for the approved
+         * P1 path. Neither decode path proves custody, signer trust or readiness.
+         */
         public fun decode(bytes: ByteArray): SelfOwnedInstalledIdentityResultV2<SelfOwnedInstalledTargetBindingV1> =
             SelfOwnedInstalledTargetBindingWireV1.decode(bytes)
+
+        /** Approved P1 iOS binding decode; the result is still DATA, not identity admission. */
+        public fun decodeApprovedIos(
+            bytes: ByteArray,
+        ): SelfOwnedInstalledIdentityResultV2<SelfOwnedIosInstalledTargetBindingV1> =
+            SelfOwnedInstalledTargetBindingWireV1.decodeApprovedIos(bytes)
 
         private fun native(
             target: SelfOwnedInstalledIdentityTargetV2,
@@ -76,7 +122,7 @@ public sealed interface SelfOwnedInstalledTargetBindingV1 {
             SelfOwnedInstalledIdentityPlatformV2.MACOS ->
                 SelfOwnedInstalledIdentityResultV2.Data(SelfOwnedNativeInstalledTargetBindingV1(target))
             SelfOwnedInstalledIdentityPlatformV2.IOS ->
-                // No V2 result path reaches this branch today; keep the P1 refusal explicit.
+                // The historical factory path stays P1-pending; use acceptApprovedIos instead.
                 SelfOwnedInstalledIdentityResultV2.Refused(
                     SelfOwnedInstalledIdentityRefusalV2.REFUSE_POLICY_PENDING,
                 )
@@ -128,9 +174,28 @@ public class SelfOwnedNativeInstalledTargetBindingV1 internal constructor(
 }
 
 /**
+ * Owner-approved P1 iOS active-app binding DATA. It is created only through the native-evidence
+ * policy boundary; the class itself proves neither key custody nor Master authority.
+ */
+public class SelfOwnedIosInstalledTargetBindingV1 internal constructor(
+    public val target: SelfOwnedIosActiveAppIdentityV2,
+) : SelfOwnedInstalledTargetBindingV1 {
+    override val platform: SelfOwnedInstalledTargetPlatformV1 =
+        SelfOwnedInstalledTargetPlatformV1.IOS
+    override val targetKind: String get() = target.kind.wireName
+    override val nativeTarget: SelfOwnedInstalledIdentityTargetV2 get() = target
+
+    override fun matches(other: SelfOwnedInstalledTargetBindingV1): Boolean =
+        other is SelfOwnedIosInstalledTargetBindingV1 &&
+            SelfOwnedInstalledIdentityV2.matches(target, other.target)
+
+    override fun toString(): String = "SelfOwnedIosInstalledTargetBindingV1([REDACTED])"
+}
+
+/**
  * Additive binding framing. Its embedded payload is not a new target codec: Android payload bytes
- * come from the unchanged legacy four-field encoder, and Windows/macOS payload bytes come from the
- * existing canonical V2 target encoder. Decoding this envelope grants nothing.
+ * come from the unchanged legacy four-field encoder, and Windows/macOS/iOS payload bytes come from
+ * the existing canonical V2 target encoder. Decoding this envelope grants nothing.
  */
 public object SelfOwnedInstalledTargetBindingWireV1 {
     public const val ID: String = "ukkera.installation/installed-target-binding/v1"
@@ -145,6 +210,8 @@ public object SelfOwnedInstalledTargetBindingWireV1 {
                 SelfOwnedInstallationWireV1.encodeTarget(value.target)
             is SelfOwnedNativeInstalledTargetBindingV1 ->
                 SelfOwnedInstalledIdentityWireV2.encodeTarget(value.target)
+            is SelfOwnedIosInstalledTargetBindingV1 ->
+                SelfOwnedInstalledIdentityWireV2.encodeTarget(value.target)
         }
         return try {
             SelfOwnedInstalledIdentityWireV2.frame(ID, DOMAIN, MAXIMUM_BINDING_BYTES) {
@@ -155,12 +222,32 @@ public object SelfOwnedInstalledTargetBindingWireV1 {
         } finally { targetBytes.fill(0) }
     }
 
+    /** Historical P1-pending decode; iOS is refused `REFUSE_POLICY_PENDING`. */
     public fun decode(
         bytes: ByteArray,
     ): SelfOwnedInstalledIdentityResultV2<SelfOwnedInstalledTargetBindingV1> =
-        selfOwnedIdentityGuarded { decodeOrThrow(bytes) }
+        selfOwnedIdentityGuarded { decodeOrThrow(bytes, approvedIos = false) }
 
-    private fun decodeOrThrow(bytes: ByteArray): SelfOwnedInstalledTargetBindingV1 {
+    /** Decode only with an exact expected target and a fresh native evidence recheck. */
+    public fun decodeApprovedIos(
+        bytes: ByteArray,
+        expected: SelfOwnedIosActiveAppIdentityV2,
+        evidence: SelfOwnedIosNativeCodeSignatureEvidenceV1,
+    ): SelfOwnedInstalledIdentityResultV2<SelfOwnedIosInstalledTargetBindingV1> =
+        selfOwnedIdentityGuarded {
+            val binding = decodeOrThrow(bytes, approvedIos = true) as? SelfOwnedIosInstalledTargetBindingV1
+                ?: refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_PLATFORM_MISMATCH)
+            SelfOwnedInstalledIdentityV2.refusalFor(expected, binding.target)?.let { refuse(it) }
+            when (val accepted = SelfOwnedInstalledTargetBindingV1.acceptApprovedIos(expected, evidence)) {
+                is SelfOwnedInstalledIdentityResultV2.Data -> accepted.value
+                is SelfOwnedInstalledIdentityResultV2.Refused -> refuse(accepted.code)
+            }
+        }
+
+    private fun decodeOrThrow(
+        bytes: ByteArray,
+        approvedIos: Boolean,
+    ): SelfOwnedInstalledTargetBindingV1 {
         if (bytes.size > MAXIMUM_BINDING_BYTES) refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_OVERSIZE)
         val reader = SelfOwnedIdentityReader(bytes)
         if (reader.string() != ID) refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_PROFILE_UNSUPPORTED)
@@ -178,15 +265,24 @@ public object SelfOwnedInstalledTargetBindingWireV1 {
             } else {
                 val targetKind = SelfOwnedInstalledIdentityTargetKindV2.fromWireName(kind)
                     ?: refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_TARGET_KIND)
-                if (targetKind.platform == SelfOwnedInstalledIdentityPlatformV2.IOS) {
+                val ios = targetKind.platform == SelfOwnedInstalledIdentityPlatformV2.IOS
+                if (ios && !approvedIos) {
                     refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_POLICY_PENDING)
                 }
                 when (val decoded = SelfOwnedInstalledIdentityWireV2.decodeTarget(targetBytes)) {
                     is SelfOwnedInstalledIdentityResultV2.Data -> {
-                        if (decoded.value.kind != targetKind) {
+                        val target = decoded.value
+                        if (target.kind != targetKind) {
                             refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_TARGET_KIND)
                         }
-                        SelfOwnedNativeInstalledTargetBindingV1(decoded.value)
+                        if (ios) {
+                            SelfOwnedIosInstalledTargetBindingV1(
+                                target as? SelfOwnedIosActiveAppIdentityV2
+                                    ?: refuse(SelfOwnedInstalledIdentityRefusalV2.REFUSE_PLATFORM_MISMATCH),
+                            )
+                        } else {
+                            SelfOwnedNativeInstalledTargetBindingV1(target)
+                        }
                     }
                     is SelfOwnedInstalledIdentityResultV2.Refused -> refuse(decoded.code)
                 }

@@ -1,4 +1,6 @@
+import Combine
 import SwiftUI
+import UIKit
 import UkkeraPos
 
 // Each scene retains its own presentation/runtime. UIKit contributes no navigation history.

@@ -252,6 +252,7 @@ internal class AndroidLocalSetupNativeServices(
 
     override fun retainLanHost(master: LocalSetupMaster, scope: CoroutineScope,
         settings: LocalSetupLanSettings): LocalSetupLanHost {
+        AndroidLocalNetworkPermission.requireGranted(application)
         val actual = master as? Master
         check(actual != null && actual.owner === this && masterTransfer === actual)
         return actual.retainLanHost(scope, settings)
@@ -259,6 +260,7 @@ internal class AndroidLocalSetupNativeServices(
 
     override fun retainLanClient(target: LocalSetupFreshDeviceTarget, scope: CoroutineScope,
         originalPairingActionId: DomainId, settings: LocalSetupLanSettings): LocalSetupLanClient {
+        AndroidLocalNetworkPermission.requireGranted(application)
         val actual = target as? FreshDeviceTarget
         check(actual != null && actual.owner === this && freshTargetTransfer === actual)
         return actual.retainLanClient(scope, originalPairingActionId, settings)
@@ -463,6 +465,7 @@ internal class AndroidLocalSetupNativeServices(
                 requireAvailable()
                 acquisition ?: retainedScope.async(start = CoroutineStart.LAZY) {
                     gate.withLock { requireAvailable() }
+                    AndroidLocalNetworkPermission.requireGranted(application)
                     val original = retainedMaster.originalLocalClient()
                     gate.withLock {
                         requireAvailable()
@@ -487,7 +490,9 @@ internal class AndroidLocalSetupNativeServices(
         }
 
         override suspend fun start(): LocalSetupLanEndpoint {
+            AndroidLocalNetworkPermission.requireGranted(application)
             val owner = acquireOwner()
+            AndroidLocalNetworkPermission.requireGranted(application)
             owner.start()
             val endpoint = owner.endpoint()
             currentCoroutineContext().ensureActive()
@@ -576,6 +581,7 @@ internal class AndroidLocalSetupNativeServices(
             retainedScope.coroutineContext[Job]?.isActive == true
 
         override suspend fun connect(endpoint: LocalSetupLanEndpoint) {
+            AndroidLocalNetworkPermission.requireGranted(application)
             currentCoroutineContext().ensureActive()
             val selected = settings.validateEndpoint(endpoint)
             val pending = gate.withLock {
@@ -597,6 +603,7 @@ internal class AndroidLocalSetupNativeServices(
                         credentials = acquired.credentials // Retain before the raw target can transfer/close.
                         check(current() && acquired.credentials.isCurrent())
                     }
+                    AndroidLocalNetworkPermission.requireGranted(application)
                     rpc.connect(selected) // Native readbacks, exact target close, actual SDK negotiation.
                     check(current())
                     val journal = credentials

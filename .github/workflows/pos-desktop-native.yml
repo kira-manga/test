@@ -1,0 +1,225 @@
+name: POS desktop native packages (manual, auxiliary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Original source revision recorded in artifact manifests (optional)
+        required: false
+        default: ""
+        type: string
+      desktop_smoke:
+        description: Launch the packaged app with --smoke-exit after packaging
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-desktop-native-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AUTHORIZED_REPOSITORY: kira-manga/test
+  GRADLE_OPTS: >-
+    -Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+
+jobs:
+  macos:
+    name: macOS DMG (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+          - runner: macos-26-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - name: Verify authorized auxiliary repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REPOSITORY}" != "${AUTHORIZED_REPOSITORY}" ]]; then
+            echo "::error::This workflow is restricted to ${AUTHORIZED_REPOSITORY}; current repository is ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Locate POS independent Gradle build
+        id: pos
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(pwd)"
+          if [[ -x "$WORKSPACE/apps/pos/gradlew" ]]; then
+            echo "root=$WORKSPACE/apps/pos" >> "$GITHUB_OUTPUT"
+          elif [[ -x "$WORKSPACE/gradlew" ]] && grep -q 'ukkera-pos' "$WORKSPACE/settings.gradle.kts"; then
+            echo "root=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not locate the POS Gradle wrapper. Snapshot the repository root including apps/pos and .github/workflows."
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Show runner native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner.os=${RUNNER_OS} runner.arch=${RUNNER_ARCH}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          if [[ -z "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ]]; then
+            echo "::error::Android SDK is not configured; the POS Gradle settings include Android modules."
+            exit 1
+          fi
+          uname -m
+          sw_vers
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-desktop-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('apps/pos/gradle/wrapper/gradle-wrapper.properties', 'apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-desktop-${{ runner.os }}-${{ matrix.arch }}-
+
+      - name: Build unsigned macOS DMG and collect diagnostics
+        shell: bash
+        env:
+          POS_ROOT: ${{ steps.pos.outputs.root }}
+          DESKTOP_SMOKE: ${{ inputs.desktop_smoke && '1' || '0' }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          bash "$PWD/scripts/pos/desktop/package-desktop.sh" \
+            --pos-root "$POS_ROOT" \
+            --format dmg \
+            --arch "${{ matrix.arch }}" \
+            --source-revision "${SOURCE_REVISION:-}"
+
+      - name: Upload macOS DMG and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-macos-dmg-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-artifacts/desktop-macos-${{ matrix.arch }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="build/pos-artifacts/desktop-macos-${{ matrix.arch }}/diagnostics/summary.txt"
+          if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+
+  windows:
+    name: Windows MSI (x64)
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - name: Verify authorized auxiliary repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REPOSITORY}" != "${AUTHORIZED_REPOSITORY}" ]]; then
+            echo "::error::This workflow is restricted to ${AUTHORIZED_REPOSITORY}; current repository is ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Locate POS independent Gradle build
+        id: pos
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(pwd)"
+          if [[ -x "$WORKSPACE/apps/pos/gradlew" ]]; then
+            echo "root=$WORKSPACE/apps/pos" >> "$GITHUB_OUTPUT"
+          elif [[ -x "$WORKSPACE/gradlew" ]] && grep -q 'ukkera-pos' "$WORKSPACE/settings.gradle.kts"; then
+            echo "root=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not locate the POS Gradle wrapper. Snapshot the repository root including apps/pos and .github/workflows."
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Show runner native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner.os=${RUNNER_OS} runner.arch=${RUNNER_ARCH}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          if [[ -z "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ]]; then
+            echo "::error::Android SDK is not configured; the POS Gradle settings include Android modules."
+            exit 1
+          fi
+          uname -m
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-desktop-${{ runner.os }}-x64-${{ hashFiles('apps/pos/gradle/wrapper/gradle-wrapper.properties', 'apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-desktop-${{ runner.os }}-x64-
+
+      - name: Build unsigned Windows MSI and collect diagnostics
+        shell: bash
+        env:
+          POS_ROOT: ${{ steps.pos.outputs.root }}
+          DESKTOP_SMOKE: ${{ inputs.desktop_smoke && '1' || '0' }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          bash "$PWD/scripts/pos/desktop/package-desktop.sh" \
+            --pos-root "$POS_ROOT" \
+            --format msi \
+            --arch x64 \
+            --source-revision "${SOURCE_REVISION:-}"
+
+      - name: Upload Windows MSI and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-windows-msi-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-artifacts/desktop-windows-x64
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="build/pos-artifacts/desktop-windows-x64/diagnostics/summary.txt"
+          if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi

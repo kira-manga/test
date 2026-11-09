@@ -1,0 +1,154 @@
+name: POS iOS native build (manual, auxiliary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Original source revision recorded in artifact manifests (optional)
+        required: false
+        default: ""
+        type: string
+      simulator_smoke:
+        description: Boot an iPhone simulator, install and launch the unsigned app
+        required: true
+        default: true
+        type: boolean
+      run_ios_kotlin_tests:
+        description: Run focused Kotlin/Native simulator tests before packaging
+        required: true
+        default: false
+        type: boolean
+      xcode_developer_dir:
+        description: Optional Xcode developer directory; empty uses xcode-select
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-ios-native-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AUTHORIZED_REPOSITORY: kira-manga/test
+  GRADLE_OPTS: >-
+    -Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+
+jobs:
+  ios:
+    name: iOS simulator app and unsigned device archive
+    runs-on: macos-26
+    timeout-minutes: 150
+    steps:
+      - name: Verify authorized auxiliary repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REPOSITORY}" != "${AUTHORIZED_REPOSITORY}" ]]; then
+            echo "::error::This workflow is restricted to ${AUTHORIZED_REPOSITORY}; current repository is ${GITHUB_REPOSITORY}."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Locate POS independent Gradle build
+        id: pos
+        shell: bash
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(pwd)"
+          if [[ -x "$WORKSPACE/apps/pos/gradlew" ]]; then
+            echo "root=$WORKSPACE/apps/pos" >> "$GITHUB_OUTPUT"
+          elif [[ -x "$WORKSPACE/gradlew" ]] && grep -q 'ukkera-pos' "$WORKSPACE/settings.gradle.kts"; then
+            echo "root=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Could not locate the POS Gradle wrapper. Snapshot the repository root including apps/pos and .github/workflows."
+            exit 1
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Show runner native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "runner.os=${RUNNER_OS} runner.arch=${RUNNER_ARCH}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          if [[ -z "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}" ]]; then
+            echo "::error::Android SDK is not configured; the POS Gradle settings include Android modules."
+            exit 1
+          fi
+          uname -m
+          sw_vers
+
+      - name: Select and validate installed Xcode
+        shell: bash
+        env:
+          XCODE_DEVELOPER_DIR: ${{ inputs.xcode_developer_dir }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${XCODE_DEVELOPER_DIR:-}" ]]; then
+            sudo xcode-select -s "$XCODE_DEVELOPER_DIR"
+          fi
+          echo "developer_dir=$(xcode-select -p)"
+          xcodebuild -version
+          xcodebuild -showsdks
+          echo "iphonesimulator_sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)"
+          echo "iphoneos_sdk=$(xcrun --sdk iphoneos --show-sdk-version)"
+          if [[ "$(uname -m)" != "arm64" ]]; then
+            echo "::error::POS declares iosSimulatorArm64 only; use the arm64 macos-26 runner."
+            exit 1
+          fi
+
+      - name: Cache Gradle and Kotlin/Native
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: pos-ios-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('apps/pos/gradle/wrapper/gradle-wrapper.properties', 'apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-ios-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build framework, Xcode app, simulator smoke and device archive
+        shell: bash
+        env:
+          POS_ROOT: ${{ steps.pos.outputs.root }}
+          SIMULATOR_SMOKE: ${{ inputs.simulator_smoke && '1' || '0' }}
+          RUN_IOS_KOTLIN_TESTS: ${{ inputs.run_ios_kotlin_tests && '1' || '0' }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          XCODE_DEVELOPER_DIR: ${{ inputs.xcode_developer_dir }}
+        run: |
+          set -euo pipefail
+          bash "$PWD/scripts/pos/ios/build-ios-artifacts.sh" \
+            --pos-root "$POS_ROOT" \
+            --source-revision "${SOURCE_REVISION:-}"
+
+      - name: Upload iOS artifacts and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-ios-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-artifacts/ios
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish job summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f build/pos-artifacts/ios/diagnostics/summary.txt ]]; then
+            cat build/pos-artifacts/ios/diagnostics/summary.txt >> "$GITHUB_STEP_SUMMARY"
+          fi

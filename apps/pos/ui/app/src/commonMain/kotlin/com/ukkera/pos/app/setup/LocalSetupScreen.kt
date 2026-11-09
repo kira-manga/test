@@ -71,6 +71,8 @@ public fun LocalSetupScreen(
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
     compositionMode: LocalSetupCompositionMode = LocalSetupCompositionMode.LIVE,
+    lanPermissionGranted: Boolean = true,
+    onRequestLanPermission: (() -> Unit)? = null,
 ) {
     val view by controller.state.collectAsState()
     val training = compositionMode == LocalSetupCompositionMode.TRAINING
@@ -88,7 +90,8 @@ public fun LocalSetupScreen(
         return
     }
     if (!view.locked && view.phase == LocalSetupPhase.FRESH_DEVICE_PAIRING) {
-        LocalSetupFreshDevicePairingScreen(controller, view, language, onLanguageChange, modifier, onBack)
+        LocalSetupFreshDevicePairingScreen(controller, view, language, onLanguageChange, modifier, onBack,
+            lanPermissionGranted, onRequestLanPermission)
         return
     }
     val definition = view.definitionReview
@@ -153,7 +156,7 @@ public fun LocalSetupScreen(
                 } else {
                     val editable = view.work == null && view.problem != LocalSetupProblem.CLOSE_UNCONFIRMED
                     if (view.phase == LocalSetupPhase.INSTALLATION_RETAINED || view.lan.role != null ||
-                        view.lan.hostAvailable || view.lan.clientAvailable) LocalSetupLanSection(controller, view)
+                        view.lan.hostAvailable || view.lan.clientAvailable) LocalSetupLanSection(controller, view, lanPermissionGranted, onRequestLanPermission)
                     when (view.phase) {
                         LocalSetupPhase.CHOOSE_ROUTE -> {
                             Notice(t("Create a NEW local company only when that is the intended action. Original recovery never falls back to a new company because files are missing.",

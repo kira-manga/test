@@ -6,8 +6,10 @@ package com.ukkera.pos.security
  * It is DATA only: holding these documents never proves native custody, signer trust, installation
  * or writer authority. The Android V1 packet and its exact bytes are a separate contract.
  *
- * Only Windows/macOS target bindings are accepted. iOS remains refused by the binding factory and
- * is never substituted by an Android legacy target.
+ * Only Windows/macOS native key target bindings are accepted. The owner-approved iOS active-app
+ * identity/preparation boundary is DATA-only and is deliberately not a native key packet: key
+ * custody, possession and any native owner remain E3-009/010 obligations. iOS is never substituted
+ * by an Android legacy target.
  */
 public class SelfOwnedPreparationPacketV2 internal constructor(
     public val coordinates: SelfOwnedAllocationCoordinatesV1,
