@@ -60,14 +60,14 @@ echo "  ARCHS:       ${ARCHS:-unset}"
 
 # Optimized Kotlin/Native release linking exceeded 1536 MiB in the real Xcode
 # archive. Keep debug/test work at the shared limit; bound the one release worker.
-RELEASE_JVM_ARGS=()
+FRAMEWORK_JVM_ARGS=("-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8")
 WORKERS=2
 if [[ "$CONFIGURATION" == "Release" ]]; then
   RELEASE_HEAP_MB="${POS_IOS_RELEASE_HEAP_MB:-4096}"
   [[ "$RELEASE_HEAP_MB" =~ ^[0-9]+$ && "$RELEASE_HEAP_MB" -ge 1536 && "$RELEASE_HEAP_MB" -le 8192 ]] || {
     echo 'error: POS_IOS_RELEASE_HEAP_MB must be between 1536 and 8192.' >&2; exit 2;
   }
-  RELEASE_JVM_ARGS=("-Dorg.gradle.jvmargs=-Xmx${RELEASE_HEAP_MB}m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8")
+  FRAMEWORK_JVM_ARGS=("-Dorg.gradle.jvmargs=-Xmx${RELEASE_HEAP_MB}m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8")
   WORKERS=1
 fi
 cd "$POS_ROOT"
@@ -78,4 +78,4 @@ exec /bin/bash ./gradlew \
   --no-daemon \
   --max-workers="$WORKERS" \
   -Pkotlin.compiler.execution.strategy=in-process \
-  "${RELEASE_JVM_ARGS[@]}"
+  "${FRAMEWORK_JVM_ARGS[@]}"
