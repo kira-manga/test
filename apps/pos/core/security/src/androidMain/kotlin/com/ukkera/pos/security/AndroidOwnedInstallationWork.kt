@@ -373,7 +373,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 val actual = scope.launch(RoomElement(this@AndroidOwnedInstallationWork, this) + roomCoroutines.dispatcher,
                     start = CoroutineStart.LAZY) {
                     bodyResult = try { requireActive(); Result.success(body()) }
-                        catch (failure: Throwable) { Result.failure(failure) }
+                        catch (failure: Throwable) {
+                            // Open failure cleanup can retire this owner before runRoom's
+                            // delivery guard. Retain the originating static location too.
+                            logUnavailableNativeAction(failure)
+                            Result.failure(failure)
+                        }
                 }
                 roomCoroutines.bindForeground(this, actual)
                 actual.start(); actual.join()
@@ -583,12 +588,13 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             // locations, with no exception messages, arguments or native resource values.
             val frames = failure.stackTrace
             val locations = (frames.take(2) + frames.filter {
-                it.className.startsWith("com.ukkera.pos.security.")
+                it.className.startsWith("com.ukkera.pos.")
             }.take(4)).distinct().joinToString(" <- ") {
                 "${it.className}.${it.methodName}:${it.lineNumber}"
             }
             val errno = (failure as? ErrnoException)?.errno?.let { "; errno=$it" }.orEmpty()
-            Log.w("UkkeraNativeOwner", "Native action refused: ${failure.javaClass.simpleName}$errno; $locations")
+            val reason = (failure as? SelfOwnedFailureV1)?.reason?.name?.let { "; reason=$it" }.orEmpty()
+            Log.w("UkkeraNativeOwner", "Native action refused: ${failure.javaClass.simpleName}$errno$reason; $locations")
         } catch (_: Throwable) {
             // Diagnostic failure cannot change retirement, closure or the original result.
         }
