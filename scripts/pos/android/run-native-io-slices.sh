@@ -93,6 +93,10 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
 PHASE=install
+if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack ]]; then
+  existing="$("${ADB[@]}" shell pm path com.ukkera.pos.local.testing 2>/dev/null || true)"
+  [[ -z "${existing//$'\r'/}" ]] || { echo 'Original ACK segment requires a fresh isolated installation.' >&2; exit 2; }
+fi
 "${ADB[@]}" install -r "$APP_APK"
 "${ADB[@]}" install -r "$TEST_APK"
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing > "$OUT/app-package.txt"
@@ -135,6 +139,54 @@ case "${POS_NATIVE_SLICE_GROUP:-io}" in
       fi
     done
     printf '%s\n' 'PASS: two unchanged original-key selectors, including existing-only use after observed process absence. OS_ISOLATED observations only; no hardware, independent pre/post identity comparison, Master, financial or owner acceptance.' > "$OUT/summary.txt"
+    cat "$OUT/summary.txt"
+    exit 0 ;;
+  ack)
+    SEGMENT="${POS_NATIVE_ACK_SEGMENT:?An exact frozen original ACK segment is required}"
+    [[ "$SEGMENT" == INSTALLATION_ONLY_CONFIRMED_READ_REPEAT || "$SEGMENT" == CONFIRMED_CLOSE_REOPEN_REPEAT ]] || exit 2
+    PHASE=original-ack
+    set +e
+    timeout 1200s "${ADB[@]}" shell am instrument -w -r \
+      -e class com.ukkera.pos.android.independent.nativeoriginalackv4.NativeOriginalAckRecoveryTest#selectedFrozenSegment \
+      -e nativeAckV4Segment "$SEGMENT" -e keyProtection OS_ISOLATED \
+      com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
+      | tee "$OUT/original-ack.txt"
+    status=$?
+    set -e
+    "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    # Read only selected synthetic evidence on the gated fresh emulator.
+    # Raw app-private evidence stays in runner temp and is never uploaded.
+    "${ADB[@]}" root > "$OUT/evidence-adb-context.txt" 2>&1 || true
+    timeout 90s "${ADB[@]}" wait-for-device
+    raw_evidence="${RUNNER_TEMP:?}/pos-native-ack-selected.json"
+    "${ADB[@]}" exec-out cat /data/user/0/com.ukkera.pos.local.testing/no_backup/native-ack-v4-selected-segment.json > "$raw_evidence" || true
+    python3 - "$raw_evidence" "$OUT/selected-segment.json" "$SEGMENT" <<'PYACK'
+import hashlib,json,pathlib,sys
+raw=pathlib.Path(sys.argv[1]).read_bytes()
+try:
+    record=json.loads(raw)
+except (ValueError,UnicodeError):
+    summary={'result':'EVIDENCE_UNAVAILABLE','selectedSegment':sys.argv[3]}
+else:
+    assert record['selectedSegment']==sys.argv[3]
+    assert record['syntheticOnly'] is True
+    summary={key:record.get(key) for key in ('fixture','selectedSegment','status','runtime','keyProtectionRequested','syntheticOnly','failure','unbound')}
+    summary['events']=[event.get('event') for event in record.get('events',[])]
+    summary['raw_evidence_sha256']=hashlib.sha256(raw).hexdigest()
+pathlib.Path(sys.argv[2]).write_text(json.dumps(summary,indent=2)+'\n')
+PYACK
+    [[ "$status" -eq 0 ]]
+    grep -Fq 'OK (1 test)' "$OUT/original-ack.txt"
+    [[ "$(grep -c '^INSTRUMENTATION_STATUS_CODE: 0' "$OUT/original-ack.txt")" -eq 1 ]]
+    if grep -Eq '^INSTRUMENTATION_STATUS_CODE: -(1|2|3|4)|FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$OUT/original-ack.txt"; then
+      echo 'Original ACK segment failed or skipped.' >&2; exit 1
+    fi
+    python3 - "$OUT/selected-segment.json" "$SEGMENT" <<'PYACKPASS'
+import json,pathlib,sys
+record=json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert record['status']==sys.argv[2]+'_SEGMENT_EXECUTED_NOT_WHOLE_NAC_CASE'
+PYACKPASS
+    printf '%s\n' 'PASS: one unchanged frozen original ACK segment on a fresh isolated installation; not a whole NAC/SAS/OSR case, native platform completion or owner acceptance.' > "$OUT/summary.txt"
     cat "$OUT/summary.txt"
     exit 0 ;;
   *) echo 'Unknown native slice group.' >&2; exit 2 ;;

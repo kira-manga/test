@@ -1,0 +1,57 @@
+name: POS Android original ACK segments (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      apk_source_revision:
+        description: Exact primary app source recorded in the retained APK pair
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  original-ack:
+    if: github.repository == 'kira-manga/test'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        segment: [INSTALLATION_ONLY_CONFIRMED_READ_REPEAT, CONFIRMED_CLOSE_REOPEN_REPEAT]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Enable disposable hosted emulator
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        env:
+          POS_DISPOSABLE_ANDROID: 'true'
+          POS_NATIVE_SLICE_GROUP: ack
+          POS_NATIVE_ACK_SEGMENT: ${{ matrix.segment }}
+          POS_EXPECTED_ANDROID_API: '35'
+          POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: bash scripts/pos/android/run-native-io-slices.sh testing-inputs/ukkera-pos-testing.apk testing-inputs/ukkera-pos-runtime-tests.apk native-ack-output testing-inputs/apk-pair.json
+      - name: Retain exact inputs and selected nonsecret outcome
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-android-ack-${{ matrix.segment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-ack-output
+            testing-inputs/ukkera-pos-testing.apk
+            testing-inputs/ukkera-pos-runtime-tests.apk
+            testing-inputs/artifact.json
+            testing-inputs/apk-pair.json
+          retention-days: 14

@@ -10,7 +10,8 @@ Client. Do not use production data or real payments.
 
 Sign in to GitHub with access to `kira-manga/test`. Download the named Actions
 artifact, extract its outer ZIP, and use the package below. The auxiliary repo
-is temporary; artifacts have a 14-day retention period. Keep the package with its
+was restored **private** on 9 November 2026; artifacts have a 14-day retention
+period. Access was independently checked after the visibility change. Keep the package with its
 manifest, source revision and checksum files. Repository privacy does not replace
 package signing.
 
