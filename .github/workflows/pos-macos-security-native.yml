@@ -1,0 +1,79 @@
+name: POS macOS SDK Keychain store (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of this snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  macos-security:
+    if: github.repository == 'kira-manga/test'
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-macos-security-${{ runner.os }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-desktop-${{ runner.os }}-arm64-
+      - name: Record exact source and bounded native context
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-security-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt native-security-output/SOURCE-REVISION.txt
+          git rev-parse HEAD > native-security-output/HARNESS-REVISION.txt
+          printf 'repository=%s\nrun=%s\nattempt=%s\n' "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > native-security-output/workflow.txt
+          sw_vers > native-security-output/macos.txt
+          java -version 2> native-security-output/java.txt
+          printf 'stock JDK host; no signing, entitlement, Keychain unlock or production-query changes\n' > native-security-output/context.txt
+      - name: Execute nine frozen methods against the real Keychain
+        run: |
+          set -euo pipefail
+          cd apps/pos
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :core:security:jvmTest \
+            --tests 'com.ukkera.pos.security.independent.mackeychain.MacKeychainSecureIdentityStoreNativeTest' \
+            --console=plain 2>&1 | tee ../../native-security-output/gradle.txt
+      - name: Require nine genuine native methods without skips
+        if: always()
+        shell: python
+        run: |
+          import json, pathlib, xml.etree.ElementTree as ET
+          out = pathlib.Path('native-security-output')
+          out.mkdir(exist_ok=True)
+          paths = list(pathlib.Path('apps/pos/core/security/build/test-results/jvmTest').glob('TEST-*MacKeychainSecureIdentityStoreNativeTest.xml'))
+          if len(paths) != 1:
+              (out / 'summary.json').write_text(json.dumps({'result':'FAIL', 'reason':'Missing native result XML'}) + '\n')
+              raise SystemExit('Missing native result XML')
+          root = ET.parse(paths[0]).getroot()
+          counts = {key:int(root.get(key, '0')) for key in ('tests','failures','errors','skipped')}
+          passed = tuple(counts.values()) == (9,0,0,0)
+          (out / 'summary.json').write_text(json.dumps({'result':'PASS' if passed else 'FAIL', **counts}, indent=2) + '\n')
+          assert passed, counts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-macos-security-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-security-output
+            apps/pos/core/security/build/test-results/jvmTest
+            apps/pos/core/security/build/reports/tests/jvmTest
+          retention-days: 14
