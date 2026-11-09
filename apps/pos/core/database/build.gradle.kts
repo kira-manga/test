@@ -41,6 +41,9 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test-junit"))
+            // Test-only official JVM manual endpoint/provisioning used by the DR-A09
+            // in-memory transport harness. No production dependency is added.
+            implementation("io.github.apdelrahman1911:p2p-network-provisioning-desktop:0.8.0-rc12")
             // Test-only reverse edge: exercise the public typed handler through
             // real SQLite, not its internal pure-test seams. Production has no
             // database -> business-domain dependency.

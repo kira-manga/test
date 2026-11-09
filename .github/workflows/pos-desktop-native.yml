@@ -8,6 +8,12 @@ on:
         required: false
         default: ""
         type: string
+      platforms:
+        description: Build both platforms or only the platform being requalified
+        type: choice
+        options: [all, macos, windows]
+        default: all
+        required: true
       desktop_smoke:
         description: Launch the packaged app with --smoke-exit after packaging
         required: true
@@ -28,6 +34,7 @@ env:
 
 jobs:
   macos:
+    if: inputs.platforms != 'windows'
     name: macOS DMG (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -131,6 +138,7 @@ jobs:
           if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
 
   windows:
+    if: inputs.platforms != 'macos'
     name: Windows MSI (x64)
     runs-on: windows-2025
     timeout-minutes: 120

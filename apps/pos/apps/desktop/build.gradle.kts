@@ -37,7 +37,9 @@ compose.desktop {
             copyright = "(c) 2026 Ukkera"
             macOS {
                 bundleID = "com.ukkera.pos.local.desktop"
-                dmgPackageVersion = "0.1.0"
+                // jpackage requires a positive leading macOS application version.
+                packageVersion = "1.0.0"
+                dmgPackageVersion = "1.0.0"
             }
             windows {
                 // Stable identity so a later MSI can replace this local test install

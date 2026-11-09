@@ -31,9 +31,19 @@ fi
 [[ -x "$APKSIGNER" ]]
 "$APKSIGNER" verify --verbose --print-certs "$APP_APK" > "$OUT/app-signature.txt"
 "$APKSIGNER" verify --verbose --print-certs "$TEST_APK" > "$OUT/test-signature.txt"
-APP_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/app-signature.txt")"
-TEST_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$OUT/test-signature.txt")"
-[[ -n "$APP_CERT" && "$APP_CERT" == "$TEST_CERT" ]] || { echo 'Application and test signer differ.' >&2; exit 2; }
+APP_CERT="$(python3 - "$OUT/app-signature.txt" "$OUT/test-signature.txt" <<'PYCERT'
+import pathlib, re, sys
+certs = []
+for path in sys.argv[1:]:
+    text = pathlib.Path(path).read_text()
+    assert re.search(r'^Number of signers: 1$', text, re.M), 'Exactly one APK signer required'
+    values = set(re.findall(r'^.*certificate SHA-256 digest: ([0-9a-fA-F]{64})$', text, re.M))
+    assert len(values) == 1, 'APK scheme signers must agree'
+    certs.append(values.pop().lower())
+assert certs[0] == certs[1], 'Application and test signer differ'
+print(certs[0])
+PYCERT
+)"
 python3 - "$PAIR_MANIFEST" "$APP_APK" "$TEST_APK" "$APP_CERT" <<'PYMANIFEST'
 import hashlib, json, os, pathlib, sys
 manifest_path, app_path, test_path, cert = sys.argv[1:]

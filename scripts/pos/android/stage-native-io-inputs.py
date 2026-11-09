@@ -25,9 +25,10 @@ assert metadata['apk_bytes'] == app.stat().st_size
 reports = []
 for apk in [app, a.runtime_tests_apk]:
     report = subprocess.check_output([a.apksigner, 'verify', '--verbose', '--print-certs', str(apk)], text=True)
-    certs = re.findall(r'^Signer #1 certificate SHA-256 digest: ([0-9a-fA-F]{64})$', report, re.M)
-    assert len(certs) == 1, 'Exactly one observed signer certificate is required'
-    reports.append(certs[0].lower())
+    assert re.search(r'^Number of signers: 1$', report, re.M), 'Exactly one APK signer required'
+    certs = set(re.findall(r'^.*certificate SHA-256 digest: ([0-9a-fA-F]{64})$', report, re.M))
+    assert len(certs) == 1, 'All signature schemes must report the same certificate'
+    reports.append(certs.pop().lower())
 assert reports[0] == reports[1], 'Application and instrumentation signers differ'
 a.out.mkdir(parents=True, exist_ok=True)
 manifest = {'source_revision': metadata['source_revision'],
