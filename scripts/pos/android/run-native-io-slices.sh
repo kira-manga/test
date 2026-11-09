@@ -99,6 +99,46 @@ PHASE=install
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing.test > "$OUT/test-package.txt"
 "${ADB[@]}" logcat -c
 PHASE=instrumentation
+case "${POS_NATIVE_SLICE_GROUP:-io}" in
+  io) ;;
+  keys)
+    # Preserve the two existing frozen selectors and their original assertions.
+    # The first explicitly prepares fresh synthetic native state; the second only
+    # reopens it after an observed target-process stop. Never clear/reset that state.
+    KEY_CLASS=com.ukkera.pos.android.independent.androidapi24v1.AndroidApi24V1NativeKeySlicesTest
+    KEY_METHODS=(
+      n02_n03_n07_originalNativeKeyNonexportabilityChallengeAndCloseReopenSlices
+      n02_n07_existingOnlyFreshProcessStartupSlice_noIndependentPreRestartIdentityComparison
+    )
+    for index in 0 1; do
+      PHASE="native-key-$index"
+      if [[ "$index" -eq 1 ]]; then
+        "${ADB[@]}" shell am force-stop com.ukkera.pos.local.testing
+        remaining="$("${ADB[@]}" shell pidof com.ukkera.pos.local.testing 2>/dev/null || true)"
+        [[ -z "${remaining//$'\r'/}" ]] || { echo 'Target process remains after force-stop.' >&2; exit 1; }
+        printf '%s\n' 'Target force-stop completed; no retained target PID before existing-only invocation.' > "$OUT/fresh-process-boundary.txt"
+      fi
+      set +e
+      "${ADB[@]}" shell am instrument -w -r -e class "$KEY_CLASS#${KEY_METHODS[$index]}" \
+        -e syntheticAndroidApi24 true \
+        com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
+        | tee "$OUT/native-key-$index.txt"
+      status=$?
+      set -e
+      "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log-$index.txt"
+      "${ADB[@]}" logcat -d -s AndroidApi24V1:I > "$OUT/native-key-log-$index.txt"
+      [[ "$status" -eq 0 ]]
+      grep -Fq 'OK (1 test)' "$OUT/native-key-$index.txt"
+      [[ "$(grep -c '^INSTRUMENTATION_STATUS_CODE: 0' "$OUT/native-key-$index.txt")" -eq 1 ]]
+      if grep -Eq '^INSTRUMENTATION_STATUS_CODE: -(1|2|3|4)|FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$OUT/native-key-$index.txt"; then
+        echo 'Native key selector failed or skipped.' >&2; exit 1
+      fi
+    done
+    printf '%s\n' 'PASS: two unchanged original-key selectors, including existing-only use after observed process absence. OS_ISOLATED observations only; no hardware, independent pre/post identity comparison, Master, financial or owner acceptance.' > "$OUT/summary.txt"
+    cat "$OUT/summary.txt"
+    exit 0 ;;
+  *) echo 'Unknown native slice group.' >&2; exit 2 ;;
+esac
 set +e
 "${ADB[@]}" shell am instrument -w -r \
   -e class com.ukkera.pos.android.independent.androidapi24v1.AndroidApi24V1NativeIoSlicesTest \

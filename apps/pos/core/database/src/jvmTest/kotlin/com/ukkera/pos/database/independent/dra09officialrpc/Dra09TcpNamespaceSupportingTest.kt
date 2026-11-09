@@ -85,7 +85,7 @@ class Dra09TcpNamespaceSupportingTest {
 
 /** Child entry point only. No production factory, provider or transport SPI override. */
 internal object Dra09TcpEndpoint {
-    @JvmStatic fun main(arguments: Array<String>) = runBlocking {
+    @JvmStatic fun main(arguments: Array<String>): Unit = runBlocking {
         val (role, directory, iface, address) = arguments.toList()
         val root = Path.of(directory)
         Files.writeString(root.resolve("$role.boot"), "booted")

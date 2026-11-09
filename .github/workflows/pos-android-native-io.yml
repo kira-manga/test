@@ -6,6 +6,12 @@ on:
         description: 'Exact primary source revision recorded in the staged APK pair'
         required: true
         type: string
+      slice_group:
+        description: Existing frozen native I/O or original-key slices
+        required: true
+        type: choice
+        options: [io, keys]
+        default: io
 permissions:
   contents: read
 jobs:
@@ -30,6 +36,7 @@ jobs:
       - uses: reactivecircus/android-emulator-runner@v2
         env:
           POS_DISPOSABLE_ANDROID: 'true'
+          POS_NATIVE_SLICE_GROUP: ${{ inputs.slice_group }}
           POS_EXPECTED_ANDROID_API: ${{ matrix.api == '37.0' && '37' || matrix.api }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
@@ -45,7 +52,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-android-native-io-api${{ matrix.api }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             native-io-output
             testing-inputs/ukkera-pos-testing.apk
