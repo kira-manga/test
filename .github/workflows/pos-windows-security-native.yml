@@ -71,7 +71,14 @@ jobs:
           $scriptPath = Join-Path $env:GITHUB_WORKSPACE 'native-security-output\execute-native.ps1'
           @'
           $ErrorActionPreference = 'Stop'
-          $profileRoot = [Environment]::GetFolderPath('UserProfile')
+          $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $profileInfo = Get-ItemProperty ('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $currentUser.User.Value)
+          $profileRoot = [Environment]::ExpandEnvironmentVariables($profileInfo.ProfileImagePath)
+          # Alternate-credential processes inherit the launching environment. Restore the
+          # actual loaded profile before the JVM or Known Folder APIs observe those values.
+          $env:USERPROFILE = $profileRoot
+          $env:LOCALAPPDATA = Join-Path $profileRoot 'AppData\Local'
+          $env:APPDATA = Join-Path $profileRoot 'AppData\Roaming'
           $env:TEMP = Join-Path $profileRoot 'AppData\Local\Temp'
           $env:TMP = $env:TEMP
           New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
@@ -86,8 +93,8 @@ jobs:
           exit $LASTEXITCODE
           '@ | Set-Content -Path $scriptPath
           try {
-            $nativeProcess = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $nativeCredential -LoadUserProfile -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -Wait -PassThru
-            Get-Content native-security-output\gradle.txt -Tail 100 -ErrorAction SilentlyContinue
+            $nativeProcess = Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -Credential $nativeCredential -LoadUserProfile -WorkingDirectory $env:GITHUB_WORKSPACE -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $scriptPath) -RedirectStandardOutput (Join-Path $env:GITHUB_WORKSPACE 'native-security-output\child-stdout.txt') -RedirectStandardError (Join-Path $env:GITHUB_WORKSPACE 'native-security-output\child-stderr.txt') -Wait -PassThru
+            Get-Content native-security-output\child-stdout.txt,native-security-output\child-stderr.txt,native-security-output\gradle.txt -Tail 100 -ErrorAction SilentlyContinue
             if ($nativeProcess.ExitCode -ne 0) { throw "Native store tests exited $($nativeProcess.ExitCode)" }
           } finally {
             Remove-LocalUser -Name $nativeUser

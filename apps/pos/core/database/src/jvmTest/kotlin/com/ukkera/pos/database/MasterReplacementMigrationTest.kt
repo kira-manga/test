@@ -1,6 +1,5 @@
 package com.ukkera.pos.database
 
-import androidx.room3.Room
 import androidx.room3.RoomDatabase
 import androidx.room3.migration.Migration
 import androidx.room3.useWriterConnection
@@ -411,8 +410,9 @@ private fun replacementMigration(version: Int): Migration = when (version) {
 }
 
 private fun replacementMigrationPath(): Path = Files.createTempDirectory("ukkera-replacement-migration-").resolve("master.db")
-private fun replacementCurrent(path: Path, driver: SQLiteDriver = BundledSQLiteDriver()): MasterRoomDatabase =
-    buildMasterRoom(Room.databaseBuilder<MasterRoomDatabase>(path.toString(), MasterRoomConstructor::initialize), driver)
+/** Actual historical v4 schema, not the retired production opener for owned schema 7. */
+private fun replacementCurrent(path: Path, driver: SQLiteDriver = BundledSQLiteDriver()): LegacyV4MasterDatabase =
+    buildLegacyV4MasterRoom(path, driver)
 
 private fun replacementOld(path: Path, version: Int): RoomDatabase = when (version) {
     1 -> LegacyV1MasterFixture(path).database
@@ -568,7 +568,7 @@ private suspend fun assertReplacementSourcePreserved(source: ReplacementSource, 
     }
 }
 
-private suspend fun assertReplacementProtectedValues(current: MasterRoomDatabase, source: ReplacementSource) {
+private suspend fun assertReplacementProtectedValues(current: LegacyV4MasterDatabase, source: ReplacementSource) {
     val fixture = source.protectedFixture ?: run {
         observeReplacementRoom(current) {
             for (table in REPLACEMENT_PROTECTED_TABLES + REPLACEMENT_ISSUANCE_TABLE)
@@ -576,7 +576,8 @@ private suspend fun assertReplacementProtectedValues(current: MasterRoomDatabase
         }
         return
     }
-    RoomLocalSecurityStore(current, fixture.protection, fixture.keyReference).transaction { tx ->
+    // Historical v4 read only: production DAO checks and codec/AEAD, no schema-7 composition.
+    LegacyV4ProtectedReadFixture(current, fixture.protection, fixture.keyReference).transaction { tx ->
         val account = assertNotNull(tx.readProtectedAccount(TEST_SCOPE, TEST_ACTOR))
         assertContentEquals(ProtectedLocalSecurityCodec.encodeAccount(fixture.account), ProtectedLocalSecurityCodec.encodeAccount(account))
         assertEquals(listOf(SessionStatus.REVOKED, SessionStatus.ACTIVE), account.state.sessions.map { it.status })

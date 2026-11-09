@@ -7,7 +7,7 @@ import androidx.sqlite.SQLiteDriver
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
 import java.nio.file.Path
 
-/** Historical twelve-entity v4 for unchanged row-replacement guard assertions.
+/** Historical twelve-entity v4 for unchanged row-replacement and exact protected-read assertions.
  * This is not a schema-7 opener, a migration to owned history, or a native owner. */
 @Database(
     entities = [BranchRow::class, OperationRow::class, AggregateRow::class, ClaimRow::class,
@@ -19,6 +19,12 @@ import java.nio.file.Path
 )
 internal abstract class LegacyV4MasterDatabase : RoomDatabase() {
     abstract fun facts(): MasterDao
+
+    // Historical v4 protected tables. These production DAO query definitions let the
+    // test-only reader validate the exact migrated metadata/envelopes without opening
+    // the owned schema-7 database or adding a production 6 -> 7 migration.
+    abstract fun localSecurity(): LocalSecurityDao
+    abstract fun localAccessIssuance(): LocalAccessIssuanceDao
 }
 
 internal fun buildLegacyV4MasterRoom(
