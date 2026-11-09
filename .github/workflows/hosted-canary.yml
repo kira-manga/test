@@ -1,0 +1,12 @@
+name: Hosted runner availability check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Observe hosted runner availability
+        run: uname -s -m
