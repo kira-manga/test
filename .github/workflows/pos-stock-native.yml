@@ -1,0 +1,90 @@
+name: POS stock native regressions (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision staged in this snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  stock-native:
+    if: github.repository == 'kira-manga/test'
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.konan
+          key: pos-stock-native-${{ runner.arch }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-ios-${{ runner.os }}-${{ runner.arch }}-
+      - name: Bind exact source and native toolchain
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p stock-native-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          [[ "$(uname -m)" == arm64 ]]
+          cp SOURCE-REVISION.txt stock-native-output/
+          git rev-parse HEAD > stock-native-output/HARNESS-REVISION.txt
+          xcodebuild -version > stock-native-output/xcode.txt
+          java -version 2> stock-native-output/java.txt
+      - name: Execute existing inventory and sales simulator tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/pos
+          set +e
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -XX:ActiveProcessorCount=2' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :adapters:inventory-store:iosSimulatorArm64Test \
+            :adapters:sales-store:iosSimulatorArm64Test \
+            --console=plain 2>&1 | tee ../../stock-native-output/gradle.txt
+          statuses=("${PIPESTATUS[@]}")
+          status=${statuses[0]}
+          if [[ "$status" == 0 && "${statuses[1]}" != 0 ]]; then status=${statuses[1]}; fi
+          set -e
+          printf '%s\n' "$status" > ../../stock-native-output/gradle-exit-status.txt
+          exit "$status"
+      - name: Retain actual results and sanitize diagnostics
+        if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p stock-native-output
+          for module in inventory-store sales-store; do
+            directory="apps/pos/adapters/$module/build/test-results/iosSimulatorArm64Test"
+            if [[ -d "$directory" ]]; then
+              mkdir -p "stock-native-output/results/$module"
+              find "$directory" -maxdepth 1 -type f -name '*.xml' -exec cp {} "stock-native-output/results/$module/" \;
+            fi
+          done
+          python3 scripts/pos/sanitize_diagnostics.py --root stock-native-output
+          python3 scripts/pos/artifact_manifest.py --root stock-native-output \
+            --label stock-native-existing-regressions \
+            --metadata "source_revision=$EXPECTED_SOURCE_REVISION" \
+            --metadata "run_id=${GITHUB_RUN_ID}" \
+            --metadata "run_attempt=${GITHUB_RUN_ATTEMPT}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-stock-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: stock-native-output
+          retention-days: 14
