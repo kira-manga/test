@@ -251,14 +251,15 @@ public class LocalMasterEndpoint internal constructor(
     /** Actual original owner only. STOP shares the same single worker as Room/native intake. */
     internal suspend fun authenticateAndStopOriginal(peer: LocalAuthenticatedPeer,
         login: LocalLoginIdentifier, password: CharArray,
-        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult {
+        request: LocalMasterLifecycleRequest, diagnostics: OriginalLifecycleDiagnostics): LocalMasterLifecycleResult {
         currentCoroutineContext().ensureActive()
         if (request.action != LocalMasterLifecycleAction.STOP || lifecycle == null ||
             installationInitializer != null || !peer.isCurrent())
             return LocalMasterLifecycleResult.Unavailable
         if (password.size !in 4..1024)
             return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
-        return submit(LifecycleWork(peer, login, password.copyOf(), request))
+        diagnostics.mark(OriginalLifecyclePhase.ENDPOINT_SUBMITTED)
+        return submit(LifecycleWork(peer, login, password.copyOf(), request, diagnostics))
     }
 
     override public suspend fun signIn(
@@ -783,11 +784,12 @@ public class LocalMasterEndpoint internal constructor(
     private inner class LifecycleWork(
         val peer: LocalAuthenticatedPeer, val login: LocalLoginIdentifier,
         val password: CharArray, val request: LocalMasterLifecycleRequest,
+        val diagnostics: OriginalLifecycleDiagnostics,
     ) : Work<LocalMasterLifecycleResult>() {
         override fun unavailable(): LocalMasterLifecycleResult = LocalMasterLifecycleResult.Unavailable
         override fun busy(): LocalMasterLifecycleResult = LocalMasterLifecycleResult.Busy
         override suspend fun perform(): LocalMasterLifecycleResult = authenticateOriginalLifecycle(
-            authentication, checkNotNull(lifecycle), peer, login, password, request)
+            authentication, checkNotNull(lifecycle), peer, login, password, request, diagnostics)
         override fun clearInput() { password.fill('\u0000') }
         override fun uncertain(value: LocalMasterLifecycleResult): Boolean =
             value is LocalMasterLifecycleResult.StorageUncertain

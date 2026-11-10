@@ -1123,6 +1123,18 @@ public class AndroidSelfOwnedMasterService private constructor(
 
     private suspend fun authenticateLifecycle(login: LocalLoginIdentifier, password: CharArray,
         request: LocalMasterLifecycleRequest, heldStopRecovery: Boolean): LocalMasterLifecycleResult {
+        val diagnostics = OriginalLifecycleDiagnostics()
+        val started = android.os.SystemClock.elapsedRealtime()
+        return try { authenticateLifecycleObserved(login, password, request, heldStopRecovery, diagnostics) }
+        finally {
+            try { android.util.Log.i("UkkeraNativeOwner", "Lifecycle phase: action=${request.action.name}; phase=${diagnostics.phase.name}; durationMillis=${android.os.SystemClock.elapsedRealtime() - started}") }
+            catch (_: Throwable) { /* Fixed diagnostic only; preserve the original outcome. */ }
+        }
+    }
+
+    private suspend fun authenticateLifecycleObserved(login: LocalLoginIdentifier, password: CharArray,
+        request: LocalMasterLifecycleRequest, heldStopRecovery: Boolean,
+        diagnostics: OriginalLifecycleDiagnostics): LocalMasterLifecycleResult {
         currentCoroutineContext().ensureActive()
         if (password.size !in 4..1024) return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
         val held = request.action == LocalMasterLifecycleAction.RESUME || heldStopRecovery
@@ -1136,6 +1148,7 @@ public class AndroidSelfOwnedMasterService private constructor(
         if (!actualPeer.isCurrent()) return LocalMasterLifecycleResult.Unavailable
         if (!installationSlot.tryAcquire()) return LocalMasterLifecycleResult.Busy
         try {
+            diagnostics.mark(OriginalLifecyclePhase.NATIVE_SLOT_ENTERED)
             // Recheck the same native peer/state after admitted work starts; a UI/thread race
             // cannot carry a stale pre-wait observation into the protected transaction.
             if (life.value != required || closing.get() != null || !actualPeer.isCurrent())
@@ -1147,10 +1160,11 @@ public class AndroidSelfOwnedMasterService private constructor(
             // and apply STOP as one typed item on that same worker, so no security loan races
             // an active owned Room invocation. Endpoint-free held recovery stays distinct.
             val result = if (!held) {
+                diagnostics.mark(OriginalLifecyclePhase.ENDPOINT_SELECTION)
                 val endpoint = composed.endpoint ?: return LocalMasterLifecycleResult.Unavailable
-                endpoint.authenticateAndStopOriginal(actualPeer, login, password, request)
+                endpoint.authenticateAndStopOriginal(actualPeer, login, password, request, diagnostics)
             } else authenticateOriginalLifecycle(composed.authentication, composed.lifecycle,
-                actualPeer, login, password, request)
+                actualPeer, login, password, request, diagnostics)
             currentCoroutineContext().ensureActive()
             return if (!actualPeer.isCurrent()) LocalMasterLifecycleResult.Unavailable else result
         } finally {
