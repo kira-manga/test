@@ -17,12 +17,12 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37 x86_64 and API24 x86; the same APK passed 3/3 native I/O slices on API24 x86 and another 3/3 plus bounded startup on the official API35 16 KiB profile. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
+| Android, latest installable diagnostic | [API 35 startup artifact, run 42759031363](https://github.com/kira-manga/test/actions/runs/42759031363/artifacts/13737201155) | `testing-inputs/ukkera-pos-testing.apk`, clean source `1490aa61`; install only the application APK. Includes native RPC LAN permission guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
 | Windows x64 | [MSI artifact, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13736605242) | `UkkeraPOS-0.1.0.msi`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
 | macOS Apple Silicon | [ARM64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735647679) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
 | macOS Intel | [x64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735608503) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42756459264](https://github.com/kira-manga/test/actions/runs/42756459264/artifacts/13735878966) | `UkkeraPos-simulator.app.zip`, source `5b6cefe7`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; refreshed-artifact iPad smoke is pending |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42756459264](https://github.com/kira-manga/test/actions/runs/42756459264/artifacts/13735878966) | `UkkeraPos-simulator.app.zip`, source `5b6cefe7`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; exact-PID startup also passed on iPad Pro 13-inch (M5) using this same package |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
@@ -39,7 +39,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Package | SHA-256 |
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Latest Android diagnostic APK (`ecc42c63`) | `609b1d8429bab6aa50d55cbfc643f4493ccdb99efa52cbb273b99bb5c0f3108c` |
+| Latest Android diagnostic APK (`1490aa61`) | `ee24da8d1f0279d052ef79993559fe3330bce0050a4b283c350171c2a9a5aa16` |
 | Refreshed Windows MSI | `d818ee50c1deee7174009cac810d0897b8b5e87f6e9cec2d102e2641eaa0a0af` |
 | macOS ARM64 DMG | `51c607aa60e4d64d1031f70f0d62d20ae440d8104a2da8e5240038422f9c9563` |
 | macOS x64 DMG | `b7d3673fdb32dca28b80ff2fd19ebbb29d35bd501a6814500dc0164e561d5aba` |
@@ -71,7 +71,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 **Android verification limits:** the older startup-qualified APK predates the
 AndroidKeyStore history-IV correction and failed original setup. The latest
-`ecc42c63` diagnostic includes the IV, Room sidecar, TEMP-column, DAO-scope
+`1490aa61` diagnostic includes native RPC LAN permission guards and the earlier
+IV, Room sidecar, TEMP-column, DAO-scope
 and existing-only key-lookup corrections. Its unchanged native fixture obtained `Installed`, reread the exact
 original setup and confirmed actual owner cleanup; the next independent closed
 native cut ended with OS signal 9 before any test method completed. Earlier
@@ -79,7 +80,9 @@ native attempts also refused final currentness. The identical pair on API24 x86
 started one method and crashed during setup without a completed outcome or explicit
 exclusion cause. These failures remain retained
 in the [source-bound evidence](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md).
-This artifact does not establish full setup, repeat ACK, cold recovery, login or
+The earlier `ecc42c63` package's native I/O, key, x86 and 16 KiB results do not
+qualify those paths in the newest APK. This artifact does not establish full setup,
+repeat ACK, cold recovery, login or
 business workflow acceptance. Preserve an unresolved original and record its
 state; do not reset it or create a replacement merely to continue testing.
 
@@ -152,7 +155,7 @@ cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
 iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
 five seconds and the entry screen rendered **on predecessor source `038c115e`**.
-The refreshed `5b6cefe7` artifact has not yet run that separate iPad check. Interactions, rotation, accessibility
+The refreshed `5b6cefe7` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42759031685), with original PID 5245 visible after five seconds. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

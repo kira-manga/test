@@ -305,11 +305,23 @@ internal class AndroidSelfOwnedDatabaseNamespace(
     /** File/directory/lock continuity only, NOT supported SQL schema or complete history. */
     fun assertContinuity() {
         known(phase == Phase.OPEN)
-        assertBase(); checkNames(); checkSnapshotFiles(); assertBase()
+        // One fixed, synchronous native observation. Fresh installed identity/deadline
+        // checks bracket BOTH unchanged ancestry/descriptor/volume passes and the full
+        // name/snapshot census. No callback, suspension or cached observation escapes.
+        environment.requireCurrent()
+        assertBaseNative(); checkNames(); checkSnapshotFiles(); assertBaseNative()
+        environment.requireCurrent()
     }
 
+    /** Standalone acquisition/write callers retain their own fresh observation boundary. */
     private fun assertBase() {
         environment.requireCurrent()
+        assertBaseNative()
+        environment.requireCurrent()
+    }
+
+    /** Only inside the fixed fresh-observation boundaries above. */
+    private fun assertBaseNative() {
         for ((path, expected) in ancestors) known(expected.sameDirectory(stamp(Os.lstat(path.path))))
         known(requireNotNull(ancestors[environment.dataDirectory]).sameDirectory(stamp(Os.fstat(requireNotNull(dataDescriptor).fd))))
         known(requireNotNull(ancestors[environment.noBackupDirectory]).sameDirectory(stamp(Os.fstat(requireNotNull(parentDescriptor).fd))))
@@ -320,14 +332,20 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         known(requireNotNull(lock).isValid && lockChannel?.isOpen == true)
         known(locked.sameFile(stamp(Os.lstat(File(directory, LOCK).path))) &&
             locked.sameFile(stamp(Os.fstat(requireNotNull(lockDescriptor).fd))))
-        known(base.device == locked.device && base.device == database.device && observeVolumeUuid() == volumeUuid)
+        known(base.device == locked.device && base.device == database.device && observeVolumeUuidNative() == volumeUuid)
     }
 
     private fun observeVolumeUuid(): String {
         environment.requireCurrent()
+        val volume = observeVolumeUuidNative()
+        environment.requireCurrent()
+        return volume
+    }
+
+    /** Actual OS volume observations; the calling fixed operation brackets currentness. */
+    private fun observeVolumeUuidNative(): String {
         val base = AndroidNativeStorageVolume.uuidForPath(application, directory)
         known(AndroidNativeStorageVolume.uuidForPath(application, databaseDirectory) == base)
-        environment.requireCurrent()
         return base.toString()
     }
 
