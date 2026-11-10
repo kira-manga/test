@@ -40,7 +40,7 @@ public static class PosCngPersistedAeadProbe {
         if(status==0 && size<=b.Length) r[name]=unicode ? (object)Encoding.Unicode.GetString(b,0,(int)size).TrimEnd('\0') : (size==4 ? (object)BitConverter.ToUInt32(b,0) : (object)size);
         Array.Clear(b,0,b.Length);
     }
-    static int Crypt(IntPtr key, bool decrypt, byte[] input, byte[] nonce, byte[] aad, byte[] tag, out byte[] result) {
+    static int Crypt(IntPtr key, bool decrypt, byte[] input, byte[] nonce, byte[] aad, byte[] tag, UInt32 paddingFlags, out byte[] result) {
         // SDK ncrypt.h: Other is a serialized authenticated-mode structure and ALL its
         // pointers refer to data within that same allocation. No key bytes are used.
         int header=Marshal.SizeOf<AuthInfo>(); int total=checked(header+nonce.Length+aad.Length+tag.Length);
@@ -52,7 +52,7 @@ public static class PosCngPersistedAeadProbe {
             var auth=new AuthInfo { Size=(UInt32)header, Version=1, Nonce=n, NonceSize=(UInt32)nonce.Length,
                 AAD=a, AADSize=(UInt32)aad.Length, Tag=t, TagSize=(UInt32)tag.Length };
             Marshal.StructureToPtr(auth,block,false);
-            var padding=new CipherPadding { Size=(UInt32)Marshal.SizeOf<CipherPadding>(), Flags=2, Other=block, OtherSize=(UInt32)total };
+            var padding=new CipherPadding { Size=(UInt32)Marshal.SizeOf<CipherPadding>(), Flags=paddingFlags, Other=block, OtherSize=(UInt32)total };
             UInt32 written;
             int status=decrypt ? NCryptDecrypt(key,input,(UInt32)input.Length,ref padding,output,(UInt32)output.Length,out written,0x10)
                                : NCryptEncrypt(key,input,(UInt32)input.Length,ref padding,output,(UInt32)output.Length,out written,0x10);
@@ -95,11 +95,14 @@ public static class PosCngPersistedAeadProbe {
             // Reapply it to the reopened key; a prior handle's setting is not evidence.
             if(!Step(r,"set_GCM_reopened_handle",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) return r;
             ObserveProperty(r,key,"Chaining Mode",true);
-            if(!Step(r,"encrypt",Crypt(key,false,plain,nonce,aad,tag,out encrypted))) return r;
-            if(!Step(r,"decrypt",Crypt(key,true,encrypted,nonce,aad,tag,out decrypted))) return r;
+            // The SDK defines both NO_PADDING (0) and OTHER_PADDING (2). Retain
+            // the exact descriptor variant; no success is inferred from a setter.
+            UInt32 descriptorFlags=0;
+            if(!Step(r,"encrypt_no_padding_descriptor",Crypt(key,false,plain,nonce,aad,tag,descriptorFlags,out encrypted))) return r;
+            if(!Step(r,"decrypt",Crypt(key,true,encrypted,nonce,aad,tag,descriptorFlags,out decrypted))) return r;
             r["roundtrip_equal"]=CryptographicOperations.FixedTimeEquals(plain,decrypted);
             tag[0]^=1; byte[] tampered=null;
-            try { r["modified_tag_decrypt"]=Status(Crypt(key,true,encrypted,nonce,aad,tag,out tampered)); r["modified_tag_returned_plaintext"]=tampered!=null; }
+            try { r["modified_tag_decrypt"]=Status(Crypt(key,true,encrypted,nonce,aad,tag,descriptorFlags,out tampered)); r["modified_tag_returned_plaintext"]=tampered!=null; }
             finally { if(tampered!=null) Array.Clear(tampered,0,tampered.Length); }
         } finally {
             Array.Clear(plain,0,plain.Length);Array.Clear(nonce,0,nonce.Length);Array.Clear(aad,0,aad.Length);Array.Clear(tag,0,tag.Length);
