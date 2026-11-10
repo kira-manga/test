@@ -18,6 +18,12 @@ on:
         type: choice
         options: [x86_64, x86]
         default: x86_64
+      page_profile:
+        description: 'Standard images, or the official API35 x86_64 16 KiB image'
+        required: true
+        type: choice
+        options: [standard, 16k]
+        default: standard
 permissions:
   contents: read
 jobs:
@@ -29,7 +35,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        api: ${{ inputs.emulator_arch == 'x86' && fromJSON('["24"]') || fromJSON('["24","35","37.0"]') }}
+        api: ${{ inputs.page_profile == '16k' && fromJSON('["35"]') || inputs.emulator_arch == 'x86' && fromJSON('["24"]') || fromJSON('["24","35","37.0"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +44,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Require a supported image profile
+        env:
+          PAGE_PROFILE: ${{ inputs.page_profile }}
+          EMULATOR_ARCH: ${{ inputs.emulator_arch }}
+        run: |
+          if [[ "$PAGE_PROFILE" == 16k && "$EMULATOR_ARCH" != x86_64 ]]; then
+            echo 'The 16 KiB profile requires x86_64; no substituted image is permitted.' >&2
+            exit 2
+          fi
       - name: Enable disposable hosted emulator
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
@@ -45,11 +60,12 @@ jobs:
           POS_DISPOSABLE_ANDROID: 'true'
           POS_NATIVE_SLICE_GROUP: ${{ inputs.slice_group }}
           POS_EXPECTED_ANDROID_API: ${{ matrix.api == '37.0' && '37' || matrix.api }}
+          POS_EXPECTED_ANDROID_PAGE_SIZE: ${{ inputs.page_profile == '16k' && '16384' || '' }}
           POS_EXPECTED_ANDROID_ABI: ${{ inputs.emulator_arch }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
           api-level: ${{ matrix.api }}
-          target: google_apis
+          target: ${{ inputs.page_profile == '16k' && 'google_apis_ps16k' || 'google_apis' }}
           arch: ${{ inputs.emulator_arch }}
           ram-size: 2048M
           disk-size: 4096M
@@ -60,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ inputs.emulator_arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ inputs.emulator_arch }}-${{ inputs.page_profile }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             native-io-output
             testing-inputs/ukkera-pos-testing.apk

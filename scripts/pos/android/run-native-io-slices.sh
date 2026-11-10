@@ -65,6 +65,7 @@ record = {
     'expected_apk_source_revision': os.environ.get('POS_EXPECTED_APK_SOURCE', ''),
     'expected_android_sdk': os.environ.get('POS_EXPECTED_ANDROID_API', ''),
     'expected_android_abi': os.environ.get('POS_EXPECTED_ANDROID_ABI', ''),
+    'expected_android_page_size': os.environ.get('POS_EXPECTED_ANDROID_PAGE_SIZE', ''),
     'repository': os.environ.get('GITHUB_REPOSITORY', ''),
     'workflow': os.environ.get('GITHUB_WORKFLOW', ''),
     'run_id': os.environ.get('GITHUB_RUN_ID', ''),
@@ -127,12 +128,17 @@ for key, path in [('app', app_path), ('runtime_tests', test_path)]:
 print('APK pair matches expected source, signer, sizes and hashes.')
 PYMANIFEST
 sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
+PHASE=device-profile
 "${ADB[@]}" shell getprop ro.build.version.sdk > "$OUT/api-level.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
 "${ADB[@]}" shell getprop ro.product.cpu.abilist > "$OUT/abi-list.txt"
 if [[ -n "${POS_EXPECTED_ANDROID_ABI:-}" ]]; then
   [[ "$(tr -d '\r\n' < "$OUT/abi.txt")" == "$POS_EXPECTED_ANDROID_ABI" ]] || { echo 'Emulator ABI differs from requested ABI.' >&2; exit 2; }
+fi
+if [[ -n "${POS_EXPECTED_ANDROID_PAGE_SIZE:-}" ]]; then
+  "${ADB[@]}" shell getconf PAGE_SIZE > "$OUT/page-size.txt"
+  [[ "$(tr -d '\r\n' < "$OUT/page-size.txt")" == "$POS_EXPECTED_ANDROID_PAGE_SIZE" ]] || { echo 'Emulator page size differs from requested profile.' >&2; exit 2; }
 fi
 PHASE=install
 if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original || "${POS_NATIVE_SLICE_GROUP:-io}" == lifecycle || "${POS_NATIVE_SLICE_GROUP:-io}" == startup ]]; then
@@ -188,6 +194,7 @@ record = {
     'source_revision': os.environ['POS_EXPECTED_APK_SOURCE'],
     'expected_android_sdk': os.environ['POS_EXPECTED_ANDROID_API'],
     'observed_android_abi': (out / 'abi.txt').read_text().strip(),
+    'observed_shell_page_size': (out / 'page-size.txt').read_text().strip() if (out / 'page-size.txt').is_file() else 'NOT_QUERIED',
     'package': 'com.ukkera.pos.local.testing',
     'initial_pid': start, 'final_pid': end, 'sample_interval_seconds': 5,
     'observed': observed,
