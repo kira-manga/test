@@ -22,7 +22,7 @@ package signing.
 | Windows x64 | [MSI artifact, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13736605242) | `UkkeraPOS-0.1.0.msi`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
 | macOS Apple Silicon | [ARM64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735647679) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
 | macOS Intel | [x64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735608503) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42756459264](https://github.com/kira-manga/test/actions/runs/42756459264/artifacts/13735878966) | `UkkeraPos-simulator.app.zip`, source `5b6cefe7`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; exact-PID startup also passed on iPad Pro 13-inch (M5) using this same package |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42762460399](https://github.com/kira-manga/test/actions/runs/42762460399/artifacts/13738363918) | `UkkeraPos-simulator.app.zip`, source `7f5320aa`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; exact-PID startup also passed on iPad Pro 13-inch (M5) using this same package |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
@@ -43,8 +43,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Refreshed Windows MSI | `d818ee50c1deee7174009cac810d0897b8b5e87f6e9cec2d102e2641eaa0a0af` |
 | macOS ARM64 DMG | `51c607aa60e4d64d1031f70f0d62d20ae440d8104a2da8e5240038422f9c9563` |
 | macOS x64 DMG | `b7d3673fdb32dca28b80ff2fd19ebbb29d35bd501a6814500dc0164e561d5aba` |
-| iOS Simulator app ZIP | `f13cea4ff958f88e1568cde2415c68597a6dae61aa8632bb54db516b67c9c468` |
-| iOS unsigned Release archive ZIP | `05bee3e8eb126619474ab1d1bc804b1864740773711b661f40a7d6360a1da7b0` |
+| iOS Simulator app ZIP | `5e7da9af4511b3280f2e2f2fe532ab829a754d93ff84005ac65300faef4350d7` |
+| iOS unsigned Release archive ZIP | `93013adccdfc303ecbabbd6157e7d4bd5d8487a00211f15b96e328a0473057dd` |
 | iOS unsigned Debug archive ZIP | `51fae2442b336fcf40359845291f185b642994c1b462e70e5e776906811c0619` |
 
 ## Android
@@ -155,7 +155,7 @@ cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
 iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
 five seconds and the entry screen rendered **on predecessor source `038c115e`**.
-The refreshed `5b6cefe7` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42759031685), with original PID 5245 visible after five seconds. Interactions, rotation, accessibility
+The refreshed `5b6cefe7` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

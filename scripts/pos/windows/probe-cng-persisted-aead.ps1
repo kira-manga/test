@@ -78,9 +78,14 @@ public static class PosCngPersistedAeadProbe {
             created=true;
             if(!Step(r,"set_length_256",Property(key,"Length",BitConverter.GetBytes(256)))) return r;
             if(!Step(r,"set_export_policy_zero",Property(key,"Export Policy",BitConverter.GetBytes(0)))) return r;
-            if(!Step(r,"set_GCM",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) return r;
+            Step(r,"set_GCM_before_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")));
             if(!Step(r,"finalize",NCryptFinalizeKey(key,0))) return r;
             ObserveProperty(r,key,"Length",false); ObserveProperty(r,key,"Export Policy",false); ObserveProperty(r,key,"Chaining Mode",true);
+            if(!Step(r,"set_GCM_after_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) {
+                Step(r,"set_CBC_control_after_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeCBC\0")));
+                ObserveProperty(r,key,"Chaining Mode",true);
+                return r;
+            }
             int free=NCryptFreeObject(key); r["free_before_reopen"]=Status(free);
             if(free!=0) return r; key=IntPtr.Zero;
             if(!Step(r,"reopen_existing",NCryptOpenKey(provider,out key,name,0,0x40))) return r;
