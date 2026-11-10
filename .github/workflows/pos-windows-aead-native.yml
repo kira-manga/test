@@ -1,0 +1,73 @@
+name: POS Windows original AES native cipher (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of the snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  windows-aead:
+    if: github.repository == 'kira-manga/test'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-windows-aead-${{ runner.os }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-windows-security-${{ runner.os }}-
+            pos-desktop-${{ runner.os }}-x64-
+      - name: Record exact source and harness
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-aead-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt native-aead-output/SOURCE-REVISION.txt
+          git rev-parse HEAD > native-aead-output/HARNESS-REVISION.txt
+          printf 'run=%s\nattempt=%s\nrepository=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_REPOSITORY" > native-aead-output/workflow.txt
+      - name: Execute genuine native supporting cipher cases
+        shell: bash
+        working-directory: apps/pos
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :core:security:jvmTest \
+            --tests 'com.ukkera.pos.security.supporting.windowsaead.WindowsOriginalAesGcmNativeSupportingTest' \
+            --console=plain
+      - name: Require five actual methods with no skips
+        shell: python
+        run: |
+          import pathlib, xml.etree.ElementTree as ET
+          paths = list(pathlib.Path('apps/pos/core/security/build/test-results/jvmTest').glob('TEST-*WindowsOriginalAesGcmNativeSupportingTest.xml'))
+          assert len(paths) == 1, 'Missing genuine native result XML'
+          root = ET.parse(paths[0]).getroot()
+          counts = tuple(int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped'))
+          assert counts == (5, 0, 0, 0), counts
+          pathlib.Path('native-aead-output/summary.txt').write_text('PASS: five genuine Kotlin/JNA cipher supporting methods. No service identity, ACL, original intent/proof, custody, PEPPER, Master/Client or owner acceptance.\n')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-windows-aead-native-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-aead-output
+            apps/pos/core/security/build/test-results/jvmTest
+            apps/pos/core/security/build/reports/tests/jvmTest
+          retention-days: 14

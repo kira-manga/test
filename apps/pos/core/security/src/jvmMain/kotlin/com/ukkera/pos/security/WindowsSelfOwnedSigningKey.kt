@@ -329,7 +329,7 @@ internal object WindowsOriginalCng {
     }
 }
 
-internal fun Int.checkCng() { check(this == 0) { "Windows original signing operation failed (${toUInt().toString(16)})" } }
+internal fun Int.checkCng() { check(this == 0) { "Windows original CNG operation failed (${toUInt().toString(16)})" } }
 
 internal interface WindowsOriginalNCrypt : StdCallLibrary {
     fun NCryptOpenStorageProvider(provider: PointerByReference, name: WString, flags: Int): Int

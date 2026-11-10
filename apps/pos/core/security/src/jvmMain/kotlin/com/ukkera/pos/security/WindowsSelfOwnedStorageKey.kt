@@ -207,7 +207,9 @@ internal class WindowsSelfOwnedStorageKey private constructor(
             } finally { nonce.fill(0); encrypted.fill(0); expected.fill(0) }
         }
 
-        private fun crypt(key: Pointer, decrypt: Boolean, nonce: ByteArray, aad: ByteArray, input: ByteArray): ByteArray {
+        /** Low-level cipher only: the production owner performs service/custody checks.
+         * A native handle or successful cipher call is not an accepted original key. */
+        internal fun crypt(key: Pointer, decrypt: Boolean, nonce: ByteArray, aad: ByteArray, input: ByteArray): ByteArray {
             require(nonce.size == 12 && aad.size in 1..MAX_BYTES)
             val header = WindowsOriginalGcmAuthInfo().size()
             check(header == 88) // x64 SDK layout; unsupported pointer widths were refused above.
