@@ -53,6 +53,9 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     private val roots = ArrayDeque<Node>()
     private val stack = ArrayDeque<Node>()
     private var active: CellSource? = null
+    // Same native owner retains undelivered plaintext until the next batch or actual
+    // close, including cancellation/abandonment after a delivered wrapper is lost.
+    private var retainedRowBatch: List<NativeHistoryRowBatchItemV2> = emptyList()
     private var lastClose: SelfOwnedNativeHistoryReadClosed? = null
     private var dataWorkspace: AndroidSelfOwnedHistoryWorkspace? = null
 
@@ -114,6 +117,41 @@ internal class AndroidSelfOwnedHistoryReadStorage(
                 chunks.forEach { it.clear() }
                 throw failure
             }
+        }
+
+    override suspend fun readRowBatch(): List<NativeHistoryRowBatchItemV2> =
+        perform(phase = "history-row-metadata-and-data-batch", dispose = { rows -> rows.forEach { it.clear() } }) {
+            // Only fully materialized DATA is grouped. The same guarded task checks
+            // custody/pin before and after; every row keeps its original metadata,
+            // chunk order and scanner validation. No proof is cached between tasks.
+            retainedRowBatch.forEach { it.clear() }
+            retainedRowBatch = emptyList()
+            val rows = ArrayList<NativeHistoryRowBatchItemV2>(NativeHistoryPhysicalReadProfileV2.ROW_BATCH_ROWS)
+            var chunksRead = 0
+            var bytesRead = 0
+            try {
+                do {
+                    work.requireActive() // Original watchdog, never a new allowance.
+                    val metadata = nextRowNative() ?: break
+                    val chunks = ArrayList<NativeHistoryCellChunkV2>()
+                    try {
+                        while (active != null && chunksRead < NativeHistoryPhysicalReadProfileV2.ROW_BATCH_CHUNKS &&
+                            bytesRead <= NativeHistoryPhysicalReadProfileV2.ROW_BATCH_BYTES - NativeHistoryPhysicalReadProfileV2.CHUNK_BYTES) {
+                            work.requireActive()
+                            val chunk = readCellNative()
+                            chunks += chunk
+                            chunksRead++
+                            bytesRead += chunk.byteCount
+                        }
+                        rows += NativeHistoryRowBatchItemV2(metadata, chunks)
+                    } catch (failure: Throwable) { chunks.forEach { it.clear() }; throw failure }
+                    // A partial row is always last. Later cell reads finish it before
+                    // another metadata operation can advance the source.
+                } while (active == null && rows.size < NativeHistoryPhysicalReadProfileV2.ROW_BATCH_ROWS &&
+                    chunksRead < NativeHistoryPhysicalReadProfileV2.ROW_BATCH_CHUNKS &&
+                    bytesRead <= NativeHistoryPhysicalReadProfileV2.ROW_BATCH_BYTES - NativeHistoryPhysicalReadProfileV2.CHUNK_BYTES)
+                rows.also { retainedRowBatch = it }
+            } catch (failure: Throwable) { rows.forEach { it.clear() }; throw failure }
         }
 
     override suspend fun openDataWorkspace(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeHistoryWorkspace =
@@ -207,6 +245,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         try {
             // Scratch actual close/removal must return before original close evidence exists.
             dataWorkspace?.closeNative()
+            retainedRowBatch.forEach { it.clear() }; retainedRowBatch = emptyList()
             active?.clear(); active = null
             roots.forEach { it.clear() }; roots.clear()
             stack.forEach { it.clear() }; stack.clear()

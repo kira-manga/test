@@ -6,6 +6,7 @@ import com.ukkera.pos.security.NativeHistoryPhysicalReadProfileV2
 import com.ukkera.pos.security.NativeHistoryPhysicalCellV2
 import com.ukkera.pos.security.NativeHistoryPhysicalRowV2
 import com.ukkera.pos.security.NativeHistoryPhysicalRowWireV2
+import com.ukkera.pos.security.NativeHistoryRowBatchItemV2
 import com.ukkera.pos.security.NativeHistoryRowKindV2
 import com.ukkera.pos.security.NativeHistoryRowMetadataV2
 import com.ukkera.pos.security.NativeHistorySchemaPageV2
@@ -20,26 +21,51 @@ import kotlinx.coroutines.ensureActive
  * the finite native-owned traversal. No caller chooses a table/key/predicate/offset, lends a
  * handle, supplies plaintext, registers a decoder or announces physical close.
  *
- * One bounded row/image is held at a time. This conservative implementation does NOT claim
+ * One bounded row/image is decoded at a time; prefetched native DATA is bounded
+ * independently by row, chunk and byte counts. This conservative implementation does NOT claim
  * F05's larger nested recovery capacity or bounded-memory normalization for that future
  * profile. Oversize is a failure; it never skips a row and never becomes a smaller valid row.
  */
 internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryReadSession) {
+    private val pendingRows = ArrayDeque<NativeHistoryRowBatchItemV2>()
     suspend fun schemaPage(): NativeHistorySchemaPageV2? = session.readSchemaPage()
 
     suspend fun next(): RuntimeHistoryReadItem? {
-        currentCoroutineContext().ensureActive()
-        val metadata = session.nextRowMetadata()?.let(RuntimeHistoryReadMetadata::fromNative) ?: return null
-        val chunks = ArrayDeque<NativeHistoryCellChunkV2>()
         try {
-            val result = readRow(metadata, chunks)
+            currentCoroutineContext().ensureActive()
+            if (pendingRows.isEmpty()) {
+                val batch = session.readRowBatch()
+                try {
+                    historyShapeV2(batch.size <= NativeHistoryPhysicalReadProfileV2.ROW_BATCH_ROWS)
+                    var chunks = 0
+                    var bytes = 0L
+                    for (row in batch) {
+                        chunks += row.chunks.size
+                        bytes += row.chunks.sumOf { it.byteCount.toLong() }
+                        historyShapeV2(chunks <= NativeHistoryPhysicalReadProfileV2.ROW_BATCH_CHUNKS &&
+                            bytes <= NativeHistoryPhysicalReadProfileV2.ROW_BATCH_BYTES)
+                    }
+                    pendingRows.addAll(batch)
+                } catch (failure: Throwable) { batch.forEach { it.clear() }; throw failure }
+            }
+            val source = pendingRows.removeFirstOrNull() ?: return null
+            val chunks = ArrayDeque<NativeHistoryCellChunkV2>()
             try {
-                // Prefetched DATA must end exactly with the announced row. A surplus
-                // cannot become the next row or be silently dropped as a valid prefix.
-                historyShapeV2(chunks.isEmpty())
-                return result
-            } catch (failure: Throwable) { result.clear(); throw failure }
-        } finally { chunks.forEach { it.clear() } }
+                chunks.addAll(source.chunks)
+                val metadata = RuntimeHistoryReadMetadata.fromNative(source.metadata)
+                val result = readRow(metadata, chunks)
+                try {
+                    // Each prefetched row must end exactly at its own metadata boundary.
+                    // Surplus chunks never become another row or a valid shorter prefix.
+                    historyShapeV2(chunks.isEmpty())
+                    return result
+                } catch (failure: Throwable) { result.clear(); throw failure }
+            } finally { source.clear(); chunks.forEach { it.clear() } }
+        } catch (failure: Throwable) {
+            pendingRows.forEach { it.clear() }
+            pendingRows.clear()
+            throw failure
+        }
     }
 
     private suspend fun readRow(metadata: RuntimeHistoryReadMetadata,
@@ -116,6 +142,9 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
             do {
                 currentCoroutineContext().ensureActive()
                 if (chunks.isEmpty()) {
+                    // Native continuation belongs only to the final prefetched row.
+                    // An earlier row with missing chunks must never borrow its cells.
+                    historyShapeV2(pendingRows.isEmpty())
                     val batch = session.readCellBatch()
                     try {
                         historyShapeV2(batch.isNotEmpty() && batch.size <= NativeHistoryPhysicalReadProfileV2.CELL_BATCH_CHUNKS)

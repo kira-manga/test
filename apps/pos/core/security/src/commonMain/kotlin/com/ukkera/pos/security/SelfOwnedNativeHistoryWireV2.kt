@@ -1012,6 +1012,10 @@ public object NativeHistoryPhysicalReadProfileV2 {
     public const val CHUNK_BYTES: Int = 65_536
     /** In-memory read grouping only; existing cell bytes and all wire formats stay fixed. */
     public const val CELL_BATCH_CHUNKS: Int = 16
+    /** One fixed native DATA task; at most 1 MiB of chunks plus bounded metadata. */
+    public const val ROW_BATCH_ROWS: Int = 16
+    public const val ROW_BATCH_CHUNKS: Int = 128
+    public const val ROW_BATCH_BYTES: Int = 1024 * 1024
     public const val MAX_KEY_BYTES: Int = 1024
     public const val MAX_ROW_ARRAY_BYTES: Int = 5 * 1024 * 1024
     public const val MAX_CELL_BYTES: Long = 1L * MAX_ROW_ARRAY_BYTES
@@ -1147,9 +1151,20 @@ public class NativeHistoryRowMetadataV2 internal constructor(public val pass: Na
     public val cells: List<NativeHistoryCellMetadataV2> get() = columns.toList()
     override fun toString(): String = "NativeHistoryRowMetadataV2(pass=$pass, [REDACTED])"
 }
+/** Finite ordered DATA from one native snapshot. Only the last row may have remaining
+ * chunks in the source. This object proves neither custody nor consumer validation. */
+public class NativeHistoryRowBatchItemV2 internal constructor(
+    public val metadata: NativeHistoryRowMetadataV2,
+    chunks: List<NativeHistoryCellChunkV2>,
+) {
+    public val chunks: List<NativeHistoryCellChunkV2> = chunks.toList()
+    public fun clear(): Unit = chunks.forEach { it.clear() }
+    override fun toString(): String = "NativeHistoryRowBatchItemV2([REDACTED])"
+}
 public class NativeHistoryCellChunkV2 internal constructor(public val column: Int, public val offset: Long,
     public val totalBytes: Long, public val last: Boolean, public val integerValue: Long?, bytes: ByteArray) {
     private val value = bytes.copyOf()
+    public val byteCount: Int get() = value.size
     public fun copyBytes(): ByteArray = value.copyOf()
     public fun clear(): Unit = value.fill(0)
     override fun toString(): String = "NativeHistoryCellChunkV2([REDACTED])"

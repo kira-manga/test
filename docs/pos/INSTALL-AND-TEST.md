@@ -19,6 +19,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
+| Android, current authenticated STOP/close build | [Lifecycle artifact, run 42816765743](https://github.com/kira-manga/test/actions/runs/42816765743/artifacts/13764751908) | `testing-inputs/ukkera-pos-testing.apk`, clean source `f01bbb41`; install only the application APK. Signed package/fatal lint, 18 focused lifecycle JVM methods, full database regression and one API35 x86_64 native STOP/close supporting method passed without AOT. Full lifecycle/business/LAN/owner qualification remains open. |
 | Android, actual-owner refresh/lifecycle diagnostic | [Lifecycle artifact, run 42807559079](https://github.com/kira-manga/test/actions/runs/42807559079/artifacts/13761390342) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4c045a36`; install only the application APK. Signed package/fatal lint and full database regression passed. Three native lifecycle methods failed at authenticated STOP; the background method passed current-Master refresh and existing-only RUN reopen assertions before STOP failed. |
 | Android, latest native-intake diagnostic | [Operational ACK artifact, run 42800059765](https://github.com/kira-manga/test/actions/runs/42800059765/artifacts/13755756444) | `testing-inputs/ukkera-pos-testing.apk`, clean source `c93b8671`; install only the application APK. Full database regression, fatal lint/package and one unchanged API35 x86_64 operational ACK close/reopen method passed without AOT. Whole setup/business/LAN/owner qualification remains open. |
 | Android, prior cross-API startup diagnostic | [API 35 startup artifact, run 42791988202](https://github.com/kira-manga/test/actions/runs/42791988202/artifacts/13751684962) | `testing-inputs/ukkera-pos-testing.apk`, clean source `631df201`; install only the application APK. Includes native RPC LAN permission, physical-session cleanup and bounded history-read guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
@@ -31,7 +32,7 @@ requirement.
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
 The prior cross-API Android, desktop and iOS refresh shares source `631df201`.
-The newest Android ownership/lifecycle diagnostic is `4c045a36`; each row above names
+The newest Android authenticated STOP/close build is `f01bbb41`; each row above names
 its own exact source and evidence.
 The explicitly labelled historical alternatives have different revisions. The 464-method Kotlin simulator regression also executed at this source. Earlier
 `0ea09405` packages and iPad observations remain in the dated refresh evidence. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
@@ -45,7 +46,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Package | SHA-256 |
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Actual-owner Android APK (`4c045a36`) | `a4d4ebe3980cfc975f4002941d004f433d76186cc01ff45a7de7903ae8e392b6` |
+| Current Android STOP/close APK (`f01bbb41`) | `4bd95a718ecf21f580fe5ba5b8295a21e7247aeefd5e249e26a8edccfe470bb6` |
+| Prior actual-owner Android APK (`4c045a36`) | `a4d4ebe3980cfc975f4002941d004f433d76186cc01ff45a7de7903ae8e392b6` |
 | Prior Android native-intake APK (`c93b8671`) | `f0a98c3f00441f145199b0710534a01bcd95adb90ce7ce65c9dce6deff9e94f8` |
 | Prior cross-API Android APK (`631df201`) | `29b84f45479fb0c61310c0664c8fb1847866b94a5d8f9be718195b3c5c554d70` |
 | Refreshed Windows MSI | `3aeae7a962e5c6b4adbba1522d4dc6d65c0d3987c200273da275716a565e7ab6` |
@@ -77,7 +79,16 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Android verification limits:** the latest `631df201` application includes native
+**Current Android lifecycle evidence:** `f01bbb41` passed one native STOP/close
+supporting method on API35 x86_64 without AOT: authenticated committed STOP,
+confirmed coordinator closure/cached retirement and durable STOP blocking
+automatic reopen. This does not instrument physical native close counts or
+qualify the full lifecycle. Background/reopen `42817587823` also passed one
+supporting method. STOP/RESUME `42817587411` and AOT cold publication diagnostic
+`42816992704` each started one method but completed none (OS signal 9); neither
+is a pass. [Exact inputs, outcomes and limits](../../qa/pos/traceability/android-lifecycle-supporting-20261110/README.md).
+
+**Prior cross-API verification limits:** the `631df201` application includes native
 RPC LAN permission, history-IV, Room coordination, TEMP-column, DAO-scope,
 existing-only key-lookup, physical-session cleanup and bounded history-cell
 batching changes. Its clean packaging/fatal lint and activity/original-PID startup

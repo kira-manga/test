@@ -430,15 +430,21 @@ internal class AndroidLocalCompanyBusinessPublications(
             if (!publicationPhase("content-verification") { nativeBusinessPublicationVerifyEd25519(point, content, signature) })
                 selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
             endorsement = publicationPhase("root-endorsement") { keys.signBusinessPublicationEndorsement(record, approval) }
-            authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
-            requireNewIssuance()
-            val completed = record.copy(phase = CompanyBusinessPublicationPhase.COMPLETED,
-                contentSignature = SelfOwnedOctetsV1(signature), rootEndorsement = SelfOwnedOctetsV1(requireNotNull(endorsement)))
-            registry.retainBusinessPublications(ledger.next(completed), keys)
-            val result = recover(completed.originalActionId)
-            return try {
+            publicationPhase("completion-currentness") {
                 authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
                 requireNewIssuance()
+            }
+            val completed = publicationPhase("completion-record") {
+                record.copy(phase = CompanyBusinessPublicationPhase.COMPLETED,
+                    contentSignature = SelfOwnedOctetsV1(signature), rootEndorsement = SelfOwnedOctetsV1(requireNotNull(endorsement)))
+            }
+            publicationPhase("completion-retention") { registry.retainBusinessPublications(ledger.next(completed), keys) }
+            val result = publicationPhase("completion-recovery") { recover(completed.originalActionId) }
+            return try {
+                publicationPhase("completion-delivery-currentness") {
+                    authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+                    requireNewIssuance()
+                }
                 result
             } catch (failure: Throwable) {
                 if (result.proposal.kind.isOriginalSerialKindV1()) result.discardUndeliveredSerialContent()

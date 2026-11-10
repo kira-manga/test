@@ -188,6 +188,9 @@ public class SelfOwnedNativeHistoryReadSession internal constructor(
         get() = businessPublicationSelection?.sources.orEmpty().toList()
     public suspend fun readSchemaPage(): NativeHistorySchemaPageV2? = controller.readSchemaPage()
     public suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2? = controller.nextRowMetadata()
+    /** Bounded native snapshot DATA. Consume every announced row/chunk in order;
+     * additional chunks, if any, belong only to the last row. No acceptance proof. */
+    public suspend fun readRowBatch(): List<NativeHistoryRowBatchItemV2> = controller.readRowBatch()
     public suspend fun readCellChunk(): NativeHistoryCellChunkV2 = controller.readCellChunk()
     /** Bounded sequential DATA from the currently announced row only. This neither
      * advances to another row nor changes its metadata, grammar or close requirement. */
@@ -338,6 +341,9 @@ internal interface SelfOwnedNativeHistoryReadController {
     val hasDataWorkspace: Boolean get() = false
     suspend fun readSchemaPage(): NativeHistorySchemaPageV2?
     suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2?
+    /** Old controllers retain exactly their original metadata and cell operations. */
+    suspend fun readRowBatch(): List<NativeHistoryRowBatchItemV2> =
+        nextRowMetadata()?.let { listOf(NativeHistoryRowBatchItemV2(it, emptyList())) } ?: emptyList()
     suspend fun readCellChunk(): NativeHistoryCellChunkV2
     /** Compatibility path keeps the original single-chunk operation and checks. */
     suspend fun readCellBatch(): List<NativeHistoryCellChunkV2> = listOf(readCellChunk())
