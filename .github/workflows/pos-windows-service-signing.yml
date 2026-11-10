@@ -1,0 +1,64 @@
+name: POS Windows actual service signing diagnostic (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source revision of the snapshot
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  service-signing:
+    if: github.repository == 'kira-manga/test'
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-windows-service-${{ runner.os }}-${{ hashFiles('apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-windows-aead-${{ runner.os }}-
+            pos-windows-security-${{ runner.os }}-
+            pos-desktop-${{ runner.os }}-x64-
+      - name: Record exact source and harness
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          mkdir -p native-service-output
+          [[ "$(tr -d '\r\n' < SOURCE-REVISION.txt)" == "$EXPECTED_SOURCE_REVISION" ]]
+          cp SOURCE-REVISION.txt native-service-output/
+          git rev-parse HEAD > native-service-output/HARNESS-REVISION.txt
+          printf 'run=%s\nattempt=%s\nrepository=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_REPOSITORY" > native-service-output/workflow.txt
+      - name: Compile supporting probe and export its runtime classpath
+        working-directory: apps/pos
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m' \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            --init-script ../../scripts/pos/windows/export-service-probe-classpath.init.gradle \
+            :core:security:exportWindowsServiceProbeClasspath --console=plain
+      - name: Observe actual SCM service token and production signing wrapper
+        shell: pwsh
+        run: scripts/pos/windows/run-service-signing-probe.ps1 -OutputDirectory native-service-output
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-windows-service-signing-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            native-service-output/*.txt
+            native-service-output/*.cs
+          retention-days: 14

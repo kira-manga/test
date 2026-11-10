@@ -176,9 +176,11 @@ With authorized signing access on a Mac:
 1. Open `apps/pos/apps/ios/UkkeraPos.xcodeproj` at the chosen tested source revision.
    Use JDK 21; the checked-in Xcode framework script builds the shared code. The
    current project references a single exact Keychain group using the authorized
-   profile’s App ID prefix plus bundle ID. The downloadable unsigned archives
-   predate this explicit entitlement configuration; rebuild from the current PR81
-   source for the signed test. No Team ID/prefix or wildcard group is guessed.
+   profile’s App ID prefix plus bundle ID. The refreshed unsigned Release archive
+   at `7f5320aa` already selects this entitlement file; the older Debug archive
+   predates that configuration. Neither unsigned archive carries usable signed,
+   provisioned entitlements. Rebuild the selected source with authorized signing
+   for a physical-device test. No Team ID/prefix or wildcard group is guessed.
 2. Select scheme **UkkeraPos**, select the connected iPhone/iPad, and select the
    authorized Team under Signing & Capabilities. Retain the bundle ID. Let Xcode
    create/select the matching development profile through the owner's account.

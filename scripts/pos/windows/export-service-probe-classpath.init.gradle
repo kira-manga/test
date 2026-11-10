@@ -1,0 +1,15 @@
+// Supporting native diagnostic only; does not change production source sets or providers.
+import org.gradle.api.tasks.testing.Test
+
+gradle.projectsEvaluated {
+    def security = gradle.rootProject.project(':core:security')
+    security.tasks.register('exportWindowsServiceProbeClasspath') {
+        dependsOn security.tasks.named('jvmTestClasses')
+        doLast {
+            def test = security.tasks.named('jvmTest', Test).get()
+            def destination = new File(gradle.rootProject.projectDir, '../../native-service-output/probe-classpath.txt')
+            destination.parentFile.mkdirs()
+            destination.setText(test.classpath.asPath, 'UTF-8')
+        }
+    }
+}
