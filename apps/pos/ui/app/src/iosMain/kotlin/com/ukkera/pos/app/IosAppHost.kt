@@ -41,9 +41,18 @@ class IosAppHost private constructor(
         check(NSThread.isMainThread)
         if (closed) return
         val retained = controller ?: return
-        endBindings()
-        documentBinding = documents?.bind(retained)
-        reportBinding = reports?.bind(retained)
+        try {
+            endBindings()
+            documentBinding = documents?.bind(retained)
+            reportBinding = reports?.bind(retained)
+        } catch (failure: Throwable) {
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { throw failure }
+            // Preserve any holder whose negative cleanup failed; still attempt its peer.
+            cleanup.attempt { endBindings() }
+            cleanup.attempt { runtime.lock(runtime.navigator.token()) }
+            cleanup.throwIfFailed()
+        }
     }
 
     fun lockForBackground() {
