@@ -139,7 +139,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         requireJournalFrame(aad, envelope.nonce, envelope.ciphertext)
         val original = journal.intent()
         checkedKey() // Actual original private-key possession and native metadata, before read.
-        material.assertOriginalDataKeys()
+        material.assertOriginalPepperKey()
         val point = original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING).proof.copyBytes()
         try {
             val message = SelfOwnedNativeInstallationWireV1.stateSignature(aad, envelope.nonce, envelope.ciphertext)
@@ -166,7 +166,7 @@ internal class AndroidSelfOwnedInstallationSigning(
                 // Re-prove the same original key after ALL verification before releasing DATA.
                 if (journal.intent() !== original) keyFailure()
                 checkedKey()
-                material.assertOriginalDataKeys()
+                material.assertOriginalPepperKey()
                 guard()
                 return state
             } finally { plaintext.fill(0) }
@@ -311,15 +311,23 @@ internal class AndroidSelfOwnedInstallationSigning(
 
     private fun expectedBindingBody(): SelfOwnedNativeBindingBodyV1 {
         val original = journal.intent()
-        if (!original.complete() || !original.bindingStarted) keyFailure()
+        requireOriginalBindingSource(original)
         val point = originalPoint()
-        return try { expectedBindingBody(original, point) } finally { point.fill(0) }
+        return try { bindingBody(original, point) } finally { point.fill(0) }
+    }
+
+    private fun expectedBindingBody(original: SelfOwnedNativeIntentV1, point: ByteArray): SelfOwnedNativeBindingBodyV1 {
+        requireOriginalBindingSource(original)
+        return bindingBody(original, point)
+    }
+
+    private fun requireOriginalBindingSource(original: SelfOwnedNativeIntentV1) {
+        if (journal.intent() !== original || !original.complete() || !original.bindingStarted) keyFailure()
+        verifyOriginalSource()
     }
 
     /** Pure binding construction inside a currently proved signing operation; never public. */
-    private fun expectedBindingBody(original: SelfOwnedNativeIntentV1, point: ByteArray): SelfOwnedNativeBindingBodyV1 {
-        if (journal.intent() !== original || !original.complete() || !original.bindingStarted) keyFailure()
-        verifyOriginalSource()
+    private fun bindingBody(original: SelfOwnedNativeIntentV1, point: ByteArray): SelfOwnedNativeBindingBodyV1 {
         val encoded = SelfOwnedNativeInstallationWireV1.encodeIntent(original)
         val intentDigest = try { AndroidP256Primitives.hashHex(encoded) } finally { encoded.fill(0) }
         return SelfOwnedNativeBindingBodyV1(original.source.preparationBody.coordinates, original.source.preparationBody.target,

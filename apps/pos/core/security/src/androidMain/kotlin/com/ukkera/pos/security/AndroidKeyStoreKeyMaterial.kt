@@ -312,6 +312,12 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         guard()
     }
 
+    /** Journal decryption proves STORAGE itself on both sides of its actual use. */
+    fun assertOriginalPepperKey() {
+        checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
+        guard()
+    }
+
     /** Native handles remain inside the concrete owner; never encoded/exported or returned to UI. */
     fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
     fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)

@@ -47,11 +47,21 @@ internal class AndroidOwnedRoomCoroutines(
     // Diagnostic budget only. It never selects an actor, admits SQL or establishes custody.
     private val diagnosticSteps = AtomicInteger()
     private val initialSqlDiagnosticSteps = AtomicInteger()
+    private val historyReadDiagnosticCalls = AtomicInteger()
+    private val historyReadDiagnosticSteps = AtomicInteger()
     internal fun traceStage(phase: String, context: CoroutineContext? = null) {
         // Hundreds of schema statements must not consume observations needed for the
         // subsequent context/drain/settlement transition. This is diagnostic sampling only.
         if (phase.startsWith("initial-sql-") &&
             initialSqlDiagnosticSteps.getAndUpdate { if (it < 8) it + 1 else it } >= 8) return
+        // Keep terminal close/re-observation visible even when a full traversal reads
+        // thousands of cells. Sample only fixed repetitive read labels; never DATA.
+        if (phase.startsWith("history-schema-page-") || phase.startsWith("history-row-metadata-") ||
+            phase.startsWith("history-cell-chunk-")) {
+            val call = historyReadDiagnosticCalls.getAndUpdate { if (it < Int.MAX_VALUE) it + 1 else it }
+            if (call >= 12 && call % 64 != 0) return
+            if (historyReadDiagnosticSteps.getAndUpdate { if (it < 48) it + 1 else it } >= 48) return
+        }
         val step = diagnosticSteps.getAndUpdate { if (it < 192) it + 1 else it }
         if (step >= 192) return
         try {

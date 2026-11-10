@@ -671,6 +671,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
         }
     }
     override suspend fun reobserveAfterActualClose(close: SelfOwnedNativeHistoryReadClosed): OriginalNativeHistorySnapshot = historyOperation {
+        work.roomCoroutines.traceStage("history-read-reobserve-started")
         val storage=requireNotNull(historyStorage)
         check(synchronized(historyDeliveryGate) { historyDelivery==null })
         check(historyClose===close && storage.ownsClose(close) && close.ownerIdentity===ownerToken && !close.consumed && close.completeTraversal)
@@ -707,6 +708,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
             historyDeviceAdmissionDelivery=admissions
             historyReceiptMembershipDelivery=if (receiptData != null) receiptMembershipDataHandle else null
         }
+        work.roomCoroutines.traceStage("history-read-reobserve-returned")
         actual
     }
     override fun completeOriginalReadDelivery(afterClose: OriginalNativeHistorySnapshot) {

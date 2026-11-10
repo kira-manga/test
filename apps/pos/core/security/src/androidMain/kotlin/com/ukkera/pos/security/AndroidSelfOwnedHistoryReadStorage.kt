@@ -140,7 +140,9 @@ internal class AndroidSelfOwnedHistoryReadStorage(
                         businessPublicationSelection?.requireActualTraversal()
                         deviceAdmissionSelection?.requireActualTraversal()
                     }
+                    work.roomCoroutines.traceStage("history-read-before-actual-close")
                     closeNative() // May block; the same P2 watchdog still watches it.
+                    work.roomCoroutines.traceStage("history-read-after-actual-close")
                     val value = SelfOwnedNativeHistoryReadClosed(ownerIdentity,sessionIdentity,original,complete,
                         employeeSelection,policySelection,businessPublicationSelection,deviceAdmissionSelection)
                     lastClose = value
@@ -753,7 +755,11 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         if(traversalEnded) return null
         while(true) {
             if(stack.isEmpty()) {
-                if(roots.isEmpty()) { traversalEnded=true; return null }
+                if(roots.isEmpty()) {
+                    traversalEnded=true
+                    work.roomCoroutines.traceStage("history-read-traversal-ended")
+                    return null
+                }
                 stack.addLast(roots.removeFirst())
             }
             val node=stack.last()

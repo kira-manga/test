@@ -12,6 +12,11 @@ on:
         type: choice
         default: '35'
         options: ['24', '35', '37.0']
+      aot_compile:
+        description: Explicitly compile both unchanged APKs before the selected native run
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -33,6 +38,7 @@ jobs:
         env:
           POS_DISPOSABLE_ANDROID: 'true'
           POS_NATIVE_SLICE_GROUP: cold-original
+          POS_AOT_COMPILE: ${{ inputs.aot_compile }}
           POS_EXPECTED_ANDROID_API: ${{ inputs.api_level == '37.0' && '37' || inputs.api_level }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
