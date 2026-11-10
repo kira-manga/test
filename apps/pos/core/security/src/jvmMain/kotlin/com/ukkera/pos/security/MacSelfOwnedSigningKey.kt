@@ -101,6 +101,7 @@ internal class MacSelfOwnedSigningKey private constructor(
 ) : AutoCloseable {
     private val lock = Any()
     private var closed = false
+    private var closeConfirmed = false
 
     init {
         require(point.size == 65 && point[0].toInt() == 4)
@@ -223,13 +224,17 @@ internal class MacSelfOwnedSigningKey private constructor(
 
     override fun close() {
         synchronized(lock) {
-            if (closed) return
+            if (closed) {
+                check(closeConfirmed) { "macOS signing-key reference close is unresolved" }
+                return
+            }
+            // Deny before native release. A throwing release is never retried or
+            // treated as confirmed closure; independent references still get one attempt.
             closed = true
-            publicKey?.let { MacSecurityNative.cf.CFRelease(it) }
+            closeSigningReferences(publicKey, privateItem, point)
             publicKey = null
-            privateItem?.close()
             privateItem = null
-            point.fill(0)
+            closeConfirmed = true
         }
     }
 
@@ -457,9 +462,7 @@ internal class MacSelfOwnedSigningKey private constructor(
                 return result
             } finally {
                 if (!transferred) {
-                    point?.fill(0)
-                    publicKey?.let { MacSecurityNative.cf.CFRelease(it) }
-                    item?.close()
+                    closeSigningReferences(publicKey, item, point ?: ByteArray(0))
                 }
             }
         }
@@ -821,11 +824,31 @@ private class Loaded(
     val publicKey: Pointer,
     val point: ByteArray,
 ) : AutoCloseable {
-    override fun close() {
-        MacSecurityNative.cf.CFRelease(publicKey)
-        item.close()
-        point.fill(0)
+    private var closeStarted = false
+    private var closeConfirmed = false
+
+    @Synchronized override fun close() {
+        if (closeStarted) {
+            check(closeConfirmed) { "macOS loaded signing-key reference close is unresolved" }
+            return
+        }
+        closeStarted = true
+        closeSigningReferences(publicKey, item, point)
+        closeConfirmed = true
     }
+}
+
+/** Each owned reference receives one release attempt even if its peer release throws. */
+private fun closeSigningReferences(publicKey: Pointer?, item: Item?, point: ByteArray) {
+    var failure: Throwable? = null
+    try { publicKey?.let { MacSecurityNative.cf.CFRelease(it) } }
+    catch (problem: Throwable) { failure = problem }
+    try { item?.close() }
+    catch (problem: Throwable) {
+        val first = failure
+        if (first == null) failure = problem else if (first !== problem) first.addSuppressed(problem)
+    } finally { point.fill(0) }
+    failure?.let { throw it }
 }
 
 private object keyNative {

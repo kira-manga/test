@@ -22,6 +22,16 @@ internal class AndroidSelfOwnedInstallationSigning(
     // origin, private-key possession, native metadata or journal-state cache.
     private var verifiedOriginalSource: SelfOwnedNativeSourceV1? = null
 
+    // Pure signature/encoding verification of one immutable binding tuple. No
+    // decrypted journal state, native key, lifetime, currentness or permission is cached.
+    @Volatile private var verifiedOriginalBinding: VerifiedOriginalBinding? = null
+    private class VerifiedOriginalBinding(
+        val original: SelfOwnedNativeIntentV1,
+        val point: SelfOwnedOctetsV1,
+        val body: SelfOwnedOctetsV1,
+        val signature: SelfOwnedOctetsV1,
+    )
+
     /** Missing native intent cannot adopt any orphan target/storage/pepper alias as a new key. */
     fun assertAliasNamespace() {
         work.requireActive(); environment.requireCurrent()
@@ -166,22 +176,16 @@ internal class AndroidSelfOwnedInstallationSigning(
                 try { if (!canonical.contentEquals(plaintext)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
                 finally { canonical.fill(0) }
                 // This point belongs to the native key proved above, not a wire-supplied key.
-                // The original source chain and every canonical binding field are still checked.
-                val expected = SelfOwnedNativeInstallationWireV1.encodeBindingBody(expectedBindingBody(original, point))
-                val actual = state.originalBinding.body()
-                val signature = state.originalBinding.signature()
-                try {
-                    if (!expected.contentEquals(actual)) keyFailure()
-                    val bindingMessage = SelfOwnedNativeInstallationWireV1.bindingSigningMessage(actual)
-                    try { if (!AndroidP256Primitives.verify(point, bindingMessage, signature)) keyFailure() }
-                    finally { bindingMessage.fill(0) }
-                } finally { expected.fill(0); actual.fill(0); signature.fill(0) }
+                // Exact immutable bytes may reuse their pure signature/encoding verification;
+                // the original source, current namespace and every native key are still checked.
+                val verifiedBinding = verifyOriginalBindingData(original, point, state.originalBinding)
                 // No caller, suspension or mutable observation can carry this proof forward.
                 // Re-prove the same original key after ALL verification before releasing DATA.
                 if (journal.intent() !== original) keyFailure()
                 checkedKey()
                 material.assertOriginalPepperKey()
                 guard()
+                verifiedOriginalBinding = verifiedBinding // Publish only after the fresh native checks.
                 return state
             } finally { plaintext.fill(0) }
         } finally { point.fill(0) }
@@ -330,9 +334,26 @@ internal class AndroidSelfOwnedInstallationSigning(
         return try { bindingBody(original, point) } finally { point.fill(0) }
     }
 
-    private fun expectedBindingBody(original: SelfOwnedNativeIntentV1, point: ByteArray): SelfOwnedNativeBindingBodyV1 {
-        requireOriginalBindingSource(original)
-        return bindingBody(original, point)
+    /** Only called inside the fixed synchronous journal read, bracketed by fresh native proofs. */
+    private fun verifyOriginalBindingData(original: SelfOwnedNativeIntentV1, point: ByteArray,
+        binding: SelfOwnedNativeBindingV1): VerifiedOriginalBinding {
+        requireOriginalBindingSource(original) // Also runs on an exact-byte cache hit.
+        val body = binding.body()
+        val signature = binding.signature()
+        try {
+            val retained = verifiedOriginalBinding
+            if (retained != null && retained.original === original && retained.point.same(point) &&
+                retained.body.same(body) && retained.signature.same(signature)) return retained
+            // Any changed original object, public point, body or signature must verify anew.
+            // This compares the full canonical body, never a caller-supplied digest/key.
+            val expected = SelfOwnedNativeInstallationWireV1.encodeBindingBody(bindingBody(original, point))
+            try { if (!expected.contentEquals(body)) keyFailure() } finally { expected.fill(0) }
+            val message = SelfOwnedNativeInstallationWireV1.bindingSigningMessage(body)
+            try { if (!AndroidP256Primitives.verify(point, message, signature)) keyFailure() }
+            finally { message.fill(0) }
+            return VerifiedOriginalBinding(original, SelfOwnedOctetsV1(point), SelfOwnedOctetsV1(body),
+                SelfOwnedOctetsV1(signature))
+        } finally { body.fill(0); signature.fill(0) }
     }
 
     private fun requireOriginalBindingSource(original: SelfOwnedNativeIntentV1) {
