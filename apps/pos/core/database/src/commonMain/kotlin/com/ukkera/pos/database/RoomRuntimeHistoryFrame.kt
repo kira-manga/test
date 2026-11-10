@@ -584,9 +584,16 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     }
 
     /** Attach exact history evidence before the protected lifecycle event image is inserted. */
-    internal fun captureMasterLifecycleEvidence(value: RuntimeMasterLifecycleEvidenceV1) {
+    internal fun captureMasterLifecycleEvidence(transaction: RoomLocalSecurityTransaction,
+        value: RuntimeMasterLifecycleEvidenceV1, principal: LocalEmployeePrincipal,
+        authorization: AuthorizedAction, facts: RoomLocalAuthorizationFacts,
+        observed: RoomLocalAuthorizationObservation) {
         body(); requireNoApprovalRetirement()
-        check(masterLifecycleEvidence == null && securityTransaction != null && writerActor == value.actorId &&
+        // Lifecycle uses its own protected security transaction, never a business TransactionView.
+        // Bind the same transaction's verified employee/current facts and direct authorization
+        // instead of requiring writerActor, which only bindView can establish.
+        check(masterLifecycleEvidence == null && securityTransaction === transaction &&
+            view == null && writerActor == null &&
             operationId == null && resources.isEmpty() && definitionBytes == null && factBytes == null &&
             authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
@@ -603,7 +610,21 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             serialPublicationCapture == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
             installationReceipt == null && originalInvocation == null && finalDeadline == null && !finalDeadlineCaptured)
         value.validate()
-        check(value.scope == coordinates.scope && value.installationId == coordinates.installationId)
+        val snapshot = RuntimeCommandAuthorizationSnapshotV1.capture(principal, facts, observed)
+        val event = value.event()
+        check(value.scope == coordinates.scope && value.installationId == coordinates.installationId &&
+            value.coordinatesDigest == lifecycleCoordinatesDigest(coordinates) &&
+            value.requestDigest == lifecycleRequestDigest(coordinates, LocalMasterLifecycleRequest(value.eventId, value.action)) &&
+            snapshot.admissionRevision == principal.admissionRevision &&
+            value.actorId == snapshot.actorId && value.sessionId == snapshot.sessionId &&
+            value.deviceId == snapshot.deviceId && value.sessionGeneration == snapshot.generation &&
+            value.accountRevision == snapshot.accountRevision && value.policyRevision == snapshot.policyRevision &&
+            value.admissionRevision == snapshot.admissionRevision &&
+            value.issuerContextId == snapshot.access.issuerContextId && value.at == snapshot.access.observedAt &&
+            authorization.isBoundTo(runtimeLifecycleRequirement(value.scope, checkNotNull(event.lifecycle), event),
+                principal.actorId) && authorization.principalKind == principal.kind &&
+            authorization.authenticationId == principal.authenticationId && authorization.generation == principal.generation &&
+            authorization.policyRevision == snapshot.policyRevision && authorization.approvalId == null)
         masterLifecycleEvidence = value
         purpose = RuntimeWritePurposeV2.ROLE_TRANSITION
         actorId = value.actorId

@@ -86,7 +86,8 @@ internal class RoomLocalMasterLifecycleService(
                         sessionGeneration = principal.sessionGeneration,
                         admissionRevision = permitted.facts.admission.revision,
                         issuerContextId = observed.issuerContextId, at = observed.moment)
-                    transaction.historyMasterLifecycle(evidence)
+                    transaction.historyMasterLifecycle(evidence, principal, permitted.authorization,
+                        permitted.facts, observed)
                     transaction.historyPurpose(RuntimeWritePurposeV2.ROLE_TRANSITION, principal.actorId,
                         request.requestId, digest)
                     transaction.insertAuthEvent(event)

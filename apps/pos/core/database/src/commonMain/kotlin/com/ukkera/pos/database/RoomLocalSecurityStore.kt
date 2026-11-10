@@ -1,6 +1,7 @@
 package com.ukkera.pos.database
 
 import androidx.room3.Transactor
+import com.ukkera.pos.security.AuthorizedAction
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.BranchScope
@@ -324,8 +325,12 @@ internal class RoomLocalSecurityTransaction internal constructor(
         contentDigest: PayloadDigest? = null) {
         database.runtimeHistoryOwner?.frameFor(connection)?.captureSecurityPurpose(value,actor,request,contentDigest)
     }
-    internal fun historyMasterLifecycle(evidence: RuntimeMasterLifecycleEvidenceV1) {
-        database.runtimeHistoryOwner?.frameFor(connection)?.captureMasterLifecycleEvidence(evidence)
+    internal suspend fun historyMasterLifecycle(evidence: RuntimeMasterLifecycleEvidenceV1,
+        principal: LocalEmployeePrincipal, authorization: AuthorizedAction,
+        facts: RoomLocalAuthorizationFacts, observed: RoomLocalAuthorizationObservation) {
+        ensureCurrent()
+        database.runtimeHistoryOwner?.frameFor(connection)?.captureMasterLifecycleEvidence(
+            this, evidence, principal, authorization, facts, observed)
     }
     internal fun historyThrottle(evidence: RuntimeThrottleEvidenceV1) {
         database.runtimeHistoryOwner?.frameFor(connection)?.captureThrottle(evidence)
