@@ -159,6 +159,18 @@ internal class LocalRetailPhysicalController(
         // End-only; accepted or uncertain native custody is never cancelled. A failed
         // exact holder stays reachable for negative cleanup, never fresh instructions.
         cleanup.attempt { instruction?.deny(); instruction = null }
+        if (cleanup.failed) {
+            // Every caller, including explicit instruction end/capture and stale
+            // replies, must stop publishing if an exact negative holder failed.
+            val previous = state.value
+            active = false
+            activation++
+            prepared = null
+            mutableState.value = LocalRetailWorkspace(workflow = previous.workflow, operationId = previous.operationId,
+                recoveryId = previous.recoveryId, problem = LocalServiceProblem.UNAVAILABLE)
+            cleanup.attempt { work?.cancel(); work = null }
+            cleanup.attempt { guardChanged() }
+        }
         cleanup.throwIfFailed()
     }
 
@@ -749,13 +761,16 @@ internal class LocalRetailPhysicalController(
             return
         }
         if (problem == LocalServiceProblem.DENIED) {
-            denyOriginal()
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { denyOriginal() }
             prepared = null
-            update(state.value.copy(preview = null, payment = null, dues = emptyList(), refundRecoveries = emptyList(),
+            cleanup.attempt { update(state.value.copy(preview = null, selected = null, capture = null,
+                observation = LocalRetailObservationDraft(), payment = null, dues = emptyList(), refundRecoveries = emptyList(),
                 duesLoaded = false, duesForSelectedReturn = false, nextDueAfter = null, saved = emptyList(), facts = emptyList(),
                 instruction = null, review = null, reviewedOriginalId = null, reviewedSubject = null, progress = null,
                 foodRefund = null, foodRefundOriginal = null, foodRefundOriginalId = null,
-                pendingLoaded = false, resolutionPendingPage = false, nextFactAfter = null, problem = problem))
+                pendingLoaded = false, resolutionPendingPage = false, nextFactAfter = null, problem = problem)) }
+            cleanup.throwIfFailed()
         } else update(state.value.copy(problem = problem))
     }
 

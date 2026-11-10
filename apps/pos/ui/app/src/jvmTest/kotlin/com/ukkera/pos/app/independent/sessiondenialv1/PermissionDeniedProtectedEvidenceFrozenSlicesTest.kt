@@ -95,7 +95,28 @@ class PermissionDeniedProtectedEvidenceFrozenSlicesTest {
         exerciseCurrentDenial(supplierPage = true)
     }
 
-    private suspend fun TestScope.exerciseCurrentDenial(supplierPage: Boolean) {
+    @Test
+    fun stcS12_retailChildDeniedClearsPrivateInstructionBeforeParentCleanup() = runTest {
+        exerciseCurrentDenial(supplierPage = false, childDenialFirst = true)
+    }
+
+    @Test
+    fun stcS12_supplierChildDeniedClearsPrivateInstructionBeforeParentCleanup() = runTest {
+        exerciseCurrentDenial(supplierPage = true, childDenialFirst = true)
+    }
+
+    @Test
+    fun stcS12_retailInstructionEndClearsPrivateInstructionBeforeParentCleanup() = runTest {
+        exerciseCurrentDenial(supplierPage = false, childDenialFirst = true, explicitEnd = true)
+    }
+
+    @Test
+    fun stcS12_supplierInstructionEndClearsPrivateInstructionBeforeParentCleanup() = runTest {
+        exerciseCurrentDenial(supplierPage = true, childDenialFirst = true, explicitEnd = true)
+    }
+
+    private suspend fun TestScope.exerciseCurrentDenial(supplierPage: Boolean, childDenialFirst: Boolean = false,
+        explicitEnd: Boolean = false) {
         val freeze = FrozenTerminalCleanupV1.load()
         val message = "${freeze.case("STC-S12")} / ${freeze.case("STC-S10")}"
         val operationId = freeze.paymentOperation()
@@ -175,6 +196,30 @@ class PermissionDeniedProtectedEvidenceFrozenSlicesTest {
             val originalAttachment = actual.presentation.value.localAttachment
             val signInsBeforeFailure = signIns
 
+            if (childDenialFirst) {
+                // Same frozen failed-resource schedule, delivered first through the
+                // physical child's current DENIED entrypoint. No field is mutated.
+                val child: Any = if (supplierPage) controller.supplierPhysical else controller.retailPhysical
+                observeControlledFault(fault) {
+                    if (explicitEnd) {
+                        if (supplierPage) controller.supplierPhysical.endInstruction(token)
+                        else controller.retailPhysical.endInstruction(token)
+                    } else deliverChildDenied(child)
+                }
+                assertTrue(failed.attempts > 0 && later.attempts > 0,
+                    "$message: the failed callback does not skip a later independent negative cleanup")
+                assertFalse(failed.released, "$message: failed physical cleanup has not been relabeled successful")
+                assertTrue(originalLifetime.denied, "$message: failure cannot restore the original lifetime")
+                assertTrue(physical.instruction.denied, "$message: independent instruction denial still completes")
+                assertFalse(if (supplierPage) controller.supplierPhysical.displayCurrent(token) else controller.retailPhysical.displayCurrent(token),
+                    "$message: retained failed physical ownership cannot publish private instruction data")
+                assertNull(if (supplierPage) controller.supplierPhysical.state.value.instruction else controller.retailPhysical.state.value.instruction,
+                    "$message: required cleanup failure hides old ordinary private presentation")
+                assertTrue(if (supplierPage) controller.supplierPhysical.state.value.saved.isEmpty() else controller.retailPhysical.state.value.saved.isEmpty(),
+                    "$message: old private pending summaries are absent")
+                assertEquals(calls, boundary.calls, "LSP-002-A03/A04: DENIED initiates no business or acknowledgement call")
+                assertEquals(physicalCalls, physical.calls, "LSP-002-A03/A04: DENIED initiates no physical call")
+            }
             observeControlledFault(fault) {
                 deliverCurrentDenied(controller, supplierPage)
             }
@@ -256,6 +301,14 @@ private fun deliverCurrentDenied(controller: LocalWorkflowController, pageRead: 
         if (pageRead) "readUnavailable" else "permissionFailure", LocalServiceProblem::class.java)
     method.isAccessible = true
     try { method.invoke(controller, LocalServiceProblem.DENIED) }
+    catch (failure: InvocationTargetException) { throw failure.targetException }
+}
+
+/** Fixed child denial input; same frozen observables as the parent-denial schedule. */
+private fun deliverChildDenied(child: Any) {
+    val method = child.javaClass.getDeclaredMethod("unavailable", LocalServiceProblem::class.java)
+    method.isAccessible = true
+    try { method.invoke(child, LocalServiceProblem.DENIED) }
     catch (failure: InvocationTargetException) { throw failure.targetException }
 }
 

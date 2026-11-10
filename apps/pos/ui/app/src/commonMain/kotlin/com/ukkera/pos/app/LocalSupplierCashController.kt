@@ -136,6 +136,18 @@ internal class LocalSupplierCashController(
         // End-only. Failed exact native holders remain retained; clearing presentation
         // never cancels accepted/uncertain custody or permits a new instruction.
         cleanup.attempt { instruction?.deny(); instruction = null }
+        if (cleanup.failed) {
+            // Every caller, including explicit instruction end/capture and stale
+            // replies, must stop publishing if an exact negative holder failed.
+            val previous = state.value
+            active = false
+            activation++
+            prepared = null
+            mutableState.value = LocalSupplierCashWorkspace(operationId = previous.operationId,
+                recoveryId = previous.recoveryId, problem = LocalServiceProblem.UNAVAILABLE)
+            cleanup.attempt { work?.cancel(); work = null }
+            cleanup.attempt { guardChanged() }
+        }
         cleanup.throwIfFailed()
     }
 
@@ -491,10 +503,12 @@ internal class LocalSupplierCashController(
             return
         }
         if (problem == LocalServiceProblem.DENIED) {
-            denyOriginal()
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { denyOriginal() }
             prepared = null
-            update(state.value.copy(preview = null, selected = null, saved = emptyList(), facts = emptyList(), instruction = null,
-                progress = null, capture = null, pendingLoaded = false, nextFactAfter = null, problem = problem, observation = LocalSupplierObservationDraft()))
+            cleanup.attempt { update(state.value.copy(preview = null, selected = null, saved = emptyList(), facts = emptyList(), instruction = null,
+                progress = null, capture = null, pendingLoaded = false, nextFactAfter = null, problem = problem, observation = LocalSupplierObservationDraft())) }
+            cleanup.throwIfFailed()
         } else update(state.value.copy(problem = problem))
     }
 
