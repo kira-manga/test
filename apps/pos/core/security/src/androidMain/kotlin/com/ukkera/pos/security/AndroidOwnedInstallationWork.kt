@@ -133,19 +133,27 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     }
 
     /** An actual close failed/has unknown completion. Never retry a potentially reused descriptor. */
-    fun nativeClosureUnknown() { requestProcessExclusion(ExclusionReason.NATIVE_CLOSURE_UNKNOWN) }
+    fun nativeClosureUnknown() {
+        // Capture static originating callers before exclusion; never retain the Throwable,
+        // native resource, exception message or inputs in the asynchronous observation.
+        val origin = try { Throwable().stackTrace.filter {
+            it.className.startsWith("com.ukkera.pos.")
+        }.take(6).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" } }
+        catch (_: Throwable) { "unavailable" }
+        requestProcessExclusion(ExclusionReason.NATIVE_CLOSURE_UNKNOWN, origin)
+    }
 
     /** Permanent local denial. Only actual close can release the process lease. */
     fun retire() { retired.set(true) }
 
-    private fun requestProcessExclusion(reason: ExclusionReason) {
+    private fun requestProcessExclusion(reason: ExclusionReason, origin: String? = null) {
         val request = synchronized(gate) {
             if (actualLifetimeClosed) return
             retired.set(true)
             exclusionRequested.compareAndSet(false, true)
         }
         if (!request) return
-        logProcessExclusionAsync(reason)
+        logProcessExclusionAsync(reason, origin)
         // Never guess another PID/session or pretend this call is proof of actual death.
         if (Process.myPid() == pid && Process.myUid() == uid) {
             try { Process.killProcess(pid) } catch (_: Throwable) { /* lease remains held */ }
@@ -587,7 +595,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         DISCARD_PATH_FAILED,
     }
 
-    private fun logProcessExclusionAsync(reason: ExclusionReason) {
+    private fun logProcessExclusionAsync(reason: ExclusionReason, origin: String?) {
         try {
             val watched = segment.get()
             val phase = watched?.phase
@@ -600,7 +608,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 try {
                     Log.w("UkkeraNativeOwner", "Native process exclusion requested: reason=${reason.name}; " +
                         "phase=${phase ?: "none"}; elapsedMillis=${elapsedMillis ?: "unavailable"}; " +
-                        "deadlineMillis=${deadlineMillis ?: "none"}")
+                        "deadlineMillis=${deadlineMillis ?: "none"}; origin=${origin ?: "unobserved"}")
                 } catch (_: Throwable) { /* logging cannot change denial or native custody */ }
             }
         } catch (_: Throwable) {
@@ -608,13 +616,13 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         }
     }
 
-    /** Diagnostics are never authority: retain the same refusal and unknown-outcome rules. */
     /** Called only outside gate while the existing terminal-close watchdog is armed. */
     private fun cleanupPhase(phase: String) {
         try { Log.i("UkkeraNativeOwner", "Owner cleanup phase: $phase") }
         catch (_: Throwable) { /* Diagnostics do not establish or change native closure. */ }
     }
 
+    /** Diagnostics are never authority: retain the same refusal and unknown-outcome rules. */
     private fun logUnavailableNativeAction(failure: Throwable) {
         try {
             // Never log exception messages/causes, file paths, inputs, identities or key data.

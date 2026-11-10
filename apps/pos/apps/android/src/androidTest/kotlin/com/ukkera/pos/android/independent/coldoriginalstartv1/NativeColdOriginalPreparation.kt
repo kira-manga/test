@@ -29,12 +29,16 @@ internal class NativeColdOriginalPreparation(private val client: NativeColdOrigi
             plan.publicationId, plan.skuId, canonical) } finally { canonical.fill(0) }
         val action = nativeFixtureValue(publications.prepare(proposal))
         val output = nativeFixtureSecret(headSecret) { nativeFixtureValue(publications.approve(action, plan.headLogin, it)) }
+        coldPublicationDiagnostic("output-returned")
         val actualSku = output.readNativeCompanySku()
+        coldPublicationDiagnostic("output-decoded")
         check(actualSku.definition == definition && output.originalActionId == action.originalActionId &&
             output.proposal.contentDigest == proposal.contentDigest && output.signingKeyId == action.signingKeyId)
+        coldPublicationDiagnostic("output-matched")
         val signedCanonical = LocalConfigurationCodec.canonicalPublication(definition)
         try { check(NativeCompanyPublicationSignatureVerifier(publications.trust).verify(company,
             output.signingKeyId, signedCanonical, output.signatureHex)) } finally { signedCanonical.fill(0) }
+        coldPublicationDiagnostic("signature-accepted")
         evidence.bind("GENUINE_SKU_PUBLICATION", JSONObject().put("publicationId", output.proposal.publicationId.value)
             .put("originalActionId", output.originalActionId.value).put("contentDigest", output.proposal.contentDigest.value))
         configuration(ColdPreparationCommand.INSTALL_SKU, LocalConfigurationRequestV1.InstallCompanySku(actualSku), plan.skuId)
@@ -349,3 +353,9 @@ internal data class ColdBusinessCut(val order: LocalProfiledOrderV2, val cash: L
     // Whole protected history DATA, including the exact original issue/value/time,
     // participate in the existing C3 equality check across both cold reopens.
     val originalCostHistory: List<LocalStockHistoryRowV2>)
+
+/** Fixed observations only; preserve the original assertions, fixtures and native budget. */
+private fun coldPublicationDiagnostic(phase: String) {
+    try { android.util.Log.i("UkkeraNativeOwner", "Cold executor publication: $phase") }
+    catch (_: Throwable) { /* Diagnostics cannot change the original test outcome. */ }
+}

@@ -75,6 +75,15 @@ class NativeColdOriginalTest {
         fun remember(caught: Throwable) {
             val prior = failure
             if (prior == null) failure = caught else if (prior !== caught) prior.addSuppressed(caught)
+            // Retain the originating failure before required native cleanup can itself
+            // lose closure and exclude this process. No messages, inputs or native data.
+            try {
+                val locations = caught.stackTrace.filter {
+                    it.className.startsWith("com.ukkera.pos.")
+                }.take(6).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
+                android.util.Log.w("UkkeraNativeOwner", "Cold executor failure before cleanup: " +
+                    "type=${caught.javaClass.simpleName}; $locations")
+            } catch (_: Throwable) { /* Diagnostics cannot replace the original failure. */ }
         }
         try {
             val installer = secret()
