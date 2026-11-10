@@ -198,8 +198,12 @@ internal class RoomSelfOwnedBranchInstallationFrame(
     }
     private fun requireCurrent() {
         val facts=prepared.attempt.facts; val observed=source.observeCurrent(context)
-        check(observed.issuerContextId==facts.issuerContextId && observed.moment.bootId==facts.monotonicBootId &&
-            observed.moment.elapsedMillis>=receipt.core.installedAtElapsedMillis && observed.moment.elapsedMillis<facts.deadlineElapsedMillis)
+        // Separate static locations identify a refusal without recording protected values.
+        // Every original predicate remains mandatory; the signed deadline never renews.
+        check(observed.issuerContextId==facts.issuerContextId)
+        check(observed.moment.bootId==facts.monotonicBootId)
+        check(observed.moment.elapsedMillis>=receipt.core.installedAtElapsedMillis)
+        check(observed.moment.elapsedMillis<facts.deadlineElapsedMillis)
     }
     fun close() { closed=true; transaction=null }
 }

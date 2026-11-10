@@ -380,3 +380,35 @@ output, bounded native/crash logs and a nonsecret summary. It withholds saved
 requests/results and private native cuts from the artifact. Source preparation
 and configuration validation alone are not native execution evidence; consult
 the dated run record for any actual result.
+
+## Android persisted STOP lifecycle executor
+
+`pos-android-lifecycle.yml` selects the existing
+`NativePersistedStopServiceTest#selectedLifecycleSegment` with one of
+`STOP_RESUME`, `LOCK_BACKGROUND_REOPEN`, or `STOP_CLOSE_ACCOUNTING`. `ALL` runs
+those selectors on separate fresh disposable emulators. The exact app/test APK
+pair, retained common signer, declared source, hashes, sizes and requested SDK
+are checked before entry. The retained test APK already contains these methods;
+this executor adds no test assertion, fake native owner or accepting service.
+
+```sh
+gh workflow run pos-android-lifecycle.yml --repo kira-manga/test --ref <snapshot-branch> \
+  -f apk_source_revision=<exact-app-source> -f api_level=35 \
+  -f segment=STOP_RESUME -f aot_compile=false
+```
+
+The optional `aot_compile=true` condition explicitly runs Android's package
+compiler in `speed` mode for both unchanged APKs before test entry. The requested
+condition and compiler results are retained. It changes no signed attempt,
+30-second native-operation bound, business deadline, key policy or expected
+result. `pos-android-original-ack.yml` exposes the same optional condition.
+
+The workflow requires one completed method, no failure/skip and the existing
+selected-segment evidence status. It retains APK bytes, pair metadata, native
+static-location diagnostics, OS exit observations and a summary of event names
+and unbound case IDs. Raw private evidence stays in runner temporary storage.
+A passing method would establish only its existing bounded segment; full APSL
+cases, process death, OS force-stop, hardware and owner acceptance remain separate.
+This executor is configuration-validated but has **not run**. Original setup
+currently refuses before these lifecycle assertions; resolve that dependency
+before spending a lifecycle run.

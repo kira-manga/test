@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Execute existing native I/O, key, original-ACK or cold-original slices on a disposable emulator.
+# Execute existing native I/O, key, original-ACK, lifecycle or cold-original slices on a disposable emulator.
 # ACK and cold-original groups create a fresh synthetic original through the genuine native owner.
 # No group supplies fake authority or changes the frozen method assertions.
 set -euo pipefail
@@ -119,7 +119,7 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
 PHASE=install
-if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original ]]; then
+if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original || "${POS_NATIVE_SLICE_GROUP:-io}" == lifecycle ]]; then
   existing="$("${ADB[@]}" shell pm path com.ukkera.pos.local.testing 2>/dev/null || true)"
   [[ -z "${existing//$'\r'/}" ]] || { echo 'Original setup slices require a fresh isolated installation.' >&2; exit 2; }
 fi
@@ -229,6 +229,57 @@ record=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert record['status']==sys.argv[2]+'_SEGMENT_EXECUTED_NOT_WHOLE_NAC_CASE'
 PYACKPASS
     printf '%s\n' 'PASS: one unchanged frozen original ACK segment on a fresh isolated installation; not a whole NAC/SAS/OSR case, native platform completion or owner acceptance.' > "$OUT/summary.txt"
+    cat "$OUT/summary.txt"
+    exit 0 ;;
+  lifecycle)
+    SELECTED_CASE="${POS_NATIVE_LIFECYCLE_CASE:?Select one frozen APSL service segment}"
+    [[ "$SELECTED_CASE" == STOP_RESUME || "$SELECTED_CASE" == LOCK_BACKGROUND_REOPEN || "$SELECTED_CASE" == STOP_CLOSE_ACCOUNTING ]] || exit 2
+    PHASE=lifecycle
+    set +e
+    timeout 1200s "${ADB[@]}" shell am instrument -w -r \
+      -e class com.ukkera.pos.android.independent.androidpersistedstopv1.NativePersistedStopServiceTest#selectedLifecycleSegment \
+      -e apslCase "$SELECTED_CASE" -e keyProtection OS_ISOLATED \
+      com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
+      | tee "$OUT/lifecycle.txt"
+    status=$?
+    set -e
+    "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
+    collect_process_exit
+    "${ADB[@]}" logcat -d -s UkkeraNativeOwner:I UkkeraEnrollment:W '*:S' > "$OUT/native-owner-log.txt"
+    "${ADB[@]}" root > "$OUT/evidence-adb-context.txt" 2>&1 || true
+    timeout 90s "${ADB[@]}" wait-for-device
+    raw_evidence="${RUNNER_TEMP:?}/pos-native-lifecycle-selected.json"
+    "${ADB[@]}" exec-out cat /data/user/0/com.ukkera.pos.local.testing/no_backup/apsl-v2-selected-case.json > "$raw_evidence" || true
+    python3 - "$raw_evidence" "$OUT/lifecycle-summary.json" "$SELECTED_CASE" <<'PYLIFECYCLE'
+import hashlib,json,pathlib,sys
+raw=pathlib.Path(sys.argv[1]).read_bytes()
+try:
+    record=json.loads(raw)
+except (ValueError,UnicodeError):
+    summary={'result':'EVIDENCE_UNAVAILABLE','selectedCase':sys.argv[3]}
+else:
+    assert record['selectedCase']==sys.argv[3] and record['syntheticOnly'] is True
+    assert record['design']=='foundation-android-persisted-stop-lifecycle-v2'
+    summary={key:record.get(key) for key in ('design','designCommit','fixture','selectedCase','status','runtime','keyProtectionRequested','syntheticOnly')}
+    summary['failure_type']=(record.get('failure') or {}).get('type')
+    summary['events']=[event.get('event') for event in record.get('events',[])]
+    summary['unbound_ids']=[item.get('id') for item in record.get('unbound',[])]
+    summary['raw_evidence_sha256']=hashlib.sha256(raw).hexdigest()
+pathlib.Path(sys.argv[2]).write_text(json.dumps(summary,indent=2)+'\n')
+PYLIFECYCLE
+    [[ "$status" -eq 0 ]]
+    grep -Fq 'OK (1 test)' "$OUT/lifecycle.txt"
+    [[ "$(grep -c '^INSTRUMENTATION_STATUS_CODE: 0' "$OUT/lifecycle.txt")" -eq 1 ]]
+    if grep -Eq '^INSTRUMENTATION_STATUS_CODE: -(1|2|3|4)|FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed' "$OUT/lifecycle.txt"; then
+      echo 'Lifecycle segment failed or skipped.' >&2; exit 1
+    fi
+    python3 - "$OUT/lifecycle-summary.json" "$SELECTED_CASE" <<'PYLIFECYCLEPASS'
+import json,pathlib,sys
+record=json.loads(pathlib.Path(sys.argv[1]).read_text())
+assert record['selectedCase']==sys.argv[2]
+assert record['status']=='SELECTED_APSL_SEGMENTS_EXECUTED_NOT_WHOLE_CASE'
+PYLIFECYCLEPASS
+    printf '%s\n' 'PASS: one unchanged APSL service lifecycle segment; full frozen cases, process death, force-stop, hardware and owner acceptance remain unqualified.' > "$OUT/summary.txt"
     cat "$OUT/summary.txt"
     exit 0 ;;
   cold-original)

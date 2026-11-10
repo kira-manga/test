@@ -1756,9 +1756,15 @@ internal class AndroidSelfOwnedInstallationLifetime(
         val anchor=requireNotNull(historyAnchor)
         check(anchor.readOriginalInstallationAttempt(attempt)===attempt)
         val cut=anchor.snapshotOriginal(); val facts=attempt.facts; val sample=historyClockSampleNative()
-        check(cut.record.attempt?.phase==NativeHistoryAttemptPhaseV2.DATABASE_BOUND && cut.record.parent==null && cut.record.pending==null &&
-            sample.issuerContextId==facts.issuerContextId && sample.moment.bootId==facts.monotonicBootId &&
-            sample.moment.elapsedMillis in facts.observedElapsedMillis until facts.deadlineElapsedMillis)
+        // Keep distinct static failure locations for native diagnostics. No observed identity,
+        // anchor, clock value or attempt fact is logged; every original condition remains.
+        check(cut.record.attempt?.phase==NativeHistoryAttemptPhaseV2.DATABASE_BOUND)
+        check(cut.record.parent==null)
+        check(cut.record.pending==null)
+        check(sample.issuerContextId==facts.issuerContextId)
+        check(sample.moment.bootId==facts.monotonicBootId)
+        check(sample.moment.elapsedMillis>=facts.observedElapsedMillis)
+        check(sample.moment.elapsedMillis<facts.deadlineElapsedMillis)
         val wall=System.currentTimeMillis(); check(wall>=0)
         LocalInstallationCommitFactsV2(sample.issuerContextId,facts.nativeCustodyLifetimeId,sample.moment.bootId,
             sample.moment.elapsedMillis,wall,cut.recordDigest)
