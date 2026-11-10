@@ -1144,8 +1144,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         check(authenticationCapture == null && sessionRevocationCapture == null && administrationCancellationCapture == null &&
             deviceRevocationCapture == null && additionalDeviceRevocationCapture == null &&
             employeeProvisioningCapture == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
-            approvalIssuanceCapture == null && approvalRetirementCapture == null && serialPublicationCapture == null &&
-            masterLifecycleEvidence == null) // Never retain a partial protected decision.
+            approvalIssuanceCapture == null && approvalRetirementCapture == null && serialPublicationCapture == null)
+        // Only unfinished captures are forbidden here. Lifecycle evidence is installed
+        // synchronously after full validation, and its exact one-row decision is checked below.
         originalInvocation?.let { check(!it.denied) }
         val changes = scalar("SELECT count(*) FROM runtime_history_capture_v2")
         historyCapacityV2(changes in 0L..RuntimeHistoryProfileV2.MAX_CHANGES.toLong())
