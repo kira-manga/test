@@ -10,10 +10,12 @@ Client. Do not use production data or real payments.
 
 Sign in to GitHub with access to `kira-manga/test`. Download the named Actions
 artifact, extract its outer ZIP, and use the package below. The auxiliary repo
-was restored **private** on 9 November 2026; artifacts have a 14-day retention
-period. Access was independently checked after the visibility change. Keep the package with its
-manifest, source revision and checksum files. Repository privacy does not replace
-package signing.
+is temporarily **public** during the authorized native Actions campaign because
+private-runner minutes are exhausted. It will be restored private when the
+campaign finishes. No credentials, signing material or private data may be
+uploaded. Artifacts have a 14-day retention period. Keep the package with its
+manifest, source revision and checksum files. Package signing remains a separate
+requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
@@ -22,7 +24,7 @@ package signing.
 | Windows x64 | [MSI artifact, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751569890) | `UkkeraPOS-0.1.0.msi`, source `631df201`; package/content/architecture and packaged startup passed |
 | macOS Apple Silicon | [ARM64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751588657) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
 | macOS Intel | [x64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751911072) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42790741202](https://github.com/kira-manga/test/actions/runs/42790741202/artifacts/13753475302) | `UkkeraPos-simulator.app.zip`, source `631df201`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. 464 native simulator methods passed with zero failures/errors/skips; exact-package iPad startup is pending |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42790741202](https://github.com/kira-manga/test/actions/runs/42790741202/artifacts/13753475302) | `UkkeraPos-simulator.app.zip`, source `631df201`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. 464 native simulator methods passed with zero failures/errors/skips; exact-package iPad startup passed in run 42793999046 |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
@@ -76,9 +78,19 @@ batching changes. Its clean packaging/fatal lint and activity/original-PID start
 passed on API24/35/37, with zero instrumentation methods. The original ACK run
 `42791908821` still used the historical single-chunk independent helper and ended
 with OS-recorded signal 9 during the closed native cut: one method started, none
-completed. No batch call was observed in that failed execution. The helper is
-being adapted only for batch retrieval, retaining every original assertion and
-fingerprint, with its separate APK/source provenance. Its successor is pending.
+completed. No batch call was observed in that failed execution. The batched
+executor in `42794005660` then reached traversal end and actual close, but its
+application-census assertion failed because the helper mixed native/history
+markers into its application-only set. The `4f40e3ff` executor corrects marker
+classification, retains the existing assertion/fingerprints and additionally
+checks the complete native census. Its signed build passed; the native successor
+passed one API35 x86_64 installation-only native method in run `42795403725`,
+including repeated confirmed-ACK observations, complete before/after native cuts
+and zero state delta. The distinct operational close/reopen segment failed
+before ACK assertions; its production registration-order correction is being
+verified. A separate cold-original method terminated during history re-observation
+without completing.
+This does not establish whole ACK/setup/business/LAN acceptance.
 [Exact source-bound results and limits](../../qa/pos/traceability/android-history-cell-batching-20261110/README.md).
 
 Earlier native I/O and key slices remain bound to their recorded source revisions:

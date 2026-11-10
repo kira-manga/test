@@ -211,9 +211,15 @@ public class AtomicMasterStore internal constructor(
         return intake
     }
 
-    internal fun acceptsNativeOriginal(endpoint: LocalMasterEndpoint, intake: NativeOriginalIntake): Boolean =
-        physicalEndpoint.value === endpoint && nativeOriginalIngress.value === intake && nativeOriginalInstalled.value &&
+    /** Exact already-registered association, including the first installation handshake.
+     * Matching the association alone never admits enqueue/import: those also require the
+     * completed history/source installation below. */
+    internal fun ownsNativeOriginalIntake(endpoint: LocalMasterEndpoint, intake: NativeOriginalIntake): Boolean =
+        physicalEndpoint.value === endpoint && nativeOriginalIngress.value === intake &&
             intake.registeredSource === physicalRecordingGate && physicalService.current()
+
+    internal fun acceptsNativeOriginal(endpoint: LocalMasterEndpoint, intake: NativeOriginalIntake): Boolean =
+        nativeOriginalInstalled.value && ownsNativeOriginalIntake(endpoint, intake)
 
     /** Runs as bounded Work on the SAME actual clean worker, including installation/restart wake. */
     internal suspend fun enqueueRetainedNativeOriginals(intake: NativeOriginalIntake,

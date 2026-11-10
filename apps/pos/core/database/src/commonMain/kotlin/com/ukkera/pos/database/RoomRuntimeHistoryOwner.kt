@@ -432,7 +432,7 @@ internal class RoomRuntimeHistoryOwner private constructor(
     internal fun bindNativeOriginalIntake(store: AtomicMasterStore,database: MasterRoomDatabase,
         endpoint: LocalMasterEndpoint,ingress: NativeOriginalIntake) {
         check(this.store === store && this.database === database && this.endpoint === endpoint && this.ingress == null &&
-            mode == Mode.OPERATIONAL && store.acceptsNativeOriginal(endpoint,ingress))
+            mode == Mode.OPERATIONAL && store.ownsNativeOriginalIntake(endpoint,ingress))
         this.ingress = ingress
     }
     internal fun requireNativeOriginal(store: AtomicMasterStore,invocation: NativeOriginalIntakeInvocation,
