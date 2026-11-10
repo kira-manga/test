@@ -59,16 +59,20 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     fun openNative() {
         check(state == State.NEW)
         state = State.OPENING
+        work.roomCoroutines.traceStage("history-read-open-before-custody")
         environment.requireExistingOriginalObservation() // Before any potentially creating reobserve.
         owner.requireDataNative(); anchor.requireSameOriginalCut(original)
         val binding = original.record.database ?: uncertain()
+        work.roomCoroutines.traceStage("history-read-open-after-custody")
         try {
             val pin = namespace.pinOriginalDatabase(binding,AndroidSelfOwnedDatabaseNamespace.OriginalDatabaseUse.STABLE_READ)
             databasePin = pin
+            work.roomCoroutines.traceStage("history-read-open-after-pin")
             val driver = BundledSQLiteDriver()
             known(!driver.hasConnectionPool)
             // The one-argument open is deliberately forbidden: it includes CREATE.
             connection = driver.open(pin.path,SQLITE_OPEN_READONLY or SQLITE_OPEN_NOFOLLOW)
+            work.roomCoroutines.traceStage("history-read-open-after-sqlite")
             namespace.assertOriginalDatabasePin(pin)
             executeFixed("BEGIN DEFERRED TRANSACTION")
             known(requireNotNull(connection).inTransaction())
@@ -80,6 +84,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
             enqueueSchema(); enqueueTraversal()
             state = State.READING
             guard()
+            work.roomCoroutines.traceStage("history-read-open-returned")
         } catch (failure: Throwable) {
             // Partially opened resources were already retained. Actual disposal is watched.
             try { closeNative() } catch (_: Throwable) { work.nativeClosureUnknown() }
@@ -87,9 +92,9 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         }
     }
 
-    override suspend fun readSchemaPage(): NativeHistorySchemaPageV2? = perform { readSchemaPageNative() }
-    override suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2? = perform { nextRowNative() }
-    override suspend fun readCellChunk(): NativeHistoryCellChunkV2 = perform(dispose={ it.clear() }) { readCellNative() }
+    override suspend fun readSchemaPage(): NativeHistorySchemaPageV2? = perform(phase = "history-schema-page") { readSchemaPageNative() }
+    override suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2? = perform(phase = "history-row-metadata") { nextRowNative() }
+    override suspend fun readCellChunk(): NativeHistoryCellChunkV2 = perform(phase = "history-cell-chunk", dispose={ it.clear() }) { readCellNative() }
 
     override suspend fun openDataWorkspace(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeHistoryWorkspace =
         perform(dispose = { dataWorkspace?.closeNative() }) {
@@ -291,13 +296,20 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         }
     }
 
-    private suspend fun <T> perform(dispose: (T)->Unit = {}, body: ()->T): T {
+    private suspend fun <T> perform(phase: String = "history-owned-action", dispose: (T)->Unit = {}, body: ()->T): T {
+        // Fixed call-site labels and bounded static stacks only; no row, key or path data.
+        work.roomCoroutines.traceStage("$phase-before-custody")
         return when (val result = work.run {
             object : AndroidOwnedTask<T> {
                 override fun execute(): T {
                     guard()
+                    work.roomCoroutines.traceStage("$phase-after-custody")
                     val value = body()
-                    try { guard(); return value }
+                    try {
+                        guard()
+                        work.roomCoroutines.traceStage("$phase-returned")
+                        return value
+                    }
                     catch (failure: Throwable) { dispose(value); throw failure }
                 }
                 override fun discard(value: T) { dispose(value) }

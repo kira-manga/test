@@ -1,4 +1,4 @@
-# Local installation and testing — 9 November 2026
+# Local installation and testing — 10 November 2026
 
 These are synthetic local qualification builds. Epic 3 development and owner
 acceptance remain incomplete. Android has native setup/service integration;
@@ -6,7 +6,7 @@ desktop and iOS currently launch an **unconfigured bootstrap**. Installing them
 does not provide a working branch Master, employee login, checkout or paired
 Client. Do not use production data or real payments.
 
-## Download the exact tested packages
+## Download packages with their verification limits
 
 Sign in to GitHub with access to `kira-manga/test`. Download the named Actions
 artifact, extract its outer ZIP, and use the package below. The auxiliary repo
@@ -17,6 +17,7 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
+| Android, latest setup diagnostic | [API 35 diagnostic, run 42737203959](https://github.com/kira-manga/test/actions/runs/42737203959/artifacts/13727232956) | `testing-inputs/ukkera-pos-testing.apk`, clean source `fac0cf70`; only install the application APK. Native fixture observed Installed and original setup readback, then process died during the next closed native cut; zero completed methods. This is an installable diagnostic, not a qualified setup/ACK workflow. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
 | Windows x64 | [MSI artifact, run 42689314277](https://github.com/kira-manga/test/actions/runs/42689314277/artifacts/13707405198) | `UkkeraPOS-0.1.0.msi`, source `35441670`; includes the Windows namespace serialization and DPAPI envelope fixes |
 | macOS Apple Silicon | [ARM64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13701379955) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
@@ -25,8 +26,8 @@ package signing.
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
-The package revisions differ because later changes are Windows code, test
-fixtures, executor scripts and evidence. Do not describe them all as one tested
+The package revisions differ because later changes include Android setup/native
+corrections, Windows code, test fixtures, executor scripts and evidence. Do not describe them all as one tested
 source revision. See [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs.
 
@@ -37,7 +38,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Android APK | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
+| Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
+| Latest Android diagnostic APK (`fac0cf70`) | `fb5d0029672476cf3b2472c86a63c3941bd3fded3ca2d80c5c2beaf8d9b98f9b` |
 | Refreshed Windows MSI | `f1e1793cd716194346e925e94a6274645a072204a08e564b21f461a78f24fe47` |
 | macOS ARM64 DMG | `009d9041a8f552b2e385085e3cf87280adb3d29803c17fc67029b0f623293b75` |
 | macOS x64 DMG | `63594d0d77e2f2308a2ded21e34a002ba853ce04aca26e570e7f5f9648122d13` |
@@ -67,13 +69,17 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Known original-setup defect:** the downloadable startup-qualified APK predates
-the AndroidKeyStore history-IV correction and failed the reproduced original
-setup path. The corrected native acquisition now returns, but a later original
-Room-open failure remains under investigation; [source-bound failures and
-limits](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md)
-are retained. Use this package for its stated startup/UI/native-I/O scope. Do not
-reset or retry an unresolved original to force setup completion.
+**Android verification limits:** the older startup-qualified APK predates the
+AndroidKeyStore history-IV correction and failed original setup. The latest
+`fac0cf70` diagnostic includes the IV, Room sidecar, TEMP-column and DAO-scope
+corrections. Its unchanged native fixture obtained `Installed`, reread the exact
+original setup and confirmed actual owner cleanup; the next independent closed
+native cut ended with OS signal 9 before any test method completed. Earlier
+native attempts also refused final currentness. These failures remain retained
+in the [source-bound evidence](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md).
+This artifact does not establish full setup, repeat ACK, cold recovery, login or
+business workflow acceptance. Preserve an unresolved original and record its
+state; do not reset it or create a replacement merely to continue testing.
 
 Automated evidence covers N18/N19/N20 native file I/O on API 24/35/37, two native
 key slices per API, and API 37 application startup. The key runs observed
