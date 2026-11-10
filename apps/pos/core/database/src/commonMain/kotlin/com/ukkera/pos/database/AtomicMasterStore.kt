@@ -191,6 +191,23 @@ public class AtomicMasterStore internal constructor(
             physicalRecordingGate is PhysicalRecordingInteractiveGate && physicalService.current()) LocalMasterPhysicalActions(endpoint, this)
         else null
 
+    /** Reference-only native affinity check. The Android service lifetime and this kernel's
+     * physical lifetime are distinct; neither caller IDs nor equality between them prove ownership. */
+    internal fun ownsPhysicalInvocation(endpoint: LocalMasterEndpoint, gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalRecordingInvocationBinding): Boolean =
+        physicalEndpoint.value === endpoint && physicalRecordingGate === gate && physicalService.current() &&
+            binding.storeOwner === this && binding.storeIncarnationId == physicalStoreIncarnation &&
+            binding.serviceIncarnationId == physicalServiceIncarnation && binding.scope == scope &&
+            binding.authority == authority && handlers[binding.command] === binding.handlerOwner
+
+    internal fun ownsPhysicalInstruction(endpoint: LocalMasterEndpoint, gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalInstructionNativeBinding): Boolean =
+        physicalEndpoint.value === endpoint && physicalRecordingGate === gate && binding.gate === gate && physicalService.current() &&
+            binding.origin.storeOwner === this && binding.storeIncarnationId == physicalStoreIncarnation &&
+            binding.serviceIncarnationId == physicalServiceIncarnation && binding.scope == scope && binding.authority == authority &&
+            binding.ingress.storeOwner === this && binding.ingress.endpointOwner === endpoint &&
+            binding.ingress.registration === physicalRegistration && handlers[binding.committedStart.command] === binding.origin.handlerOwner
+
     internal fun newPhysicalRequestLifetime(endpoint: LocalMasterEndpoint): PhysicalInteractiveRequestLifetime {
         check(physicalEndpoint.value === endpoint && physicalRecordingGate is PhysicalRecordingInteractiveGate)
         return checkNotNull(physicalInstructionRegistry).newLifetime(this, endpoint)

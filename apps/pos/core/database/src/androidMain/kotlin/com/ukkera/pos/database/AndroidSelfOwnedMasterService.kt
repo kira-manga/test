@@ -53,6 +53,16 @@ public class AndroidOriginalLocalClient internal constructor(
     public fun physicalEndpoint(gate: PhysicalRecordingExecutionGate): LocalMasterEndpoint? =
         service.originalPhysicalEndpoint(this, gate)
 
+    /** Exact active endpoint/kernel association, not equality with the outer Android service ID.
+     * Binding ownership alone grants no employee authority and performs no native acquisition. */
+    public fun ownsPhysicalInvocation(gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalRecordingInvocationBinding): Boolean =
+        service.originalPhysicalEndpoint(this, gate)?.ownsPhysicalInvocation(gate, binding) == true
+
+    public fun ownsPhysicalInstruction(gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalInstructionNativeBinding): Boolean =
+        service.originalPhysicalEndpoint(this, gate)?.ownsPhysicalInstruction(gate, binding) == true
+
     /** Same original native publication owner, not another root or employee authorization. */
     public suspend fun originalBusinessPublications(): LocalCompanyBusinessPublications? =
         service.originalBusinessPublications(this)

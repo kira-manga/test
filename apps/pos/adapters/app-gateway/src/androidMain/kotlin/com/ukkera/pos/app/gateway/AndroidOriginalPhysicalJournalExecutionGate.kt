@@ -63,7 +63,6 @@ internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
         val firstActorId = original.material.coordinates.firstActorId
         val authority = AuthorityIdentity(original.material.coordinates.assignmentId,
             deviceId, original.receipt.core.authorityEpoch)
-        val serviceIncarnationId = original.serviceIncarnationId
     }
     private class EmployeeOwner(val custody: AndroidEmployeeClientCustody,
         val history: OriginalPhysicalEmployeeEnrollment, val native: AndroidLocalClientJournalOwner)
@@ -166,10 +165,10 @@ internal class AndroidOriginalPhysicalJournalExecutionGate private constructor(
 
     private fun participant(binding: PhysicalRecordingInvocationBinding): Participant? =
         participant(binding.scope, binding.originalActorId, binding.clientDeviceId, binding.authority)
-            ?.takeIf { it.original.serviceIncarnationId == binding.serviceIncarnationId }
+            ?.takeIf { it.original.original.ownsPhysicalInvocation(this, binding) }
     private fun participant(binding: PhysicalInstructionNativeBinding): Participant? =
         participant(binding.scope, binding.originalActorId, binding.clientDeviceId, binding.authority)
-            ?.takeIf { it.original.serviceIncarnationId == binding.serviceIncarnationId }
+            ?.takeIf { it.original.original.ownsPhysicalInstruction(this, binding) }
 
     /** Present native/service and unchanged full journal codec recheck OUTSIDE Room. */
     private suspend fun recheckParticipant(selected: Participant): Boolean {

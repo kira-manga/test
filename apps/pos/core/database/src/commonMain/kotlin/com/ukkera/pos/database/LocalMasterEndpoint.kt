@@ -122,6 +122,15 @@ public class LocalMasterEndpoint internal constructor(
         require(maximumRequestMillis in 1_000..300_000)
     }
 
+    /** Only the actual native composition asks about a kernel-issued binding; no IO or grant. */
+    internal fun ownsPhysicalInvocation(gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalRecordingInvocationBinding): Boolean =
+        mutableHealth.value == LocalMasterEndpointHealth.ACTIVE && store.ownsPhysicalInvocation(this, gate, binding)
+
+    internal fun ownsPhysicalInstruction(gate: PhysicalRecordingExecutionGate,
+        binding: PhysicalInstructionNativeBinding): Boolean =
+        mutableHealth.value == LocalMasterEndpointHealth.ACTIVE && store.ownsPhysicalInstruction(this, gate, binding)
+
     /** Actual owner calls this BEFORE retiring/closing state or ANY external callback. */
     internal fun denyPhysicalFromOwner() { store.denyPhysicalRecording() }
 
