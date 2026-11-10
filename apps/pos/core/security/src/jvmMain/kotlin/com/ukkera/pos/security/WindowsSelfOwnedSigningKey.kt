@@ -62,13 +62,33 @@ internal class WindowsSelfOwnedSigningKey private constructor(
         } finally { digest.fill(0) }
     }
 
+    private var closeStarted = false
+    private var closeConfirmed = false
+
     @Synchronized override fun close() {
-        key?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); key = null }
-        provider?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); provider = null }
+        if (closeStarted) {
+            check(closeConfirmed) { "CNG signing handle close is unresolved" }
+            return
+        }
+        // A failed native close is terminal. Never retry an identity-unknown handle
+        // or allow another operation after the first close attempt.
+        closeStarted = true
+        var failure: Throwable? = null
+        fun release(action: () -> Unit) {
+            try { action() } catch (problem: Throwable) {
+                val first = failure
+                if (first == null) failure = problem else if (first !== problem) first.addSuppressed(problem)
+            }
+        }
+        release { key?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); key = null } }
+        release { provider?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); provider = null } }
         point.fill(0)
+        failure?.let { throw it }
+        closeConfirmed = true
     }
 
     private fun requireCurrent(): Pointer {
+        check(!closeStarted) { "CNG signing lifetime is closed or unresolved" }
         val handle = checkNotNull(key) { "CNG signing lifetime is closed" }
         requireService(target, serviceSid, accountSid)
         WindowsOriginalCng.requireKey(handle, protection, serviceSid, accountSid)

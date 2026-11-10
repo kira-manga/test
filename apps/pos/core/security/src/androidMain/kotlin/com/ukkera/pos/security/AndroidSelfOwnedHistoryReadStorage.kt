@@ -322,9 +322,32 @@ internal class AndroidSelfOwnedHistoryReadStorage(
             is AndroidOwnedResult.Unavailable -> throw NativeHistoryUnavailable(result.reason)
         }
     }
+    // Fixed, bounded observations of this reader only. The counter never admits work,
+    // caches custody or creates another deadline for the shared original operation.
+    private val nativeGuardObservations = java.util.concurrent.atomic.AtomicInteger()
     private fun guard() {
-        environment.requireExistingOriginalObservation(); owner.requireDataNative()
-        known(state == State.READING); namespace.assertOriginalDatabasePin(requireNotNull(databasePin)); work.requireActive()
+        val index = nativeGuardObservations.getAndUpdate { if (it < 4097) it + 1 else it }
+        val trace = index < 4 || index == 16 || index == 64 || index == 128 || index == 256 ||
+            index == 512 || index == 1024 || index == 2048 || index == 4096
+        var stage = "existing-context"
+        var started = if (trace) android.os.SystemClock.elapsedRealtime() else 0L
+        fun completed(next: String) {
+            if (trace) {
+                val finished = android.os.SystemClock.elapsedRealtime()
+                try { android.util.Log.i("UkkeraNativeOwner", "Native history-read guard: observation=${index + 1}; stage=$stage; durationMillis=${finished - started}") }
+                catch (_: Throwable) { /* Diagnostic only; preserve the actual outcome. */ }
+                started = finished
+            }
+            stage = next
+        }
+        environment.requireExistingOriginalObservation()
+        completed("data-custody")
+        owner.requireDataNative()
+        completed("database-pin")
+        known(state == State.READING); namespace.assertOriginalDatabasePin(requireNotNull(databasePin))
+        completed("active-work")
+        work.requireActive()
+        completed("returned")
     }
     private inner class OwnedStatement(val value: SQLiteStatement) {
         private var closeStarted = false; private var closed = false

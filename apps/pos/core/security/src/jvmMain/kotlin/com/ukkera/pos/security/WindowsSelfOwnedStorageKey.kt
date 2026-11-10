@@ -57,13 +57,33 @@ internal class WindowsSelfOwnedStorageKey private constructor(
         catch (failure: Throwable) { plaintext.fill(0); throw failure }
     }
 
+    private var closeStarted = false
+    private var closeConfirmed = false
+
     @Synchronized override fun close() {
-        key?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); key = null }
-        provider?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); provider = null }
+        if (closeStarted) {
+            check(closeConfirmed) { "Windows original storage handle close is unresolved" }
+            return
+        }
+        // A failed native close is terminal. Never retry an identity-unknown handle
+        // or allow another operation after the first close attempt.
+        closeStarted = true
+        var failure: Throwable? = null
+        fun release(action: () -> Unit) {
+            try { action() } catch (problem: Throwable) {
+                val first = failure
+                if (first == null) failure = problem else if (first !== problem) first.addSuppressed(problem)
+            }
+        }
+        release { key?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); key = null } }
+        release { provider?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); provider = null } }
         binding.fill(0); proof.fill(0)
+        failure?.let { throw it }
+        closeConfirmed = true
     }
 
     private fun requireCurrent(): Pointer {
+        check(!closeStarted) { "Windows original storage lifetime is closed or unresolved" }
         val handle = checkNotNull(key) { "Windows original storage lifetime is closed" }
         WindowsSelfOwnedSigningKey.requireService(target, serviceSid, accountSid)
         requireKey(checkNotNull(provider), handle, serviceSid, accountSid)
