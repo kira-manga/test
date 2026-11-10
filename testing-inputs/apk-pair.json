@@ -1,11 +1,11 @@
 {
-  "source_revision": "fac0cf70d9c5b709934fd301fe740dee7688cfb2",
+  "source_revision": "ea63cc8aa210597b47f90a108c99a712a7aff877",
   "runtime_tests_source_revision": "6bec2af6eef6b6279948e6616f5e40e01a44e372",
   "signer_certificate_sha256": "54f974f83a806bd08dfebd647615e31c3c11866ba9f81a78774aee544dc9e08f",
   "limits": "Source revisions are build provenance, not native or owner acceptance.",
   "app": {
     "filename": "ukkera-pos-testing.apk",
-    "sha256": "fb5d0029672476cf3b2472c86a63c3941bd3fded3ca2d80c5c2beaf8d9b98f9b",
+    "sha256": "9fc1838cd51e07e8eacc9573e012b0896476fc74f2ef5ff68109a3725b225ec3",
     "bytes": 34202286
   },
   "runtime_tests": {
