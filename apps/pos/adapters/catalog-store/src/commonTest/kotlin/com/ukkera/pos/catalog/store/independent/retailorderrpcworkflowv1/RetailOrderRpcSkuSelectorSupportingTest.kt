@@ -46,7 +46,17 @@ class RetailOrderRpcSkuSelectorSupportingTest {
             assertFalse(classifier.supportsRpcWorkflow(retail, body), kind)
         }
         val sku = LocalConfigurationCodec.query(LocalConfigurationQueryV1(LocalConfigurationProfile.SKU, id = skuA))
-        LocalMasterRpcWorkflowProfile.entries.filter { it != retail }.forEach {
+        // Exact six-profile input inventory at ee1b2281; later fixed attachments
+        // have their own contracts. See rpc-profile-inventory-wiring-20261110.
+        val predecessorProfiles = listOf(
+            LocalMasterRpcWorkflowProfile.SUPPLIERS,
+            LocalMasterRpcWorkflowProfile.WAREHOUSES,
+            LocalMasterRpcWorkflowProfile.REPORTS,
+            LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS,
+            LocalMasterRpcWorkflowProfile.KITCHEN,
+            LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
+        )
+        predecessorProfiles.filter { it != retail }.forEach {
             assertFalse(classifier.supportsRpcWorkflow(it, sku), it.name)
         }
     }

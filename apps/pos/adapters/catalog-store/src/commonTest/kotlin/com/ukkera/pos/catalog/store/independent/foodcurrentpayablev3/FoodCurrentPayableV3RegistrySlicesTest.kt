@@ -38,7 +38,23 @@ class FoodCurrentPayableV3RegistrySlicesTest {
         val normalized = handler.normalize(LocalFoodCheckKitchenCodecV3.encode(selector))
         assertEquals(LocalFoodCheckKitchenCodecV3.encode(selector), normalized)
         assertTrue(handler.supportsRpcWorkflow(LocalMasterRpcWorkflowProfile.FOOD_CHECKS, normalized))
-        for (profile in LocalMasterRpcWorkflowProfile.entries.filter { it != LocalMasterRpcWorkflowProfile.FOOD_CHECKS }) {
+        // Exact twelve-profile input inventory at 0df3e184; the later financial
+        // attachment separately requires this read. See rpc-profile-inventory-wiring-20261110.
+        val predecessorProfiles = listOf(
+            LocalMasterRpcWorkflowProfile.SUPPLIERS,
+            LocalMasterRpcWorkflowProfile.WAREHOUSES,
+            LocalMasterRpcWorkflowProfile.REPORTS,
+            LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS,
+            LocalMasterRpcWorkflowProfile.KITCHEN,
+            LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
+            LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS,
+            LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
+            LocalMasterRpcWorkflowProfile.FOOD_CHECKS,
+            LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS,
+            LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE,
+            LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+        )
+        for (profile in predecessorProfiles.filter { it != LocalMasterRpcWorkflowProfile.FOOD_CHECKS }) {
             assertFalse(handler.supportsRpcWorkflow(profile, normalized), "FCP3-009 no unrelated profile classification")
         }
         assertFalse(LocalMasterFoodCheckRpcKeysV1.accepts(ReadKey("sales.food.check-kitchen.read", 4)))

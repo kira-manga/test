@@ -18,6 +18,10 @@ internal class AndroidSelfOwnedInstallationSigning(
 ) {
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null, null) }
 
+    // Pure verification of immutable document bytes only. Never a currentness,
+    // origin, private-key possession, native metadata or journal-state cache.
+    private var verifiedOriginalSource: SelfOwnedNativeSourceV1? = null
+
     /** Missing native intent cannot adopt any orphan target/storage/pepper alias as a new key. */
     fun assertAliasNamespace() {
         work.requireActive(); environment.requireCurrent()
@@ -79,19 +83,29 @@ internal class AndroidSelfOwnedInstallationSigning(
 
     /** Crypto consistency alone is NOT imported-root origin; actual P1/journal origin is separate. */
     fun verifyOriginalSource() {
+        // intent() still performs the real namespace check on every invocation.
         val source = journal.intent().source
         if (!source.preparationBody.target.same(environment.target)) keyFailure()
-        val rootPoint = source.rootBody.rootPublicKey.copyBytes()
-        val issuerPoint = source.delegationBody.issuerPublicKey.copyBytes()
-        try {
-            if (!AndroidP256Primitives.verifyDocument(source.root, rootPoint) ||
-                !AndroidP256Primitives.verifyDocument(source.delegation, rootPoint) ||
-                !AndroidP256Primitives.verifyDocument(source.preparation, issuerPoint) ||
-                source.delegationBody.rootDocumentDigest != AndroidP256Primitives.documentDigest(source.root) ||
-                source.preparationBody.rootDocumentDigest != AndroidP256Primitives.documentDigest(source.root) ||
-                source.preparationBody.delegationDigest != AndroidP256Primitives.documentDigest(source.delegation)) keyFailure()
-        } finally { rootPoint.fill(0); issuerPoint.fill(0) }
+        if (verifiedOriginalSource !== source) {
+            // SelfOwnedNativeSourceV1 and its signed documents own immutable copies.
+            // A different parsed source (even equal bytes) must verify independently;
+            // neither a digest nor caller-supplied equality can hit this cache.
+            val rootPoint = source.rootBody.rootPublicKey.copyBytes()
+            val issuerPoint = source.delegationBody.issuerPublicKey.copyBytes()
+            try {
+                if (!AndroidP256Primitives.verifyDocument(source.root, rootPoint) ||
+                    !AndroidP256Primitives.verifyDocument(source.delegation, rootPoint) ||
+                    !AndroidP256Primitives.verifyDocument(source.preparation, issuerPoint) ||
+                    source.delegationBody.rootDocumentDigest != AndroidP256Primitives.documentDigest(source.root) ||
+                    source.preparationBody.rootDocumentDigest != AndroidP256Primitives.documentDigest(source.root) ||
+                    source.preparationBody.delegationDigest != AndroidP256Primitives.documentDigest(source.delegation)) keyFailure()
+            } finally { rootPoint.fill(0); issuerPoint.fill(0) }
+        }
+        // Current installed identity, the original native journal/namespace and
+        // admitted-work deadline are still observed on the cached path. Fresh
+        // signing/storage/pepper possession is enforced by the unchanged callers.
         guard()
+        verifiedOriginalSource = source // Publish only after every check returned.
     }
 
     fun createOriginalBinding(): SelfOwnedNativeBindingV1 {

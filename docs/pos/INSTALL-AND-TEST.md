@@ -17,7 +17,7 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37 x86_64 and API24 x86; the same APK passed 3/3 native I/O slices on API24 x86. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
+| Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37 x86_64 and API24 x86; the same APK passed 3/3 native I/O slices on API24 x86 and another 3/3 plus bounded startup on the official API35 16 KiB profile. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
 | Windows x64 | [MSI artifact, run 42689314277](https://github.com/kira-manga/test/actions/runs/42689314277/artifacts/13707405198) | `UkkeraPOS-0.1.0.msi`, source `35441670`; includes the Windows namespace serialization and DPAPI envelope fixes |
 | macOS Apple Silicon | [ARM64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13701379955) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
@@ -71,11 +71,13 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 **Android verification limits:** the older startup-qualified APK predates the
 AndroidKeyStore history-IV correction and failed original setup. The latest
-`fac0cf70` diagnostic includes the IV, Room sidecar, TEMP-column and DAO-scope
-corrections. Its unchanged native fixture obtained `Installed`, reread the exact
+`ecc42c63` diagnostic includes the IV, Room sidecar, TEMP-column, DAO-scope
+and existing-only key-lookup corrections. Its unchanged native fixture obtained `Installed`, reread the exact
 original setup and confirmed actual owner cleanup; the next independent closed
 native cut ended with OS signal 9 before any test method completed. Earlier
-native attempts also refused final currentness. These failures remain retained
+native attempts also refused final currentness. The identical pair on API24 x86
+started one method and crashed during setup without a completed outcome or explicit
+exclusion cause. These failures remain retained
 in the [source-bound evidence](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md).
 This artifact does not establish full setup, repeat ACK, cold recovery, login or
 business workflow acceptance. Preserve an unresolved original and record its
@@ -85,6 +87,10 @@ Automated evidence covers N18/N19/N20 native file I/O on API 24/35/37, two nativ
 key slices per API, and API 37 application startup. The key runs observed
 **SOFTWARE / OS_ISOLATED** evidence; hardware/StrongBox and an independently
 captured pre/post-restart identity comparison are not established.
+The latest APK additionally passed both unchanged key selectors on API24 x86
+and the official API35 16 KiB profile, with observed process absence before the
+existing-only second invocation. [Exact source-bound key results and limits](../../qa/pos/traceability/android-original-key-slices-20261109/README.md#additional-runtime-profiles--10-november-2026).
+
 
 ## Windows
 
