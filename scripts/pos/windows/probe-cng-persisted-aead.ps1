@@ -41,8 +41,10 @@ public static class PosCngPersistedAeadProbe {
         Array.Clear(b,0,b.Length);
     }
     static int Crypt(IntPtr key, bool decrypt, byte[] input, byte[] nonce, byte[] aad, byte[] tag, UInt32 paddingFlags, out byte[] result) {
-        // SDK ncrypt.h: Other is a serialized authenticated-mode structure and ALL its
-        // pointers refer to data within that same allocation. No key bytes are used.
+        // Keep all parameter bytes in one allocation as the SDK documents. The
+        // Microsoft AziHSM NCrypt sample reports sizeof(AuthInfo), not the size
+        // of the pointed-to nonce/AAD/tag, in cbOtherInfo. No key bytes are used.
+        // microsoft/AziHSM-Guest@4c2f37d3 samples/cpp/include/Utils/CryptoUtils.h
         int header=Marshal.SizeOf<AuthInfo>(); int total=checked(header+nonce.Length+aad.Length+tag.Length);
         IntPtr block=Marshal.AllocHGlobal(total); byte[] zero=new byte[total]; Marshal.Copy(zero,0,block,total);
         byte[] output=new byte[input.Length+32]; result=null;
@@ -52,7 +54,7 @@ public static class PosCngPersistedAeadProbe {
             var auth=new AuthInfo { Size=(UInt32)header, Version=1, Nonce=n, NonceSize=(UInt32)nonce.Length,
                 AAD=a, AADSize=(UInt32)aad.Length, Tag=t, TagSize=(UInt32)tag.Length };
             Marshal.StructureToPtr(auth,block,false);
-            var padding=new CipherPadding { Size=(UInt32)Marshal.SizeOf<CipherPadding>(), Flags=paddingFlags, Other=block, OtherSize=(UInt32)total };
+            var padding=new CipherPadding { Size=(UInt32)Marshal.SizeOf<CipherPadding>(), Flags=paddingFlags, Other=block, OtherSize=(UInt32)header };
             UInt32 written;
             int status=decrypt ? NCryptDecrypt(key,input,(UInt32)input.Length,ref padding,output,(UInt32)output.Length,out written,0x10)
                                : NCryptEncrypt(key,input,(UInt32)input.Length,ref padding,output,(UInt32)output.Length,out written,0x10);
@@ -95,10 +97,10 @@ public static class PosCngPersistedAeadProbe {
             // Reapply it to the reopened key; a prior handle's setting is not evidence.
             if(!Step(r,"set_GCM_reopened_handle",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) return r;
             ObserveProperty(r,key,"Chaining Mode",true);
-            // The SDK defines both NO_PADDING (0) and OTHER_PADDING (2). Retain
-            // the exact descriptor variant; no success is inferred from a setter.
-            UInt32 descriptorFlags=0;
-            if(!Step(r,"encrypt_no_padding_descriptor",Crypt(key,false,plain,nonce,aad,tag,descriptorFlags,out encrypted))) return r;
+            // Microsoft's NCrypt authenticated-mode sample uses OTHER_PADDING.
+            // The descriptor length and all pointed-to bytes have distinct sizes.
+            UInt32 descriptorFlags=2;
+            if(!Step(r,"encrypt_struct_sized_descriptor",Crypt(key,false,plain,nonce,aad,tag,descriptorFlags,out encrypted))) return r;
             if(!Step(r,"decrypt",Crypt(key,true,encrypted,nonce,aad,tag,descriptorFlags,out decrypted))) return r;
             r["roundtrip_equal"]=CryptographicOperations.FixedTimeEquals(plain,decrypted);
             tag[0]^=1; byte[] tampered=null;
