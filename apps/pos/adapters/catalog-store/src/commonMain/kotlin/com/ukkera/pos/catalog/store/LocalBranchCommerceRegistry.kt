@@ -196,7 +196,10 @@ public class LocalBranchCommerceRegistry(
             return byCommand[command.command]?.join(command) ?: false
         }
     }
-    private val stockHandlers = LocalStockHandlers(stock, configuration)
+    // LocalStockHandlers also owns the relational administration command. Its current
+    // authority must be the exact bridge installed on stock for retained/current joins.
+    // The bridge delegates legacy configuration reads to the same configuration owner.
+    private val stockHandlers = LocalStockHandlers(stock, stockAuthority)
     private val normalizedStock = LocalStockRelationalServices(stock, stockAuthority)
     private val arrivals = LocalUnpricedArrivalServices(stock, LocalCatalogUnpricedArrivalAuthority(configuration))
     private val arrivalsV2 = LocalUnpricedArrivalServicesV2(stock, arrivalAuthorityV2)
