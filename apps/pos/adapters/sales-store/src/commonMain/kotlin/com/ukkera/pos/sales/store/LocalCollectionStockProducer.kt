@@ -131,41 +131,66 @@ internal class CommerceCommandHandler(private val delegate: MasterCommandHandler
     }
 }
 
-internal suspend fun requireCommerceCurrent(view: CommandReadView, row: StoredAggregate) {
-    val linkKey = commerceLinkKey(row.key)
-    val linkRow = view.aggregate(linkKey) ?: error("sales.stock.current_source_missing")
-    check(linkRow.schema == commerceLinkSchema() && sha256(linkRow.payload.copyBytes()) == linkRow.digest)
-    val link = localSalesDecode(linkRow.payload, CommerceRowLinkV2.serializer())
-    check(link.scope == view.scope && link.kind == row.key.kind && link.id == row.key.id && link.generation == row.revision && link.digest == row.digest)
-    val identity = StreamedProducerIdentityV2(link.operationId, CommandKey(link.command, link.version), link.actorId, link.semanticDigest)
-    when (val original = view.requireStockRelational().originals.read(link.operationId) ?: error("sales.stock.original_missing")) {
-        is RetainedOriginalV2.Streamed -> {
-            val value = original.evidence
-            check(value.identity.producer == identity)
-            commerceRepository(view).requireRelationalProducer(view, value)
-            requireCommerceWrite(value, row); requireCommerceWrite(value, linkRow)
-            commerceRecordOriginal(view, row, value)
-        }
-        is RetainedOriginalV2.Legacy -> {
-            val value = original.evidence
-            check(row.key.kind == LocalSalesStoreProfile.COLLECTION_KIND && value.scope == view.scope && value.operationId == identity.operationId &&
-                value.command == identity.command && value.originalActorId == identity.originalActorId && value.semanticDigest == identity.semanticDigest)
-            requireNormalizedPaymentOrigin(view, value)
-            requireRetailRetainedRowV3(value, row); requireRetailRetainedRowV3(value, linkRow)
-            commerceRecordLegacy(view, row, value)
+private class CommerceCurrentSource(val row: StoredAggregate, val linkRow: StoredAggregate,
+    val producer: StreamedProducerIdentityV2)
+
+/** Simultaneous finite current roots on this actual loan. Each literal link is checked
+ * before roots with the SAME complete producer identity share its actual verification.
+ * No successful qualification survives this call or substitutes for a selected write. */
+internal suspend fun requireCommerceCurrent(view: CommandReadView, vararg rows: StoredAggregate) {
+    check(rows.isNotEmpty() && rows.size <= 2 && rows.map { it.key }.distinct().size == rows.size)
+    val selected = rows.map { row ->
+        val linkRow = view.aggregate(commerceLinkKey(row.key)) ?: error("sales.stock.current_source_missing")
+        check(linkRow.schema == commerceLinkSchema() && sha256(linkRow.payload.copyBytes()) == linkRow.digest)
+        val link = localSalesDecode(linkRow.payload, CommerceRowLinkV2.serializer())
+        check(link.scope == view.scope && link.kind == row.key.kind && link.id == row.key.id &&
+            link.generation == row.revision && link.digest == row.digest)
+        CommerceCurrentSource(row, linkRow, StreamedProducerIdentityV2(link.operationId,
+            CommandKey(link.command, link.version), link.actorId, link.semanticDigest))
+    }
+    for ((identity, sources) in selected.groupBy { it.producer }) {
+        when (val original = view.requireStockRelational().originals.read(identity.operationId)
+            ?: error("sales.stock.original_missing")) {
+            is RetainedOriginalV2.Streamed -> {
+                val value = original.evidence
+                check(value.identity.producer == identity)
+                commerceRepository(view).requireRelationalProducer(view, value)
+                requireCommerceWrite(value, *sources.flatMap { listOf(it.row, it.linkRow) }.toTypedArray())
+                for (source in sources) commerceRecordOriginal(view, source.row, value)
+            }
+            is RetainedOriginalV2.Legacy -> {
+                val value = original.evidence
+                check(sources.all { it.row.key.kind == LocalSalesStoreProfile.COLLECTION_KIND } &&
+                    value.scope == view.scope && value.operationId == identity.operationId &&
+                    value.command == identity.command && value.originalActorId == identity.originalActorId &&
+                    value.semanticDigest == identity.semanticDigest)
+                requireNormalizedPaymentOrigin(view, value)
+                for (source in sources) {
+                    requireRetailRetainedRowV3(value, source.row)
+                    requireRetailRetainedRowV3(value, source.linkRow)
+                    commerceRecordLegacy(view, source.row, value)
+                }
+            }
         }
     }
 }
-internal suspend fun requireCommerceWrite(original: RetainedStreamedCommand, row: StoredAggregate) {
-    var found = false
+/** Match the complete finite selected row set during ONE actual original traversal.
+ * Normal return still requires every selected write exactly once. No observed row,
+ * authenticated stream or successful producer qualification is cached for another read. */
+internal suspend fun requireCommerceWrite(original: RetainedStreamedCommand, vararg rows: StoredAggregate) {
+    check(rows.isNotEmpty() && rows.size <= 4 && rows.map { it.key }.distinct().size == rows.size)
+    val found = BooleanArray(rows.size)
     original.frames { frame ->
         val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
-        if (write.key == row.key) {
-            check(!found && write.storageGeneration == row.revision && write.schema == row.schema && write.payload == row.payload && write.payloadDigest == row.digest)
-            found = true
+        val index = rows.indexOfFirst { it.key == write.key }
+        if (index >= 0) {
+            val row = rows[index]
+            check(!found[index] && write.storageGeneration == row.revision && write.schema == row.schema &&
+                write.payload == row.payload && write.payloadDigest == row.digest)
+            found[index] = true
         }
     }
-    check(found) { "sales.stock.current_original_mismatch" }
+    check(found.all { it }) { "sales.stock.current_original_mismatch" }
 }
 
 /** Finite commerce effects only. Physical stock rows/claims never enter these collections. */

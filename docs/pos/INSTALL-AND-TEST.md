@@ -19,11 +19,18 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, current complete stock stream build | [Stock stream artifact, run 42865852079](https://github.com/kira-manga/test/actions/runs/42865852079/artifacts/13787209057) | `testing-inputs/ukkera-pos-testing.apk`, clean source `583b857a`; install only the application APK. Signed packaging/fatal lint,1,835 existing JVM methods and562 affected Apple common methods passed (one JVM skip). Native API35 reached and returned the post-Begin normalized stock cut and assertions, then signal9 during original Start without a reply; zero methods completed. Financial/cold recovery remains unverified. |
-| macOS ARM64, current presentation cleanup build | [ARM artifact, run42865844485 attempt2](https://github.com/kira-manga/test/actions/runs/42865844485/artifacts/13789246576) | `UkkeraPOS-1.0.0.dmg`, source `583b857a`; mount/content/architecture and packaged startup passed after a hosted-runner capacity retry. Unsigned, unnotarized, unconfigured bootstrap. |
-| macOS Intel, current presentation cleanup build | [Intel artifact, run 42865844485](https://github.com/kira-manga/test/actions/runs/42865844485/artifacts/13787308947) | `UkkeraPOS-1.0.0.dmg`, source `583b857a`; mount/content/architecture and packaged startup passed. Unsigned, unnotarized, unconfigured bootstrap. |
-| iOS Simulator, shutdown cleanup build | [Apple artifact, run 42861638887](https://github.com/kira-manga/test/actions/runs/42861638887/artifacts/13787303446) | `UkkeraPos-simulator.app.zip`, source `72af8eb1`; framework/Xcode linking and exact-PID startup on iPhone17 Pro passed. Includes shutdown cleanup; predates foreground fix `962bb3a8`. Final changed-source package run42867498835 pending. |
-| Physical iPhone/iPad, shutdown cleanup archive | Same Apple artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip`, source `72af8eb1`; native archive passed but requires authorized signing/provisioning before installation. |
+| Android, current payment member stream build | [Payment stream artifact, run 42875564777](https://github.com/kira-manga/test/actions/runs/42875564777/artifacts/13791353153) | `testing-inputs/ukkera-pos-testing.apk`, clean source `b28638df`; install only the application APK. Fatal lint, signed pair and1,835 JVM methods passed (one skipped). Native authentication returned and Start preparation entered, then signal9 with no reply or cleanup; zero financial methods completed. Preserve unresolved original. |
+| Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
+| macOS ARM64, current presentation cleanup build | [ARM artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792366363) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed, including the failed-old-binding lock correction. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
+| macOS Intel, current presentation cleanup build | [Intel artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792331313) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
+| iOS Simulator, current foreground/shutdown cleanup build | [Apple artifact, run42867498835](https://github.com/kira-manga/test/actions/runs/42867498835/artifacts/13791088633) | `UkkeraPos-simulator.app.zip`, source `8a7f7888`; framework/Xcode linking and exact-PID iPhone17 Pro startup passed. The exact ZIP also passed iPad Pro13-inch Simulator original-PID startup in [42876800066](https://github.com/kira-manga/test/actions/runs/42876800066). Includes both cleanup corrections. No Kotlin test rerun or native failure injection in this job. |
+| Physical iPhone/iPad, current cleanup archive | Same current Apple artifact | Debug `UkkeraPos-unsigned-device.xcarchive.zip`, source `8a7f7888`; native archive passed but requires authorized signing/provisioning before installation. |
+
+<details>
+<summary>Historical packages and their source-specific verification</summary>
+
+| Platform | Download | Package and tested source |
+| --- | --- | --- |
 | Android, previous stock composition build | [Stock revision artifact, run 42854976285](https://github.com/kira-manga/test/actions/runs/42854976285/artifacts/13782961958) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9bf03ee1`; install only the application APK. Signed packaging/fatal lint and 581 existing catalogue/inventory methods passed. Native API35 x86_64 reached recorded opening stock and collection begin, then signal9 before Start was observed; zero methods completed. Full checkout and cold recovery remain unverified. |
 | Android, current authenticated STOP/close build | [Lifecycle artifact, run 42816765743](https://github.com/kira-manga/test/actions/runs/42816765743/artifacts/13764751908) | `testing-inputs/ukkera-pos-testing.apk`, clean source `f01bbb41`; install only the application APK. Signed package/fatal lint, 18 focused lifecycle JVM methods, full database regression and one API35 x86_64 native STOP/close supporting method passed without AOT. Full lifecycle/business/LAN/owner qualification remains open. |
 | Android, actual-owner refresh/lifecycle diagnostic | [Lifecycle artifact, run 42807559079](https://github.com/kira-manga/test/actions/runs/42807559079/artifacts/13761390342) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4c045a36`; install only the application APK. Signed package/fatal lint and full database regression passed. Three native lifecycle methods failed at authenticated STOP; the background method passed current-Master refresh and existing-only RUN reopen assertions before STOP failed. |
@@ -31,13 +38,14 @@ requirement.
 | Android, latest native-intake diagnostic | [Operational ACK artifact, run 42800059765](https://github.com/kira-manga/test/actions/runs/42800059765/artifacts/13755756444) | `testing-inputs/ukkera-pos-testing.apk`, clean source `c93b8671`; install only the application APK. Full database regression, fatal lint/package and one unchanged API35 x86_64 operational ACK close/reopen method passed without AOT. Whole setup/business/LAN/owner qualification remains open. |
 | Android, prior cross-API startup diagnostic | [API 35 startup artifact, run 42791988202](https://github.com/kira-manga/test/actions/runs/42791988202/artifacts/13751684962) | `testing-inputs/ukkera-pos-testing.apk`, clean source `631df201`; install only the application APK. Includes native RPC LAN permission, physical-session cleanup and bounded history-read guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
-| Windows x64, updated presentation cleanup | [MSI artifact, run 42865844485](https://github.com/kira-manga/test/actions/runs/42865844485/artifacts/13786164523) | `UkkeraPOS-0.1.0.msi`, source `583b857a`; package/content/architecture and packaged startup passed; all 15 manifest entries verified. Unsigned, unconfigured bootstrap; no native injected cleanup-failure or complete branch workflow qualification. |
 | Windows x64, historical bootstrap | [MSI artifact, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751569890) | `UkkeraPOS-0.1.0.msi`, source `631df201`; package/content/architecture and packaged startup passed |
 | macOS Apple Silicon | [ARM64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751588657) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
 | macOS Intel | [x64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751911072) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
 | iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42790741202](https://github.com/kira-manga/test/actions/runs/42790741202/artifacts/13753475302) | `UkkeraPos-simulator.app.zip`, source `631df201`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. 464 native simulator methods passed with zero failures/errors/skips; exact-package iPad startup passed in run 42793999046 |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
+
+</details>
 
 The prior cross-API Android, desktop and iOS refresh shares source `631df201`.
 The newer Android lifecycle closure-accounting build is `a476d536`; each row above names
@@ -53,25 +61,35 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Current stock stream Android APK (`583b857a`) | `d4f04bf673c52d3ba41453641f50a8d07c16ce7efef6bfb6f96e9f98de91e997` |
-| Current macOS ARM64 DMG (`583b857a`) | `3bc146a30d3362e41e90a52f31bb59e9ee41c16506ee28ed9bce29be6333b2d4` |
-| Current macOS Intel DMG (`583b857a`) | `790a0c16e09e36ad998134efbd1e63fe3b539389e7f7c33f8e60d6ca7e1a49a0` |
-| Shutdown cleanup iOS Simulator ZIP (`72af8eb1`) | `a810068ac07fca859597efee8ece7e025b763f2b396fec727c52e9bc7f009590` |
+| Current payment stream Android APK (`b28638df`) | `9e57496b0514a10bc47449ce6b41caae0a91235543e5e8804a2a766af33e0350` |
+| Current macOS ARM64 DMG (`b28638df`) | `d6afdb08684905211cbf6f40b8490a57ca17ec6516df3a2d3847afcad732cb92` |
+| Current macOS Intel DMG (`b28638df`) | `34ec21f2f83ba1053381a1002d80cd7e6301fbbb735527f306e6e09cc29bea89` |
+| Current foreground/shutdown iOS Simulator ZIP (`8a7f7888`) | `81fe8cdc1d4c6e11e45f0fc63be608482134522aa1232b2e34ca699594d57788` |
+| Current foreground/shutdown unsigned Debug ZIP (`8a7f7888`) | `b92ce3cf99a7b8612d0bb5fe1e8a1f506f395b4dfb40b63a60606410a04ee728` |
+| Current Windows MSI (`b28638df`) | `813d73ddad0ca46e8d6b05d9969de693a3d82fcd4358190f0788cb320c738f88` |
+
+<details>
+<summary>Historical package checksums</summary>
+
+| Package | SHA-256 |
+| --- | --- |
+| Prior shutdown cleanup iOS Simulator ZIP (`72af8eb1`) | `a810068ac07fca859597efee8ece7e025b763f2b396fec727c52e9bc7f009590` |
 | Shutdown cleanup unsigned Release ZIP (`72af8eb1`) | `c53266ef39738086dc39ce05d5d3f56bef9fa406f89b60f7258f89837a5de8ad` |
 | Previous stock composition Android APK (`9bf03ee1`) | `e5131da7ad3a7d5ff5caad9565254a5e3800a80dc60f814a3c6262a748de10f2` |
 | Lifecycle closure-accounting Android APK (`a476d536`) | `07854fcdc6010bacffc7fe041774d141c73de74256f4386990f304a8bcc25f04` |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Current Android STOP/close APK (`f01bbb41`) | `4bd95a718ecf21f580fe5ba5b8295a21e7247aeefd5e249e26a8edccfe470bb6` |
+| Historical Android STOP/close APK (`f01bbb41`) | `4bd95a718ecf21f580fe5ba5b8295a21e7247aeefd5e249e26a8edccfe470bb6` |
 | Prior actual-owner Android APK (`4c045a36`) | `a4d4ebe3980cfc975f4002941d004f433d76186cc01ff45a7de7903ae8e392b6` |
 | Prior Android native-intake APK (`c93b8671`) | `f0a98c3f00441f145199b0710534a01bcd95adb90ce7ce65c9dce6deff9e94f8` |
 | Prior cross-API Android APK (`631df201`) | `29b84f45479fb0c61310c0664c8fb1847866b94a5d8f9be718195b3c5c554d70` |
-| Windows MSI (`583b857a`) | `d9f8e0a1a1d0aabd26733ad1572d6577bcc4c97fc922709ce268317ecea9f76c` |
 | Historical Windows MSI (`631df201`) | `3aeae7a962e5c6b4adbba1522d4dc6d65c0d3987c200273da275716a565e7ab6` |
 | macOS ARM64 DMG | `8529dac2d2c23d5ff1988e9bc1722867d786c90bde5de89856a7d368faf605a2` |
 | macOS x64 DMG | `0ee1fd281d13cc6ac7c9d06a2893d86bf1efda17921a097e7731d10d8f9ff8d3` |
 | iOS Simulator app ZIP | `04cd50b2514e759dc84e921d5ff0cbb31e3174b128512515469652dedf6c4752` |
 | iOS unsigned Release archive ZIP | `6cac0075b3f34a28d177c88705ca0e62bc6038142cdf8c09e9637458e20207be` |
 | iOS unsigned Debug archive ZIP | `51fae2442b336fcf40359845291f185b642994c1b462e70e5e776906811c0619` |
+
+</details>
 
 ## Android
 
@@ -95,12 +113,13 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Current stock stream build:** `583b857a` passes all observed post-Begin
-collection/normalized-stock reads and frozen stock assertions in the native
-baseline. The process later ends with signal9 after dispatch of original Start,
-with no reply or final cleanup. No complete financial method passes. Preserve
-that original and its saved request; do not create a replacement.
-[Exact source, pair and outcome](../../qa/pos/traceability/normalized-stock-member-stream-20261110/android-native-results.json).
+**Current payment stream build:** `b28638df` returns all observed post-Begin
+collection/normalized-stock reads and frozen stock assertions. Start authentication
+returns, preflight and handler preparation enter, then the process ends with
+signal9 without preparation return, reply or final cleanup. No complete financial
+method passes; no timeout or rollback conclusion follows from signal9. Preserve
+the original and its saved request; do not create a replacement.
+[Exact source, pair and outcome](../../qa/pos/traceability/payment-reservation-member-stream-20261110/android-native-results.json).
 
 **Previous stock composition build:** `9bf03ee1` corrects the installed stock
 authority instance and preserves valid zero-based signed domain revisions. The
@@ -239,8 +258,8 @@ With authorized signing access on a Mac:
 1. Open `apps/pos/apps/ios/UkkeraPos.xcodeproj` at the chosen tested source revision.
    Use JDK 21; the checked-in Xcode framework script builds the shared code. The
    current project references a single exact Keychain group using the authorized
-   profile’s App ID prefix plus bundle ID. The refreshed unsigned Release archive
-   at `631df201` selects this entitlement file; the older Debug archive
+   profile’s App ID prefix plus bundle ID. The current unsigned Debug archive
+   at `8a7f7888` selects this entitlement file; the historical Debug archive
    predates that configuration. Neither unsigned archive carries usable signed,
    provisioned entitlements. Rebuild the selected source with authorized signing
    for a physical-device test. No Team ID/prefix or wildcard group is guessed.

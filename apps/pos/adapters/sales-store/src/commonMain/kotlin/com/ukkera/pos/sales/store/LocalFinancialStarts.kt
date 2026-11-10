@@ -164,7 +164,9 @@ private suspend fun prepareNormalizedRetailPaymentStart(request: LocalCollection
         retailUnavailable(LocalJournalUnavailableV3.CAPACITY_REQUIRED), true)
     try {
         // The full current collection/order/cash/link reads are captured before any native callback.
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.COLLECTION_ENTERED)
         val cut = readCollection(view, request.collectionId)
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.COLLECTION_RETURNED)
         val collection = cut.collection.value
         val base = collectionResources(cut)
         if (request.sessionId != collection.cashSessionId) {
@@ -191,17 +193,23 @@ private suspend fun prepareNormalizedRetailPaymentStart(request: LocalCollection
         }
         val tender = tenderSnapshot?.tender ?: Tender.Cash
         val financialResources = base + tenderSnapshot?.recoveryResources.orEmpty()
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.STOCK_ENTERED)
         val currentStock = stock.observePaymentReservation(view, collection.reservationId)
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.STOCK_RETURNED)
         requireNormalizedCollectionReservation(collection, currentStock.header) { each -> for (allocation in currentStock.allocations) each(allocation) }
         requireNormalizedPaymentDemand(collection, currentStock)
         val items = currentStock.items.map { LocalSalesStockRevisionV1(it.skuId, checkNotNull(it.storageRevision)) }
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.REQUIREMENT_ENTERED)
         val requirement = prepareRetailRequirement(view, context, participantsSource, request.target(context.operationId), request.amount,
             tenderView(tender), request.expectedCollectionRevision, request.expectedSessionRevision,
             request.masterAllocationId, request.clientAllocationId, financialResources)
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.REQUIREMENT_RETURNED)
         val duplicateAttempt = financialSourceAllocated(view, request.attemptId)
         val vacant = requirement?.let { retailJournalVacantV3(view, it) } == true
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.VACANCY_RETURNED)
         val oldLink = LocalSalesStorage.required(view, commerceLinkKey(cut.collection.stored.key), commerceLinkSchema())
         val observed = capture.observations()
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.OBSERVATIONS_RETURNED)
         if (requirement != null && !duplicateAttempt && vacant) {
             // Close the literal financial/stock source set BEFORE native availability/admission.
             // The effective-outcome interpreter repeats this over the exact sealed chunk bytes.
@@ -211,6 +219,7 @@ private suspend fun prepareNormalizedRetailPaymentStart(request: LocalCollection
             sources.startVacancy(request, requirement)
             sources.finish(stock = true)
             val literalStock = LocalStockPaymentObservations.reservation(observed, collection.reservationId)
+            reportLocalPaymentPreparation(LocalPaymentPreparationStage.LITERAL_STOCK_RETURNED)
             requireNormalizedPaymentDemand(collection, literalStock)
             check(literalStock.header == currentStock.header && literalStock.allocations == currentStock.allocations &&
                 literalStock.items == currentStock.items && literalStock.deadline == currentStock.deadline &&
@@ -224,6 +233,7 @@ private suspend fun prepareNormalizedRetailPaymentStart(request: LocalCollection
         val before = collectionBefore(context, listOf("order" to cut.order.order.stored, "collection" to cut.collection.stored,
             "cash" to cut.cash.session.stored) + priceSourcesBefore(cut.order) + returnPolicyCaptureBefore(cut.order))
         val evidence = capture.finish()
+        reportLocalPaymentPreparation(LocalPaymentPreparationStage.EVIDENCE_SEALED)
         fun draft(command: SalesCommand, now: UtcInstant): RetailStartDraft = retailStartDraft {
             collectionAttemptAdmission(cut, context, request.expectedCollectionRevision, request.expectedSessionRevision)?.let {
                 return@retailStartDraft refusedDraft(it)

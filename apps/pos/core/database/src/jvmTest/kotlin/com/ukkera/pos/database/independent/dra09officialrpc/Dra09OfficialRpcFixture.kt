@@ -39,6 +39,7 @@ import com.ukkera.pos.types.UtcInstant
 import dev.p2pkit.core.AppId
 import dev.p2pkit.core.security.JvmSecureIdentityStore
 import dev.p2pkit.rpc.RpcClient
+import dev.p2pkit.rpc.RpcLocalIdentity
 import dev.p2pkit.rpc.RpcConnectionState
 import dev.p2pkit.rpc.RpcHost
 import dev.p2pkit.rpc.RpcEndpoint
@@ -273,12 +274,11 @@ internal class Dra09OfficialRpcFixture private constructor(
 
                 val bridge = bindControlledBridge(
                     client = createdClient,
-                    host = createdHost,
+                    master = captureControlledMaster(createdHost.localIdentity, scope, ::id, namespace),
                     scope = scope,
                     lifetime = lifetime,
                     connectionId = connectionId,
                     id = ::id,
-                    namespace = namespace,
                 )
                 val fixture = Dra09OfficialRpcFixture(
                     host = createdHost,
@@ -313,22 +313,14 @@ internal class Dra09OfficialRpcFixture private constructor(
          * Controlled POS association DATA only. The SDK identities are read from the actual
          * running Host/Client; no native keys, pairing custody or device admission are created.
          */
-        private fun bindControlledBridge(
-            client: RpcClient,
-            host: RpcHost,
+        internal fun captureControlledMaster(
+            hostIdentity: RpcLocalIdentity,
             scope: BranchScope,
-            lifetime: Job,
-            connectionId: DomainId,
             id: (Int) -> DomainId,
             namespace: Int,
-        ): LocalMasterClientRpcBridgeV1 {
+        ): LocalMasterSdkOriginalV1 {
             fun digest(character: Char): PayloadDigest = PayloadDigest(character.toString().repeat(64))
-
-            val hostIdentity = host.localIdentity
-            val clientIdentity = client.localIdentity
             val appId = hostIdentity.appId
-            val targetDevice = id(20)
-            val targetKey = id(21)
             val coordinates = SelfOwnedAllocationCoordinatesV1(
                 allocationId = id(6), scope = scope, installationId = id(7),
                 assignmentId = id(8), deviceId = id(9), storageInstanceId = id(10),
@@ -346,7 +338,7 @@ internal class Dra09OfficialRpcFixture private constructor(
             val nativeApplication = SelfOwnedTargetDescriptorV1(
                 "synthetic.dra09", 12_009, "a".repeat(64), "b".repeat(64),
             )
-            val master = LocalMasterSdkOriginalV1.capture(
+            return LocalMasterSdkOriginalV1.capture(
                 originalAcquisitionId = id(15),
                 allocation = allocation,
                 nativeApplication = nativeApplication,
@@ -356,6 +348,22 @@ internal class Dra09OfficialRpcFixture private constructor(
                 pairingQr = hostIdentity.pairingQr,
                 exactDeviceName = hostIdentity.deviceName,
             )
+        }
+
+        internal fun bindControlledBridge(
+            client: RpcClient,
+            master: LocalMasterSdkOriginalV1,
+            scope: BranchScope,
+            lifetime: Job,
+            connectionId: DomainId,
+            id: (Int) -> DomainId,
+        ): LocalMasterClientRpcBridgeV1 {
+            fun digest(character: Char): PayloadDigest = PayloadDigest(character.toString().repeat(64))
+            val clientIdentity = client.localIdentity
+            val appId = master.appId
+            val nativeApplication = master.nativeApplication
+            val targetDevice = id(20)
+            val targetKey = id(21)
             val targetPoint = ByteArray(65).also { it[0] = 4; it[64] = 2 }
             val admission = LocalDeviceAdmission(
                 scope = scope, deviceId = targetDevice, revision = Revision(0), admitted = true,

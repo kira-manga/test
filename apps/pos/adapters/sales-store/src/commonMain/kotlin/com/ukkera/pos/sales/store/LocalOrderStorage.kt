@@ -25,7 +25,22 @@ internal data class LocalOrderCut(
     val returnPolicyCapture: LocalSalesRow<LocalSalesReturnPolicyCaptureV2>? = null,
 )
 
-internal suspend fun readOrder(view: CommandReadView, id: DomainId): LocalOrderCut {
+internal suspend fun readOrder(view: CommandReadView, id: DomainId): LocalOrderCut =
+    readOrderCut(view, id) { row, normalized -> if (normalized) requireCommerceCurrent(view, row) }
+
+/** Both selected current roots must close before any collection cut can return.
+ * The private reader never exposes an unchecked normalized order to its callers. */
+internal suspend fun readOrderWithCollectionSource(view: CommandReadView, id: DomainId,
+    collection: StoredAggregate): LocalOrderCut {
+    check(collection.key.kind == LocalSalesStoreProfile.COLLECTION_KIND)
+    return readOrderCut(view, id) { row, normalized ->
+        if (normalized) requireCommerceCurrent(view, collection, row)
+        else requireCommerceCurrent(view, collection)
+    }
+}
+
+private suspend fun readOrderCut(view: CommandReadView, id: DomainId,
+    requireCurrent: suspend (StoredAggregate, Boolean) -> Unit): LocalOrderCut {
     val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.ORDER_KIND, id))
     val order = SalesSnapshotCodec.decodeOrder(row.text(), SalesSnapshotBinding(SalesSnapshotKind.ORDER, view.scope, id, row.domainRevision()))
     requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("order", id)) == id) { "sales.source.unavailable" }
@@ -34,7 +49,7 @@ internal suspend fun readOrder(view: CommandReadView, id: DomainId): LocalOrderC
     requireLocalSalesSource(context.scope.value() == view.scope && context.orderId == id && context.revision == contextRow.domainRevision() &&
         context.quoteRevision == order.quote.revision) { "sales.order.context.unavailable" }
     validateLocalSalesSource { requireSelectedQuote(context.selection, order.quote, id, context.quoteRevision, order.stockRequirements.normalized) }
-    if (order.stockRequirements.normalized) requireCommerceCurrent(view, row)
+    requireCurrent(row, order.stockRequirements.normalized)
     val priceSources = readPriceSources(view, id, order.quote, order.priceSourceReference,
         if (order.stockRequirements.normalized) null else order.stockRequirements.allocations, order.stockRequirements.normalizedLines)
     val returnPolicyCapture = readReturnPolicyCapture(view, id, order.quote, order.returnPolicySourceReference,

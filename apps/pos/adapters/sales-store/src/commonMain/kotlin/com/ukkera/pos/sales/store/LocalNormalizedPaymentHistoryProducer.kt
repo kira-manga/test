@@ -343,7 +343,7 @@ public class LocalNormalizedPaymentHistoryProducer(
         val quote = command.earlierOriginal(capture.originalQuoteOperationId) as? RetainedOriginalV2.Streamed ?: unavailable()
         check(paired.original === quote && price.original === quote)
         requireNormalizedPaymentQuoteRequest(quote.evidence, capture.orderId, capture.quoteRevision)
-        requireCommerceWrite(quote.evidence, paired.row); requireCommerceWrite(quote.evidence, price.row)
+        requireCommerceWrite(quote.evidence, paired.row, price.row)
         return capture
     }
 

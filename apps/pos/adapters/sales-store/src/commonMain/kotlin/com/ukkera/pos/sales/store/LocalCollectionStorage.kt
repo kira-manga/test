@@ -25,8 +25,9 @@ internal suspend fun readCollection(view: CommandReadView, id: DomainId): LocalC
     val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.COLLECTION_KIND, id))
     val collection = SalesSnapshotCodec.decodeHistoricalCollection(row.text(),
         SalesSnapshotBinding(SalesSnapshotKind.COLLECTION, view.scope, id, row.domainRevision()))
-    if (collection.stockRequirements.normalized) requireCommerceCurrent(view, row)
-    val order = readOrder(view, collection.orderId)
+    val order = if (collection.stockRequirements.normalized)
+        readOrderWithCollectionSource(view, collection.orderId, row)
+    else readOrder(view, collection.orderId)
     val cash = LocalSalesStorage.cash(view, collection.cashSessionId)
     SalesSnapshotLinks.requireCollection(collection, order.order.value, cash.session.value)
     requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("collection", id)) == collection.orderId) { "sales.collection.source" }

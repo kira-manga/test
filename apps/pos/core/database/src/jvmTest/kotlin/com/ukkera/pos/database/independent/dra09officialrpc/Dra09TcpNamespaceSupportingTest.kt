@@ -17,7 +17,7 @@ import kotlin.test.*
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Wires the already frozen DR-A09-01 association/retention/Receipt assertions to
+ * Wires the frozen DR-A09-01/02 association, bridge and Receipt assertions to
  * genuine official JVM LAN sockets in two isolated network namespaces. Synthetic
  * memory identity stores and out-of-band trust pins remain test-only inputs.
  * Explicit disposable-host opt-in; no native custody or POS enrollment claim.
@@ -26,6 +26,16 @@ class Dra09TcpNamespaceSupportingTest {
     @Test fun dra0901OverTwoGenuineTcpEndpoints() = runBlocking {
         assumeTrue("Explicit disposable Linux namespace executor required",
             System.getenv("POS_DISPOSABLE_TCP_NAMESPACE") == "true")
+        runEndpoints(Dra09TcpEndpoint::class.java)
+    }
+
+    @Test fun dra0902BridgeOverTwoGenuineTcpEndpoints() = runBlocking {
+        assumeTrue("Explicit disposable Linux namespace executor required",
+            System.getenv("POS_DISPOSABLE_TCP_NAMESPACE") == "true")
+        runEndpoints(Dra09TcpBridgeEndpoint::class.java)
+    }
+
+    private suspend fun runEndpoints(endpoint: Class<*>) {
         val root = Files.createTempDirectory("dra09-tcp-")
         val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = checkNotNull(System.getProperty("ukkera.test.runtime.classpath"))
@@ -40,7 +50,7 @@ class Dra09TcpNamespaceSupportingTest {
         }
         fun start(role: String, iface: String, address: String): Process = ProcessBuilder(
             "unshare", "--net", "--", java, "-Xmx128m", "-XX:ActiveProcessorCount=2",
-            "-cp", classpath, Dra09TcpEndpoint::class.java.name,
+            "-cp", classpath, endpoint.name,
             role, root.toString(), iface, address,
         ).redirectErrorStream(true).redirectOutput(root.resolve("$role.log").toFile()).start()
         try {
