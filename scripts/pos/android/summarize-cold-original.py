@@ -17,6 +17,14 @@ REQUEST_SYMBOLS = (
 )
 REQUEST_STATUSES = frozenset(('RETAINED_BEFORE_DISPATCH', 'DISPATCH_PENDING', 'REPLY_OBSERVED'))
 REPLY_KINDS = frozenset(('RECORDED', 'DEFERRED', 'IDENTITY_CONFLICT'))
+# Closed public CommandContract DeferredReason names only. Unknown values are
+# omitted rather than copying arbitrary diagnostic text or private result data.
+DEFERRED_REASONS = frozenset((
+    'AUTHORIZATION_DENIED', 'WRONG_SCOPE', 'UNKNOWN_COMMAND', 'MALFORMED_REQUEST',
+    'WRITER_NOT_QUALIFIED', 'HISTORY_INCOMPLETE', 'RESOURCE_RECONCILIATION_REQUIRED',
+    'STORAGE_UNCERTAIN', 'SERVICE_BUSY', 'RESERVED_OPERATION_NOT_RECORDED',
+    'PRECONDITION_EXPIRED', 'PHYSICAL_RECORDING_HELD', 'CURRENT_SOURCE_UNAVAILABLE',
+))
 
 
 def summarize(raw):
@@ -41,10 +49,14 @@ def summarize(raw):
             continue
         request = requests[symbol]
         status = request.get('status')
-        kind = (request.get('reply') or {}).get('kind')
+        reply = request.get('reply') or {}
+        kind = reply.get('kind')
+        reason = reply.get('reason')
         progress[symbol] = {
             'status': status if status in REQUEST_STATUSES else 'UNKNOWN_STATUS',
             'reply_kind': kind if kind in REPLY_KINDS else None,
+            'deferred_reason': reason if kind == 'DEFERRED' and isinstance(reason, str)
+                and reason in DEFERRED_REASONS else None,
         }
     summary['request_progress'] = progress
     summary['unknown_request_symbol_count'] = sum(key not in REQUEST_SYMBOLS for key in requests)

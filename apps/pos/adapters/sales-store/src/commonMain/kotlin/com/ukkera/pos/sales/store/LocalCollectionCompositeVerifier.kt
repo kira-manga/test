@@ -492,11 +492,18 @@ private fun sameOrderCore(before: OwnedOrder, after: OwnedOrder) {
         before.returnPolicySourceReference == after.returnPolicySourceReference && before.stockRequirements.allocations == after.stockRequirements.allocations)
 }
 internal fun sameCollectionCore(before: CollectionLock, after: CollectionLock) {
+    // V3 also compares normalized collections here. Preserve the exact representation
+    // and ordered source lists; normalized demand is never a legacy allocation proof.
+    val sameStock = when {
+        before.stockRequirements.normalized != after.stockRequirements.normalized -> false
+        before.stockRequirements.normalized -> before.stockRequirements.normalizedLines == after.stockRequirements.normalizedLines
+        else -> before.stockRequirements.allocations == after.stockRequirements.allocations
+    }
     compositeCheck(before.id == after.id && before.scope == after.scope && before.orderId == after.orderId &&
         before.lockedOrderRevision == after.lockedOrderRevision && before.originalCreatorId == after.originalCreatorId && before.collectorId == after.collectorId &&
         before.cashSessionId == after.cashSessionId && before.reservationId == after.reservationId && sameQuote(before.quote, after.quote) &&
         before.priceSourceReference == after.priceSourceReference && before.returnPolicySourceReference == after.returnPolicySourceReference &&
-        before.stockRequirements.allocations == after.stockRequirements.allocations)
+        sameStock)
 }
 private fun sameQuote(first: com.ukkera.pos.pricing.PricingSnapshot, second: com.ukkera.pos.pricing.PricingSnapshot): Boolean =
     StoredPricingSnapshotCodec.encode(first) == StoredPricingSnapshotCodec.encode(second)
