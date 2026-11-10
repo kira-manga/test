@@ -1,5 +1,7 @@
 package com.ukkera.pos.security
 
+import android.os.SystemClock
+import android.util.Log
 import com.ukkera.pos.types.DomainId
 import org.bouncycastle.math.ec.rfc8032.Ed25519
 
@@ -388,8 +390,10 @@ internal class AndroidLocalCompanyBusinessPublications(
         requireNewIssuance(); requireAction(action, record, current = true)
         val actionMessage = NativeCompanyBusinessPublicationWireV1.actionMessage(record, original())
         val actionDigest = try { sha256(actionMessage) } finally { actionMessage.fill(0) }
-        val approval = authentication.authenticateBusinessPublicationAction(record.originalActionId, actionDigest,
-            login, secret, action.expiresElapsedMillis)
+        val approval = publicationPhase("head-authentication") {
+            authentication.authenticateBusinessPublicationAction(record.originalActionId, actionDigest,
+                login, secret, action.expiresElapsedMillis)
+        }
         authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
         requireAction(action, record, current = true); requireNewIssuance()
         if (completed) {
@@ -410,8 +414,9 @@ internal class AndroidLocalCompanyBusinessPublications(
         var endorsement: ByteArray? = null
         val content = record.content.copyBytes()
         try {
-            Ed25519.generatePublicKey(seed, 0, point, 0)
-            if (!Ed25519.validatePublicKeyFull(point, 0)) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
+            publicationPhase("key-generation") { Ed25519.generatePublicKey(seed, 0, point, 0) }
+            if (!publicationPhase("key-validation") { Ed25519.validatePublicKeyFull(point, 0) })
+                selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
             authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
             requireNewIssuance()
             record = record.copy(phase = CompanyBusinessPublicationPhase.SIGNING_INTENT,
@@ -421,9 +426,10 @@ internal class AndroidLocalCompanyBusinessPublications(
             if (ledger.records.single { it.originalActionId == record.originalActionId } != record) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
             requireNewIssuance()
-            Ed25519.sign(seed, 0, point, 0, content, 0, content.size, signature, 0)
-            if (!nativeBusinessPublicationVerifyEd25519(point, content, signature)) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
-            endorsement = keys.signBusinessPublicationEndorsement(record, approval)
+            publicationPhase("content-signing") { Ed25519.sign(seed, 0, point, 0, content, 0, content.size, signature, 0) }
+            if (!publicationPhase("content-verification") { nativeBusinessPublicationVerifyEd25519(point, content, signature) })
+                selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
+            endorsement = publicationPhase("root-endorsement") { keys.signBusinessPublicationEndorsement(record, approval) }
             authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
             requireNewIssuance()
             val completed = record.copy(phase = CompanyBusinessPublicationPhase.COMPLETED,
@@ -439,6 +445,18 @@ internal class AndroidLocalCompanyBusinessPublications(
                 throw failure
             }
         } finally { seed.fill(0); point.fill(0); signature.fill(0); endorsement?.fill(0); content.fill(0) }
+    }
+
+    /** Fixed phase names and elapsed durations only; no keys, credentials, content or IDs.
+     * Observation neither changes the owned work deadline nor grants currentness. */
+    private inline fun <T> publicationPhase(phase: String, action: () -> T): T {
+        val started = SystemClock.elapsedRealtime()
+        try { Log.i("UkkeraNativeOwner", "Company publication phase: $phase-entered") }
+        catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
+        val result = action()
+        try { Log.i("UkkeraNativeOwner", "Company publication phase: $phase-returned; durationMillis=${SystemClock.elapsedRealtime() - started}") }
+        catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
+        return result
     }
 
     fun recover(id: DomainId): CompanyBusinessPublicationOutput {
