@@ -6,6 +6,9 @@ internal expect fun reportOriginalInstallationBodyFailure(failure: Throwable)
 /** Original static failure before mandatory unknown-frame exclusion; no failure details escape. */
 internal expect fun reportRuntimeHistoryLoanFailure(failure: Throwable)
 
+/** Static source locations only; no exception message, arguments or stored values. */
+internal expect fun reportPhysicalRecordingFailure(failure: Throwable)
+
 /** Fixed source phases only; no submitted operation or stored value is included. */
 internal enum class RuntimeHistoryDiagnosticStage {
     STREAMED_SPOOL_CREATE_ENTER, STREAMED_SPOOL_CREATED, STREAMED_PROPOSAL_RETURNED,
@@ -16,5 +19,10 @@ internal enum class RuntimeHistoryDiagnosticStage {
     PHYSICAL_START_PREPARATION_ENTERED, PHYSICAL_START_PREPARATION_RETURNED,
     PHYSICAL_START_NATIVE_ACQUIRE_ENTERED, PHYSICAL_START_NATIVE_ACQUIRE_RETURNED,
     PHYSICAL_START_COMMIT_ENTERED, PHYSICAL_START_COMMIT_RETURNED,
+    PHYSICAL_START_COMMIT_STORAGE_UNCERTAIN,
+    PHYSICAL_START_RECHECK_ENTERED, PHYSICAL_START_RECHECK_RETURNED,
+    PHYSICAL_START_PERSIST_ENTERED, PHYSICAL_START_PERSIST_RETURNED,
+    PHYSICAL_START_RELEASE_ENTERED, PHYSICAL_START_RELEASE_RETURNED,
+    PHYSICAL_START_RELEASE_STORAGE_UNCERTAIN,
 }
 internal expect fun reportRuntimeHistoryStage(stage: RuntimeHistoryDiagnosticStage)

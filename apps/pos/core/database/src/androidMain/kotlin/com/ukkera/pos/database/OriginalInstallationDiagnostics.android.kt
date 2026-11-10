@@ -7,6 +7,9 @@ internal actual fun reportOriginalInstallationBodyFailure(failure: Throwable) =
 internal actual fun reportRuntimeHistoryLoanFailure(failure: Throwable) =
     reportStaticFailure("Runtime history loan failed before exclusion", failure)
 
+internal actual fun reportPhysicalRecordingFailure(failure: Throwable) =
+    reportStaticFailure("Physical recording failed before protected refusal", failure)
+
 private fun reportStaticFailure(phase: String, failure: Throwable) {
     try {
         val locations = failure.stackTrace.filter {

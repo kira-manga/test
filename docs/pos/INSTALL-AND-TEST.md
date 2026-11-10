@@ -19,6 +19,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
+| Android, latest normalized collection-core diagnostic | [Exact signed pair, run 42915474141](https://github.com/kira-manga/test/actions/runs/42915474141/artifacts/13809242529) | `testing-inputs/ukkera-pos-testing.apk`, clean source `80d30efa`; install only the application APK. Signed packaging/fatal lint, 1,652 existing JVM methods and 562 Apple stock simulator methods passed. Android Start returned `STORAGE_UNCERTAIN`; one method failed, native cleanup unconfirmed. Full checkout and recovery remain unverified. |
 | Android, current stock direct-source build | [Stock source artifact, run42894356180](https://github.com/kira-manga/test/actions/runs/42894356180/artifacts/13798789846) | `testing-inputs/ukkera-pos-testing.apk`, clean source `0833f397`; install only the application APK. Fatal lint/signed pair,1,835 existing JVM methods (two explicit namespace skips) and562 Apple Simulator methods passed. Android stock and complete handler preparation returned, then signal9 with no native acquisition, Start reply or confirmed cleanup; zero financial methods completed. Preserve unresolved original. |
 | Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
 | macOS ARM64, current presentation cleanup build | [ARM artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792366363) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed, including the failed-old-binding lock correction. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
@@ -117,7 +118,20 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Current stock direct-source build:** `0833f397` returned stock preparation
+**Latest normalized collection-core build:** `80d30efa` fixes the legacy allocation
+getter reached by normalized collection outcome verification. App SHA-256:
+`c5a1ff04cd8c4543d323c7b1b5b7826b85fe2d0aeeedf96d7c42fac4ba7d2ab2`.
+The exact signed app/executor pair is retained in artifact13809242529 above.
+Install only `testing-inputs/ukkera-pos-testing.apk`. Android API35/x86_64/AOT
+returned from native acquisition and the Start commit call, then Start returned
+`Deferred(STORAGE_UNCERTAIN)`. One supporting method completed with one failure;
+final cleanup could not confirm native closure. No full checkout pass is claimed.
+Preserve the original saved request and unresolved evidence. Do not create a
+replacement or infer rollback from the deferred reply. Existing executor and
+original unsplit shared30,000-ms budget remain unchanged.
+[Exact source, pair and outcome](../../qa/pos/traceability/normalized-collection-core-20261110/android-native-results.json).
+
+**Previous stock direct-source build:** `0833f397` returned stock preparation
 and the complete handler preparation before the process ended with signal9.
 No native acquisition, Start reply or confirmed cleanup was observed; zero
 financial methods completed. This is diagnostic evidence, not successful checkout

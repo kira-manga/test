@@ -1049,6 +1049,9 @@ public class AtomicMasterStore internal constructor(
                             val stored = executeTransaction(principal, request, handler, normalized, digest, identity,
                                 physicalAction, false, ticket)
                             if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_COMMIT_RETURNED)
+                            if (physicalAction.isStart() && stored is KernelReply.Deferred &&
+                                stored.reason == DeferredReason.STORAGE_UNCERTAIN)
+                                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_COMMIT_STORAGE_UNCERTAIN)
                             if (stored !is KernelReply.Recorded || stored.replayed ||
                                 stored.physicalOutcome !is PhysicalRecordingOutcome.Start) {
                                 publish(stored, request.operationId)
@@ -1059,7 +1062,10 @@ public class AtomicMasterStore internal constructor(
                             } else {
                                 // Real native validation occurs AFTER Room has returned its actual
                                 // outer COMMIT. SQL committed + no certificate stays original recovery.
-                                when (physicalRecordingGate.recheck(acquired.lease)) {
+                                if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_RECHECK_ENTERED)
+                                val nativeRecheck = physicalRecordingGate.recheck(acquired.lease)
+                                if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_RECHECK_RETURNED)
+                                when (nativeRecheck) {
                                     PhysicalRecordingNativeCheck.HELD -> deferred(DeferredReason.PHYSICAL_RECORDING_HELD)
                                     PhysicalRecordingNativeCheck.STORAGE_UNCERTAIN -> deferred(DeferredReason.STORAGE_UNCERTAIN)
                                     PhysicalRecordingNativeCheck.VERIFIED -> {
@@ -1075,7 +1081,10 @@ public class AtomicMasterStore internal constructor(
                                                 acquired.lease.sourceChanges)
                                             // Retain ownership BEFORE passing this object to open/suspending native code.
                                             issuedStart = start
-                                            when (physicalRecordingGate.persistStart(acquired.lease, start)) {
+                                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PERSIST_ENTERED)
+                                            val nativePersist = physicalRecordingGate.persistStart(acquired.lease, start)
+                                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PERSIST_RETURNED)
+                                            when (nativePersist) {
                                                 PhysicalRecordingNativeCheck.HELD -> deferred(DeferredReason.PHYSICAL_RECORDING_HELD)
                                                 PhysicalRecordingNativeCheck.STORAGE_UNCERTAIN -> deferred(DeferredReason.STORAGE_UNCERTAIN)
                                                 PhysicalRecordingNativeCheck.VERIFIED -> {
@@ -1098,7 +1107,8 @@ public class AtomicMasterStore internal constructor(
                 // Accepted endpoint work is independent of caller cancellation. A service/native
                 // cancellation still keeps original evidence and never makes a fresh action permit.
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                if (physicalAction.isStart()) reportPhysicalRecordingFailure(failure)
                 deferred(DeferredReason.STORAGE_UNCERTAIN)
             } finally {
                 // A selected response is only a transfer candidate. Capture actual current
@@ -1120,10 +1130,17 @@ public class AtomicMasterStore internal constructor(
                         if (!ingress.sameWorkerContext(currentCoroutineContext())) {
                             cleanupUncertain = true
                         } else {
+                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_RELEASE_ENTERED)
                             val released = withContext(NonCancellable) { physicalRecordingGate.release(lease) }
+                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_RELEASE_RETURNED)
                             cleanupUncertain = released != PhysicalRecordingNativeRelease.RELEASED
+                            if (physicalAction.isStart() && cleanupUncertain)
+                                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_RELEASE_STORAGE_UNCERTAIN)
                         }
-                    } catch (_: Exception) { cleanupUncertain = true }
+                    } catch (failure: Exception) {
+                        if (physicalAction.isStart()) reportPhysicalRecordingFailure(failure)
+                        cleanupUncertain = true
+                    }
                 }
                 if (cleanupUncertain) {
                     issuedStart?.denyDelivery()
@@ -1538,7 +1555,8 @@ public class AtomicMasterStore internal constructor(
         } catch (cancelled: CancellationException) {
             // Caller must retain the ID: cancellation may race a successful COMMIT.
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            if (physicalAction?.isStart() == true) reportPhysicalRecordingFailure(failure)
             KernelReply.Deferred(DeferredReason.STORAGE_UNCERTAIN)
         }
     }
