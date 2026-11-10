@@ -464,6 +464,12 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         SelfOwnedTargetKeyRoleV1.PEPPER -> AndroidKeyStoreKeyKind.PEPPER
         SelfOwnedTargetKeyRoleV1.TARGET_SIGNING -> keyFailure()
     }
-    private fun guard() { work.requireActive(); environment.requireCurrent(); journal.intent(); work.requireActive() }
+    private fun guard() {
+        work.requireActive()
+        // intent() performs the fixed namespace check, including fresh installed-app
+        // observations before and after it. Do not repeat one immediately before it.
+        journal.intent()
+        work.requireActive()
+    }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
 }

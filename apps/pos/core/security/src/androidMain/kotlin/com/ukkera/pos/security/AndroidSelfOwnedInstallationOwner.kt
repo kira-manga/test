@@ -1931,7 +1931,11 @@ internal class AndroidSelfOwnedInstallationLifetime(
 
     private fun requireNativeLifetime() {
         if (dataDenied.get() || actuallyClosed.get() || nativeCloseStarted) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        work.requireActive(); requireNotNull(environment).requireCurrent(); requireNotNull(namespace).assertContinuity(); work.requireActive()
+        work.requireActive()
+        // Namespace continuity already brackets its native checks with fresh
+        // installed-app/deadline observations from this same retained environment.
+        requireNotNull(namespace).assertContinuity()
+        work.requireActive()
     }
 
     private fun view(state: SelfOwnedNativeJournalStateV1): SelfOwnedNativeMaterialView {
