@@ -155,7 +155,7 @@ cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
 iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
 five seconds and the entry screen rendered **on predecessor source `038c115e`**.
-The refreshed `5b6cefe7` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. Interactions, rotation, accessibility
+The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

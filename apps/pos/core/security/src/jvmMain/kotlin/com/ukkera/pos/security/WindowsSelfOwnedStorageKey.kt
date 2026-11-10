@@ -158,10 +158,7 @@ internal class WindowsSelfOwnedStorageKey private constructor(
             } catch (failure: Throwable) {
                 binding?.fill(0); proof?.fill(0)
                 // Handle close does not delete or adopt any persisted key.
-                key?.let { if (WindowsOriginalCng.api.NCryptFreeObject(it) != 0)
-                    failure.addSuppressed(IllegalStateException("Windows storage-key handle cleanup failed")) }
-                if (WindowsOriginalCng.api.NCryptFreeObject(provider) != 0)
-                    failure.addSuppressed(IllegalStateException("Windows storage-provider handle cleanup failed"))
+                WindowsOriginalCng.closeAfterAcquisitionFailure(failure, key, provider)
                 throw failure
             }
         }

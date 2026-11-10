@@ -163,10 +163,7 @@ internal class WindowsSelfOwnedSigningKey private constructor(
                 } catch (failure: Throwable) { point.fill(0); throw failure }
             } catch (failure: Throwable) {
                 // Retain any persisted key/intent for original recovery. Freeing a handle does not delete it.
-                keyHandle?.let { if (WindowsOriginalCng.api.NCryptFreeObject(it) != 0) failure.addSuppressed(
-                    IllegalStateException("CNG key handle cleanup failed")) }
-                if (WindowsOriginalCng.api.NCryptFreeObject(providerHandle) != 0) failure.addSuppressed(
-                    IllegalStateException("CNG provider handle cleanup failed"))
+                WindowsOriginalCng.closeAfterAcquisitionFailure(failure, keyHandle, providerHandle)
                 throw failure
             }
         }
@@ -204,6 +201,19 @@ internal object WindowsOriginalCng {
     val kernel: WindowsOriginalSigningKernel = Native.load("kernel32", WindowsOriginalSigningKernel::class.java)
     const val SILENT = 0x40
     private const val SECURITY_INFORMATION = 0x00000005 // OWNER + DACL
+
+    /** Each certainly acquired handle gets one release attempt, even if its peer throws.
+     * Persisted keys/intents remain unchanged. The original acquisition failure is retained;
+     * no native pointer whose close is uncertain is retried or returned to a caller.
+     */
+    fun closeAfterAcquisitionFailure(failure: Throwable, key: Pointer?, provider: Pointer) {
+        fun release(handle: Pointer) {
+            try { api.NCryptFreeObject(handle).checkCng() }
+            catch (cleanup: Throwable) { if (cleanup !== failure) failure.addSuppressed(cleanup) }
+        }
+        key?.let(::release)
+        release(provider)
+    }
 
     fun requireProvider(provider: Pointer, protection: SelfOwnedKeyProtectionV1) {
         val implementation = intProperty(provider, "Impl Type")
