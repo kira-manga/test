@@ -227,16 +227,34 @@ public class LocalStockRelationalInspection internal constructor(
      */
     public suspend fun requireResources(companion: Set<com.ukkera.pos.recovery.RecoveryResourceKey>) {
         val supplied = companion.toSet()
-        for (resource in supplied) requireResource(this, resource)
+        val companionBatch = linkedSetOf<com.ukkera.pos.recovery.RecoveryResourceKey>()
+        for (resource in supplied) {
+            companionBatch += resource
+            if (companionBatch.size == 16) {
+                requireStockResourceMembers(this, companionBatch)
+                companionBatch.clear()
+            }
+        }
+        requireStockResourceMembers(this, companionBatch)
         requireStockResourcesPresent(this)
+        // Reverse closure qualifies every actual retained member outside the
+        // independently derived companion against the complete stock projection.
+        val selected = linkedSetOf<com.ukkera.pos.recovery.RecoveryResourceKey>()
+        suspend fun flush() {
+            if (selected.isEmpty()) return
+            val found = mutableSetOf<com.ukkera.pos.recovery.RecoveryResourceKey>()
+            stockInspectionResourceAliases(this) { if (it in selected) found += it }
+            localStockCheck(found == selected, LocalStockFailure.STORAGE_INCONSISTENT)
+            selected.clear()
+        }
         original.frames { frame ->
             val resource = (frame as? RetainedCommandFrameV2.Resource)?.value ?: return@frames
             if (resource !in supplied) {
-                var expected = false
-                stockInspectionResourceAliases(this) { if (it == resource) expected = true }
-                localStockCheck(expected, LocalStockFailure.STORAGE_INCONSISTENT)
+                selected += resource
+                if (selected.size == 16) flush()
             }
         }
+        flush()
         resourceClosureChecked = true
     }
 
@@ -542,15 +560,43 @@ internal suspend fun stockIssueOriginal(first: RetainedStreamedCommand, id: Doma
 
 internal suspend fun requireResource(stock: LocalStockRelationalInspection,
     resource: com.ukkera.pos.recovery.RecoveryResourceKey) {
-    var found = false
-    stock.original.frames { frame -> if (frame is RetainedCommandFrameV2.Resource && frame.value == resource) {
-        localStockCheck(!found); found = true
-    } }
-    localStockCheck(found, LocalStockFailure.STORAGE_INCONSISTENT)
+    requireStockResourceMembers(stock, setOf(resource))
 }
 
+/** Exact literal membership in one complete stream. Counts saturate at two so
+ * duplicate detection cannot overflow. The original duplicate/missing refusal
+ * reasons and first-required-alias order remain unchanged within each batch. */
+private suspend fun requireStockResourceMembers(stock: LocalStockRelationalInspection,
+    selected: Set<com.ukkera.pos.recovery.RecoveryResourceKey>) {
+    if (selected.isEmpty()) return
+    localStockCheck(selected.size <= 16)
+    val counts = selected.associateWith { 0 }.toMutableMap()
+    stock.original.frames { frame ->
+        val resource = (frame as? RetainedCommandFrameV2.Resource)?.value ?: return@frames
+        val count = counts[resource] ?: return@frames
+        if (count < 2) counts[resource] = count + 1
+    }
+    for (resource in selected) {
+        localStockCheck(counts.getValue(resource) <= 1)
+        localStockCheck(counts.getValue(resource) == 1, LocalStockFailure.STORAGE_INCONSISTENT)
+    }
+}
+
+/** Every required alias must occur exactly once in the actual complete original.
+ * Repeated observations share only the current finite batch, never a retained
+ * membership proof. No stock-size alias set or command-wide row limit is added. */
 internal suspend fun requireStockResourcesPresent(stock: LocalStockRelationalInspection) {
-    stockInspectionResourceAliases(stock) { requireResource(stock, it) }
+    val selected = linkedSetOf<com.ukkera.pos.recovery.RecoveryResourceKey>()
+    suspend fun flush() {
+        if (selected.isEmpty()) return
+        requireStockResourceMembers(stock, selected)
+        selected.clear()
+    }
+    stockInspectionResourceAliases(stock) { resource ->
+        selected += resource
+        if (selected.size == 16) flush()
+    }
+    flush()
 }
 
 /** Shared literal alias projection used in both directions; no opaque summary supplies membership. */

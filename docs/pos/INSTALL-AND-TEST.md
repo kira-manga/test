@@ -19,7 +19,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, current collection/order source build | [Commerce source artifact, run42885266594](https://github.com/kira-manga/test/actions/runs/42885266594/artifacts/13795269599) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4b460ec8`; install only the application APK. Fatal lint/signed pair passed, with1,652 existing JVM methods and562 Apple Simulator methods passing (two explicit JVM namespace skips). Android collection preparation returned, stock preparation entered, then signal9 with no Start reply or confirmed cleanup; zero financial methods completed. Preserve unresolved original. |
+| Android, current stock direct-source build | [Stock source artifact, run42894356180](https://github.com/kira-manga/test/actions/runs/42894356180/artifacts/13798789846) | `testing-inputs/ukkera-pos-testing.apk`, clean source `0833f397`; install only the application APK. Fatal lint/signed pair,1,835 existing JVM methods (two explicit namespace skips) and562 Apple Simulator methods passed. Android stock and complete handler preparation returned, then signal9 with no native acquisition, Start reply or confirmed cleanup; zero financial methods completed. Preserve unresolved original. |
 | Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
 | macOS ARM64, current presentation cleanup build | [ARM artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792366363) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed, including the failed-old-binding lock correction. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
 | macOS Intel, current presentation cleanup build | [Intel artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792331313) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
@@ -31,6 +31,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
+| Android, previous collection/order source build | [Commerce source artifact, run42885266594](https://github.com/kira-manga/test/actions/runs/42885266594/artifacts/13795269599) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4b460ec8`; install only the application APK. Fatal lint/signed pair passed, with1,652 existing JVM methods and562 Apple Simulator methods passing (two explicit JVM namespace skips). Android collection preparation returned, stock preparation entered, then signal9 with no Start reply or confirmed cleanup; zero financial methods completed. Preserve unresolved original. |
 | Android, previous payment member stream build | [Payment stream artifact, run 42875564777](https://github.com/kira-manga/test/actions/runs/42875564777/artifacts/13791353153) | `testing-inputs/ukkera-pos-testing.apk`, clean source `b28638df`; install only the application APK. Fatal lint, signed pair and1,835 JVM methods passed (one skipped). Native authentication returned and Start preparation entered, then signal9 with no reply or cleanup; zero financial methods completed. Preserve unresolved original. |
 | Android, previous stock composition build | [Stock revision artifact, run 42854976285](https://github.com/kira-manga/test/actions/runs/42854976285/artifacts/13782961958) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9bf03ee1`; install only the application APK. Signed packaging/fatal lint and 581 existing catalogue/inventory methods passed. Native API35 x86_64 reached recorded opening stock and collection begin, then signal9 before Start was observed; zero methods completed. Full checkout and cold recovery remain unverified. |
 | Android, current authenticated STOP/close build | [Lifecycle artifact, run 42816765743](https://github.com/kira-manga/test/actions/runs/42816765743/artifacts/13764751908) | `testing-inputs/ukkera-pos-testing.apk`, clean source `f01bbb41`; install only the application APK. Signed package/fatal lint, 18 focused lifecycle JVM methods, full database regression and one API35 x86_64 native STOP/close supporting method passed without AOT. Full lifecycle/business/LAN/owner qualification remains open. |
@@ -62,7 +63,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Current collection/order source Android APK (`4b460ec8`) | `4dbf1e923338e30043ae4162bfcd7e5729004fe858dfad07bf66e0556f08ba02` |
+| Current stock direct-source Android APK (`0833f397`) | `31f04129cf856ee261c9ef059d60d438c74c995d04124086f5865824f8a3f360` |
 | Current macOS ARM64 DMG (`b28638df`) | `d6afdb08684905211cbf6f40b8490a57ca17ec6516df3a2d3847afcad732cb92` |
 | Current macOS Intel DMG (`b28638df`) | `34ec21f2f83ba1053381a1002d80cd7e6301fbbb735527f306e6e09cc29bea89` |
 | Current foreground/shutdown iOS Simulator ZIP (`8a7f7888`) | `81fe8cdc1d4c6e11e45f0fc63be608482134522aa1232b2e34ca699594d57788` |
@@ -76,6 +77,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | --- | --- |
 | Prior shutdown cleanup iOS Simulator ZIP (`72af8eb1`) | `a810068ac07fca859597efee8ece7e025b763f2b396fec727c52e9bc7f009590` |
 | Shutdown cleanup unsigned Release ZIP (`72af8eb1`) | `c53266ef39738086dc39ce05d5d3f56bef9fa406f89b60f7258f89837a5de8ad` |
+| Previous collection/order source Android APK (`4b460ec8`) | `4dbf1e923338e30043ae4162bfcd7e5729004fe858dfad07bf66e0556f08ba02` |
 | Previous payment stream Android APK (`b28638df`) | `9e57496b0514a10bc47449ce6b41caae0a91235543e5e8804a2a766af33e0350` |
 | Previous stock composition Android APK (`9bf03ee1`) | `e5131da7ad3a7d5ff5caad9565254a5e3800a80dc60f814a3c6262a748de10f2` |
 | Lifecycle closure-accounting Android APK (`a476d536`) | `07854fcdc6010bacffc7fe041774d141c73de74256f4386990f304a8bcc25f04` |
@@ -115,15 +117,16 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Current collection/order source build:** `4b460ec8` returned collection
-preparation, then entered stock preparation before the process ended with signal9.
-No stock/preparation return, native acquisition, Start reply or confirmed cleanup
-was observed; zero financial methods completed. This is narrower diagnostic evidence,
-not successful checkout or proof of timeout/rollback. Preserve the original saved
-request; do not create a replacement. The original shared30,000-ms budget and
-frozen executor remain unchanged. Later retained-payment mismatch implementation
-is not present in this package.
-[Exact source, pair and outcome](../../qa/pos/traceability/commerce-original-write-stream-20261110/android-native-results.json).
+**Current stock direct-source build:** `0833f397` returned stock preparation
+and the complete handler preparation before the process ended with signal9.
+No native acquisition, Start reply or confirmed cleanup was observed; zero
+financial methods completed. This is diagnostic evidence, not successful checkout
+or proof of timeout/rollback. Preserve the original saved request; do not create a
+replacement. The original shared30,000-ms budget and frozen executor remain
+unchanged. This package includes the ordinary retained-payment mismatch source
+implementation, which still needs focused independent qualification; later
+resource-alias batching is absent from this package.
+[Exact source, pair and outcome](../../qa/pos/traceability/stock-direct-source-batch-20261110/android-native-results.json).
 
 **Previous stock composition build:** `9bf03ee1` corrects the installed stock
 authority instance and preserves valid zero-based signed domain revisions. The
