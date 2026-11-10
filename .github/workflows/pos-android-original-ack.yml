@@ -12,6 +12,12 @@ on:
         type: choice
         default: '35'
         options: ['24', '35', '37.0']
+      runner:
+        description: Explicit supported emulator host; preserves the same APKs and assertions
+        required: true
+        type: choice
+        default: ubuntu-latest
+        options: [ubuntu-latest, macos-15-intel]
       aot_compile:
         description: Explicitly compile both unchanged APKs before the selected native run
         required: true
@@ -28,7 +34,7 @@ permissions:
 jobs:
   original-ack:
     if: github.repository == 'kira-manga/test'
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false
@@ -42,8 +48,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - name: Enable disposable hosted emulator
+      - name: Enable disposable hosted emulator on Linux
+        if: runner.os == 'Linux'
         run: sudo chmod 666 /dev/kvm
+      - name: Provide portable GNU shell utilities on macOS
+        if: runner.os == 'macOS'
+        run: |
+          if ! brew list coreutils >/dev/null 2>&1; then
+            brew install coreutils
+          fi
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - uses: reactivecircus/android-emulator-runner@v2
         env:
           POS_DISPOSABLE_ANDROID: 'true'

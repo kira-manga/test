@@ -62,6 +62,9 @@ record = {
     'run_id': os.environ.get('GITHUB_RUN_ID', ''),
     'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', ''),
     'aot_compile_requested': os.environ.get('POS_AOT_COMPILE', 'false'),
+    'runner_os': os.environ.get('RUNNER_OS', ''),
+    'runner_arch': os.environ.get('RUNNER_ARCH', ''),
+    'runner_image': os.environ.get('ImageOS', ''),
 }
 pathlib.Path(sys.argv[1]).write_text(json.dumps(record, indent=2) + '\n')
 PYPROVENANCE
