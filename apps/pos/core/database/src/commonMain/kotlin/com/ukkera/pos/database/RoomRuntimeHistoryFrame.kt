@@ -316,6 +316,17 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         finally { reader.clear(); requireClosedRejectedSourceRead(caller) }
     }
 
+    internal suspend fun foodPaymentValueMismatchOriginalSources(caller: TransactionView,
+        operationId: OperationId): RuntimeHistoricalFoodPaymentValueMismatchSources? {
+        requireClosedRejectedSourceRead(caller)
+        val reader = RoomClosedRejectedOriginalSources(this, caller, operationId)
+        return try {
+            reader.readFoodPaymentValueMismatch()
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { null }
+        finally { reader.clear(); requireClosedRejectedSourceRead(caller) }
+    }
+
     internal suspend fun requireClosedRejectedSourceRead(caller: TransactionView) {
         body(); requireNoApprovalRetirement()
         val actual = currentCoroutineContext()

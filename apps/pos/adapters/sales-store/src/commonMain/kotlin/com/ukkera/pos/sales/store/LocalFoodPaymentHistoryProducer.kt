@@ -141,6 +141,8 @@ public class LocalFoodPaymentHistoryProducer : RuntimeHistoryBusinessProducer {
         when (LocalFoodPaymentCodec.result(original.result)) {
             is LocalFoodPaymentResult.AlreadyApplied -> return if (command.command == LocalFoodPaymentProfile.COMMAND)
                 alreadyApplied(command, original, operationId) else false
+            is LocalFoodPaymentResult.Pending -> return if (command.command == LocalFoodPaymentProfile.COMMAND)
+                valueMismatch(command, original, operationId) else false
             is LocalFoodPaymentResult.Applied -> Unit
             else -> return false
         }
@@ -181,6 +183,22 @@ public class LocalFoodPaymentHistoryProducer : RuntimeHistoryBusinessProducer {
         check(proof.application == before.value)
         command.requireRequirement(proof.requirement)
         command.requireFoodPaymentAlreadyAppliedRejection(proof.proposal, proof.resources)
+        return true
+    }
+
+    private suspend fun valueMismatch(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
+        operationId: OperationId): Boolean {
+        check(command.authority == RuntimeHistoricalAuthority.EMPLOYEE_COMMAND && command.originalApproval == null &&
+            command.command == LocalFoodPaymentProfile.COMMAND)
+        val selection = foodPaymentApplySelection(command.command, command.normalized)
+        check(!selection.supervised && selection.phase == LocalFoodPaymentFactPhase.ORIGINAL && selection.factOperationId == operationId)
+        val raw = rawBefore(command, operationId)
+        val before = originalApplicationBefore(command, raw)
+        check(before.original === raw.original)
+        val proof = requireFoodPaymentValueMismatch(original, before.row, raw.slot.start.evidence, raw.original.evidence)
+        check(proof.application == before.value)
+        command.requireRequirement(proof.requirement)
+        command.requireFoodPaymentValueMismatchRejection(proof.proposal, proof.resources)
         return true
     }
 

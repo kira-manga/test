@@ -97,9 +97,7 @@ internal suspend fun prepareFoodPaymentApplication(operationId: OperationId, pha
             fact.original.application.value.action != LocalFoodPaymentAction.UNKNOWN))
         return pending(LocalFoodPaymentPendingReason.ORIGINAL_APPLICATION_REQUIRED)
     val outcome = fact.outcome
-    if (outcome is LocalFoodCashOutcome.ExternalAttested || outcome is LocalFoodCashOutcome.CashReceived &&
-        (outcome.received.currency != slot.domain.amount.currency || outcome.change.currency != slot.domain.amount.currency ||
-            outcome.received.minor <= 0L || outcome.change.minor < 0L || outcome.received - outcome.change != slot.domain.amount))
+    if (foodPaymentValueOrTenderMismatch(outcome, slot))
         return pending(LocalFoodPaymentPendingReason.VALUE_OR_TENDER_MISMATCH)
     val current = foodFinancialObserve(borrowed, LocalFoodFinancialProfileV1.COLLECTION, slot.target.collectionId)?.second
         ?.let(::foodFinancialCollection) ?: return pending(LocalFoodPaymentPendingReason.SOURCE_UNAVAILABLE)
@@ -203,3 +201,9 @@ internal fun foodPaymentApplicationAttemptMatches(collection: FoodCollection, ca
             attempt.latestObservation == foodPaymentOutcome(body.outcome, slot.originalActorId)
     }
 }
+
+/** Same immutable instructed/captured-value predicate for live Apply and original proof. */
+internal fun foodPaymentValueOrTenderMismatch(outcome: LocalFoodCashOutcome, slot: LocalFoodPaymentSlot): Boolean =
+    outcome is LocalFoodCashOutcome.ExternalAttested || outcome is LocalFoodCashOutcome.CashReceived &&
+        (outcome.received.currency != slot.domain.amount.currency || outcome.change.currency != slot.domain.amount.currency ||
+            outcome.received.minor <= 0L || outcome.change.minor < 0L || outcome.received - outcome.change != slot.domain.amount)

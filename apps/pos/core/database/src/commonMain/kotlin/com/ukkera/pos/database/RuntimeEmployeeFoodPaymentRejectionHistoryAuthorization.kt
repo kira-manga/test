@@ -4,9 +4,9 @@ import com.ukkera.pos.security.NativeEmployeeEnrollmentHistorySource
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
 
-/** Exact registered original enrolled-employee provenance for ordinary AlreadyApplied.
+/** Exact registered original enrolled-employee provenance for ordinary payment refusals.
  * This binds one actual native event/read and its captured interactive policy. The
- * genuine BEFORE application, earlier payment lineage and no-effect result still join. */
+ * selected genuine BEFORE application, earlier payment lineage and no-effect result still join. */
 internal class RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization internal constructor(
     private val owner: RuntimeEmployeeAuthenticationReplay,
     private val source: NativeEmployeeEnrollmentHistorySource,

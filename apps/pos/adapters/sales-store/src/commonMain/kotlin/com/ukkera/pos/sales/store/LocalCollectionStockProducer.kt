@@ -64,6 +64,8 @@ internal class CommerceLoan(private val borrowed: CommandReadView, override val 
         borrowed.foodCheckRejectedOriginalSources(operationId)
     override suspend fun foodPaymentAlreadyAppliedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentAlreadyAppliedSources? =
         borrowed.foodPaymentAlreadyAppliedOriginalSources(operationId)
+    override suspend fun foodPaymentValueMismatchOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentValueMismatchSources? =
+        borrowed.foodPaymentValueMismatchOriginalSources(operationId)
     override suspend fun observeRecoveryResources(resources: Set<RecoveryResourceKey>) {
         for (resource in resources) sink?.resource(resource)
     }

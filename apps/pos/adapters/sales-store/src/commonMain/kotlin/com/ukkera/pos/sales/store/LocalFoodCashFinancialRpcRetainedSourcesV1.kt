@@ -64,8 +64,9 @@ internal suspend fun foodCashFinancialRetainedStockRequirements(normalized: Stor
 
 /** Successful SQL accounting rejoins the authentic Apply, Start, native raw and all
  * original stock/FOOD/cash predecessors. No current slot/application or prepare is used.
- * AlreadyApplied additionally requires its actual native BEFORE cut. Other refusals
- * cannot substitute today's application revision for a missing original observation. */
+ * AlreadyApplied and ordinary value/tender-mismatch Pending additionally require
+ * their distinct actual native BEFORE cuts. Other refusals cannot substitute today's
+ * application revision for a missing original observation. */
 internal suspend fun foodCashFinancialRetainedPaymentRequirements(normalized: StoredBytes, view: FoodReadView,
     context: CommandContext, recipes: TransactionFoodStockSource): List<AuthorizationRequirement>? = foodCashFinancialRpcSources {
     if (context.scope != view.scope || context.key != LocalFoodPaymentProfile.COMMAND ||
@@ -80,6 +81,12 @@ internal suspend fun foodCashFinancialRetainedPaymentRequirements(normalized: St
         retained.originalActorId != context.originalActorId || retained.semanticDigest != context.semanticDigest ||
         retained.normalized != normalized) return@foodCashFinancialRpcSources null
     if (!retained.committed) {
+        if (retained.code == "food.payment.pending_reconciliation") {
+            val sources = view.foodPaymentValueMismatchOriginalSources(context.operationId)
+                ?: return@foodCashFinancialRpcSources null
+            requireSameFoodPaymentOriginal(sources.evidence, retained)
+            return@foodCashFinancialRpcSources foodPaymentValueMismatchRetainedRequirement(sources, view, recipes)
+        }
         if (retained.code != "food.payment.already_applied") return@foodCashFinancialRpcSources null
         val sources = view.foodPaymentAlreadyAppliedOriginalSources(context.operationId)
             ?: return@foodCashFinancialRpcSources null

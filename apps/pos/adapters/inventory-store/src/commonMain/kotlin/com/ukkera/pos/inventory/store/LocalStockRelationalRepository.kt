@@ -488,41 +488,60 @@ public class LocalStockRelationalRead internal constructor(
         return value
     }
 
-    /** Exactly one genuine predecessor hop; not an unbounded recursive ancestry replay. */
+    /** One genuine predecessor hop, processed in bounded batches of actual source
+     * frames. Equal complete producer identities share one read/qualification inside
+     * each batch; every selected literal write is still matched exactly once. No
+     * source or proof survives this call, and no command-wide row cap is imposed. */
     private suspend fun requireDirectSources(original: RetainedStreamedCommand) {
+        val sources = mutableListOf<StreamedSourceObservationV2.Aggregate>()
+        var bytes = 0L
+        suspend fun flush() {
+            for ((identity, selected) in sources.groupBy { it.producer }) {
+                localStockCheck(identity.operationId != original.identity.producer.operationId,
+                    LocalStockFailure.STORAGE_INCONSISTENT)
+                val producer = access.originals.read(identity.operationId) ?: unavailableProducer()
+                fun legacyStockKind(source: StreamedSourceObservationV2.Aggregate): Boolean =
+                    source.key.kind in LocalStockStoreProfile.inventoryKinds || source.key.kind in setOf(
+                        LocalStockStoreProfile.RECEIPT_DOCUMENT, LocalStockStoreProfile.ALLOWANCE, LocalStockStoreProfile.INSPECTION,
+                        LocalStockStoreProfile.COUNT_DOCUMENT, LocalStockStoreProfile.TRANSFER_DOCUMENT)
+                when (producer) {
+                    is RetainedOriginalV2.Streamed -> {
+                        val old = producer.evidence
+                        localStockCheck(old.identity.scope == scope && old.identity.producer == identity &&
+                            (old.identity.assignmentId != original.identity.assignmentId || old.identity.authorityEpoch != original.identity.authorityEpoch ||
+                                old.identity.sequence < original.identity.sequence), LocalStockFailure.STORAGE_INCONSISTENT)
+                        requireDirectOriginalWrites(old, selected)
+                        // Complete normalized stock + commerce qualification stays mandatory.
+                        repository.requireComplete(old)
+                    }
+                    is RetainedOriginalV2.Legacy -> {
+                        val old = producer.evidence
+                        localStockCheck(old.scope == scope && old.committed && old.operationId == identity.operationId && old.command == identity.command &&
+                            old.originalActorId == identity.originalActorId && old.semanticDigest == identity.semanticDigest &&
+                            (old.assignmentId != original.identity.assignmentId || old.authorityEpoch != original.identity.authorityEpoch ||
+                                old.sequence < original.identity.sequence), LocalStockFailure.STORAGE_INCONSISTENT)
+                        for (source in selected) {
+                            val write = old.aggregateWrites.singleOrNull { it.key == source.key } ?: inconsistentStock()
+                            requireSameWrite(write, source.key, source.generation, source.schema, source.payload, source.payloadHash)
+                            localStockCheck(source.key.kind !in StockRelationalKindsV2.all, LocalStockFailure.STORAGE_INCONSISTENT)
+                        }
+                        if (selected.any(::legacyStockKind)) repository.facade.requireProducer(view, old)
+                    }
+                }
+                for (source in selected) if (source.key.kind !in StockRelationalKindsV2.all && !legacyStockKind(source))
+                    repository.requireNonstockSource(view, original, producer, source)
+            }
+            sources.clear(); bytes = 0L
+        }
         original.frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Aggregate ?: return@frames
-            localStockCheck(source.producer.operationId != original.identity.producer.operationId, LocalStockFailure.STORAGE_INCONSISTENT)
-            val producer = access.originals.read(source.producer.operationId) ?: unavailableProducer()
-            val legacyStockKind = source.key.kind in LocalStockStoreProfile.inventoryKinds || source.key.kind in setOf(
-                LocalStockStoreProfile.RECEIPT_DOCUMENT, LocalStockStoreProfile.ALLOWANCE, LocalStockStoreProfile.INSPECTION,
-                LocalStockStoreProfile.COUNT_DOCUMENT, LocalStockStoreProfile.TRANSFER_DOCUMENT)
-            when (producer) {
-                is RetainedOriginalV2.Streamed -> {
-                    val old = producer.evidence
-                    localStockCheck(old.identity.producer == source.producer &&
-                        (old.identity.assignmentId != original.identity.assignmentId || old.identity.authorityEpoch != original.identity.authorityEpoch ||
-                            old.identity.sequence < original.identity.sequence), LocalStockFailure.STORAGE_INCONSISTENT)
-                    requireOriginalWrite(old, source.key, source.generation, source.schema, source.payload, source.payloadHash)
-                    // Every admitted v2 command has its complete normalized stock + commerce producer.
-                    // This validates one genuine prior producer, not its ancestors recursively.
-                    repository.requireComplete(old)
-                }
-                is RetainedOriginalV2.Legacy -> {
-                    val old = producer.evidence
-                    localStockCheck(old.scope == scope && old.committed && old.operationId == source.producer.operationId && old.command == source.producer.command &&
-                        old.originalActorId == source.producer.originalActorId && old.semanticDigest == source.producer.semanticDigest &&
-                        (old.assignmentId != original.identity.assignmentId || old.authorityEpoch != original.identity.authorityEpoch ||
-                            old.sequence < original.identity.sequence), LocalStockFailure.STORAGE_INCONSISTENT)
-                    val write = old.aggregateWrites.singleOrNull { it.key == source.key } ?: inconsistentStock()
-                    requireSameWrite(write, source.key, source.generation, source.schema, source.payload, source.payloadHash)
-                    if (legacyStockKind) repository.facade.requireProducer(view, old)
-                    localStockCheck(source.key.kind !in StockRelationalKindsV2.all, LocalStockFailure.STORAGE_INCONSISTENT)
-                }
-            }
-            if (source.key.kind !in StockRelationalKindsV2.all && !legacyStockKind)
-                repository.requireNonstockSource(view, original, producer, source)
+            // Oversized single frames keep their existing envelope rather than becoming
+            // an artificial row refusal; the following frame first drains that singleton.
+            val size = source.payload.size.toLong()
+            if (sources.isNotEmpty() && (sources.size == 16 || bytes + size > 1_048_576L)) flush()
+            sources += source; bytes += size
         }
+        flush()
     }
 
     internal suspend fun resources(record: StockRelationalRecordV2) = resources(record.key, record.body)
@@ -533,6 +552,27 @@ public class LocalStockRelationalRead internal constructor(
         if (output == null && observer == null) return
         stockResourceAliases(key, body) { output?.resource(it); observer?.invoke(it) }
     }
+}
+
+/** A finite batch may repeat an identical source observation. Its producer still
+ * has exactly one matching write per selected key; contradictory observations,
+ * missing writes and duplicate producer writes all refuse. */
+private suspend fun requireDirectOriginalWrites(original: RetainedStreamedCommand,
+    sources: List<StreamedSourceObservationV2.Aggregate>) {
+    localStockCheck(sources.isNotEmpty() && sources.size <= 16)
+    val selected = linkedMapOf<AggregateKey, StreamedSourceObservationV2.Aggregate>()
+    for (source in sources) {
+        val prior = selected.put(source.key, source)
+        localStockCheck(prior == null || prior == source, LocalStockFailure.STORAGE_INCONSISTENT)
+    }
+    val found = mutableSetOf<AggregateKey>()
+    original.frames { frame ->
+        val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
+        val source = selected[write.key] ?: return@frames
+        localStockCheck(found.add(write.key), LocalStockFailure.STORAGE_INCONSISTENT)
+        requireSameWrite(write, source.key, source.generation, source.schema, source.payload, source.payloadHash)
+    }
+    localStockCheck(found == selected.keys, LocalStockFailure.STORAGE_INCONSISTENT)
 }
 
 internal suspend fun requireOriginalWrite(original: RetainedStreamedCommand, key: AggregateKey, generation: com.ukkera.pos.types.Revision,

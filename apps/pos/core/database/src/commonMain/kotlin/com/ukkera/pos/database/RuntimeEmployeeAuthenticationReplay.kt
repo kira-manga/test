@@ -638,7 +638,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         eventDigest: PayloadDigest): RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization? {
         historyShapeV2(enabled && nativeOriginalPrefixMode == null)
         value.validate()
-        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
+        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(value) ?: return null
         if (!profile.matches(header, value) || !originalInteractiveRequirement(value, header)) return null
         val target = earlierReplayTarget
         if (target == null) requireCommandCapacity(header.sequence)
@@ -662,7 +662,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization? {
         requireNativeOriginalPrefixMode(session, cutoffHeader.sequence)
         value.validate()
-        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
+        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(value) ?: return null
         if (!profile.matches(header, value) || !originalInteractiveRequirement(value, header)) return null
         historyShapeV2(header.sequence < cutoffHeader.sequence &&
             header.commandSequence > source.child.commandSequence && header.commandSequence < cutoffHeader.commandSequence &&

@@ -1015,12 +1015,12 @@ internal class RuntimeBusinessHistoryJoin(
             foodCheckRejection = profile, employeeFoodCheckRejection = proof)
     }
 
-    /** CLOSED ordinary AlreadyApplied candidate from the original founding employee.
-     * Genuine native application and earlier Apply/Start/raw writers still have to join. */
+    /** Closed ordinary payment refusal candidate from the original founding employee.
+     * The selected actual native application and every earlier writer still must join. */
     fun captureFoodPaymentRejection(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
         evidence: RuntimeCommandAuthorizationEvidenceV1, intent: NativeHistoryOriginalIntentV2,
         dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
-        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(evidence.commandName, evidence.commandVersion)) ?: return false
+        val profile = RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(evidence) ?: return false
         if (!enabled || !profile.matches(header, evidence) || profile.command !in supportedCommands ||
             mutations.size != RuntimeHistoricalFoodPaymentRejectionProfile.CAPTURED_CHANGES ||
             mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
@@ -1033,7 +1033,7 @@ internal class RuntimeBusinessHistoryJoin(
             evidence.purposeTag, evidence.capturedChanges, intent, dependencies, mutations, foodPaymentRejection = profile)
     }
 
-    /** Exact registered original enrolled-employee AlreadyApplied provenance.
+    /** Exact registered original enrolled-employee payment-refusal provenance.
      * Successful commands, approvals and other refusals cannot use this proof. */
     fun captureEmployeeFoodPaymentRejection(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
         proof: RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization, intent: NativeHistoryOriginalIntentV2,
@@ -1986,7 +1986,7 @@ internal class RuntimeBusinessHistoryJoin(
         captured.employeeFoodCheckRejection?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
     }
 
-    /** This exact active native command owns the closed ordinary AlreadyApplied cut.
+    /** This exact active native command owns the selected closed ordinary payment cut.
      * A copied original or another read cannot substitute for enrolled provenance. */
     internal suspend fun requireFoodPaymentRejectionOriginal(command: RuntimeHistoricalCommand) {
         requireActive(command)

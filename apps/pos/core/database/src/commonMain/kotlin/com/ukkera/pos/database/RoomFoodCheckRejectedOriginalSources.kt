@@ -44,32 +44,36 @@ internal class RoomClosedRejectedOriginalSources(
 
     /** Internal fixed selection only; neither requests nor captured DATA choose a profile. */
     private enum class Profile {
-        FOOD_CHECK, FOOD_TABLE_ASSIGNMENT, FOOD_PAYMENT_ALREADY_APPLIED;
+        FOOD_CHECK, FOOD_TABLE_ASSIGNMENT, FOOD_PAYMENT_ALREADY_APPLIED, FOOD_PAYMENT_VALUE_MISMATCH;
 
         val command: CommandKey get() = when (this) {
             FOOD_CHECK -> RuntimeHistoricalFoodCheckRejectionProfile.FOOD.command
             FOOD_TABLE_ASSIGNMENT -> RuntimeHistoricalConfigurationRejectionProfile.FOOD_TABLE_ASSIGNMENT.command
             FOOD_PAYMENT_ALREADY_APPLIED -> RuntimeHistoricalFoodPaymentRejectionProfile.ALREADY_APPLIED.command
+            FOOD_PAYMENT_VALUE_MISMATCH -> RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH.command
         }
         val rejectionCodes: Set<String> get() = when (this) {
             FOOD_CHECK -> RuntimeHistoricalFoodCheckRejectionProfile.FOOD.rejectionCodes
             FOOD_TABLE_ASSIGNMENT -> RuntimeHistoricalConfigurationRejectionProfile.FOOD_TABLE_ASSIGNMENT.rejectionCodes
             FOOD_PAYMENT_ALREADY_APPLIED -> setOf(RuntimeHistoricalFoodPaymentRejectionProfile.ALREADY_APPLIED.rejectionCode)
+            FOOD_PAYMENT_VALUE_MISMATCH -> setOf(RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH.rejectionCode)
         }
         fun matches(header: RuntimeHistoryEventHeaderV2, capture: RuntimeCommandAuthorizationEvidenceV1): Boolean = when (this) {
             FOOD_CHECK -> RuntimeHistoricalFoodCheckRejectionProfile.FOOD.matches(header, capture)
             FOOD_TABLE_ASSIGNMENT -> RuntimeHistoricalConfigurationRejectionProfile.FOOD_TABLE_ASSIGNMENT.matches(header, capture)
             FOOD_PAYMENT_ALREADY_APPLIED -> RuntimeHistoricalFoodPaymentRejectionProfile.ALREADY_APPLIED.matches(header, capture)
+            FOOD_PAYMENT_VALUE_MISMATCH -> RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH.matches(header, capture)
         }
         fun acceptsRejection(capture: RuntimeCommandAuthorizationEvidenceV1, code: String): Boolean = when (this) {
             FOOD_CHECK -> code in RuntimeHistoricalFoodCheckRejectionProfile.FOOD.rejectionCodes
             FOOD_TABLE_ASSIGNMENT -> RuntimeHistoricalConfigurationRejectionProfile.FOOD_TABLE_ASSIGNMENT.acceptsRejection(capture, code)
             FOOD_PAYMENT_ALREADY_APPLIED -> RuntimeHistoricalFoodPaymentRejectionProfile.ALREADY_APPLIED.acceptsRejection(code)
+            FOOD_PAYMENT_VALUE_MISMATCH -> RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH.acceptsRejection(code)
         }
         fun markerFields(header: RuntimeHistoryEventHeaderV2, capture: RuntimeCommandAuthorizationEvidenceV1): List<String>? = when (this) {
             FOOD_CHECK -> RuntimeHistoricalFoodCheckRejectionProfile.FOOD.markerFields(header, capture)
             FOOD_TABLE_ASSIGNMENT -> null // Table originals have no FOOD marker or new persisted marker.
-            FOOD_PAYMENT_ALREADY_APPLIED -> null // Ordinary SQL payment refusals never use the FOOD-check marker.
+            FOOD_PAYMENT_ALREADY_APPLIED, FOOD_PAYMENT_VALUE_MISMATCH -> null // No FOOD-check marker.
         }
     }
 
@@ -112,6 +116,21 @@ internal class RoomClosedRejectedOriginalSources(
             applied.command in RuntimeHistoricalFoodPaymentAlreadyAppliedSources.APPLICATION_WRITER_COMMANDS &&
             applied.sequence.value < cut.evidence.sequence.value)
         return RuntimeHistoricalFoodPaymentAlreadyAppliedSources(cut.evidence, cut.requirement, cut.resources,
+            before, cut.aggregateSources, cut.claimSources, cut.absentAggregates, cut.absentClaims)
+    }
+
+    suspend fun readFoodPaymentValueMismatch(): RuntimeHistoricalFoodPaymentValueMismatchSources? {
+        val cut = readObserved(Profile.FOOD_PAYMENT_VALUE_MISMATCH) ?: return null
+        val key = AggregateKey(RuntimeHistoricalFoodPaymentValueMismatchSources.APPLICATION_KIND,
+            checkNotNull(cut.requirement.binding).documentId)
+        val before = cut.aggregateSources.singleOrNull { it.row.key == key } ?: return null
+        historyShapeV2(before.row.schema == RuntimeHistoricalFoodPaymentValueMismatchSources.APPLICATION_SCHEMA &&
+            before.row.revision == Revision(1))
+        val raw = (before.original as? RetainedOriginalV2.Legacy)?.evidence ?: return null
+        historyShapeV2(raw.committed && raw.nativeOriginalProvenance != null &&
+            raw.command == RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH.command &&
+            raw.sequence.value < cut.evidence.sequence.value)
+        return RuntimeHistoricalFoodPaymentValueMismatchSources(cut.evidence, cut.requirement, cut.resources,
             before, cut.aggregateSources, cut.claimSources, cut.absentAggregates, cut.absentClaims)
     }
 

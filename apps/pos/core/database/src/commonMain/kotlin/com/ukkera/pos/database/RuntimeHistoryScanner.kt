@@ -603,7 +603,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         val replay = checkNotNull(cold)
         val join = checkNotNull(business)
         val paymentRejection = evidence?.let { value ->
-            RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion))
+            RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(value)
                 ?.matches(header, value)
         } == true
         val target = earlierTarget
@@ -927,7 +927,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             val coldPaymentRejection = if (coldScanMemory != null && header.purpose == RuntimeWritePurposeV2.COMMAND_REJECT &&
                 RuntimeCommandAuthorizationEvidenceCodec.hasProfile(capsule.facts))
                 RuntimeCommandAuthorizationEvidenceCodec.decode(capsule.facts).takeIf { value ->
-                    RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion))
+                    RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(value)
                         ?.matches(header, value) == true
                 } else null
             val disposableBusinessEvent = coldOrdinary != null && coldOrdinary.actionApprovalId == null || coldPaymentRejection != null ||
@@ -1371,7 +1371,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         val returnRightsActivation = RuntimeHistoricalReturnRightsActivationRejectionProfile.fromCommand(key)
                         val retailCustomerReceipt = RuntimeHistoricalRetailCustomerReceiptRejectionProfile.fromCommand(key)
                         val foodCheck = RuntimeHistoricalFoodCheckRejectionProfile.fromCommand(key)
-                        val foodPayment = RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(key)
+                        val foodPayment = RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(command)
                         val returnCaseQualification = RuntimeHistoricalReturnCaseQualificationRejectionProfile.fromCommand(key)
                         val returnStockDisposition = RuntimeHistoricalReturnStockDispositionRejectionProfile.fromCommand(key)
                         when {

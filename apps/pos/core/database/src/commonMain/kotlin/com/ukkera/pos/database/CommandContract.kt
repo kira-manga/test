@@ -99,6 +99,10 @@ public interface CommandReadView {
      * original and exact application before disclosure. Null means unavailable, including
      * Pending, other payment forms and incomplete or incompatible original observations. */
     public suspend fun foodPaymentAlreadyAppliedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentAlreadyAppliedSources? = null
+    /** Separate ordinary ApplyOriginal value/tender-mismatch refusal. Only the actual
+     * native initial application/raw BEFORE pairing is supplied as unqualified DATA.
+     * Other Pending reasons, resolutions and current-row reconstructions are unavailable. */
+    public suspend fun foodPaymentValueMismatchOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentValueMismatchSources? = null
     /**
      * Bounded keyset pagination for trusted typed adapters. Each selected row must still be read
      * and validated with aggregate(), and the handler must enforce its own projection policy.

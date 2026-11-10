@@ -2880,6 +2880,13 @@ internal class TransactionView private constructor(
             writer?.historyFrame?.foodPaymentAlreadyAppliedOriginalSources(this, operationId)
         }
 
+    override suspend fun foodPaymentValueMismatchOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentValueMismatchSources? =
+        tracedRead(PhysicalReadDependency.Retained(operationId)) {
+            // Only the actual unmutated native frame can select the refused operation's
+            // original observations; retained ancestry or current rows cannot replace them.
+            writer?.historyFrame?.foodPaymentValueMismatchOriginalSources(this, operationId)
+        }
+
     override suspend fun savedOriginalSetup(): SavedOriginalSetupV1? = nonPhysicalOwnedRead {
         val owner = writer?.database?.runtimeHistoryOwner ?: return@nonPhysicalOwnedRead null
         if (owner.originalScope != scope || owner.compositionProfile.mode !=

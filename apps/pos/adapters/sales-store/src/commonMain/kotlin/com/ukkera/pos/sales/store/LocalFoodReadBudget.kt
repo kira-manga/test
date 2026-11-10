@@ -194,6 +194,36 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
         return source
     }
 
+    override suspend fun foodPaymentValueMismatchOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentValueMismatchSources? {
+        call(); producers++; foodCapacity(producers <= FoodReadLimits.REQUEST_PRODUCERS)
+        val source = borrowed.foodPaymentValueMismatchOriginalSources(operationId)
+        data(source?.evidence?.let(::foodProducerReadBytes) ?: 512L)
+        data(256L + (source?.resources?.size ?: 0) * 128L)
+        // Native source capsules hold complete originals beside this view's own later
+        // producer reads. Charge each escaped object once, not only its selected rows.
+        val sourceOriginals = mutableSetOf<RetainedOriginalV2>()
+        fun original(value: RetainedOriginalV2) {
+            if (!sourceOriginals.add(value)) return
+            producers++; foodCapacity(producers <= FoodReadLimits.REQUEST_PRODUCERS)
+            data(when (value) {
+                is RetainedOriginalV2.Legacy -> foodProducerReadBytes(value.evidence)
+                is RetainedOriginalV2.Streamed -> 8_192L + value.evidence.normalized.size + value.evidence.result.size
+            })
+        }
+        source?.beforeAggregateSources?.forEach { literal ->
+            original(literal.original)
+            rows++; foodCapacity(rows <= FoodReadLimits.REQUEST_ROWS)
+            data(512L + literal.row.payload.size)
+        }
+        source?.beforeClaimSources?.forEach { literal ->
+            original(literal.original)
+            data(256L + literal.key.namespace.length + literal.key.key.length)
+        }
+        source?.beforeAbsentAggregateKeys?.forEach { data(256L + it.kind.length + it.id.value.length) }
+        source?.beforeAbsentClaimKeys?.forEach { data(256L + it.namespace.length + it.key.length) }
+        return source
+    }
+
     suspend fun foodProducer(id: OperationId): RetainedCommandEvidence {
         handoffOriginFailure?.let { throw it }
         val producer = retainedCommand(id) ?: error("food.producer_missing")

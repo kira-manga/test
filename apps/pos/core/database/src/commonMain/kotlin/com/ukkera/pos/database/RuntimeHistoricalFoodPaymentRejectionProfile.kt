@@ -5,14 +5,19 @@ import com.ukkera.pos.security.PermissionVerb
 import com.ukkera.pos.security.PrincipalKind
 import com.ukkera.pos.security.SecurityAction
 
-/** CLOSED ordinary ApplyOriginal AlreadyApplied candidate. The installed payment
+/** CLOSED ordinary ApplyOriginal refusal candidates. The installed payment
  * producer must join the genuine native BEFORE application and complete earlier
- * Apply/Start/native-original lineage, then compare the exact result and resources.
+ * Start/native-original lineage (plus earlier Apply for AlreadyApplied), then compare
+ * the exact result and resources. The Pending candidate alone proves no mismatch.
  * Captured CASH_READ DATA does not grant current access or qualify another refusal. */
-internal enum class RuntimeHistoricalFoodPaymentRejectionProfile(val command: CommandKey) {
-    ALREADY_APPLIED(CommandKey("sales.food.payment", 1));
-
-    val rejectionCode: String = "food.payment.already_applied"
+internal enum class RuntimeHistoricalFoodPaymentRejectionProfile(
+    val command: CommandKey,
+    val rejectionCode: String,
+    val requirementReason: String,
+    val documentRevision: Long,
+) {
+    ALREADY_APPLIED(CommandKey("sales.food.payment", 1), "food.payment.already_applied", "food.payment.already_applied", 1L),
+    VALUE_OR_TENDER_MISMATCH(CommandKey("sales.food.payment", 1), "food.payment.pending_reconciliation", "food.payment.pending", 0L);
 
     fun acceptsRejection(code: String): Boolean = code == rejectionCode
 
@@ -24,15 +29,22 @@ internal enum class RuntimeHistoricalFoodPaymentRejectionProfile(val command: Co
             value.authorization.authenticationPurpose == AuthenticationPurpose.INTERACTIVE &&
             value.requirement.action == SecurityAction.CASH_READ && value.requirement.verb == PermissionVerb.PERFORM &&
             value.requirement.scope == value.authorization.scope && value.requirement.operationId == value.operationId &&
-            value.requirement.payloadDigest == value.semanticDigest && value.requirement.reasonCode == rejectionCode &&
-            value.requirement.documentRevision.value == 1L && value.requirement.limitKind == "none" &&
+            value.requirement.payloadDigest == value.semanticDigest && value.requirement.reasonCode == requirementReason &&
+            value.requirement.documentRevision.value == documentRevision && value.requirement.limitKind == "none" &&
             value.requirement.amount == null && value.requirement.baseAmount == null &&
             value.requirement.ownerId == value.authorization.actorId
 
     companion object {
         const val CAPTURED_CHANGES: Int = 5
 
+        /** Historical command-only selection remains AlreadyApplied-only. A command name
+         * cannot distinguish the additive Pending lane; actual captures must select below. */
         fun fromCommand(command: CommandKey): RuntimeHistoricalFoodPaymentRejectionProfile? =
-            entries.singleOrNull { it.command == command }
+            ALREADY_APPLIED.takeIf { it.command == command }
+
+        fun fromEvidence(value: RuntimeCommandAuthorizationEvidenceV1): RuntimeHistoricalFoodPaymentRejectionProfile? =
+            entries.singleOrNull { it.command == CommandKey(value.commandName, value.commandVersion) &&
+                it.requirementReason == value.requirement.reasonCode &&
+                it.documentRevision == value.requirement.documentRevision.value }
     }
 }

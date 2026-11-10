@@ -69,7 +69,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         }
         fun requirePriorFoodPaymentRejection(value: RuntimeHistoryEventHeaderV2,
             command: RuntimeCommandAuthorizationEvidenceV1) {
-            historyShapeV2(RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(command.commandName, command.commandVersion))
+            historyShapeV2(RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(command)
                 ?.matches(value, command) == true)
             requirePriorCoordinates(value)
         }
@@ -1290,13 +1290,13 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
         requirePriorCoordinates(header, evidence)
     }
 
-    /** Only ordinary AlreadyApplied refusals may additionally register prefix proofs.
+    /** Only the closed ordinary payment refusals may additionally register prefix proofs.
      * Founding provenance uses C1; enrolled provenance must own this actual earlier source. */
     fun requirePriorFoodPaymentRejection(source: NativeEmployeeEnrollmentHistorySource?,
         header: RuntimeHistoryEventHeaderV2, evidence: RuntimeCommandAuthorizationEvidenceV1) {
         val session = checkNotNull(session)
         val coordinates = session.original.record.allocation.coordinates
-        historyShapeV2(RuntimeHistoricalFoodPaymentRejectionProfile.fromCommand(CommandKey(evidence.commandName, evidence.commandVersion))
+        historyShapeV2(RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(evidence)
             ?.matches(header, evidence) == true)
         if (source == null) historyShapeV2(evidence.authorization.actorId == coordinates.firstActorId)
         else historyShapeV2(session.employeeEnrollments.any { it === source } &&

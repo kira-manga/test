@@ -757,9 +757,20 @@ public class RuntimeHistoricalCommand internal constructor(
      * original employee provenance, every native dependency and exactly five nonbusiness
      * mutations. No money, stock, claim, job, approval, physical action or deadline is added. */
     public suspend fun requireFoodPaymentAlreadyAppliedRejection(expected: ProposedOutcome.Reject,
-        resources: Set<RecoveryResourceKey>) {
+        resources: Set<RecoveryResourceKey>): Unit = requireFoodPaymentRejection(
+            RuntimeHistoricalFoodPaymentRejectionProfile.ALREADY_APPLIED, expected, resources)
+
+    /** Ordinary original-only mismatch. The installed producer must prove the initial
+     * native application and exact captured value before these no-effect checks. */
+    public suspend fun requireFoodPaymentValueMismatchRejection(expected: ProposedOutcome.Reject,
+        resources: Set<RecoveryResourceKey>): Unit = requireFoodPaymentRejection(
+            RuntimeHistoricalFoodPaymentRejectionProfile.VALUE_OR_TENDER_MISMATCH, expected, resources)
+
+    private suspend fun requireFoodPaymentRejection(expectedProfile: RuntimeHistoricalFoodPaymentRejectionProfile,
+        expected: ProposedOutcome.Reject, resources: Set<RecoveryResourceKey>) {
         owner.requireActive(this)
         val profile = capture.foodPaymentRejection ?: unavailable()
+        historyShapeV2(profile == expectedProfile)
         val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: unavailable()
         owner.requireFoodPaymentRejectionOriginal(this)
         historyShapeV2(requirementChecked && !effectsChecked && capture.nativeOriginal == null &&
