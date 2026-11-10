@@ -544,7 +544,9 @@ private suspend fun verifyLine(stock: LocalStockRelationalInspection, line: Stoc
     val authority = line.authority
     localStockCheck(line.ordinal in 0 until reserve.lineCount && line.quantity.scaled > 0 && authority.skuId == line.skuId &&
         authority.warehouseId == line.warehouseId && authority.unitId == line.quantity.unitId && authority.scale == line.quantity.scale &&
-        authority.tracking in 1..3 && authority.catalogRevision.value >= 1 && authority.skuRevision.value >= 1)
+        // Signed catalog/SKU domain revisions are zero-based. They are distinct from
+        // positive aggregate generations; the exact literal source stamps are checked below.
+        authority.tracking in 1..3 && authority.catalogRevision.value >= 0 && authority.skuRevision.value >= 0)
     val item = (stock.before(LocalStockRelationalProfileV2.itemKey(line.skuId))?.body as? StockRelationalBody.Item) ?: inconsistentStock()
     localStockCheck(item.unitId == authority.unitId && item.scale == authority.scale && item.serialized == (authority.tracking == 3))
     for (list in listOf(authority.itemSources, authority.warehouseSources)) {
