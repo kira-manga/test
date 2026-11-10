@@ -741,7 +741,13 @@ internal class LocalRetailPhysicalController(
     }
 
     private fun unavailable(problem: LocalServiceProblem) {
-        if (problem == LocalServiceProblem.SESSION_ENDED) { denyOriginal(); runtime.localSessionEnded(session); return }
+        if (problem == LocalServiceProblem.SESSION_ENDED) {
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { denyOriginal() }
+            cleanup.attempt { runtime.localSessionEnded(session) }
+            cleanup.throwIfFailed()
+            return
+        }
         if (problem == LocalServiceProblem.DENIED) {
             denyOriginal()
             prepared = null

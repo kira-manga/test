@@ -1,5 +1,8 @@
 # Disposable hosted-runner supporting diagnostic. Never installs a production service.
-param([Parameter(Mandatory=$true)][string]$OutputDirectory)
+param(
+    [Parameter(Mandatory=$true)][string]$OutputDirectory,
+    [ValidateSet('unrestricted','none')][string]$ServiceSidType = 'unrestricted'
+)
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_REPOSITORY -ne 'kira-manga/test' -or $env:RUNNER_OS -ne 'Windows') {
     throw 'This diagnostic requires the explicitly authorized disposable Windows auxiliary runner.'
@@ -24,7 +27,8 @@ try {
     # genuine production service/account/impersonation observer before any key work.
     $argfile = Join-Path $out 'probe-java.args'
     $cp = $classpath.Replace('\', '/')
-    $argText = '-Xmx256m -XX:ActiveProcessorCount=2 -cp "' + $cp + '" com.ukkera.pos.security.supporting.windowsservice.WindowsServiceSigningNativeProbe "' + $out.Replace('\', '/') + '" ' + $sid
+    $probeMode = if ($ServiceSidType -eq 'none') { 'NO_SERVICE_SID' } else { 'SIGNING' }
+    $argText = '-Xmx256m -XX:ActiveProcessorCount=2 -cp "' + $cp + '" com.ukkera.pos.security.supporting.windowsservice.WindowsServiceSigningNativeProbe "' + $out.Replace('\', '/') + '" ' + $sid + ' ' + $probeMode
     [IO.File]::WriteAllText($argfile, $argText, [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllLines((Join-Path $out 'launcher-input.txt'), @($java, $argfile), [Text.UTF8Encoding]::new($false))
     $source = @'
@@ -74,9 +78,9 @@ public sealed class PosSyntheticService : ServiceBase {
     & sc.exe create $name binPath= "`"$launcher`"" type= own start= demand obj= LocalSystem | Set-Content (Join-Path $out 'service-create.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic service creation failed.' }
     $created = $true
-    & sc.exe sidtype $name unrestricted | Set-Content (Join-Path $out 'service-sidtype.txt')
+    & sc.exe sidtype $name $ServiceSidType | Set-Content (Join-Path $out 'service-sidtype.txt')
     if ($LASTEXITCODE -ne 0) { throw 'Synthetic service SID enable failed.' }
-    [IO.File]::WriteAllText((Join-Path $out 'service-profile.txt'), "service=$name`nservice_sid=$sid`naccount_sid=S-1-5-18`n")
+    [IO.File]::WriteAllText((Join-Path $out 'service-profile.txt'), "service=$name`nservice_sid=$sid`naccount_sid=S-1-5-18`nservice_sid_type=$ServiceSidType`nprobe_mode=$probeMode`n")
     Start-Service $name
     $deadline = [DateTime]::UtcNow.AddSeconds(120)
     while (-not (Test-Path (Join-Path $out 'child-exit.txt'))) {

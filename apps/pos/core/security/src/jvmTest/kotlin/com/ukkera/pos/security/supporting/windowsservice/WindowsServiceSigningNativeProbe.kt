@@ -21,10 +21,26 @@ import java.util.UUID
  */
 public object WindowsServiceSigningNativeProbe {
     @JvmStatic public fun main(args: Array<String>) {
-        require(args.size == 2 && Platform.isWindows() && Native.POINTER_SIZE == 8)
+        require(args.size in 2..3 && Platform.isWindows() && Native.POINTER_SIZE == 8)
         val output = Path.of(args[0])
         require(Files.isDirectory(output))
         val target = SelfOwnedWindowsServiceIdentityV2(args[1], "S-1-5-18")
+        val mode = args.getOrElse(2) { "SIGNING" }
+        require(mode in setOf("SIGNING", "NO_SERVICE_SID"))
+        if (mode == "NO_SERVICE_SID") {
+            // Frozen E3-008-006: account SID alone must be refused. This executes only
+            // that negative native slice, not the restart/multiple-SID/impersonation case.
+            val observation = WindowsInstalledApplicationIdentity.captureService(target)
+            check(observation is SelfOwnedInstalledIdentityResultV2.Refused)
+            check(runCatching {
+                WindowsSelfOwnedSigningKey.requireService(target, target.serviceSid, target.serviceAccountSid)
+            }.isFailure)
+            Files.writeString(output.resolve("signing-stages.txt"),
+                "actual-SCM-service-with-SID-type-none\nnative-service-observer-refused\nproduction-signing-service-guard-refused\nno-key-creation-invoked\n")
+            Files.writeString(output.resolve("signing-result.txt"),
+                "status=PASS\nprofile=actual-service-without-service-SID-negative-slice\n")
+            return
+        }
         val rootId = DomainId(UUID.randomUUID().toString())
         val keyId = DomainId(UUID.randomUUID().toString())
         val targetBytes = SelfOwnedInstalledIdentityWireV2.encodeTarget(target)

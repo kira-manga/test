@@ -1597,7 +1597,8 @@ internal class LocalWorkflowController(
         reportLifecycle = scope.launch {
             lifecycle.collect { value ->
                 if (!closed && active && ticket == activation && value != LocalSessionLifecycle.ACTIVE) {
-                    reportFileLifetime?.end()
+                    val cleanup = LocalSessionCleanup()
+                    cleanup.attempt { reportFileLifetime?.end() }
                     val problem = when (value) {
                         LocalSessionLifecycle.STORAGE_UNCERTAIN -> LocalServiceProblem.STORAGE_UNCERTAIN
                         LocalSessionLifecycle.AUTHORITY_UNAVAILABLE -> LocalServiceProblem.UNAVAILABLE
@@ -1607,8 +1608,9 @@ internal class LocalWorkflowController(
                     // capability's page, and the root owns subsequent revocation-only cleanup.
                     mutableState.value = LocalWorkspaceState(workflow = LocalWorkflow.REPORTS,
                         branchReportQuery = state.value.branchReportQuery.copy(after = null, expectedBranchRevision = null), readProblem = problem)
-                    work?.cancel()
-                    runtime.localSessionEnded(session, problem)
+                    cleanup.attempt { work?.cancel() }
+                    cleanup.attempt { runtime.localSessionEnded(session, problem) }
+                    cleanup.throwIfFailed()
                 }
             }
         }
@@ -3068,11 +3070,14 @@ internal class LocalWorkflowController(
             permissionFailure(problem)
             return
         }
-        supplierPhysical.deactivate()
+        val cleanup = LocalSessionCleanup()
+        cleanup.attempt { supplierPhysical.deactivate() }
         mutableState.value = state.value.copy(page = null, form = null, foodPricePreview = null, foodPricePreviewProblem = null, openingCounts = null, referencePicker = null, actionApproval = null, actionApprovalLookupWorking = false, readProblem = problem,
             foodUnavailable = foodUnavailableReason(problem).takeIf { state.value.workflow.usesFoodQueries })
-        permissionFailure(problem)
-        if (problem != LocalServiceProblem.SESSION_ENDED && problem != LocalServiceProblem.DENIED) activateSupplierPhysical()
+        cleanup.attempt { permissionFailure(problem) }
+        if (!cleanup.failed && problem != LocalServiceProblem.SESSION_ENDED && problem != LocalServiceProblem.DENIED)
+            activateSupplierPhysical()
+        cleanup.throwIfFailed()
     }
 
     private fun permissionFailure(problem: LocalServiceProblem) {

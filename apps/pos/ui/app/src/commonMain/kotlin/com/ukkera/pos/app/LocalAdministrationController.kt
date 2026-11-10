@@ -99,8 +99,7 @@ internal class LocalAdministrationController(
                         else -> LocalServiceProblem.SESSION_ENDED
                     }
                     // Clear even if the synchronous capability has already become invalid.
-                    deactivate()
-                    runtime.localSessionEnded(session, problem)
+                    endSession(problem)
                 }
             }
         }
@@ -347,7 +346,15 @@ internal class LocalAdministrationController(
     private fun handleSessionProblem(problem: LocalServiceProblem) {
         if (problem == LocalServiceProblem.DENIED) mutableState.value = state.value.copy(view = null, original = null, pending = null,
             pendingLoaded = false, pendingProblem = problem, preparationUncertain = false, passwordEntryOpen = false)
-        if (problem == LocalServiceProblem.SESSION_ENDED) { deactivate(); runtime.localSessionEnded(session, problem) }
+        if (problem == LocalServiceProblem.SESSION_ENDED) endSession(problem)
+    }
+
+    private fun endSession(problem: LocalServiceProblem) {
+        val cleanup = LocalSessionCleanup()
+        cleanup.attempt { deactivate() }
+        // Failed child cancellation/guard removal cannot leave the old runtime root attached.
+        cleanup.attempt { runtime.localSessionEnded(session, problem) }
+        cleanup.throwIfFailed()
     }
 
     private fun launchWork(kind: LocalAdministrationBusy, secret: CharArray? = null, block: suspend (Ticket) -> Unit) {

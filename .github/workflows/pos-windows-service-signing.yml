@@ -6,6 +6,12 @@ on:
         description: Exact primary source revision of the snapshot
         type: string
         required: true
+      service_sid_type:
+        description: Actual SCM service SID profile; none executes only the frozen negative identity slice
+        type: choice
+        required: true
+        default: unrestricted
+        options: [unrestricted, none]
 permissions:
   contents: read
 jobs:
@@ -53,7 +59,9 @@ jobs:
             :core:security:exportWindowsServiceProbeClasspath --console=plain
       - name: Observe actual SCM service token and production signing wrapper
         shell: pwsh
-        run: scripts/pos/windows/run-service-signing-probe.ps1 -OutputDirectory native-service-output
+        env:
+          REQUESTED_SERVICE_SID_TYPE: ${{ inputs.service_sid_type || 'unrestricted' }}
+        run: scripts/pos/windows/run-service-signing-probe.ps1 -OutputDirectory native-service-output -ServiceSidType $env:REQUESTED_SERVICE_SID_TYPE
       - uses: actions/upload-artifact@v4
         if: always()
         with:
