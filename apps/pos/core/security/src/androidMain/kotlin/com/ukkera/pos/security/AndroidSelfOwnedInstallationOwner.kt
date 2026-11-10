@@ -486,6 +486,15 @@ internal class AndroidSelfOwnedInstallationLifetime(
         }
     }
 
+    override suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult = try {
+        historyOperation {
+            val state = readOriginalStateNative()
+            SelfOwnedNativeReadResult.Retained(view(state), state.originalBinding)
+        }
+    } catch (failure: NativeHistoryUnavailable) {
+        SelfOwnedNativeReadResult.Unresolved(failure.reason)
+    }
+
     override suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot = historyOperation {
         requireNotNull(historyAnchor).snapshotOriginal()
     }

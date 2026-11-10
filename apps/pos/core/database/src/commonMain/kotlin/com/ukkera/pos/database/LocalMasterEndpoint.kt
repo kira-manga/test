@@ -1,6 +1,12 @@
 package com.ukkera.pos.database
 
 import com.ukkera.pos.recovery.OperationIdentity
+import com.ukkera.pos.security.LocalAuthenticatedPeer
+import com.ukkera.pos.security.LocalMasterLifecycleAction
+import com.ukkera.pos.security.LocalMasterLifecycleDenial
+import com.ukkera.pos.security.LocalMasterLifecycleRequest
+import com.ukkera.pos.security.LocalMasterLifecycleResult
+import com.ukkera.pos.security.LocalMasterLifecycleService
 import com.ukkera.pos.security.LocalAuthenticationResult
 import com.ukkera.pos.security.LocalAdministrationCommand
 import com.ukkera.pos.security.LocalAdministrationQuery
@@ -109,6 +115,7 @@ public class LocalMasterEndpoint internal constructor(
     private val maximumRequestMillis: Long = 30_000,
     private val installationInitializer: LocalBranchInitializer? = null,
     private val administration: LocalAdministrationService? = null,
+    private val lifecycle: LocalMasterLifecycleService? = null,
 ) : LocalMasterClient, LocalMasterEnrollmentClient, LocalMasterApprovalClient, LocalMasterAdministrationClient, LocalMasterSerialPublications {
     init {
         require(workers in 1..16 && maximumQueuedRequests in 1..256)
@@ -239,6 +246,19 @@ public class LocalMasterEndpoint internal constructor(
                 else NativeOriginalIntakeSubmission.UNAVAILABLE
         }
         return NativeOriginalIntakeSubmission.QUEUED
+    }
+
+    /** Actual original owner only. STOP shares the same single worker as Room/native intake. */
+    internal suspend fun authenticateAndStopOriginal(peer: LocalAuthenticatedPeer,
+        login: LocalLoginIdentifier, password: CharArray,
+        request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult {
+        currentCoroutineContext().ensureActive()
+        if (request.action != LocalMasterLifecycleAction.STOP || lifecycle == null ||
+            installationInitializer != null || !peer.isCurrent())
+            return LocalMasterLifecycleResult.Unavailable
+        if (password.size !in 4..1024)
+            return LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
+        return submit(LifecycleWork(peer, login, password.copyOf(), request))
     }
 
     override public suspend fun signIn(
@@ -758,6 +778,19 @@ public class LocalMasterEndpoint internal constructor(
             }
         }
         override fun uncertain(value: NativeOriginalWorkerResult): Boolean = value == NativeOriginalWorkerResult.STORAGE_UNCERTAIN
+    }
+
+    private inner class LifecycleWork(
+        val peer: LocalAuthenticatedPeer, val login: LocalLoginIdentifier,
+        val password: CharArray, val request: LocalMasterLifecycleRequest,
+    ) : Work<LocalMasterLifecycleResult>() {
+        override fun unavailable(): LocalMasterLifecycleResult = LocalMasterLifecycleResult.Unavailable
+        override fun busy(): LocalMasterLifecycleResult = LocalMasterLifecycleResult.Busy
+        override suspend fun perform(): LocalMasterLifecycleResult = authenticateOriginalLifecycle(
+            authentication, checkNotNull(lifecycle), peer, login, password, request)
+        override fun clearInput() { password.fill('\u0000') }
+        override fun uncertain(value: LocalMasterLifecycleResult): Boolean =
+            value is LocalMasterLifecycleResult.StorageUncertain
     }
 
     private inner class LoginWork(

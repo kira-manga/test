@@ -86,7 +86,7 @@ internal class RoomSelfOwnedMasterComposition(
         val approvals=sameSecurity.createApprovalService(store.approvalCommandPreparation())
         return LocalMasterEndpoint(store,sameSecurity.principalFactory,sameSecurity.authentication,sameSecurity.credentials,approvals,
             retirement,watchdog,dispatcher,workers=1,maximumQueuedRequests=32,maximumRequestMillis=60_000,
-            administration=sameSecurity.administration)
+            administration=sameSecurity.administration,lifecycle=lifecycle)
             .also {
                 operationalEndpoint=it
                 it.bindOriginalSerialPublications(sameSecurity.originalSerialPublications(owner))

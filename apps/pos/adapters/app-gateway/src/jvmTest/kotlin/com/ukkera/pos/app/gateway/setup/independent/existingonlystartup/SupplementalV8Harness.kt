@@ -844,6 +844,8 @@ internal class SupplementalV8Harness(
     }
 
     private inner class ControlledMaster(val initialMode: LocalMasterLifecycleMode) : LocalSetupMaster {
+        override suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
+            checkNotNull(targetContext).readOriginalNativeBinding()
         override val mode: StateFlow<LocalMasterLifecycleMode> = observedMasterMode
         override suspend fun permitsFirstClientEnrollment(): Boolean = false
         override suspend fun prepareOriginalDefinition(account: LocalAccountProvisioning,

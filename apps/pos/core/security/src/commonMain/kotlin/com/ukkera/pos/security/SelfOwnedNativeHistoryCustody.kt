@@ -14,6 +14,9 @@ public class SelfOwnedNativeHistoryCustody internal constructor(
     internal val controller: SelfOwnedNativeHistoryController,
 ) {
     public val compositionProfile: LocalCompositionSdkProfileV1 get() = controller.compositionProfile
+    /** Fresh binding DATA through this actual transferred owner; never a history/writer grant. */
+    public suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
+        controller.readOwnedOriginalNativeBinding()
     public suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot = controller.snapshotOriginal()
     public suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession = controller.openOriginalReadOnly()
 
@@ -277,6 +280,8 @@ public class OriginalAttemptRetirement internal constructor(
 /** Security-module implementation seam, never a supplied accepting database callback. */
 internal interface SelfOwnedNativeHistoryController {
     val compositionProfile: LocalCompositionSdkProfileV1
+    suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
+        SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot
     suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession
     suspend fun openReceiptMembershipData(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeReceiptMembershipData =

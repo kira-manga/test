@@ -1135,7 +1135,6 @@ public class AndroidSelfOwnedMasterService private constructor(
         val actualPeer = peer ?: return LocalMasterLifecycleResult.Unavailable
         if (!actualPeer.isCurrent()) return LocalMasterLifecycleResult.Unavailable
         if (!installationSlot.tryAcquire()) return LocalMasterLifecycleResult.Busy
-        var tokens: LocalSessionTokens? = null
         try {
             // Recheck the same native peer/state after admitted work starts; a UI/thread race
             // cannot carry a stale pre-wait observation into the protected transaction.
@@ -1144,23 +1143,35 @@ public class AndroidSelfOwnedMasterService private constructor(
             val owner = roomOwner ?: return LocalMasterLifecycleResult.Unavailable
             if (!sameCoordinates(originalMaterial.coordinates, owner.originalRecord.record.allocation.coordinates))
                 return LocalMasterLifecycleResult.Unavailable
-            when (val authenticated = composed.authentication.signIn(actualPeer.connectionId, login, password,
-                explicitDeviceMove = true)) {
-                is LocalAuthenticationResult.Authenticated -> tokens = authenticated.tokens
-                is LocalAuthenticationResult.Denied -> return if (authenticated.reason == LocalAuthenticationDenial.SERVICE_BUSY)
-                    LocalMasterLifecycleResult.Busy
-                else LocalMasterLifecycleResult.Denied(LocalMasterLifecycleDenial.AUTHENTICATION_REFUSED)
-                LocalAuthenticationResult.Unavailable -> return LocalMasterLifecycleResult.Unavailable
-                LocalAuthenticationResult.StorageUncertain -> return LocalMasterLifecycleResult.StorageUncertain
-            }
-            val result = composed.lifecycle.apply(
-                LocalGatewayCredentials(actualPeer.connectionId, checkNotNull(tokens).access), request)
+            // The operational Room owner is shared with the native-intake worker. Authenticate
+            // and apply STOP as one typed item on that same worker, so no security loan races
+            // an active owned Room invocation. Endpoint-free held recovery stays distinct.
+            val result = if (!held) {
+                val endpoint = composed.endpoint ?: return LocalMasterLifecycleResult.Unavailable
+                endpoint.authenticateAndStopOriginal(actualPeer, login, password, request)
+            } else authenticateOriginalLifecycle(composed.authentication, composed.lifecycle,
+                actualPeer, login, password, request)
             currentCoroutineContext().ensureActive()
             return if (!actualPeer.isCurrent()) LocalMasterLifecycleResult.Unavailable else result
         } finally {
-            tokens?.destroy()
             installationSlot.release()
         }
+    }
+
+    /** Fresh native binding DATA from the actual Master-owned custody, not its inert context. */
+    public suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult {
+        currentCoroutineContext().ensureActive()
+        if (!installationSlot.tryAcquire())
+            return SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
+        return try {
+            if (closing.get() != null || life.value != LocalMasterLifecycleMode.OPERATIONAL)
+                return SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            val result = custody.readOwnedOriginalNativeBinding()
+            currentCoroutineContext().ensureActive()
+            if (closing.get() != null || life.value != LocalMasterLifecycleMode.OPERATIONAL)
+                SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            else result
+        } finally { installationSlot.release() }
     }
 
     /** Original-only setup inspection. Missing history never becomes a new installation. */

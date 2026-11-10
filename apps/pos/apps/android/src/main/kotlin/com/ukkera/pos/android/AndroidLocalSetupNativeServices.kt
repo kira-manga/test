@@ -89,6 +89,7 @@ import com.ukkera.pos.security.LocalProvisionerOpenResult
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
 import com.ukkera.pos.security.SelfOwnedInstallationFailureV1
 import com.ukkera.pos.security.SelfOwnedLocalSecurityContext
+import com.ukkera.pos.security.SelfOwnedNativeReadResult
 import com.ukkera.pos.security.SelfOwnedNativeOpenResult
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
@@ -379,6 +380,8 @@ internal class AndroidLocalSetupNativeServices(
             holder
         }
 
+        override suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
+            value.readOwnedOriginalNativeBinding()
         override val mode: StateFlow<LocalMasterLifecycleMode> get() = value.mode
         override suspend fun permitsFirstClientEnrollment(): Boolean = value.originalLocalClient().permitsFirstEnrollment()
         override suspend fun prepareOriginalDefinition(account: LocalAccountProvisioning, authorityEpoch: Revision): LocalBranchInstallationSnapshotV2 =

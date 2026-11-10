@@ -3481,7 +3481,7 @@ public class LocalSetupCoordinator(
         if (!refreshRecord(target)) return
         val verified = try {
             readNative(target, expected = target.context.materialAtOpen.coordinates,
-                verifyOriginalBinding = true)
+                verifyOriginalBinding = true, master = master)
         } catch (_: OriginalRequired) {
             // The actual readback disagreed with the acquired material/binding. This is a
             // real refusal, not a guessed taxonomy or a retry.
@@ -3978,8 +3978,10 @@ public class LocalSetupCoordinator(
     }
 
     private suspend fun readNative(owner: Target, expected: SelfOwnedAllocationCoordinatesV1? = null,
-        expectedBranch: String? = null, verifyOriginalBinding: Boolean = false): Boolean =
-        when (val read = owner.context.readOriginalNativeBinding()) {
+        expectedBranch: String? = null, verifyOriginalBinding: Boolean = false,
+        master: LocalSetupMaster? = null): Boolean =
+        when (val read = if (master == null) owner.context.readOriginalNativeBinding()
+            else master.readOwnedOriginalNativeBinding()) {
         is SelfOwnedNativeReadResult.Retained -> {
             val material = read.material
             requireOriginal(sameCoordinates(material.coordinates, owner.context.materialAtOpen.coordinates))

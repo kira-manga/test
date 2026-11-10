@@ -837,6 +837,8 @@ internal class ExistingOnlyStartupHarness(
         private val custodyAlias: String,
     ) : LocalSetupMaster {
         val alias: String get() = profile.alias
+        override suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
+            custodyContext.readOriginalNativeBinding()
         override val mode = observedMasterMode
         override suspend fun permitsFirstClientEnrollment(): Boolean {
             log.record("PRODUCTION", "master.permitsFirstClientEnrollment", "enter")

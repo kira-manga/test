@@ -10,9 +10,9 @@ Client. Do not use production data or real payments.
 
 Sign in to GitHub with access to `kira-manga/test`. Download the named Actions
 artifact, extract its outer ZIP, and use the package below. The auxiliary repo
-is temporarily **public** during the authorized native Actions campaign because
-private-runner minutes are exhausted. It will be restored private when the
-campaign finishes. No credentials, signing material or private data may be
+remains **public** for the authorized native Actions campaign because private
+runner minutes are exhausted. The owner's latest instruction is to leave its
+visibility unchanged. No credentials, signing material or private data may be
 uploaded. Artifacts have a 14-day retention period. Keep the package with its
 manifest, source revision and checksum files. Package signing remains a separate
 requirement.
