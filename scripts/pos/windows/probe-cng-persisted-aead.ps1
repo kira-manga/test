@@ -89,7 +89,12 @@ public static class PosCngPersistedAeadProbe {
             int free=NCryptFreeObject(key); r["free_before_reopen"]=Status(free);
             if(free!=0) return r; key=IntPtr.Zero;
             if(!Step(r,"reopen_existing",NCryptOpenKey(provider,out key,name,0,0x40))) return r;
-            ObserveProperty(r,key,"Export Policy",false); ObserveProperty(r,key,"Chaining Mode",true);
+            ObserveProperty(r,key,"Export Policy",false);
+            ObserveProperty(r,key,"Chaining Mode",true);
+            // Chaining mode is per opened handle, as in .NET's NCrypt cipher owner.
+            // Reapply it to the reopened key; a prior handle's setting is not evidence.
+            if(!Step(r,"set_GCM_reopened_handle",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) return r;
+            ObserveProperty(r,key,"Chaining Mode",true);
             if(!Step(r,"encrypt",Crypt(key,false,plain,nonce,aad,tag,out encrypted))) return r;
             if(!Step(r,"decrypt",Crypt(key,true,encrypted,nonce,aad,tag,out decrypted))) return r;
             r["roundtrip_equal"]=CryptographicOperations.FixedTimeEquals(plain,decrypted);

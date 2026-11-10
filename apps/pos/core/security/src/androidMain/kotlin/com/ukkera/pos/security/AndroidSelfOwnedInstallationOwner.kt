@@ -1911,21 +1911,40 @@ internal class AndroidSelfOwnedInstallationLifetime(
     /** Internal bounded denial observation. A false value is NOT native or Room custody proof. */
     fun dataUseDeniedNoIo(): Boolean = dataDenied.get() || actuallyClosed.get() || !opened.get()
 
+    // Bounded fixed-stage diagnostics only; never custody, a cache, or a time allowance.
+    private val dataObservationDiagnostics = java.util.concurrent.atomic.AtomicInteger()
+
     /** Only same-owner authored native tasks call this, before AND after actual data operations. */
     fun requireDataNative() {
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        readOriginalStateNative()
+        val sample = dataObservationDiagnostics.getAndUpdate { if (it < 4) it + 1 else it } < 4
+        readOriginalStateNative(sample)
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
     }
 
-    private fun readOriginalStateNative(): SelfOwnedNativeJournalStateV1 {
+    private fun readOriginalStateNative(trace: Boolean = false): SelfOwnedNativeJournalStateV1 {
+        var stage = "namespace-before"
+        var started = if (trace) android.os.SystemClock.elapsedRealtime() else 0L
+        fun completed(next: String) {
+            if (trace) {
+                val finished = android.os.SystemClock.elapsedRealtime()
+                try { android.util.Log.i("UkkeraNativeOwner", "Native data observation: stage=$stage; durationMillis=${finished - started}") }
+                catch (_: Throwable) { /* Diagnostic only; preserve the actual outcome. */ }
+                started = finished
+            }
+            stage = next
+        }
         requireNativeLifetime()
+        completed("alias-census")
         val ownedSigning = requireNotNull(signing)
         ownedSigning.assertAliasNamespace()
+        completed("authenticated-journal")
         val state = requireNotNull(journal).readState(ownedSigning, requireNotNull(material))
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        completed("namespace-after")
         if (!state.newCeremoniesAllowed) ceremoniesDenied.set(true)
         requireNativeLifetime()
+        completed("returned")
         return state
     }
 
