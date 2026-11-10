@@ -17,18 +17,18 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42784691760](https://github.com/kira-manga/test/actions/runs/42784691760/artifacts/13749530590) | `testing-inputs/ukkera-pos-testing.apk`, clean source `0ea09405`; install only the application APK. Includes native RPC LAN permission and physical-session cleanup guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
+| Android, latest installable diagnostic | [API 35 startup artifact, run 42791988202](https://github.com/kira-manga/test/actions/runs/42791988202/artifacts/13751684962) | `testing-inputs/ukkera-pos-testing.apk`, clean source `631df201`; install only the application APK. Includes native RPC LAN permission, physical-session cleanup and bounded history-read guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
-| Windows x64 | [MSI artifact, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13749776129) | `UkkeraPOS-0.1.0.msi`, source `0ea09405`; package/content/architecture and packaged startup passed |
-| macOS Apple Silicon | [ARM64 DMG, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13748845186) | `UkkeraPOS-1.0.0.dmg`, source `0ea09405`; package/content/architecture and packaged startup passed |
-| macOS Intel | [x64 DMG, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13749486417) | `UkkeraPOS-1.0.0.dmg`, source `0ea09405`; package/content/architecture and packaged startup passed |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42784260284](https://github.com/kira-manga/test/actions/runs/42784260284/artifacts/13748917483) | `UkkeraPos-simulator.app.zip`, source `0ea09405`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. Exact-PID iPad startup also passed in run 42786909482. No new Kotlin simulator suite in this packaging run; 464 methods passed on unchanged security/types/pricing source at `53f496da` |
+| Windows x64 | [MSI artifact, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751569890) | `UkkeraPOS-0.1.0.msi`, source `631df201`; package/content/architecture and packaged startup passed |
+| macOS Apple Silicon | [ARM64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751588657) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
+| macOS Intel | [x64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751911072) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42790741202](https://github.com/kira-manga/test/actions/runs/42790741202/artifacts/13753475302) | `UkkeraPos-simulator.app.zip`, source `631df201`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. 464 native simulator methods passed with zero failures/errors/skips; exact-package iPad startup is pending |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
-The current Android, desktop and iOS packages above share source `0ea09405`.
-The explicitly labelled historical alternatives have different revisions. Kotlin
-simulator regression evidence remains bound to its actual source `53f496da`. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
+The current Android, desktop and iOS packages above share source `631df201`.
+The explicitly labelled historical alternatives have different revisions. The 464-method Kotlin simulator regression also executed at this source. Earlier
+`0ea09405` packages and iPad observations remain in the dated refresh evidence. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
 
 ## Verify package SHA-256
@@ -39,12 +39,12 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Package | SHA-256 |
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Latest Android diagnostic APK (`0ea09405`) | `f4a3e2598cbc84ec5a109c200b6b95dea6096db16cf190a69d8bbc74aa3bd3eb` |
-| Refreshed Windows MSI | `d094f2e12946ea7fde5bd944aaa0de661ee30b591727b3c4dad014893b28d4ec` |
-| macOS ARM64 DMG | `255c0759afb1f1e6f2a946b3c225ab1cc4aa49fb7d164a809c75f09a3253783c` |
-| macOS x64 DMG | `1d8fe6325b200e50ad2777ba3efed178e1c718da488f5324340a1c4724995e3a` |
-| iOS Simulator app ZIP | `e1d0dfcb692e622adff59175ef758d4e1ecc71cdbfb8715d122ada45c1a088f5` |
-| iOS unsigned Release archive ZIP | `9ede8636803a1b499c06e6267d51c02fabd0e9ef6c75ef9b2e409dd6e435a1ca` |
+| Latest Android diagnostic APK (`631df201`) | `29b84f45479fb0c61310c0664c8fb1847866b94a5d8f9be718195b3c5c554d70` |
+| Refreshed Windows MSI | `3aeae7a962e5c6b4adbba1522d4dc6d65c0d3987c200273da275716a565e7ab6` |
+| macOS ARM64 DMG | `8529dac2d2c23d5ff1988e9bc1722867d786c90bde5de89856a7d368faf605a2` |
+| macOS x64 DMG | `0ee1fd281d13cc6ac7c9d06a2893d86bf1efda17921a097e7731d10d8f9ff8d3` |
+| iOS Simulator app ZIP | `04cd50b2514e759dc84e921d5ff0cbb31e3174b128512515469652dedf6c4752` |
+| iOS unsigned Release archive ZIP | `6cac0075b3f34a28d177c88705ca0e62bc6038142cdf8c09e9637458e20207be` |
 | iOS unsigned Debug archive ZIP | `51fae2442b336fcf40359845291f185b642994c1b462e70e5e776906811c0619` |
 
 ## Android
@@ -69,31 +69,27 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Android verification limits:** the older startup-qualified APK predates the
-AndroidKeyStore history-IV correction and failed original setup. The latest
-`1490aa61` diagnostic includes native RPC LAN permission guards and the earlier
-IV, Room sidecar, TEMP-column, DAO-scope
-and existing-only key-lookup corrections. Its unchanged native fixture obtained `Installed`, reread the exact
-original setup and confirmed actual owner cleanup; the next independent closed
-native cut ended with OS signal 9 before any test method completed. Earlier
-native attempts also refused final currentness. The identical pair on API24 x86
-started one method and crashed during setup without a completed outcome or explicit
-exclusion cause. These failures remain retained
-in the [source-bound evidence](../../qa/pos/traceability/android-original-ack-acquisition-20261109/README.md).
-The earlier `ecc42c63` package's native I/O, key, x86 and 16 KiB results do not
-qualify those paths in the newest APK. This artifact does not establish full setup,
-repeat ACK, cold recovery, login or
-business workflow acceptance. Preserve an unresolved original and record its
-state; do not reset it or create a replacement merely to continue testing.
+**Android verification limits:** the latest `631df201` application includes native
+RPC LAN permission, history-IV, Room coordination, TEMP-column, DAO-scope,
+existing-only key-lookup, physical-session cleanup and bounded history-cell
+batching changes. Its clean packaging/fatal lint and activity/original-PID startup
+passed on API24/35/37, with zero instrumentation methods. The original ACK run
+`42791908821` still used the historical single-chunk independent helper and ended
+with OS-recorded signal 9 during the closed native cut: one method started, none
+completed. No batch call was observed in that failed execution. The helper is
+being adapted only for batch retrieval, retaining every original assertion and
+fingerprint, with its separate APK/source provenance. Its successor is pending.
+[Exact source-bound results and limits](../../qa/pos/traceability/android-history-cell-batching-20261110/README.md).
 
-Automated evidence covers N18/N19/N20 native file I/O on API 24/35/37, two native
-key slices per API, and API 37 application startup. The key runs observed
-**SOFTWARE / OS_ISOLATED** evidence; hardware/StrongBox and an independently
-captured pre/post-restart identity comparison are not established.
-The latest APK additionally passed both unchanged key selectors on API24 x86
-and the official API35 16 KiB profile, with observed process absence before the
-existing-only second invocation. [Exact source-bound key results and limits](../../qa/pos/traceability/android-original-key-slices-20261109/README.md#additional-runtime-profiles--10-november-2026).
-
+Earlier native I/O and key slices remain bound to their recorded source revisions:
+N18/N19/N20 I/O on API24/35/37 and two key slices per API; additional key selectors
+at `ecc42c63` also ran on API24 x86 and the official API35 16 KiB profile. The key
+runs observed **SOFTWARE / OS_ISOLATED**, not hardware/StrongBox or an independent
+pre/post-restart identity comparison. Those executions are not repeated or claimed
+for this latest APK. [Earlier key results](../../qa/pos/traceability/android-original-key-slices-20261109/README.md).
+Full setup/repeat ACK, cold recovery, login, LAN and business acceptance remain
+open. Preserve an unresolved original; do not reset it or create a replacement
+merely to continue testing.
 
 ## Windows
 
@@ -158,7 +154,7 @@ five seconds and the entry screen rendered **on predecessor source `038c115e`**.
 The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The predecessor `53f496da` ZIP also
 passed [run 42783159441](https://github.com/kira-manga/test/actions/runs/42783159441),
 with original PID 3723 visible after five seconds and the unconfigured chooser in
-the retained screenshot. The current `0ea09405` ZIP passed [run 42786909482](https://github.com/kira-manga/test/actions/runs/42786909482), retaining original PID 3173 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
+the retained screenshot. The current `631df201` ZIP passed [run 42786909482](https://github.com/kira-manga/test/actions/runs/42786909482), retaining original PID 3173 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and
@@ -180,7 +176,7 @@ With authorized signing access on a Mac:
    Use JDK 21; the checked-in Xcode framework script builds the shared code. The
    current project references a single exact Keychain group using the authorized
    profile’s App ID prefix plus bundle ID. The refreshed unsigned Release archive
-   at `0ea09405` selects this entitlement file; the older Debug archive
+   at `631df201` selects this entitlement file; the older Debug archive
    predates that configuration. Neither unsigned archive carries usable signed,
    provisioned entitlements. Rebuild the selected source with authorized signing
    for a physical-device test. No Team ID/prefix or wildcard group is guessed.

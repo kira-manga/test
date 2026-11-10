@@ -383,13 +383,16 @@ private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeC
         val operations = mutableListOf<AosfOperationFact>()
         val audits = mutableListOf<AosfAuditFact>()
         val complete = mutableSetOf<NativeHistoryTableV2>()
+        val completeNativeCensus = mutableSetOf<NativeHistoryTableV2>()
         var branchTexts: Map<String, String>? = null
         var branchIntegers: Map<String, Long>? = null
         while (true) {
             val metadata = read.nextRowMetadata() ?: break
             val census = metadata.pass == NativeHistoryReadPassV2.CENSUS
             if (census && metadata.kind == NativeHistoryRowKindV2.PASS_END) {
-                complete.add(checkNotNull(metadata.table))
+                val completedTable = checkNotNull(metadata.table)
+                check(completeNativeCensus.add(completedTable)) { "Closed native table census repeated" }
+                if (completedTable.application) complete.add(completedTable)
             }
             val physical = census && metadata.kind == NativeHistoryRowKindV2.PHYSICAL
             val table = if (physical) checkNotNull(metadata.table) else null
@@ -469,6 +472,9 @@ private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeC
                     else -> Unit
                 }
             }
+        }
+        check(completeNativeCensus == NativeHistoryTableV2.entries.toSet()) {
+            "Closed native cut did not complete every native/history table census"
         }
         check(complete == applicationTables.toSet()) {
             "Closed native cut did not complete every current-schema application table"
