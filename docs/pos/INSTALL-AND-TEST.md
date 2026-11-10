@@ -19,7 +19,8 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42791988202](https://github.com/kira-manga/test/actions/runs/42791988202/artifacts/13751684962) | `testing-inputs/ukkera-pos-testing.apk`, clean source `631df201`; install only the application APK. Includes native RPC LAN permission, physical-session cleanup and bounded history-read guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
+| Android, latest native-intake diagnostic | [Operational ACK artifact, run 42800059765](https://github.com/kira-manga/test/actions/runs/42800059765/artifacts/13755756444) | `testing-inputs/ukkera-pos-testing.apk`, clean source `c93b8671`; install only the application APK. Full database regression, fatal lint/package and one unchanged API35 x86_64 operational ACK close/reopen method passed without AOT. Whole setup/business/LAN/owner qualification remains open. |
+| Android, prior cross-API startup diagnostic | [API 35 startup artifact, run 42791988202](https://github.com/kira-manga/test/actions/runs/42791988202/artifacts/13751684962) | `testing-inputs/ukkera-pos-testing.apk`, clean source `631df201`; install only the application APK. Includes native RPC LAN permission, physical-session cleanup and bounded history-read guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
 | Windows x64 | [MSI artifact, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751569890) | `UkkeraPOS-0.1.0.msi`, source `631df201`; package/content/architecture and packaged startup passed |
 | macOS Apple Silicon | [ARM64 DMG, run 42790747818](https://github.com/kira-manga/test/actions/runs/42790747818/artifacts/13751588657) | `UkkeraPOS-1.0.0.dmg`, source `631df201`; package/content/architecture and packaged startup passed |
@@ -28,7 +29,9 @@ requirement.
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
-The current Android, desktop and iOS packages above share source `631df201`.
+The prior cross-API Android, desktop and iOS refresh shares source `631df201`.
+The newest Android native-intake diagnostic is `c93b8671`; each row above names
+its own exact source and evidence.
 The explicitly labelled historical alternatives have different revisions. The 464-method Kotlin simulator regression also executed at this source. Earlier
 `0ea09405` packages and iPad observations remain in the dated refresh evidence. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
@@ -41,7 +44,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Package | SHA-256 |
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Latest Android diagnostic APK (`631df201`) | `29b84f45479fb0c61310c0664c8fb1847866b94a5d8f9be718195b3c5c554d70` |
+| Latest Android native-intake APK (`c93b8671`) | `f0a98c3f00441f145199b0710534a01bcd95adb90ce7ce65c9dce6deff9e94f8` |
+| Prior cross-API Android APK (`631df201`) | `29b84f45479fb0c61310c0664c8fb1847866b94a5d8f9be718195b3c5c554d70` |
 | Refreshed Windows MSI | `3aeae7a962e5c6b4adbba1522d4dc6d65c0d3987c200273da275716a565e7ab6` |
 | macOS ARM64 DMG | `8529dac2d2c23d5ff1988e9bc1722867d786c90bde5de89856a7d368faf605a2` |
 | macOS x64 DMG | `0ee1fd281d13cc6ac7c9d06a2893d86bf1efda17921a097e7731d10d8f9ff8d3` |
@@ -87,9 +91,13 @@ checks the complete native census. Its signed build passed; the native successor
 passed one API35 x86_64 installation-only native method in run `42795403725`,
 including repeated confirmed-ACK observations, complete before/after native cuts
 and zero state delta. The distinct operational close/reopen segment failed
-before ACK assertions; its production registration-order correction is being
-verified. A separate cold-original method terminated during history re-observation
-without completing.
+before ACK assertions; correction `c93b8671` passed the unchanged operational
+segment without AOT in run `42800059765`, including two confirmed owner closes,
+existing-only reopen and zero ACK delta. Full database regression and clean
+signed packaging passed. A separate AOT cold-original attempt reached fresh
+employee authentication, then ended with signal 9 before a genuine SKU output
+or financial command was observed. No cold-original method completed.
+[Native-intake result and limits](../../qa/pos/traceability/android-native-intake-registration-20261110/README.md).
 This does not establish whole ACK/setup/business/LAN acceptance.
 [Exact source-bound results and limits](../../qa/pos/traceability/android-history-cell-batching-20261110/README.md).
 
@@ -166,7 +174,7 @@ five seconds and the entry screen rendered **on predecessor source `038c115e`**.
 The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The predecessor `53f496da` ZIP also
 passed [run 42783159441](https://github.com/kira-manga/test/actions/runs/42783159441),
 with original PID 3723 visible after five seconds and the unconfigured chooser in
-the retained screenshot. The current `631df201` ZIP passed [run 42786909482](https://github.com/kira-manga/test/actions/runs/42786909482), retaining original PID 3173 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
+the retained screenshot. The current `631df201` ZIP passed [run 42793999046](https://github.com/kira-manga/test/actions/runs/42793999046), retaining original PID 3541 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

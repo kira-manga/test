@@ -299,7 +299,7 @@ PYACKPASS
     cat "$OUT/summary.txt"
     exit 0 ;;
   lifecycle)
-    SELECTED_CASE="${POS_NATIVE_LIFECYCLE_CASE:?Select one frozen APSL service segment}"
+    SELECTED_CASE="${POS_NATIVE_LIFECYCLE_CASE:?Select one conditional-design APSL supporting service segment}"
     [[ "$SELECTED_CASE" == STOP_RESUME || "$SELECTED_CASE" == LOCK_BACKGROUND_REOPEN || "$SELECTED_CASE" == STOP_CLOSE_ACCOUNTING ]] || exit 2
     PHASE=lifecycle
     set +e
@@ -346,7 +346,7 @@ record=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert record['selectedCase']==sys.argv[2]
 assert record['status']=='SELECTED_APSL_SEGMENTS_EXECUTED_NOT_WHOLE_CASE'
 PYLIFECYCLEPASS
-    printf '%s\n' 'PASS: one unchanged APSL service lifecycle segment; full frozen cases, process death, force-stop, hardware and owner acceptance remain unqualified.' > "$OUT/summary.txt"
+    printf '%s\n' 'PASS: one unchanged supporting APSL service lifecycle segment from a conditional, not frozen, design; whole-case review/qualification, process death, force-stop, hardware and owner acceptance remain unqualified.' > "$OUT/summary.txt"
     cat "$OUT/summary.txt"
     exit 0 ;;
   cold-original)

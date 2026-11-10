@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
       segment:
-        description: Existing frozen service lifecycle selector; each uses a fresh emulator
+        description: Conditional-design supporting service selector; each uses a fresh emulator
         required: true
         type: choice
         default: STOP_RESUME
