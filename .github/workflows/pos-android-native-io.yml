@@ -1,4 +1,4 @@
-name: POS Android frozen native I/O slices (manual, auxiliary)
+name: POS Android native slices and startup (manual, auxiliary)
 on:
   workflow_dispatch:
     inputs:
@@ -7,10 +7,10 @@ on:
         required: true
         type: string
       slice_group:
-        description: Existing frozen native I/O or original-key slices
+        description: Existing frozen native slices, or bounded process startup without instrumentation
         required: true
         type: choice
-        options: [io, keys]
+        options: [io, keys, startup]
         default: io
 permissions:
   contents: read
@@ -21,6 +21,7 @@ jobs:
     timeout-minutes: 40
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         api: ['24', '35', '37.0']
     steps:

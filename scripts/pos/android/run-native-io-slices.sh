@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Execute existing native I/O, key, original-ACK, lifecycle or cold-original slices on a disposable emulator.
+# Execute existing native slices or a bounded app-process startup on a disposable emulator.
 # ACK and cold-original groups create a fresh synthetic original through the genuine native owner.
 # No group supplies fake authority or changes the frozen method assertions.
 set -euo pipefail
@@ -122,7 +122,7 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
 PHASE=install
-if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original || "${POS_NATIVE_SLICE_GROUP:-io}" == lifecycle ]]; then
+if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original || "${POS_NATIVE_SLICE_GROUP:-io}" == lifecycle || "${POS_NATIVE_SLICE_GROUP:-io}" == startup ]]; then
   existing="$("${ADB[@]}" shell pm path com.ukkera.pos.local.testing 2>/dev/null || true)"
   [[ -z "${existing//$'\r'/}" ]] || { echo 'Original setup slices require a fresh isolated installation.' >&2; exit 2; }
 fi
@@ -144,6 +144,49 @@ fi
 "${ADB[@]}" logcat -c
 PHASE=instrumentation
 case "${POS_NATIVE_SLICE_GROUP:-io}" in
+  startup)
+    # Packaging smoke only. It performs no native setup ceremony, employee sign-in,
+    # authority injection or instrumentation, and makes no frozen-case pass claim.
+    PHASE=startup
+    launch_status=0
+    "${ADB[@]}" shell am start -W -n \
+      com.ukkera.pos.local.testing/com.ukkera.pos.android.MainActivity \
+      > "$OUT/startup-launch.txt" 2>&1 || launch_status=$?
+    start_pid="$("${ADB[@]}" shell pidof com.ukkera.pos.local.testing 2>/dev/null | tr -d '\r\n' || true)"
+    sleep 5
+    end_pid="$("${ADB[@]}" shell pidof com.ukkera.pos.local.testing 2>/dev/null | tr -d '\r\n' || true)"
+    "${ADB[@]}" shell dumpsys activity activities > "$OUT/startup-activities.txt" 2>&1 || true
+    "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt" 2>&1 || true
+    collect_process_exit
+    python3 - "$OUT" "$launch_status" "$start_pid" "$end_pid" <<'PYSTARTUP'
+import json, os, pathlib, re, sys
+out = pathlib.Path(sys.argv[1])
+launch = (out / 'startup-launch.txt').read_text()
+start, end = sys.argv[3:5]
+observed = {
+    'launch_command_succeeded': sys.argv[2] == '0',
+    'activity_launch_reported_ok': re.search(r'^Status: ok\s*$', launch, re.M) is not None,
+    'single_positive_initial_pid': re.fullmatch(r'[1-9][0-9]*', start) is not None,
+    'same_pid_after_five_seconds': start == end and bool(start),
+}
+passed = all(observed.values())
+record = {
+    'status': 'BOUNDED_PROCESS_STARTUP_OBSERVED' if passed else 'STARTUP_NOT_CONFIRMED',
+    'source_revision': os.environ['POS_EXPECTED_APK_SOURCE'],
+    'expected_android_sdk': os.environ['POS_EXPECTED_ANDROID_API'],
+    'package': 'com.ukkera.pos.local.testing',
+    'initial_pid': start, 'final_pid': end, 'sample_interval_seconds': 5,
+    'observed': observed,
+    'instrumentation_methods_executed': 0,
+    'setup_authentication_lan_business_owner_acceptance': 'NOT_RUN',
+    'limits': 'Activity launch and the exact original PID at two observations only. No continuous-liveness, rendered-UI, setup, native custody, login, Master/Client or business acceptance claim.',
+}
+(out / 'startup.json').write_text(json.dumps(record, indent=2) + '\n')
+assert passed, 'Bounded original-process startup was not confirmed; preserve diagnostics.'
+PYSTARTUP
+    printf '%s\n' 'PASS: bounded activity launch and same process PID after five seconds; no setup, custody, employee login, LAN or business acceptance.' > "$OUT/summary.txt"
+    cat "$OUT/summary.txt"
+    exit 0 ;;
   io) ;;
   keys)
     # Preserve the two existing frozen selectors and their original assertions.

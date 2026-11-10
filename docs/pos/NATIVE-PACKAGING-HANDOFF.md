@@ -412,3 +412,23 @@ cases, process death, OS force-stop, hardware and owner acceptance remain separa
 This executor is configuration-validated but has **not run**. Original setup
 currently refuses before these lifecycle assertions; resolve that dependency
 before spending a lifecycle run.
+
+
+## Android process-startup packaging smoke
+
+The existing manual auxiliary Android workflow also accepts `slice_group=startup`:
+
+```sh
+gh workflow run pos-android-native-io.yml --repo kira-manga/test --ref <snapshot-branch> \
+  -f apk_source_revision=<exact-retained-app-sha> -f slice_group=startup
+```
+
+It uses the same signer/hash/source/API checks as the native slices, requires a
+fresh isolated installation on a disposable emulator, and launches the real app
+activity. It requires `am start -W` to report success and the same single positive
+app PID after five seconds. Launch output, activity/process diagnostics, exact
+inputs, provenance and `startup.json` are retained even when the smoke fails.
+The installed instrumentation APK is not executed. The API24/35/37 matrix runs
+at most two jobs concurrently. This is bounded packaging/startup evidence only:
+zero instrumentation methods and no continuous-liveness, rendered-UI, original
+setup, key custody, employee login, LAN, business or owner acceptance claim.

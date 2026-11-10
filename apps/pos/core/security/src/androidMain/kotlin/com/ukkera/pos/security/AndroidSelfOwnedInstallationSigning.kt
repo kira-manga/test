@@ -355,7 +355,8 @@ internal class AndroidSelfOwnedInstallationSigning(
 
     private fun load(original: SelfOwnedNativeIntentV1): PrivateKey {
         val alias = aliasFor(original, SelfOwnedTargetKeyRoleV1.TARGET_SIGNING)
-        if (!store.containsAlias(alias)) keyFailure()
+        // Existing-only lookup itself refuses a missing/wrong-kind entry. A preceding
+        // containsAlias result cannot prove possession or reserve this same native key.
         val key = store.getKey(alias, null) as? PrivateKey ?: keyFailure()
         if (key.algorithm != KeyProperties.KEY_ALGORITHM_EC) keyFailure()
         return key

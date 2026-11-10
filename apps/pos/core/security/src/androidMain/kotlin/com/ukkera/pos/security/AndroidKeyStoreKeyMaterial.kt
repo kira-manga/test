@@ -376,7 +376,9 @@ internal class AndroidSelfOwnedDataKeyMaterial(
     }
 
     private fun load(configuration: AndroidKeyStoreConfiguration, kind: AndroidKeyStoreKeyKind): SecretKey =
-        try { loadExistingAndroidKey(store, configuration, kind) } catch (_: AndroidKeyStoreAccessFailure) { keyFailure() }
+        // No creation or absence authority: every caller checks this actual existing key's
+        // metadata and original possession proof. A separate containsAlias adds no proof.
+        store.getKey(alias(configuration, kind), null) as? SecretKey ?: keyFailure()
 
     private fun inspect(configuration: AndroidKeyStoreConfiguration, kind: AndroidKeyStoreKeyKind,
         key: SecretKey, retained: SelfOwnedNativeSecurityV1? = null): SelfOwnedNativeSecurityV1 {
