@@ -367,22 +367,7 @@ PYLIFECYCLEPASS
     # Retain only bounded nonsecret observations; requests, results and private cuts stay local.
     raw_evidence="${RUNNER_TEMP:?}/pos-native-cold-original-selected.json"
     "${ADB[@]}" exec-out cat /data/user/0/com.ukkera.pos.local.testing/no_backup/cold-original-start-v1-backend-intent.json > "$raw_evidence" || true
-    python3 - "$raw_evidence" "$OUT/cold-original-summary.json" <<'PYCOLD'
-import hashlib,json,pathlib,sys
-raw=pathlib.Path(sys.argv[1]).read_bytes()
-try:
-    record=json.loads(raw)
-except (ValueError,UnicodeError):
-    summary={'result':'EVIDENCE_UNAVAILABLE'}
-else:
-    assert record['design']=='cold-original-start-v1' and record['case']=='COS-001'
-    summary={key:record.get(key) for key in ('design','case','qualification','protection','status','unboundFrozenAssertions')}
-    summary['events']=[event.get('step') for event in record.get('events',[])]
-    cleanup=[event.get('facts',{}) for event in record.get('events',[]) if event.get('step')=='FINAL_CLEANUP']
-    summary['cleanup']=[{key:event.get(key) for key in ('nativeCloseConfirmed','failureClass')} for event in cleanup]
-    summary['raw_evidence_sha256']=hashlib.sha256(raw).hexdigest()
-pathlib.Path(sys.argv[2]).write_text(json.dumps(summary,indent=2)+'\n')
-PYCOLD
+    python3 scripts/pos/android/summarize-cold-original.py "$raw_evidence" "$OUT/cold-original-summary.json"
     [[ "$status" -eq 0 ]]
     grep -Fq 'OK (1 test)' "$OUT/cold-original.txt"
     [[ "$(grep -c '^INSTRUMENTATION_STATUS_CODE: 0' "$OUT/cold-original.txt")" -eq 1 ]]
