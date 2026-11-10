@@ -105,21 +105,12 @@ internal class AndroidSelfOwnedInstallationJournal(
         val encoded = namespace.readState() ?: return null
         try {
             known(original.complete() && original.bindingStarted)
-            signing.assertOriginalSigningKey(); material.assertOriginalDataKeys()
             val envelope = SelfOwnedNativeInstallationWireV1.decodeEnvelope(encoded)
             val aad = SelfOwnedNativeInstallationWireV1.stateAad(original)
-            val plaintext = try {
-                signing.verifyJournalEnvelope(aad, envelope)
-                material.openJournal(aad, envelope.nonce, envelope.ciphertext)
-            } finally { aad.fill(0); envelope.clear() }
-            try {
-                val state = SelfOwnedNativeInstallationWireV1.decodeState(plaintext)
-                val canonical = SelfOwnedNativeInstallationWireV1.encodeState(state)
-                try { known(canonical.contentEquals(plaintext)) } finally { canonical.fill(0) }
-                signing.validateOriginalBinding(state.originalBinding)
-                namespace.assertContinuity()
-                return state
-            } finally { plaintext.fill(0) }
+            val state = try { signing.openOriginalJournalState(aad, envelope, material) }
+            finally { aad.fill(0); envelope.clear() }
+            namespace.assertContinuity()
+            return state
         } finally { encoded.fill(0) }
     }
 

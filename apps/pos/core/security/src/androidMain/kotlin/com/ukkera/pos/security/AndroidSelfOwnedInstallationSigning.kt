@@ -127,13 +127,50 @@ internal class AndroidSelfOwnedInstallationSigning(
         try { checkedKey(); return signature } catch (failure: Throwable) { signature.fill(0); throw failure }
     }
 
-    fun verifyJournalEnvelope(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1) {
+    /**
+     * One fixed, non-suspending authenticated journal read. Standalone binding/point helpers
+     * prove native possession themselves; composing those helpers used to repeat that proof
+     * while verifying the SAME envelope and binding. Here a fresh native proof brackets the
+     * whole verification instead. No proof object, plaintext buffer or key handle escapes.
+     * The storage decrypt still performs its own native key checks before and after use.
+     */
+    fun openOriginalJournalState(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1,
+        material: AndroidSelfOwnedDataKeyMaterial): SelfOwnedNativeJournalStateV1 {
         requireJournalFrame(aad, envelope.nonce, envelope.ciphertext)
-        val point = originalPoint()
-        val message = SelfOwnedNativeInstallationWireV1.stateSignature(aad, envelope.nonce, envelope.ciphertext)
-        try { if (!AndroidP256Primitives.verify(point, message, envelope.signature)) keyFailure() }
-        finally { point.fill(0); message.fill(0) }
-        checkedKey(); guard()
+        val original = journal.intent()
+        checkedKey() // Actual original private-key possession and native metadata, before read.
+        material.assertOriginalDataKeys()
+        val point = original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING).proof.copyBytes()
+        try {
+            val message = SelfOwnedNativeInstallationWireV1.stateSignature(aad, envelope.nonce, envelope.ciphertext)
+            try { if (!AndroidP256Primitives.verify(point, message, envelope.signature)) keyFailure() }
+            finally { message.fill(0) }
+            val plaintext = material.openJournal(aad, envelope.nonce, envelope.ciphertext)
+            try {
+                val state = SelfOwnedNativeInstallationWireV1.decodeState(plaintext)
+                val canonical = SelfOwnedNativeInstallationWireV1.encodeState(state)
+                try { if (!canonical.contentEquals(plaintext)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
+                finally { canonical.fill(0) }
+                // This point belongs to the native key proved above, not a wire-supplied key.
+                // The original source chain and every canonical binding field are still checked.
+                val expected = SelfOwnedNativeInstallationWireV1.encodeBindingBody(expectedBindingBody(original, point))
+                val actual = state.originalBinding.body()
+                val signature = state.originalBinding.signature()
+                try {
+                    if (!expected.contentEquals(actual)) keyFailure()
+                    val bindingMessage = SelfOwnedNativeInstallationWireV1.bindingSigningMessage(actual)
+                    try { if (!AndroidP256Primitives.verify(point, bindingMessage, signature)) keyFailure() }
+                    finally { bindingMessage.fill(0) }
+                } finally { expected.fill(0); actual.fill(0); signature.fill(0) }
+                // No caller, suspension or mutable observation can carry this proof forward.
+                // Re-prove the same original key after ALL verification before releasing DATA.
+                if (journal.intent() !== original) keyFailure()
+                checkedKey()
+                material.assertOriginalDataKeys()
+                guard()
+                return state
+            } finally { plaintext.fill(0) }
+        } finally { point.fill(0) }
     }
 
     /** Actual original allocation, not hashes supplied by a caller or imported signature chain. */
@@ -275,17 +312,21 @@ internal class AndroidSelfOwnedInstallationSigning(
     private fun expectedBindingBody(): SelfOwnedNativeBindingBodyV1 {
         val original = journal.intent()
         if (!original.complete() || !original.bindingStarted) keyFailure()
+        val point = originalPoint()
+        return try { expectedBindingBody(original, point) } finally { point.fill(0) }
+    }
+
+    /** Pure binding construction inside a currently proved signing operation; never public. */
+    private fun expectedBindingBody(original: SelfOwnedNativeIntentV1, point: ByteArray): SelfOwnedNativeBindingBodyV1 {
+        if (journal.intent() !== original || !original.complete() || !original.bindingStarted) keyFailure()
         verifyOriginalSource()
         val encoded = SelfOwnedNativeInstallationWireV1.encodeIntent(original)
         val intentDigest = try { AndroidP256Primitives.hashHex(encoded) } finally { encoded.fill(0) }
-        val point = originalPoint()
-        return try {
-            SelfOwnedNativeBindingBodyV1(original.source.preparationBody.coordinates, original.source.preparationBody.target,
-                AndroidP256Primitives.documentDigest(original.source.root), AndroidP256Primitives.documentDigest(original.source.delegation),
-                AndroidP256Primitives.documentDigest(original.source.preparation), intentDigest, SelfOwnedOctetsV1(point),
-                original.source.preparationBody.protection, requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING).security),
-                requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.STORAGE).security), requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.PEPPER).security))
-        } finally { point.fill(0) }
+        return SelfOwnedNativeBindingBodyV1(original.source.preparationBody.coordinates, original.source.preparationBody.target,
+            AndroidP256Primitives.documentDigest(original.source.root), AndroidP256Primitives.documentDigest(original.source.delegation),
+            AndroidP256Primitives.documentDigest(original.source.preparation), intentDigest, SelfOwnedOctetsV1(point),
+            original.source.preparationBody.protection, requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING).security),
+            requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.STORAGE).security), requireNotNull(original.key(SelfOwnedTargetKeyRoleV1.PEPPER).security))
     }
 
     private fun checkedKey(): PrivateKey {
