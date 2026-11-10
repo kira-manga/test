@@ -112,10 +112,22 @@ internal class RoomLocalSecurityStore(
             history?.bindSecurity(transaction)
             try {
                 val result = localSecurityBody {
-                    transaction.ensureCurrent()
-                    val captured = block(transaction)
-                    transaction.finishNormalReturn()
-                    captured
+                    try {
+                        transaction.ensureCurrent()
+                        val captured = block(transaction)
+                        transaction.finishNormalReturn()
+                        captured
+                    } catch (failure: Throwable) {
+                        // Observe only an original installation's static failure location,
+                        // before the existing detail-free outcome conversion below.
+                        try {
+                            val owner = database.runtimeHistoryOwner
+                            if (owner != null && owner.originalRecord.record.parent == null) {
+                                reportOriginalInstallationBodyFailure(failure)
+                            }
+                        } catch (_: Throwable) { /* Diagnostics cannot change the outcome. */ }
+                        throw failure
+                    }
                 }
                 // A normal rollback(result) return proves cleanup; a thrown inner exception
                 // alone does not (Room may attach a failed unwind to it).
