@@ -6,6 +6,36 @@ on:
         description: Exact primary revision of this harness snapshot
         type: string
         required: true
+      input_run_id:
+        description: Existing successful iOS package workflow run
+        type: string
+        required: true
+        default: '42680343828'
+      input_artifact_id:
+        description: Exact retained artifact ID from that run
+        type: string
+        required: true
+        default: '13706096880'
+      input_artifact_name:
+        description: Exact retained artifact name from that run
+        type: string
+        required: true
+        default: pos-ios-native-42680343828-1
+      input_source_revision:
+        description: Exact source revision recorded by the package manifest
+        type: string
+        required: true
+        default: '038c115e'
+      input_zip_sha256:
+        description: Exact SHA-256 of UkkeraPos-simulator.app.zip
+        type: string
+        required: true
+        default: '512c42221b66fdbe9e005ad5aed0784a576a6add9a7d0abf828dfe30285a9504'
+      input_zip_bytes:
+        description: Exact byte length of UkkeraPos-simulator.app.zip
+        type: string
+        required: true
+        default: '25615381'
 permissions:
   contents: read
   actions: read
@@ -20,13 +50,20 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
-          name: pos-ios-native-42680343828-1
-          run-id: 42680343828
+          name: ${{ inputs.input_artifact_name }}
+          run-id: ${{ inputs.input_run_id }}
           github-token: ${{ github.token }}
           path: simulator-input
       - name: Launch the exact verified simulator build on an iPad
         env:
           EXPECTED_HARNESS_SOURCE: ${{ inputs.source_revision }}
+          EXPECTED_INPUT_RUN: ${{ inputs.input_run_id }}
+          EXPECTED_INPUT_ARTIFACT: ${{ inputs.input_artifact_id }}
+          EXPECTED_INPUT_ARTIFACT_NAME: ${{ inputs.input_artifact_name }}
+          EXPECTED_INPUT_SOURCE: ${{ inputs.input_source_revision }}
+          EXPECTED_INPUT_SHA256: ${{ inputs.input_zip_sha256 }}
+          EXPECTED_INPUT_BYTES: ${{ inputs.input_zip_bytes }}
+          GH_TOKEN: ${{ github.token }}
         run: scripts/pos/ios/run-ipad-artifact-smoke.sh
       - uses: actions/upload-artifact@v4
         if: always()

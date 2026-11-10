@@ -19,17 +19,17 @@ package signing.
 | --- | --- | --- |
 | Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37 x86_64 and API24 x86; the same APK passed 3/3 native I/O slices on API24 x86 and another 3/3 plus bounded startup on the official API35 16 KiB profile. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
-| Windows x64 | [MSI artifact, run 42689314277](https://github.com/kira-manga/test/actions/runs/42689314277/artifacts/13707405198) | `UkkeraPOS-0.1.0.msi`, source `35441670`; includes the Windows namespace serialization and DPAPI envelope fixes |
-| macOS Apple Silicon | [ARM64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13701379955) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
-| macOS Intel | [x64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13703125856) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42680343828](https://github.com/kira-manga/test/actions/runs/42680343828/artifacts/13706096880) | `UkkeraPos-simulator.app.zip`, source `038c115e`; startup tested on iPhone 17 Pro and iPad Pro 13-inch (M5) Simulators, iOS 26.5, Xcode 26.6 |
+| Windows x64 | [MSI artifact, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13736605242) | `UkkeraPOS-0.1.0.msi`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
+| macOS Apple Silicon | [ARM64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735647679) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
+| macOS Intel | [x64 DMG, run 42756458982](https://github.com/kira-manga/test/actions/runs/42756458982/artifacts/13735608503) | `UkkeraPOS-1.0.0.dmg`, source `5b6cefe7`; package/content/architecture and packaged startup passed |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42756459264](https://github.com/kira-manga/test/actions/runs/42756459264/artifacts/13735878966) | `UkkeraPos-simulator.app.zip`, source `5b6cefe7`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; refreshed-artifact iPad smoke is pending |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
 The package revisions differ because later changes include Android setup/native
 corrections, Windows code, test fixtures, executor scripts and evidence. Do not describe them all as one tested
 source revision. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
-for the boundaries and preserved failed runs.
+for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
 
 ## Verify package SHA-256
 
@@ -40,11 +40,11 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
 | Latest Android diagnostic APK (`ecc42c63`) | `609b1d8429bab6aa50d55cbfc643f4493ccdb99efa52cbb273b99bb5c0f3108c` |
-| Refreshed Windows MSI | `f1e1793cd716194346e925e94a6274645a072204a08e564b21f461a78f24fe47` |
-| macOS ARM64 DMG | `009d9041a8f552b2e385085e3cf87280adb3d29803c17fc67029b0f623293b75` |
-| macOS x64 DMG | `63594d0d77e2f2308a2ded21e34a002ba853ce04aca26e570e7f5f9648122d13` |
-| iOS Simulator app ZIP | `512c42221b66fdbe9e005ad5aed0784a576a6add9a7d0abf828dfe30285a9504` |
-| iOS unsigned Release archive ZIP | `22302c427c1d61dd7843b23bd97464066d89cdafab4faef56c81228acae392e8` |
+| Refreshed Windows MSI | `d818ee50c1deee7174009cac810d0897b8b5e87f6e9cec2d102e2641eaa0a0af` |
+| macOS ARM64 DMG | `51c607aa60e4d64d1031f70f0d62d20ae440d8104a2da8e5240038422f9c9563` |
+| macOS x64 DMG | `b7d3673fdb32dca28b80ff2fd19ebbb29d35bd501a6814500dc0164e561d5aba` |
+| iOS Simulator app ZIP | `f13cea4ff958f88e1568cde2415c68597a6dae61aa8632bb54db516b67c9c468` |
+| iOS unsigned Release archive ZIP | `05bee3e8eb126619474ab1d1bc804b1864740773711b661f40a7d6360a1da7b0` |
 | iOS unsigned Debug archive ZIP | `51fae2442b336fcf40359845291f185b642994c1b462e70e5e776906811c0619` |
 
 ## Android
@@ -151,7 +151,8 @@ This app ZIP targets the ARM64 iOS Simulator; it is not an iPhone/iPad IPA and
 cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
 iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
-five seconds and the entry screen rendered. Interactions, rotation, accessibility
+five seconds and the entry screen rendered **on predecessor source `038c115e`**.
+The refreshed `5b6cefe7` artifact has not yet run that separate iPad check. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

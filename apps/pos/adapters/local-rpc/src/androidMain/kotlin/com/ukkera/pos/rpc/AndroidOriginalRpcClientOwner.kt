@@ -39,6 +39,7 @@ public class AndroidOriginalRpcClientUnavailable internal constructor(
  * reporting successful termination.
  */
 public class AndroidOriginalRpcClientOwner private constructor(
+    private val application: Application,
     private val retained: LocalRpcOriginalClientOwner,
 ) {
     public val phase: StateFlow<LocalRpcFactoryPhase> get() = retained.phase
@@ -47,23 +48,37 @@ public class AndroidOriginalRpcClientOwner private constructor(
     public val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = retained.approvedMaster
 
     /** The actual unstarted Client factory identity, after exact original correspondence. */
-    public suspend fun acquire(): RpcLocalIdentity = retained.acquire()
+    public suspend fun acquire(): RpcLocalIdentity {
+        AndroidLocalNetworkAccess.requireGranted(application)
+        return retained.acquire()
+    }
 
     /** Uses only the retained original Master pin; identity-only handoffs cannot connect. */
-    public suspend fun connect(endpoint: RpcEndpoint): Unit = retained.connect(endpoint)
+    public suspend fun connect(endpoint: RpcEndpoint) {
+        AndroidLocalNetworkAccess.requireGranted(application)
+        retained.connect(endpoint)
+    }
 
     /**
      * Only after the selected-original connection is actually ready. The returned service carries
      * its owner's stable local connection correlation; neither that ID nor caller IDs cross the wire.
      */
-    public suspend fun authenticationService(): LocalRpcRemoteAuthenticationService = retained.authenticationService()
+    public suspend fun authenticationService(): LocalRpcRemoteAuthenticationService {
+        AndroidLocalNetworkAccess.requireGranted(application)
+        return retained.authenticationService()
+    }
 
     /** Fixed supplier-only business port; it shares the actual original authentication connection. */
-    public suspend fun supplierClient(): LocalRpcRemoteSupplierClient = retained.supplierClient()
+    public suspend fun supplierClient(): LocalRpcRemoteSupplierClient {
+        AndroidLocalNetworkAccess.requireGranted(application)
+        return retained.supplierClient()
+    }
 
     /** Native facade only; profile selection and lifecycle remain in shared code. */
-    public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient =
-        retained.directoryClient(profile)
+    public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient {
+        AndroidLocalNetworkAccess.requireGranted(application)
+        return retained.directoryClient(profile)
+    }
 
     /** Awaits the same exact source/factory cleanup; caller cancellation cannot abandon it. */
     public suspend fun close(): Unit = retained.close()
@@ -79,15 +94,19 @@ public class AndroidOriginalRpcClientOwner private constructor(
             lan: OrganizationLan,
             trustStore: RpcTrustStore,
         ): AndroidOriginalRpcClientOwner {
+            AndroidLocalNetworkAccess.requireGranted(application)
             val lifetime = LocalRpcOriginalClientOwner.retentionLifetime(applicationScope, trustStore)
             val source = AndroidOriginalRpcClientSource(target)
             AndroidOriginalRpcClientSlot.retain(source)
             try {
                 val retained = LocalRpcOriginalClientOwner(applicationScope, lifetime, source,
-                    { RpcPlatform.android(application) }, lan, trustStore,
+                    {
+                        AndroidLocalNetworkAccess.requireGranted(application)
+                        RpcPlatform.android(application)
+                    }, lan, trustStore,
                     { AndroidOriginalRpcClientSlot.release(source) })
                 source.retainOwner(retained)
-                return AndroidOriginalRpcClientOwner(retained)
+                return AndroidOriginalRpcClientOwner(application, retained)
             } catch (failure: Throwable) {
                 // Transfer was claimed: retain its target and uncertain construction outcome.
                 // No automatic slot release or second attempt after a lost holder constructor.
@@ -107,16 +126,20 @@ public class AndroidOriginalRpcClientOwner private constructor(
             originalPairingActionId: DomainId,
             lan: OrganizationLan,
         ): AndroidOriginalRpcClientOwner {
+            AndroidLocalNetworkAccess.requireGranted(application)
             val lifetime = LocalRpcOriginalClientOwner.retentionLifetime(applicationScope)
             val source = AndroidOriginalRpcClientSource(target)
             AndroidOriginalRpcClientSlot.retain(source)
             try {
                 val retained = LocalRpcOriginalClientOwner(applicationScope, lifetime,
                     source.selectedMasterSource(originalPairingActionId),
-                    { RpcPlatform.android(application) }, lan,
+                    {
+                        AndroidLocalNetworkAccess.requireGranted(application)
+                        RpcPlatform.android(application)
+                    }, lan,
                     { AndroidOriginalRpcClientSlot.release(source) })
                 source.retainOwner(retained)
-                return AndroidOriginalRpcClientOwner(retained)
+                return AndroidOriginalRpcClientOwner(application, retained)
             } catch (failure: Throwable) {
                 // The same slot retains the exact target and any lost constructor outcome.
                 source.retainFailure(failure)

@@ -1,17 +1,13 @@
 package com.ukkera.pos.android
 
 import android.content.Context
-import android.content.pm.PackageManager
-import android.os.Build
+import com.ukkera.pos.rpc.AndroidLocalNetworkAccess
 
 /** Platform socket access only; never employee, device or branch authority. */
 internal object AndroidLocalNetworkPermission {
-    const val NAME: String = "android.permission.ACCESS_LOCAL_NETWORK"
+    const val NAME: String = AndroidLocalNetworkAccess.PERMISSION
 
-    fun isGranted(context: Context): Boolean = Build.VERSION.SDK_INT < 37 ||
-        context.checkSelfPermission(NAME) == PackageManager.PERMISSION_GRANTED
+    fun isGranted(context: Context): Boolean = AndroidLocalNetworkAccess.isGranted(context)
 
-    fun requireGranted(context: Context) {
-        if (!isGranted(context)) throw SecurityException("Local network permission is required")
-    }
+    fun requireGranted(context: Context): Unit = AndroidLocalNetworkAccess.requireGranted(context)
 }
