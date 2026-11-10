@@ -290,10 +290,16 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 arm(token, "actual-native-owner-close")
                 // Room.close cancels without joining. The real parent, children, detached
                 // cleanup jobs and runnable tails must finish BEFORE any raw descriptor close.
+                cleanupPhase("room-drain-entered")
                 roomCoroutines.closeLifetime(token)
+                cleanupPhase("room-drain-returned")
                 roomCoroutines.nativeClose(token) {
+                    cleanupPhase("room-close-entered")
                     closeOriginalRoomAfterActualDrain(token)
+                    cleanupPhase("room-close-returned")
+                    cleanupPhase("native-close-entered")
                     closeNative()
+                    cleanupPhase("native-close-returned")
                 }
                 synchronized(gate) {
                     val current = segment.get()
@@ -514,7 +520,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         fun claim(): Boolean {
             // Keep diagnostic IO outside gate while the original watchdog is still armed.
             completionPhase("claim-entered")
-            return synchronized(gate) {
+            val accepted = synchronized(gate) {
                 if (!ready || done || abandoned || closing || retired.get() || disposing) return@synchronized false
                 try { requireActive() } catch (_: Throwable) { return@synchronized false }
                 done = true
@@ -523,6 +529,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 finished.complete(Unit)
                 true
             }
+            // Claim has finished its original ownership decision. Dispatch diagnostic IO
+            // separately so neither the caller nor the owner gate waits for log delivery.
+            if (task.traceCompletion) try {
+                scope.launch { completionPhase(if (accepted) "claim-accepted" else "claim-refused") }
+            } catch (_: Throwable) { /* Diagnostic dispatch cannot change claim ownership. */ }
+            return accepted
         }
 
         private fun disposeAndFinish(alreadyArmed: Boolean) {
@@ -597,6 +609,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     }
 
     /** Diagnostics are never authority: retain the same refusal and unknown-outcome rules. */
+    /** Called only outside gate while the existing terminal-close watchdog is armed. */
+    private fun cleanupPhase(phase: String) {
+        try { Log.i("UkkeraNativeOwner", "Owner cleanup phase: $phase") }
+        catch (_: Throwable) { /* Diagnostics do not establish or change native closure. */ }
+    }
+
     private fun logUnavailableNativeAction(failure: Throwable) {
         try {
             // Never log exception messages/causes, file paths, inputs, identities or key data.

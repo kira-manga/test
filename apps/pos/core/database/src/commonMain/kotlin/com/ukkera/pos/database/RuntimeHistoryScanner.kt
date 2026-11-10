@@ -241,6 +241,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
     // ROLE_TRANSITION events transfer their full event reservation to coldScanMemory before
     // decoding; these immutable evidence copies share that cumulative retained allowance.
     private val masterLifecycleEvidence = linkedMapOf<Long, RuntimeMasterLifecycleEvidenceV1>()
+    private val masterLifecycleImages = linkedSetOf<Long>()
     private var censusOriginalAccountDigest: PayloadDigest? = null
     // Older controller protocol only. New native chronological seeds never borrow this credential.
     private var censusOriginalAccount: ProtectedLocalAccount? = null
@@ -385,6 +386,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     intent.originalRequestId == event.eventId && intent.originalActorId == event.operatorId &&
                     intent.originalRequestDigest == event.contentDigest && intent.originalOperationId == null &&
                     intent.resources.isEmpty())
+                historyShapeV2(masterLifecycleImages.add(requireNotNull(lineage).row.sequence))
                 requireNotNull(lineage).lifecycleIntent = null
             }
             if (expected.pass == NativeHistoryReadPassV2.CENSUS) {
@@ -3197,6 +3199,11 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             // Native verified this exact root signature before opening and again after close.
             // A self-signed head-reference document without this terminal ACK is insufficient.
         }
+        // Lifecycle changes insert exactly one immutable audit and never mutate the
+        // authentication reducers' accounts/sessions. Account that separate, fully joined
+        // row only after EVERY authorised event has its exact protected lineage image.
+        historyShapeV2(masterLifecycleImages == masterLifecycleEvidence.keys)
+        val lifecycleAudits = masterLifecycleEvidence.size.toLong()
         if (eventCount == 1L) {
             employees.finish(); policies.finish(); deviceAdmissions.finish(); approvals.requireClosure(); serialPublications.requireClosure()
             // Exactly BranchRow + six non-event protected seeds + receipt-bearing auth-event.
@@ -3221,18 +3228,19 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 requireNotNull(previousEvent).commandSequence == 0L)
         } else if (originalThrottleEvents + originalAuthenticationEvents + originalSessionRevocationEvents + originalAdministrationCancellationEvents +
             deviceRevocationEvents + deviceAdmissions.eventCount + originalPolicyActivationEvents + serialPublications.originalEvents + employees.eventCount +
-            approvals.issuanceEvents + approvals.retirementEvents == eventCount - 1L &&
+            approvals.issuanceEvents + approvals.retirementEvents + lifecycleAudits == eventCount - 1L &&
             authenticationReplay != null) {
             val replay = checkNotNull(authenticationReplay)
             replay.finish(); employees.finish(); policies.finish(); deviceAdmissions.finish(); approvals.requireClosure(); serialPublications.requireClosure()
             // The serial-specific proof already accounts its AUTH_EVENT in the authentic
             // actor's reducer. Do not add those immutable rows/tips a second time here.
             for (table in RuntimeHistoryTableV2.entries.filter { it.application })
-                historyShapeV2(count(table) == replay.count(table) + employees.count(table) + deviceAdmissions.count(table) + approvals.count(table))
-            historyShapeV2(eventMutationCount == replay.mutationCount + employees.mutationCount + deviceAdmissions.mutationCount + approvals.nonbusinessProtectedMutationCount &&
+                historyShapeV2(count(table) == replay.count(table) + employees.count(table) + deviceAdmissions.count(table) + approvals.count(table) +
+                    (if (table == RuntimeHistoryTableV2.AUTH_EVENT) lifecycleAudits else 0L))
+            historyShapeV2(eventMutationCount == replay.mutationCount + employees.mutationCount + deviceAdmissions.mutationCount + approvals.nonbusinessProtectedMutationCount + lifecycleAudits &&
                 eventMutationCount == 8L + originalThrottleMutations + originalAuthenticationMutations + originalSessionRevocationMutations +
                     originalAdministrationCancellationMutations + originalDeviceRevocationMutations + deviceAdmissions.mutationCount + originalPolicyActivationMutations +
-                    serialPublications.originalEvents + employees.mutationCount + approvals.nonbusinessProtectedMutationCount &&
+                    serialPublications.originalEvents + employees.mutationCount + approvals.nonbusinessProtectedMutationCount + lifecycleAudits &&
                 originalThrottleImages == originalThrottleMutations && originalAuthenticationImages == originalAuthenticationMutations &&
                 originalSessionRevocationImages == originalSessionRevocationMutations &&
                 originalAdministrationCancellationImages == originalAdministrationCancellationMutations &&
@@ -3246,7 +3254,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 approvals.imageCount == approvals.protectedMutationCount && approvals.commandEvents == 0L &&
                 serialPublications.imageCount == serialPublications.mutationCount && serialPublications.tipCount == serialPublications.eventCount &&
                 serialPublications.employeeEvents == employees.serialPublicationRequestMutations &&
-                lineageCount == eventMutationCount && tipCount == replay.tipCount + employees.tipCount + deviceAdmissions.tipCount + approvals.tipCount && commandCount == 0L &&
+                lineageCount == eventMutationCount && tipCount == replay.tipCount + employees.tipCount + deviceAdmissions.tipCount + approvals.tipCount + lifecycleAudits && commandCount == 0L &&
                 censusAccountSessionCount == replay.sessionCount + employees.sessionCount && requireNotNull(previousEvent).commandSequence == 0L)
         } else if (authenticationReplay != null && business?.enabled == true &&
             originalThrottleEvents + originalAuthenticationEvents + originalSessionRevocationEvents + originalAdministrationCancellationEvents +
@@ -3267,7 +3275,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 originalFoodPaymentRejectionEvents + employeeFoodPaymentRejectionEvents +
                 originalReturnCaseQualificationRejectionEvents + employeeReturnCaseQualificationRejectionEvents +
                 originalReturnStockDispositionRejectionEvents + employeeReturnStockDispositionRejectionEvents + approvals.issuanceEvents + approvals.retirementEvents +
-                originalApprovedBusinessEvents + employeeApprovedBusinessEvents == eventCount - 1L) {
+                originalApprovedBusinessEvents + employeeApprovedBusinessEvents + lifecycleAudits == eventCount - 1L) {
             val replay = checkNotNull(authenticationReplay)
             val joined = checkNotNull(business)
             val businessEvents = originalBusinessEvents + employeeBusinessEvents + employeeNativeOriginalEvents +
@@ -3307,7 +3315,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             replay.finish(); employees.finish(); policies.finish(); deviceAdmissions.finish(); joined.finish(commandCount, businessMutations)
             approvals.requireClosure(); serialPublications.requireClosure()
             for (table in RuntimeHistoryTableV2.entries.filter { it.application })
-                historyShapeV2(count(table) == replay.count(table) + employees.count(table) + deviceAdmissions.count(table) + joined.currentCount(table) + approvals.count(table))
+                historyShapeV2(count(table) == replay.count(table) + employees.count(table) + deviceAdmissions.count(table) + joined.currentCount(table) + approvals.count(table) +
+                    (if (table == RuntimeHistoryTableV2.AUTH_EVENT) lifecycleAudits else 0L))
             historyShapeV2(businessEvents == commandCount &&
                 originalApprovedBusinessEvents == approvals.originalCommandEvents &&
                 originalApprovedBusinessMutations == approvals.originalCommandMutations &&
@@ -3414,10 +3423,10 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 employeeReturnStockDispositionRejectionMutations == joined.employeeReturnStockDispositionRejectionMutations &&
                 originalReturnStockDispositionRejectionEvents + employeeReturnStockDispositionRejectionEvents == joined.returnStockDispositionRejectionEvents &&
                 originalReturnStockDispositionRejectionMutations + employeeReturnStockDispositionRejectionMutations == joined.returnStockDispositionRejectionMutations &&
-                eventMutationCount == replay.mutationCount + employees.mutationCount + deviceAdmissions.mutationCount + businessMutations + approvals.nonbusinessProtectedMutationCount &&
+                eventMutationCount == replay.mutationCount + employees.mutationCount + deviceAdmissions.mutationCount + businessMutations + approvals.nonbusinessProtectedMutationCount + lifecycleAudits &&
                 eventMutationCount == 8L + originalThrottleMutations + originalAuthenticationMutations + originalSessionRevocationMutations +
                     originalAdministrationCancellationMutations + originalDeviceRevocationMutations + deviceAdmissions.mutationCount + originalPolicyActivationMutations +
-                    serialPublications.originalEvents + employees.mutationCount + businessMutations + approvals.nonbusinessProtectedMutationCount &&
+                    serialPublications.originalEvents + employees.mutationCount + businessMutations + approvals.nonbusinessProtectedMutationCount + lifecycleAudits &&
                 originalThrottleImages == originalThrottleMutations && originalAuthenticationImages == originalAuthenticationMutations &&
                 originalSessionRevocationImages == originalSessionRevocationMutations &&
                 originalAdministrationCancellationImages == originalAdministrationCancellationMutations &&
@@ -3428,7 +3437,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 employeeDeviceRevocationImages == employees.deviceRevocationMutations &&
                 policies.originalImages == originalPolicyActivationMutations && policies.employeeImages == employees.policyActivationMutations &&
                 policies.mutationCount == originalPolicyActivationMutations + employees.policyActivationMutations &&
-                lineageCount == eventMutationCount && tipCount == replay.tipCount + employees.tipCount + deviceAdmissions.tipCount + joined.tipDelta + approvals.tipCount &&
+                lineageCount == eventMutationCount && tipCount == replay.tipCount + employees.tipCount + deviceAdmissions.tipCount + joined.tipDelta + approvals.tipCount + lifecycleAudits &&
                 censusAccountSessionCount == replay.sessionCount + employees.sessionCount)
             // Every historical/current stock selector, payload, actual source and COMPLETE
             // installed stock/commerce producer has been joined, not merely counted above.
@@ -3481,6 +3490,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         lineage?.clear(); lineage = null
         authenticationReplay?.clear(); authenticationReplay = null
         masterLifecycleEvidence.clear()
+        masterLifecycleImages.clear()
         employees.clear(); policies.clear(); deviceAdmissions.clear(); approvals.clear(); serialPublications.clear()
         earlierOriginal = null
         protectedFinalRequestKeys.clear()
