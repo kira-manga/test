@@ -352,8 +352,7 @@ internal class AndroidSelfOwnedInstallationSigning(
     }
 
     private fun checkedKey(): PrivateKey {
-        guard()
-        val original = journal.intent(); val intent = original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING)
+        val original = guard(); val intent = original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING)
         if (intent.phase != SelfOwnedKeyIntentPhaseV1.COMPLETE) keyFailure()
         val key = load(original)
         if (inspect(original, key) != intent.security) keyFailure()
@@ -424,12 +423,13 @@ internal class AndroidSelfOwnedInstallationSigning(
             SelfOwnedTargetKeyRoleV1.PEPPER -> "${environment.profile.p2DataPrefix}${coordinates.installationId.value}/pepper/${coordinates.pepperKeyId.value}"
         }
     }
-    private fun guard() {
+    private fun guard(): SelfOwnedNativeIntentV1 {
         work.requireActive()
-        // intent() performs the fixed namespace check, including fresh installed-app
-        // observations before and after it. Do not repeat one immediately before it.
-        journal.intent()
+        // Return this observation only to the synchronous caller. No key use or
+        // suspension intervenes; post-use guards still reobserve namespace/app custody.
+        val original = journal.intent()
         work.requireActive()
+        return original
     }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
 

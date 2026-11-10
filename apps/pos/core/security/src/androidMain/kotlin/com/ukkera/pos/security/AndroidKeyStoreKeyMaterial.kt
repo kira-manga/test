@@ -322,7 +322,7 @@ internal class AndroidSelfOwnedDataKeyMaterial(
     fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
     fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
 
-    fun configuration(): AndroidKeyStoreConfiguration { guard(); return configuration(journal.intent()) }
+    fun configuration(): AndroidKeyStoreConfiguration = configuration(guard())
 
     fun sealJournal(aad: ByteArray, plaintext: ByteArray): AndroidSelfOwnedCiphertext {
         requireJournalAad(aad)
@@ -363,8 +363,7 @@ internal class AndroidSelfOwnedDataKeyMaterial(
     }
 
     private fun checkedKey(role: SelfOwnedTargetKeyRoleV1): SecretKey {
-        guard()
-        val original = journal.intent(); val intent = original.key(role)
+        val original = guard(); val intent = original.key(role)
         if (intent.phase != SelfOwnedKeyIntentPhaseV1.COMPLETE) keyFailure()
         val configuration = configuration(original); val kind = kind(role)
         val key = load(configuration, kind)
@@ -464,12 +463,13 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         SelfOwnedTargetKeyRoleV1.PEPPER -> AndroidKeyStoreKeyKind.PEPPER
         SelfOwnedTargetKeyRoleV1.TARGET_SIGNING -> keyFailure()
     }
-    private fun guard() {
+    private fun guard(): SelfOwnedNativeIntentV1 {
         work.requireActive()
-        // intent() performs the fixed namespace check, including fresh installed-app
-        // observations before and after it. Do not repeat one immediately before it.
-        journal.intent()
+        // Return this observation only to the synchronous caller. No key use or
+        // suspension intervenes; post-use guards still reobserve namespace/app custody.
+        val original = journal.intent()
         work.requireActive()
+        return original
     }
     private fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
 }
