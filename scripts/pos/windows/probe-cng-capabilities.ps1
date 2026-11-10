@@ -62,7 +62,7 @@ foreach ($name in @('Microsoft Software Key Storage Provider', 'Microsoft Platfo
             $record.algorithms = @($algorithms.ToArray())
         }
         $queries = [Collections.Generic.List[object]]::new()
-        foreach ($algorithm in @('AES', 'SHA256', 'HMAC', 'SP800_108_CTR_HMAC', 'ECDSA_P256')) {
+        foreach ($algorithm in @('AES', 'SHA256', 'HMAC', 'HMAC-SHA256', 'SP800_108_CTR_HMAC', 'ECDSA_P256')) {
             $status = [PosCngCapabilityNative]::NCryptIsAlgSupported($provider, $algorithm, 0x40)
             $queries.Add([ordered]@{ algorithm = $algorithm; status = [PosCngCapabilityNative]::Status($status);
                 advertised = ($status -eq 0) })
