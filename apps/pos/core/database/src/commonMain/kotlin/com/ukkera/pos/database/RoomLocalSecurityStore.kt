@@ -138,7 +138,14 @@ internal class RoomLocalSecurityStore(
                 transaction.close()
             }
         } } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { localStorageUncertain() }
+        catch (failure: Exception) {
+            // Preserve only the static outer failure before detail-free uncertainty conversion.
+            if (database.runtimeHistoryOwner != null) {
+                try { reportRuntimeHistoryLoanFailure(failure) }
+                catch (_: Throwable) { /* Observation cannot change the outcome. */ }
+            }
+            localStorageUncertain()
+        }
     }
 
 }

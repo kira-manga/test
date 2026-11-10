@@ -1168,8 +1168,11 @@ public class AtomicMasterStore internal constructor(
         val guard = StreamedPlanGuard(this, streamingHandler, prepared, context, normalized, authorization, now,
             recovery, physicalKinds, physicalClaims, approval?.additionalResources.orEmpty())
         guard.requireNonphysical()
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_SPOOL_CREATE_ENTER)
         val spool = TransactionPlanSpool.create(view.stockRelationalAccess(), context)
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_SPOOL_CREATED)
         val proposed = prepared.propose(authorization, now, spool.sink)
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_PROPOSAL_RETURNED)
         val decision = if (proposed is StreamedMutationDecision.Apply && proposed.mustCommitBefore?.let {
                 now >= it || clock.now() >= it } == true)
             StreamedMutationDecision.Reject("precondition.expired", StoredBytes("precondition.expired".encodeToByteArray()))
@@ -1194,6 +1197,7 @@ public class AtomicMasterStore internal constructor(
             }
             is StreamedMutationDecision.Apply -> {
                 spool.seal(decision, guard)
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_SEAL_RETURNED)
                 // Complete actual footprint, including resources discovered during streaming.
                 // The native-format limit is explicit; overflow rolls back, never truncates.
                 val resources = linkedSetOf<RecoveryResourceKey>()
@@ -1204,11 +1208,14 @@ public class AtomicMasterStore internal constructor(
                 val sources = spool.summary(StreamedSectionV2.SOURCES)
                 val effects = spool.summary(StreamedSectionV2.EFFECTS)
                 spool.invalidateBeforeWrite()
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_INVALIDATION_RETURNED)
                 if (approval != null && !approvalSource.consume(approval, view)) currentLocalAuthorizationDenied()
                 history.captureCommand(request, principal, context.semanticDigest, resources, true, prepared.requirement, authorization, decision.mustCommitBefore)
                 history.recordDependency(listOf("stock.stream/v2", sources.count.toString(), sources.bytes.toString(),
                     sources.commitment.value, effects.count.toString(), effects.bytes.toString(), effects.commitment.value))
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_HISTORY_CAPTURED)
                 val committed = persistStreamed(branch, request, context, principal, authorization, prepared.requirement, decision, spool, now)
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.STREAMED_PERSIST_RETURNED)
                 fault.at(StoreFaultPoint.BEFORE_COMMIT)
                 KernelReply.Recorded(committed.first, false, decision.mustCommitBefore, journalHash = committed.second)
             }

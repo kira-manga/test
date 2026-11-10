@@ -65,6 +65,8 @@ internal class StockSqlLoan(
             failed = true
             physicalTrace?.fail()
             if (failure is CancellationException) throw failure
+            try { reportRuntimeHistoryLoanFailure(failure) }
+            catch (_: Throwable) { /* Static observation only, before detail-free conversion. */ }
             stockSqlUnavailableV2()
         } finally { busy = false }
     }
@@ -126,6 +128,8 @@ internal class StockSqlLoan(
             failed = true
             physicalTrace?.fail()
             if (failure is CancellationException) throw failure
+            try { reportRuntimeHistoryLoanFailure(failure) }
+            catch (_: Throwable) { /* Static observation only, before detail-free conversion. */ }
             stockSqlUnavailableV2()
         }
     }

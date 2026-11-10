@@ -352,6 +352,11 @@ internal class RoomRuntimeHistoryOwner private constructor(
                 result
             } catch (failure: Throwable) {
                 loanFailure = failure
+                // The mandatory unknown-frame exclusion below may terminate this process
+                // before the original caller can observe its failure. Capture static source
+                // locations only, outside native gates and under the unchanged work deadline.
+                try { reportRuntimeHistoryLoanFailure(failure) }
+                catch (_: Throwable) { /* Observation never changes mandatory denial. */ }
                 denyFailedLoan(failure)
                 throw failure
             } finally {
