@@ -365,9 +365,9 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 requireNotNull(lineage).eventHeader?.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION) {
                 val event = value as? LocalAuthEvent ?: malformed()
                 val audit = event.lifecycle
-                val intent = try {
-                    SelfOwnedNativeHistoryWireV2.decodeIntent(requireNotNull(requireNotNull(lineage).capsule).intent)
-                } catch (_: Exception) { malformed() }
+                // LINEAGE_EVENT_CHUNKS has already validated and cleared its raw capsule.
+                // Keep only that decoded lifecycle intent through the following image join.
+                val intent = requireNotNull(lineage).lifecycleIntent ?: malformed()
                 val evidence = masterLifecycleEvidence[requireNotNull(lineage).row.sequence]
                     ?: malformed()
                 historyShapeV2(event.kind == LocalAuthEventKind.MASTER_LIFECYCLE &&
@@ -385,6 +385,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     intent.originalRequestId == event.eventId && intent.originalActorId == event.operatorId &&
                     intent.originalRequestDigest == event.contentDigest && intent.originalOperationId == null &&
                     intent.resources.isEmpty())
+                requireNotNull(lineage).lifecycleIntent = null
             }
             if (expected.pass == NativeHistoryReadPassV2.CENSUS) {
                 captureOriginalAuthenticationCensus(value, item.bytes)
@@ -2083,6 +2084,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         var eventHeader: RuntimeHistoryEventHeaderV2? = null
         var eventDigest: PayloadDigest? = null
         var capsule: RuntimeHistoryCapsule? = null
+        var lifecycleIntent: NativeHistoryOriginalIntentV2? = null
         var capsuleEnded = !RuntimeHistoryTableV2.fromTag(row.tableTag).hasAuthenticationImages
         var throttleEvidence: RuntimeThrottleEvidenceV1? = null
         var authenticationImage: RuntimeAuthenticationImageV1? = null
@@ -2111,7 +2113,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             administrationCancellationImage = null; deviceRevocationImage = null
             previousAdmissionDigest = null; afterAdmissionDigest = null
             previousPolicyDigest = null; afterPolicyDigest = null
-            eventHeader = null; eventDigest = null
+            eventHeader = null; eventDigest = null; lifecycleIntent = null
             previousThrottle = null; afterThrottle = null; previousAccountDigest = null; afterAccountDigest = null }
     }
     private fun startLineage(row: RuntimeHistoryRowVersionRowV2) {
@@ -3023,6 +3025,11 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     active.employeeThrottleEvidence = active.throttleEvidence?.let {
                         isEmployeeAuthenticationThrottle(it, header.sequence)
                     } == true
+                }
+                if (header.purpose == RuntimeWritePurposeV2.ROLE_TRANSITION &&
+                    active.row.tableTag == RuntimeHistoryTableV2.AUTH_EVENT.tag) {
+                    historyShapeV2(active.lifecycleIntent == null)
+                    active.lifecycleIntent = intent
                 }
                 capsule.clear(); active.capsule = null; active.capsuleEnded = true
             }

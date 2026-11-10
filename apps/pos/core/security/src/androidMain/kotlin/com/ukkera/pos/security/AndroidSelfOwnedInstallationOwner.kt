@@ -1442,7 +1442,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
     /** Outside-slot failures deny the native owner first; caller cancellation revokes nothing. */
     private suspend fun <T> purchasingPolicyOperation(operational: Boolean, newIssuance: Boolean = false,
         secret: CharArray? = null, body: (CharArray?) -> T): LocalCompanyAuthorityResult<T> = try {
-        businessOperation(operational, newIssuance, secret, body).also { outcome ->
+        businessOperation(operational, newIssuance, secret, body = body).also { outcome ->
             if (outcome is LocalCompanyAuthorityResult.Unavailable) when (outcome.nativeReason) {
                 SelfOwnedInstallationFailureV1.INVALID_APPLICATION, SelfOwnedInstallationFailureV1.USER_LOCKED,
                 SelfOwnedInstallationFailureV1.STATE_UNCERTAIN, SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN,
@@ -1501,7 +1501,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
     override suspend fun approve(action: CompanyBusinessPublicationAction, headLogin: String, headSecret: CharArray):
         LocalCompanyAuthorityResult<CompanyBusinessPublicationOutput> {
         try {
-            return businessOperation(operational = true, newIssuance = true, secret = headSecret) { owned ->
+            return businessOperation(operational = true, newIssuance = true, secret = headSecret,
+                tracePublicationDelivery = true) { owned ->
                 sameBusinessPublicationsNative().approve(action, headLogin, requireNotNull(owned))
             }
         } finally { headSecret.fill('\u0000') }
@@ -1689,7 +1690,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
 
     /** Shared native exclusion/watchdog, never IO inside a business transaction or a second key owner. */
     private suspend fun <T> businessOperation(operational: Boolean, newIssuance: Boolean = false,
-        secret: CharArray? = null, body: (CharArray?) -> T): LocalCompanyAuthorityResult<T> {
+        secret: CharArray? = null, tracePublicationDelivery: Boolean = false,
+        body: (CharArray?) -> T): LocalCompanyAuthorityResult<T> {
         val contextAction = synchronized(contextGate) {
             when {
                 contextPhase == ContextPhase.CLOSED || dataUseDeniedNoIo() -> return LocalCompanyAuthorityResult.Unavailable(
@@ -1706,6 +1708,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
                     it.copyOf().also { _ -> it.fill('\u0000') }
                 }
                 object : AndroidOwnedTask<LocalCompanyAuthorityResult<T>> {
+                    override val traceCompletion: Boolean = tracePublicationDelivery
                     override fun execute(): LocalCompanyAuthorityResult<T> {
                         requireNotNull(environment).requireExistingOriginalObservation(); requireDataNative()
                         if (operational) {
@@ -1718,8 +1721,18 @@ internal class AndroidSelfOwnedInstallationLifetime(
                         if (newIssuance && !newCeremoniesAllowedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
                         val result = try { LocalCompanyAuthorityResult.Value(body(owned)) }
                         catch (refusal: LocalCompanyAuthorityRefusal) { LocalCompanyAuthorityResult.Unavailable(refusal.reason) }
-                        return try { requireDataNative(); result }
-                        catch (failure: Throwable) { discard(result); throw failure }
+                        if (tracePublicationDelivery) {
+                            try { android.util.Log.i("UkkeraNativeOwner", "Native publication delivery: final-custody-entered") }
+                            catch (_: Throwable) { /* Diagnostic only. */ }
+                        }
+                        return try {
+                            requireDataNative(trace = tracePublicationDelivery)
+                            if (tracePublicationDelivery) {
+                                try { android.util.Log.i("UkkeraNativeOwner", "Native publication delivery: final-custody-returned") }
+                                catch (_: Throwable) { /* Diagnostic only. */ }
+                            }
+                            result
+                        } catch (failure: Throwable) { discard(result); throw failure }
                     }
                     override fun discard(value: LocalCompanyAuthorityResult<T>) {
                         if (value is LocalCompanyAuthorityResult.Value) {
@@ -1924,10 +1937,10 @@ internal class AndroidSelfOwnedInstallationLifetime(
     private val dataObservationDiagnostics = java.util.concurrent.atomic.AtomicInteger()
 
     /** Only same-owner authored native tasks call this, before AND after actual data operations. */
-    fun requireDataNative() {
+    fun requireDataNative(trace: Boolean = false) {
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         val diagnosticIndex = dataObservationDiagnostics.getAndUpdate { if (it < 257) it + 1 else it }
-        val sample = diagnosticIndex < 4 || diagnosticIndex == 16 || diagnosticIndex == 64 ||
+        val sample = trace || diagnosticIndex < 4 || diagnosticIndex == 16 || diagnosticIndex == 64 ||
             diagnosticIndex == 128 || diagnosticIndex == 256
         readOriginalStateNative(sample)
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)

@@ -32,6 +32,8 @@ internal sealed interface AndroidOwnedResult<out T> {
 
 /** Internal operation descriptions, NOT injected human/native/custody verifiers. */
 internal interface AndroidOwnedTask<T> {
+    /** Fixed completion observations for the authored publication approval only. No task data. */
+    val traceCompletion: Boolean get() = false
     fun execute(): T
     fun discard(value: T)
     fun clearInputs()
@@ -447,6 +449,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         private var disposing = false
         private var done = false
 
+        private fun completionPhase(phase: String) {
+            if (!task.traceCompletion) return
+            try { Log.i("UkkeraNativeOwner", "Native publication delivery: $phase") }
+            catch (_: Throwable) { /* Diagnostics cannot alter ownership or the original result. */ }
+        }
+
         fun execute() {
             val outcome: AndroidOwnedResult<T> = try {
                 val skip = synchronized(gate) { abandoned }
@@ -472,7 +480,9 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 logUnavailableNativeAction(failure)
                 retire(); AndroidOwnedResult.Unavailable(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             }
+            completionPhase("task-returned")
             try { task.clearInputs() } catch (_: Throwable) { requestProcessExclusion(ExclusionReason.ACTION_INPUT_CLEAR_FAILED) }
+            completionPhase("inputs-cleared")
             try { requireActive() } catch (_: Throwable) { synchronized(gate) { abandoned = true } }
             val dispose: Boolean
             synchronized(gate) {
@@ -481,6 +491,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 if (dispose) { disposing = true; abandoned = true }
                 else posted = true
             }
+            completionPhase(if (dispose) "disposal-selected" else "result-posting")
             if (dispose) disposeAndFinish(alreadyArmed = false)
             else continuation!!.resume(outcome) { _, _, _ -> abandon() }
         }
@@ -500,14 +511,18 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             }
         }
 
-        fun claim(): Boolean = synchronized(gate) {
-            if (!ready || done || abandoned || closing || retired.get() || disposing) return@synchronized false
-            try { requireActive() } catch (_: Throwable) { return@synchronized false }
-            done = true
-            if (invocation === this) invocation = null
-            disarm(this)
-            finished.complete(Unit)
-            true
+        fun claim(): Boolean {
+            // Keep diagnostic IO outside gate while the original watchdog is still armed.
+            completionPhase("claim-entered")
+            return synchronized(gate) {
+                if (!ready || done || abandoned || closing || retired.get() || disposing) return@synchronized false
+                try { requireActive() } catch (_: Throwable) { return@synchronized false }
+                done = true
+                if (invocation === this) invocation = null
+                disarm(this)
+                finished.complete(Unit)
+                true
+            }
         }
 
         private fun disposeAndFinish(alreadyArmed: Boolean) {
