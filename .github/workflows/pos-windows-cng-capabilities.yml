@@ -1,0 +1,38 @@
+name: POS Windows CNG capability diagnostic (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact primary source staged in the auxiliary snapshot
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  cng-capabilities:
+    if: github.repository == 'kira-manga/test'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record read-only native provider capabilities
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ((Get-Content SOURCE-REVISION.txt -Raw).Trim() -ne $env:EXPECTED_SOURCE_REVISION) { throw 'Source revision mismatch.' }
+          New-Item -ItemType Directory -Path cng-capability-output | Out-Null
+          Copy-Item SOURCE-REVISION.txt cng-capability-output/
+          git rev-parse HEAD | Set-Content cng-capability-output/HARNESS-REVISION.txt
+          Get-FileHash scripts/pos/windows/probe-cng-capabilities.ps1 -Algorithm SHA256 | Select-Object Hash | ConvertTo-Json | Set-Content cng-capability-output/script-hash.json
+          & scripts/pos/windows/probe-cng-capabilities.ps1 -OutputDirectory cng-capability-output
+      - name: Retain nonsecret capability observations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-windows-cng-capabilities-${{ github.run_id }}-${{ github.run_attempt }}
+          path: cng-capability-output
+          retention-days: 14
