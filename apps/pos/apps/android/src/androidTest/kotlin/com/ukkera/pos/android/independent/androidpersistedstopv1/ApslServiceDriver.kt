@@ -179,8 +179,10 @@ internal class ApslServiceDriver(context: Context) {
 
     suspend fun awaitLocalClientConnected(controller: LocalSetupController) {
         withTimeout(180_000L) {
-            controller.state.first { it.localClientConnected || it.phase == LocalSetupPhase.CLOSED ||
-                (it.problem != null && it.work == null) }
+            // Publication precedes the enrollment operation's finally block. Wait for that
+            // operation to settle before the next explicit action can be admitted.
+            controller.state.first { (it.localClientConnected && it.work == null) ||
+                it.phase == LocalSetupPhase.CLOSED || (it.problem != null && it.work == null) }
         }.also { view ->
             check(view.localClientConnected) { "Actual original client was not published: ${view.problem}" }
         }
