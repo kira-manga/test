@@ -237,6 +237,9 @@ public object IosInstalledApplicationIdentity {
 
     /** Simulator builds are not installed, code-signed device identities in this profile. */
     private fun isSimulator(): Boolean {
+        // Target-specific actuals are compiled into the binary. Environment variables
+        // and bundle paths are additional refusals, never proof of a physical build.
+        if (!iosInstalledIdentityPhysicalDeviceTarget) return true
         val environment = NSProcessInfo.processInfo.environment
         if (environment.keys.any {
                 when (it.toString()) {
