@@ -779,6 +779,7 @@ public class AtomicMasterStore internal constructor(
     internal suspend fun publishPhysicalFromOwnedIngress(principal: AuthenticatedPrincipal?, offer: PhysicalInstructionOffer,
         lifetime: PhysicalInteractiveRequestLifetime, ingress: PhysicalRecordingOwnedIngress): PhysicalInstructionReply {
         var transferred = false
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_CORE_ENTERED)
         try {
             val registry = physicalInstructionRegistry ?: return PhysicalInstructionReply.Held
             val gate = physicalRecordingGate as? PhysicalRecordingInteractiveGate ?: return PhysicalInstructionReply.Held
@@ -799,7 +800,9 @@ public class AtomicMasterStore internal constructor(
             var authorized = false
             var authorizingResult: InteractiveAuthorization = InteractiveAuthorization.HELD
             try {
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_NATIVE_PREPARE_ENTERED)
                 val prepared = gate.prepareInstruction(binding)
+                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_NATIVE_PREPARE_RETURNED)
                 // Immediately take an actually returned SAME-binding lease, before cancellation
                 // may throw. A provider retains responsibility for delivery that never resumes.
                 if (prepared is PhysicalNativeInstructionPreparation.Prepared) {
@@ -813,14 +816,21 @@ public class AtomicMasterStore internal constructor(
                     is PhysicalNativeInstructionPreparation.Prepared -> {
                         if (!physicalWorkerCurrent(ingress, currentCoroutineContext())) InteractiveAuthorization.STORAGE_UNCERTAIN
                         else if (binding.denial.denied || !start.deliveryCurrent()) InteractiveAuthorization.HELD
-                        else authorizeRetainedPhysical(principal, handler, authorizer, registry, InteractiveNativeTicket(binding, prepared.lease))
+                        else {
+                            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_AUTHORIZATION_ENTERED)
+                            val authorization = authorizeRetainedPhysical(principal, handler, authorizer, registry,
+                                InteractiveNativeTicket(binding, prepared.lease))
+                            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_AUTHORIZATION_RETURNED)
+                            authorization
+                        }
                     }
                 }
                 authorized = authorizingResult == InteractiveAuthorization.AUTHORIZED &&
                     physicalWorkerCurrent(ingress, currentCoroutineContext()) && !binding.denial.denied
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: Exception) {
+            } catch (failure: Exception) {
+                reportPhysicalRecordingFailure(failure)
                 authorizingResult = InteractiveAuthorization.STORAGE_UNCERTAIN
             } finally {
                 // Distinct instruction/event custody was pre-reserved by prepareInstruction.
@@ -829,8 +839,12 @@ public class AtomicMasterStore internal constructor(
                 nativeLease?.let { lease ->
                     try {
                         if (!ingress.sameWorkerContext(currentCoroutineContext())) cleanupUncertain = true
-                        else cleanupUncertain = withContext(NonCancellable) { gate.releaseInstruction(lease) } !=
-                            PhysicalRecordingNativeRelease.RELEASED
+                        else {
+                            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_RELEASE_ENTERED)
+                            val released = withContext(NonCancellable) { gate.releaseInstruction(lease) }
+                            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_RELEASE_RETURNED)
+                            cleanupUncertain = released != PhysicalRecordingNativeRelease.RELEASED
+                        }
                     } catch (_: Exception) { cleanupUncertain = true }
                 }
                 if (cleanupUncertain || authorizingResult == InteractiveAuthorization.STORAGE_UNCERTAIN) {
@@ -879,7 +893,10 @@ public class AtomicMasterStore internal constructor(
                         val observed = observe(branch, recovery)
                         if (!branch.writable || observed.authority != authority || start.authority != authority ||
                             runtimeVerifier.writer(observed) != RuntimeVerification.VERIFIED) return@authorize false
-                        val retained = view.retainedCommand(start.operationId) ?: return@authorize false
+                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_RETAINED_READ_ENTERED)
+                        val retained = view.retainedCommand(start.operationId)
+                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_RETAINED_READ_RETURNED)
+                        if (retained == null) return@authorize false
                         if (!retained.committed || retained.scope != scope || retained.operationId != start.operationId ||
                             retained.originalActorId != start.originalActorId || retained.authenticationId != origin.authenticationId ||
                             retained.command != start.command || retained.normalized != origin.normalized ||
@@ -895,8 +912,10 @@ public class AtomicMasterStore internal constructor(
                         requireEvidenceV1Time(now)
                         val context = CommandContext(scope, start.originalActorId, start.operationId, start.command, start.semanticDigest,
                             physicalParticipants = PhysicalRecordingParticipants(authority, origin.deviceId, start.originalActorId))
+                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_DOMAIN_PREPARE_ENTERED)
                         val requirement = authorizer.prepareRetainedStartAuthorization(view, PhysicalRetainedStartContext(context, start, now))
-                            ?: return@authorize false
+                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_DOMAIN_PREPARE_RETURNED)
+                        if (requirement == null) return@authorize false
                         val authorization = requirement.authorization
                         val bound = authorization.binding
                         val originalDomain = NativeOriginalDomain.entries.singleOrNull { domain ->
@@ -940,7 +959,10 @@ public class AtomicMasterStore internal constructor(
         currentCoroutineContext().ensureActive()
         if (result) InteractiveAuthorization.AUTHORIZED else InteractiveAuthorization.HELD
     } catch (cancelled: CancellationException) { throw cancelled }
-    catch (_: Exception) { InteractiveAuthorization.STORAGE_UNCERTAIN }
+    catch (failure: Exception) {
+        reportPhysicalRecordingFailure(failure)
+        InteractiveAuthorization.STORAGE_UNCERTAIN
+    }
 
     /**
      * End-only hook for EVERY actual protected business write, before approval consumption or

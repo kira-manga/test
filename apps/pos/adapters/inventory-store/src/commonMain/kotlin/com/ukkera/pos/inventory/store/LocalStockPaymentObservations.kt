@@ -385,19 +385,13 @@ public object LocalStockPaymentObservations {
     public suspend fun requireOriginalStock(view: CommandReadView, stock: LocalStockRepository, observed: StockReadObservations, owner: RetainedCommandEvidence) {
         localStockCheck(view.scope == observed.scope && owner.scope == observed.scope && owner.committed)
         val access = view.requireStockRelational()
-        val originals = linkedMapOf<com.ukkera.pos.types.OperationId, RetainedStreamedCommand>()
-        for ((_, row) in records(observed)) {
-            val original = originals[row.producer.operationId] ?: run {
-                val actual = (access.originals.read(row.producer.operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
-                localStockCheck(actual.identity.scope == owner.scope && actual.identity.producer.operationId != owner.operationId &&
-                    (actual.identity.assignmentId != owner.assignmentId || actual.identity.authorityEpoch != owner.authorityEpoch ||
-                        actual.identity.sequence < owner.sequence))
-                stock.requireRelationalProducer(view, actual)
-                originals[row.producer.operationId] = actual
-                actual
-            }
-            localStockCheck(original.identity.producer == row.producer)
-            requireOriginalWrite(original, row.key, row.generation, row.schema, row.payload, row.digest)
+        for ((operationId, rows) in records(observed).values.groupBy { it.producer.operationId }) {
+            val original = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
+            localStockCheck(original.identity.scope == owner.scope && original.identity.producer.operationId != owner.operationId &&
+                (original.identity.assignmentId != owner.assignmentId || original.identity.authorityEpoch != owner.authorityEpoch ||
+                    original.identity.sequence < owner.sequence))
+            stock.requireRelationalProducer(view, original)
+            requireOriginalStockWrites(original, rows)
         }
     }
 
@@ -407,20 +401,35 @@ public object LocalStockPaymentObservations {
     public suspend fun requireOriginalStock(stock: LocalStockRelationalInspection,
         observed: StockReadObservations, owner: RetainedCommandEvidence) {
         localStockCheck(stock.scope == observed.scope && owner.scope == observed.scope && owner.committed)
-        val originals = linkedMapOf<OperationId, RetainedStreamedCommand>()
-        for ((_, row) in records(observed)) {
-            val original = originals[row.producer.operationId] ?: run {
-                val actual = (stock.original(row.producer.operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
-                localStockCheck(actual.identity.scope == owner.scope && actual.identity.producer.operationId != owner.operationId &&
-                    (actual.identity.assignmentId != owner.assignmentId || actual.identity.authorityEpoch != owner.authorityEpoch ||
-                        actual.identity.sequence < owner.sequence))
-                stock.requireCompleteOriginal(actual)
-                originals[row.producer.operationId] = actual
-                actual
-            }
-            localStockCheck(original.identity.producer == row.producer)
-            requireOriginalWrite(original, row.key, row.generation, row.schema, row.payload, row.digest)
+        for ((operationId, rows) in records(observed).values.groupBy { it.producer.operationId }) {
+            val original = (stock.original(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
+            localStockCheck(original.identity.scope == owner.scope && original.identity.producer.operationId != owner.operationId &&
+                (original.identity.assignmentId != owner.assignmentId || original.identity.authorityEpoch != owner.authorityEpoch ||
+                    original.identity.sequence < owner.sequence))
+            stock.requireCompleteOriginal(original)
+            requireOriginalStockWrites(original, rows)
         }
+    }
+
+    /** All selected records belong to this actual qualified producer. Match the complete
+     * finite set during one genuine stream traversal, before returning any proof. No stream,
+     * row or successful qualification is cached for another read or native/Room lifetime. */
+    private suspend fun requireOriginalStockWrites(original: RetainedStreamedCommand,
+        rows: List<StockRelationalRecordV2>) {
+        localStockCheck(rows.isNotEmpty())
+        val selected = linkedMapOf<AggregateKey, StockRelationalRecordV2>()
+        for (row in rows) {
+            localStockCheck(original.identity.producer == row.producer)
+            localStockCheck(selected.put(row.key, row) == null, LocalStockFailure.STORAGE_INCONSISTENT)
+        }
+        val found = mutableSetOf<AggregateKey>()
+        original.frames { frame ->
+            val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
+            val row = selected[write.key] ?: return@frames
+            localStockCheck(found.add(write.key))
+            requireSameWrite(write, row.key, row.generation, row.schema, row.payload, row.digest)
+        }
+        localStockCheck(found == selected.keys, LocalStockFailure.STORAGE_INCONSISTENT)
     }
 
 }

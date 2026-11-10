@@ -310,7 +310,10 @@ public class LocalMasterEndpoint internal constructor(
 
     internal suspend fun publishPhysicalInstruction(credentials: LocalGatewayCredentials, offer: PhysicalInstructionOffer,
         lifetime: PhysicalInteractiveRequestLifetime): PhysicalInstructionReply = try {
-        submit(PhysicalPublicationWork(credentials.copyOwned(), offer, lifetime))
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_SUBMIT_ENTERED)
+        val result = submit(PhysicalPublicationWork(credentials.copyOwned(), offer, lifetime))
+        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_SUBMIT_RETURNED)
+        result
     } catch (failure: Throwable) { offer.deny(); lifetime.deny(); throw failure }
 
     override public suspend fun lookup(credentials: LocalGatewayCredentials, identity: OperationIdentity): LookupReply =
@@ -900,8 +903,12 @@ public class LocalMasterEndpoint internal constructor(
             return PhysicalInstructionReply.Held
         }
         override suspend fun perform(): PhysicalInstructionReply = denied()
-        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): PhysicalInstructionReply =
-            store.publishPhysicalFromOwnedIngress(principals.authenticateLocal(credentials), offer, lifetime, physicalIngress)
+        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): PhysicalInstructionReply {
+            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_AUTHENTICATION_ENTERED)
+            val principal = principals.authenticateLocal(credentials)
+            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_INSTRUCTION_AUTHENTICATION_RETURNED)
+            return store.publishPhysicalFromOwnedIngress(principal, offer, lifetime, physicalIngress)
+        }
         override fun onWaitAbandoned() { offer.deny(); lifetime.deny() }
         override fun clearInput() { credentials.bearer.destroy() }
         override fun discard(value: PhysicalInstructionReply) {
