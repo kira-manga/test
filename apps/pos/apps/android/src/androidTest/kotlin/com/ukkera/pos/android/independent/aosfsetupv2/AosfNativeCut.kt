@@ -2,6 +2,7 @@ package com.ukkera.pos.android.independent.aosfsetupv2
 
 import android.app.Application
 import com.ukkera.pos.security.AndroidSelfOwnedInstallationOwner
+import com.ukkera.pos.security.NativeHistoryCellChunkV2
 import com.ukkera.pos.security.NativeHistoryDatabaseIdentityV2
 import com.ukkera.pos.security.NativeHistoryPhysicalReadProfileV2
 import com.ukkera.pos.security.NativeHistoryReadPassV2
@@ -355,6 +356,21 @@ internal suspend fun readAosfNativeCut(application: Application): AosfNativeCut 
 
 private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeCut {
     val read = custody.openOriginalReadOnly()
+    // Retrieval only: every original per-chunk check and fingerprint below remains
+    // independent of the production decoder and consumes these same ordered bytes.
+    val pendingChunks = ArrayDeque<NativeHistoryCellChunkV2>()
+    suspend fun nextChunk(): NativeHistoryCellChunkV2 {
+        if (pendingChunks.isEmpty()) {
+            val batch = read.readCellBatch()
+            try {
+                check(batch.isNotEmpty() && batch.size <= NativeHistoryPhysicalReadProfileV2.CELL_BATCH_CHUNKS) {
+                    "Closed native batch is empty or oversized"
+                }
+                pendingChunks.addAll(batch)
+            } catch (failure: Throwable) { batch.forEach { it.clear() }; throw failure }
+        }
+        return pendingChunks.removeFirst()
+    }
     var closeStarted = false
     try {
         while (read.readSchemaPage() != null) {
@@ -390,7 +406,7 @@ private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeC
                     if (column?.type == NativeHistorySqliteTypeV2.TEXT && rowTexts != null) ByteArrayOutputStream() else null
                 var offset = 0L
                 do {
-                    val chunk = read.readCellChunk()
+                    val chunk = nextChunk()
                     try {
                         val bytes = chunk.copyBytes()
                         try {
@@ -427,6 +443,7 @@ private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeC
                 }
                 text = null
             }
+            check(pendingChunks.isEmpty()) { "Closed native batch crossed the announced row" }
             if (table != null && table.application) {
                 counts[table] = counts.getValue(table) + 1L
                 hashes.getValue(table).add(rowDigest.digest().toHex())
@@ -492,6 +509,7 @@ private suspend fun readCut(custody: SelfOwnedNativeHistoryCustody): AosfNativeC
         custody.completeOriginalReadDelivery(after)
         return cut
     } finally {
+        pendingChunks.forEach { it.clear() }
         if (!closeStarted) {
             withContext(NonCancellable) { read.closeOriginalRead() }
         }
