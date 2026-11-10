@@ -61,6 +61,7 @@ record = {
     'workflow': os.environ.get('GITHUB_WORKFLOW', ''),
     'run_id': os.environ.get('GITHUB_RUN_ID', ''),
     'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', ''),
+    'aot_compile_requested': os.environ.get('POS_AOT_COMPILE', 'false'),
 }
 pathlib.Path(sys.argv[1]).write_text(json.dumps(record, indent=2) + '\n')
 PYPROVENANCE
@@ -126,6 +127,17 @@ fi
 "${ADB[@]}" install -r "$TEST_APK"
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing > "$OUT/app-package.txt"
 "${ADB[@]}" shell dumpsys package com.ukkera.pos.local.testing.test > "$OUT/test-package.txt"
+# Optional, explicit emulator compilation condition. This executes no application ceremony,
+# changes no APK/test bytes, key policy, business deadline or native watchdog value.
+[[ "${POS_AOT_COMPILE:-false}" == true || "${POS_AOT_COMPILE:-false}" == false ]] || exit 2
+if [[ "${POS_AOT_COMPILE:-false}" == true ]]; then
+  PHASE=aot-compile
+  for package in com.ukkera.pos.local.testing com.ukkera.pos.local.testing.test; do
+    timeout 240s "${ADB[@]}" shell cmd package compile -m speed -f "$package" \
+      > "$OUT/aot-$package.txt" 2>&1
+    tr -d '\r' < "$OUT/aot-$package.txt" | grep -Fxq 'Success'
+  done
+fi
 "${ADB[@]}" logcat -c
 PHASE=instrumentation
 case "${POS_NATIVE_SLICE_GROUP:-io}" in
