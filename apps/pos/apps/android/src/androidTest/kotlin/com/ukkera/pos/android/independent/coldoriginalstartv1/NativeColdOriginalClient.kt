@@ -109,12 +109,18 @@ internal class NativeColdOriginalClient(
         val body = LocalCollectionCommandCodecV3.decode(request.payload) as? LocalCollectionRequestV3.Start
             ?: error("The original request is not genuine physical V3 Start data")
         check(LocalCollectionCommandCodecV3.encode(body) == request.payload)
+        coldReadBoundary("start-current-session-entered")
         val current = requireCurrent()
+        coldReadBoundary("start-current-session-returned")
+        coldReadBoundary("start-original-input-retention-entered")
         evidence.freezeRequest("ORIGINAL_START", request, current, original)
+        coldReadBoundary("start-original-input-retention-returned")
         val actualLifetime = actions.newRequestLifetime().also { lifetime = it }
         check(!actualLifetime.denied)
         evidence.markDispatch("ORIGINAL_START", "REAL_ENDPOINT_PHYSICAL_START")
+        coldReadBoundary("real-original-start-entered")
         val started = actions.start(credentials(checkNotNull(tokens)), request, actualLifetime)
+        coldReadBoundary("real-original-start-returned")
         evidence.observeReply("ORIGINAL_START", started.recordedOrDeferred)
         val recorded = requireFreshRecorded(request, current.actorId, started.recordedOrDeferred)
         val startedResult = LocalFinancialResultCodecV3.decode(recorded.result) as? LocalFinancialResultV3.AttemptStarted

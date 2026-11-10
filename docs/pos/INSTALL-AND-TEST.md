@@ -19,6 +19,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
+| Android, latest stock composition build | [Stock revision artifact, run 42854976285](https://github.com/kira-manga/test/actions/runs/42854976285/artifacts/13782961958) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9bf03ee1`; install only the application APK. Signed packaging/fatal lint and 581 existing catalogue/inventory methods passed. Native API35 x86_64 reached recorded opening stock and collection begin, then signal9 before Start was observed; zero methods completed. Full checkout and cold recovery remain unverified. |
 | Android, current authenticated STOP/close build | [Lifecycle artifact, run 42816765743](https://github.com/kira-manga/test/actions/runs/42816765743/artifacts/13764751908) | `testing-inputs/ukkera-pos-testing.apk`, clean source `f01bbb41`; install only the application APK. Signed package/fatal lint, 18 focused lifecycle JVM methods, full database regression and one API35 x86_64 native STOP/close supporting method passed without AOT. Full lifecycle/business/LAN/owner qualification remains open. |
 | Android, actual-owner refresh/lifecycle diagnostic | [Lifecycle artifact, run 42807559079](https://github.com/kira-manga/test/actions/runs/42807559079/artifacts/13761390342) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4c045a36`; install only the application APK. Signed package/fatal lint and full database regression passed. Three native lifecycle methods failed at authenticated STOP; the background method passed current-Master refresh and existing-only RUN reopen assertions before STOP failed. |
 | Android, lifecycle closure-accounting build | [STOP/resume artifact, run 42834923867](https://github.com/kira-manga/test/actions/runs/42834923867/artifacts/13773606677) | `testing-inputs/ukkera-pos-testing.apk`, clean source `a476d536`; install only the application APK. Clean signed packaging/fatal lint and one unchanged API35 x86_64 supporting STOP/resume method passed. Whole lifecycle/financial/LAN/platform acceptance remains open. |
@@ -46,6 +47,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
+| Latest stock composition Android APK (`9bf03ee1`) | `e5131da7ad3a7d5ff5caad9565254a5e3800a80dc60f814a3c6262a748de10f2` |
 | Lifecycle closure-accounting Android APK (`a476d536`) | `07854fcdc6010bacffc7fe041774d141c73de74256f4386990f304a8bcc25f04` |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
 | Current Android STOP/close APK (`f01bbb41`) | `4bd95a718ecf21f580fe5ba5b8295a21e7247aeefd5e249e26a8edccfe470bb6` |
@@ -80,6 +82,14 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
    endpoint. Grant alone must not authenticate an employee or admit a device.
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
+
+**Latest stock composition build:** `9bf03ee1` corrects the installed stock
+authority instance and preserves valid zero-based signed domain revisions. The
+unchanged native selector reached recorded opening stock and collection begin,
+then terminated with signal9 before an original Start was observed. No complete
+financial method or confirmed final cleanup was recorded. Use the build for
+synthetic setup and observed workflow checks; preserve any unresolved original
+and record the exact boundary. [Source, pair and limits](../../qa/pos/traceability/android-stock-domain-revision-20261110/README.md).
 
 **Current Android lifecycle evidence:** `f01bbb41` passed one native STOP/close
 supporting method on API35 x86_64 without AOT: authenticated committed STOP,

@@ -124,12 +124,17 @@ internal class NativeColdOriginalPreparation(private val client: NativeColdOrigi
         val reply = client.dispatch(ColdPreparationCommand.BEGIN_COLLECTION.name, LocalCollectionStockCodecV2.command(
             plan.operation(ColdPreparationCommand.BEGIN_COLLECTION), begin))
         requireSalesResult(reply, LocalSalesAction.COLLECTION_LOCKED, plan.collectionId)
+        coldReadBoundary("post-begin-collection-read-entered")
         val collection = reads.collection()
+        coldReadBoundary("post-begin-collection-read-returned")
+        coldReadBoundary("post-begin-normalized-stock-read-entered")
         val stock = reads.normalizedStockCut()
+        coldReadBoundary("post-begin-normalized-stock-read-returned")
         check(collection.collectionId == plan.collectionId && collection.orderId == plan.orderId &&
             collection.sessionId == plan.cashSessionId && collection.attempts.isEmpty() && collection.collected.minor == 0L &&
             collection.remainingPayable == plan.payable && stock.status == "RESERVED" && stock.holdCount == 0L && stock.holds.isEmpty() &&
             stock.items.size == 1 && stock.items.single().skuId == plan.skuId)
+        coldReadBoundary("post-begin-stock-assertions-returned")
         return MutationRequest(plan.startOperationId, LocalFinancialJournalProfileV3.COLLECTION_COMMAND,
             LocalCollectionCommandCodecV3.encode(LocalCollectionRequestV3.Start(plan.collectionId, collection.collectionRevision,
                 plan.cashSessionId, collection.sessionRevision, stock.reservationRevision, stock.items, plan.attemptId,
@@ -358,4 +363,11 @@ internal data class ColdBusinessCut(val order: LocalProfiledOrderV2, val cash: L
 private fun coldPublicationDiagnostic(phase: String) {
     try { android.util.Log.i("UkkeraNativeOwner", "Cold executor publication: $phase") }
     catch (_: Throwable) { /* Diagnostics cannot change the original test outcome. */ }
+}
+
+/** Fixed executor locations only. No identity, request, row, authority or timing input is logged.
+ * Calls sit outside the native read/Start; they neither alter nor renew its shared work budget. */
+internal fun coldReadBoundary(phase: String) {
+    try { android.util.Log.i("UkkeraNativeOwner", "Cold executor read boundary: $phase") }
+    catch (_: Throwable) { /* Observation cannot replace the real reply or failure. */ }
 }
