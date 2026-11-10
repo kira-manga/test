@@ -80,9 +80,12 @@ public static class PosCngPersistedAeadProbe {
             created=true;
             if(!Step(r,"set_length_256",Property(key,"Length",BitConverter.GetBytes(256)))) return r;
             if(!Step(r,"set_export_policy_zero",Property(key,"Export Policy",BitConverter.GetBytes(0)))) return r;
+            if(!Step(r,"set_symmetric_key_usage",Property(key,"Key Usage",BitConverter.GetBytes(1)))) return r;
             Step(r,"set_GCM_before_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")));
             if(!Step(r,"finalize",NCryptFinalizeKey(key,0))) return r;
-            ObserveProperty(r,key,"Length",false); ObserveProperty(r,key,"Export Policy",false); ObserveProperty(r,key,"Chaining Mode",true);
+            ObserveProperty(r,key,"Length",false); ObserveProperty(r,key,"Export Policy",false);
+            ObserveProperty(r,key,"Key Usage",false); ObserveProperty(r,key,"Algorithm Name",true);
+            ObserveProperty(r,key,"Chaining Mode",true);
             if(!Step(r,"set_GCM_after_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeGCM\0")))) {
                 Step(r,"set_CBC_control_after_finalize",Property(key,"Chaining Mode",Encoding.Unicode.GetBytes("ChainingModeCBC\0")));
                 ObserveProperty(r,key,"Chaining Mode",true);

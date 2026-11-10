@@ -46,11 +46,11 @@ internal class WindowsSelfOwnedSigningKey private constructor(
         val digest = MessageDigest.getInstance("SHA-256").digest(message)
         try {
             val used = IntByReference()
-            Cng.api.NCryptSignHash(handle, null, digest, digest.size, null, 0, used, Cng.SILENT).checkCng()
+            WindowsOriginalCng.api.NCryptSignHash(handle, null, digest, digest.size, null, 0, used, WindowsOriginalCng.SILENT).checkCng()
             check(used.value == 64) { "CNG returned an unexpected P-256 signature size" }
             val raw = ByteArray(64)
             val signature = try {
-                Cng.api.NCryptSignHash(handle, null, digest, digest.size, raw, raw.size, used, Cng.SILENT).checkCng()
+                WindowsOriginalCng.api.NCryptSignHash(handle, null, digest, digest.size, raw, raw.size, used, WindowsOriginalCng.SILENT).checkCng()
                 check(used.value == raw.size)
                 JvmP256Primitives.canonicalize(raw)
             } finally { raw.fill(0) }
@@ -63,16 +63,16 @@ internal class WindowsSelfOwnedSigningKey private constructor(
     }
 
     @Synchronized override fun close() {
-        key?.let { Cng.api.NCryptFreeObject(it).checkCng(); key = null }
-        provider?.let { Cng.api.NCryptFreeObject(it).checkCng(); provider = null }
+        key?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); key = null }
+        provider?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng(); provider = null }
         point.fill(0)
     }
 
     private fun requireCurrent(): Pointer {
         val handle = checkNotNull(key) { "CNG signing lifetime is closed" }
         requireService(target, serviceSid, accountSid)
-        Cng.requireKey(handle, protection, serviceSid, accountSid)
-        val actual = Cng.publicPoint(handle)
+        WindowsOriginalCng.requireKey(handle, protection, serviceSid, accountSid)
+        val actual = WindowsOriginalCng.publicPoint(handle)
         try { check(MessageDigest.isEqual(point, actual)) { "CNG original public key changed" } }
         finally { actual.fill(0) }
         return handle
@@ -109,7 +109,7 @@ internal class WindowsSelfOwnedSigningKey private constructor(
             val targetDigest = try { JvmP256Primitives.hashHex(targetBytes) } finally { targetBytes.fill(0) }
             val name = WString("ukkera.pos.original.signing.v2:$mode:${role.name.lowercase()}:${rootId.value}:${keyId.value}:$targetDigest")
             val provider = PointerByReference()
-            Cng.api.NCryptOpenStorageProvider(provider, WString(when (protection) {
+            WindowsOriginalCng.api.NCryptOpenStorageProvider(provider, WString(when (protection) {
                 SelfOwnedKeyProtectionV1.OS_ISOLATED -> "Microsoft Software Key Storage Provider"
                 SelfOwnedKeyProtectionV1.SECURE_HARDWARE -> "Microsoft Platform Crypto Provider"
                 SelfOwnedKeyProtectionV1.STRONGBOX -> error("Unsupported key policy")
@@ -117,22 +117,22 @@ internal class WindowsSelfOwnedSigningKey private constructor(
             val providerHandle = checkNotNull(provider.value)
             var keyHandle: Pointer? = null
             try {
-                Cng.requireProvider(providerHandle, protection)
+                WindowsOriginalCng.requireProvider(providerHandle, protection)
                 val output = PointerByReference()
                 if (create) {
                     // No NCRYPT_OVERWRITE_KEY_FLAG: an orphan/existing key is never replaced.
-                    Cng.api.NCryptCreatePersistedKey(providerHandle, output, WString("ECDSA_P256"), name, 0, 0).checkCng()
+                    WindowsOriginalCng.api.NCryptCreatePersistedKey(providerHandle, output, WString("ECDSA_P256"), name, 0, 0).checkCng()
                     keyHandle = checkNotNull(output.value)
-                    Cng.setInt(keyHandle, "Export Policy", 0)
-                    Cng.setInt(keyHandle, "Key Usage", 2) // NCRYPT_ALLOW_SIGNING_FLAG only.
-                    Cng.setPrivateSecurity(keyHandle, serviceSid, accountSid)
-                    Cng.api.NCryptFinalizeKey(keyHandle, Cng.SILENT).checkCng()
+                    WindowsOriginalCng.setInt(keyHandle, "Export Policy", 0)
+                    WindowsOriginalCng.setInt(keyHandle, "Key Usage", 2) // NCRYPT_ALLOW_SIGNING_FLAG only.
+                    WindowsOriginalCng.setPrivateSecurity(keyHandle, serviceSid, accountSid)
+                    WindowsOriginalCng.api.NCryptFinalizeKey(keyHandle, WindowsOriginalCng.SILENT).checkCng()
                 } else {
-                    Cng.api.NCryptOpenKey(providerHandle, output, name, 0, Cng.SILENT).checkCng()
+                    WindowsOriginalCng.api.NCryptOpenKey(providerHandle, output, name, 0, WindowsOriginalCng.SILENT).checkCng()
                     keyHandle = checkNotNull(output.value)
                 }
-                Cng.requireKey(keyHandle, protection, serviceSid, accountSid)
-                val point = Cng.publicPoint(keyHandle)
+                WindowsOriginalCng.requireKey(keyHandle, protection, serviceSid, accountSid)
+                val point = WindowsOriginalCng.publicPoint(keyHandle)
                 try {
                     if (originalPoint != null) check(MessageDigest.isEqual(originalPoint, point)) {
                         "CNG key is not the retained original"
@@ -143,21 +143,21 @@ internal class WindowsSelfOwnedSigningKey private constructor(
                 } catch (failure: Throwable) { point.fill(0); throw failure }
             } catch (failure: Throwable) {
                 // Retain any persisted key/intent for original recovery. Freeing a handle does not delete it.
-                keyHandle?.let { if (Cng.api.NCryptFreeObject(it) != 0) failure.addSuppressed(
+                keyHandle?.let { if (WindowsOriginalCng.api.NCryptFreeObject(it) != 0) failure.addSuppressed(
                     IllegalStateException("CNG key handle cleanup failed")) }
-                if (Cng.api.NCryptFreeObject(providerHandle) != 0) failure.addSuppressed(
+                if (WindowsOriginalCng.api.NCryptFreeObject(providerHandle) != 0) failure.addSuppressed(
                     IllegalStateException("CNG provider handle cleanup failed"))
                 throw failure
             }
         }
 
-        private fun serviceCoordinates(target: SelfOwnedInstalledIdentityTargetV2): Pair<String, String> = when (target) {
+        internal fun serviceCoordinates(target: SelfOwnedInstalledIdentityTargetV2): Pair<String, String> = when (target) {
             is SelfOwnedWindowsServiceIdentityV2 -> target.serviceSid to target.serviceAccountSid
             is SelfOwnedWindowsPackagedServiceIdentityV2 -> target.serviceSid to target.serviceAccountSid
             else -> error("Original Windows signing custody requires an exact service identity")
         }
 
-        private fun requireService(target: SelfOwnedInstalledIdentityTargetV2, serviceSid: String, accountSid: String) {
+        internal fun requireService(target: SelfOwnedInstalledIdentityTargetV2, serviceSid: String, accountSid: String) {
             val actual = when (target) {
                 is SelfOwnedWindowsServiceIdentityV2 -> WindowsInstalledApplicationIdentity.captureService(target)
                 is SelfOwnedWindowsPackagedServiceIdentityV2 -> WindowsInstalledApplicationIdentity.capturePackagedService(target)
@@ -169,8 +169,8 @@ internal class WindowsSelfOwnedSigningKey private constructor(
             check(serviceCoordinates(observation.target) == (serviceSid to accountSid))
             // A process-token observation cannot authorize use under an impersonating thread.
             val threadToken = PointerByReference()
-            if (Cng.security.OpenThreadToken(Cng.kernel.GetCurrentThread(), 0x0008, 1, threadToken) != 0) {
-                threadToken.value?.let { check(Cng.kernel.CloseHandle(it) != 0) }
+            if (WindowsOriginalCng.security.OpenThreadToken(WindowsOriginalCng.kernel.GetCurrentThread(), 0x0008, 1, threadToken) != 0) {
+                threadToken.value?.let { check(WindowsOriginalCng.kernel.CloseHandle(it) != 0) }
                 error("Impersonation is not an original signing service context")
             }
             check(Native.getLastError() == 1008) { "Cannot establish a non-impersonating service context" }
@@ -178,7 +178,7 @@ internal class WindowsSelfOwnedSigningKey private constructor(
     }
 }
 
-private object Cng {
+internal object WindowsOriginalCng {
     val api: WindowsOriginalNCrypt = Native.load("ncrypt", WindowsOriginalNCrypt::class.java)
     val security: WindowsOriginalSigningSecurity = Native.load("advapi32", WindowsOriginalSigningSecurity::class.java)
     val kernel: WindowsOriginalSigningKernel = Native.load("kernel32", WindowsOriginalSigningKernel::class.java)
@@ -200,6 +200,10 @@ private object Cng {
         check(intProperty(key, "Export Policy") == 0 && intProperty(key, "Key Usage") == 2) {
             "CNG signing-key export/use policy differs"
         }
+        requirePrivateSecurity(key, serviceSid, accountSid)
+    }
+
+    fun requirePrivateSecurity(key: Pointer, serviceSid: String, accountSid: String) {
         val descriptor = property(key, "Security Descr", SECURITY_INFORMATION)
         try {
             Memory(descriptor.size.toLong()).use { memory ->
@@ -263,7 +267,7 @@ private object Cng {
         } finally { blob.fill(0) }
     }
 
-    private fun intProperty(handle: Pointer, name: String): Int {
+    fun intProperty(handle: Pointer, name: String): Int {
         val bytes = property(handle, name)
         return try {
             check(bytes.size == 4)
@@ -272,7 +276,7 @@ private object Cng {
         } finally { bytes.fill(0) }
     }
 
-    private fun stringProperty(handle: Pointer, name: String): String {
+    fun stringProperty(handle: Pointer, name: String): String {
         val bytes = property(handle, name)
         return try {
             check(bytes.size in 4..512 && bytes.size % 2 == 0 && bytes[bytes.size - 1] == 0.toByte() &&
@@ -305,7 +309,7 @@ private object Cng {
     }
 }
 
-private fun Int.checkCng() { check(this == 0) { "Windows original signing operation failed (${toUInt().toString(16)})" } }
+internal fun Int.checkCng() { check(this == 0) { "Windows original signing operation failed (${toUInt().toString(16)})" } }
 
 internal interface WindowsOriginalNCrypt : StdCallLibrary {
     fun NCryptOpenStorageProvider(provider: PointerByReference, name: WString, flags: Int): Int
@@ -320,6 +324,10 @@ internal interface WindowsOriginalNCrypt : StdCallLibrary {
         output: ByteArray?, capacity: Int, used: IntByReference, flags: Int): Int
     fun NCryptSignHash(key: Pointer, padding: Pointer?, hash: ByteArray, hashSize: Int,
         signature: ByteArray?, capacity: Int, used: IntByReference, flags: Int): Int
+    fun NCryptEncrypt(key: Pointer, input: ByteArray, inputSize: Int, padding: Pointer,
+        output: ByteArray, capacity: Int, used: IntByReference, flags: Int): Int
+    fun NCryptDecrypt(key: Pointer, input: ByteArray, inputSize: Int, padding: Pointer,
+        output: ByteArray, capacity: Int, used: IntByReference, flags: Int): Int
     fun NCryptFreeObject(handle: Pointer): Int
 }
 

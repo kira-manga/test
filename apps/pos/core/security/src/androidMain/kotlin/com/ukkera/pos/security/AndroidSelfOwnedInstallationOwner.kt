@@ -1917,7 +1917,9 @@ internal class AndroidSelfOwnedInstallationLifetime(
     /** Only same-owner authored native tasks call this, before AND after actual data operations. */
     fun requireDataNative() {
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        val sample = dataObservationDiagnostics.getAndUpdate { if (it < 4) it + 1 else it } < 4
+        val diagnosticIndex = dataObservationDiagnostics.getAndUpdate { if (it < 257) it + 1 else it }
+        val sample = diagnosticIndex < 4 || diagnosticIndex == 16 || diagnosticIndex == 64 ||
+            diagnosticIndex == 128 || diagnosticIndex == 256
         readOriginalStateNative(sample)
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
     }
