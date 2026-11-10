@@ -1232,7 +1232,15 @@ internal class RoomLocalSecurityTransaction internal constructor(
         } catch (cancelled: CancellationException) {
             failed = true
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            // Retain the original static SQL failure location before uncertainty normalization.
+            // No diagnostic failure, message, bound value or SQL text may escape this boundary.
+            try {
+                val owner = database.runtimeHistoryOwner
+                if (owner != null && owner.originalRecord.record.parent == null) {
+                    reportOriginalInstallationBodyFailure(failure)
+                }
+            } catch (_: Throwable) { /* Observational only. */ }
             uncertain()
         }
         ensureCurrent()

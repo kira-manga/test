@@ -627,7 +627,10 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
     }
 
     private class Transaction(val actor: AndroidOwnedRoomCoroutines.Actor,
-        val financial: SelfOwnedNativeRoomFrame?, val housekeeping: Boolean)
+        val financial: SelfOwnedNativeRoomFrame?, val housekeeping: Boolean) {
+        // DATA subordinate to this actual outer transaction; never a native child/receipt.
+        val daoScope = NativeHistoryRoomDaoScopeV1()
+    }
 
     private inner class OwnedConnection : SQLiteConnection {
         private var raw: SQLiteConnection? = null
@@ -721,7 +724,15 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
                     check(sql.commit || sql.rollback)
                 if (selected.nativeBegan && selected.nativeDisposition != SelfOwnedNativeSqlDisposition.UNKNOWN)
                     error("SQL after financial disposition")
-                check(!sql.normalized.startsWith("SAVEPOINT")) { "Nested original transaction" }
+                if (sql.daoScopeControl) {
+                    // Room3 wraps a generated DAO write in its one fixed savepoint. Only the
+                    // SAME already-begun financial writer may use it; no nested public entry,
+                    // background actor, new invocation/deadline or finalized frame is admitted.
+                    check(active != null && active.financial === selected && !active.housekeeping &&
+                        selected.nativeBegan && selected.nativeDisposition == SelfOwnedNativeSqlDisposition.UNKNOWN &&
+                        !selected.finalized)
+                }
+                active?.takeIf { it.financial === selected }?.daoScope?.before(sql.sql)
             } else {
                 // Schema bootstrap cannot write application rows before DATABASE_BOUND.
                 val target = APPLICATION_WRITE.find(sql.sql.trim())?.groupValues?.get(1)
@@ -750,6 +761,9 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
                 authorize(current, sql, submitting = true)
                 if (current.kind == AndroidOwnedRoomCoroutines.Kind.NATIVE)
                     return stepDelegate() // Only the closed-purpose, quiescent native cut.
+                val daoAction = if (ready && sql.daoScopeControl &&
+                    current.kind == AndroidOwnedRoomCoroutines.Kind.FOREGROUND)
+                    checkNotNull(transaction).daoScope.before(sql.sql) else null
                 var ending: Transaction? = null
                 if (sql.begin) {
                     check(transaction == null)
@@ -766,6 +780,10 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
                 }
                 return try {
                     val result = stepDelegate()
+                    if (daoAction != null) {
+                        check(!result)
+                        checkNotNull(transaction).daoScope.completed(daoAction)
+                    }
                     if (ending != null && !result) {
                         ending.financial?.let {
                             check(it.nativeBegan && it.nativeDisposition == SelfOwnedNativeSqlDisposition.UNKNOWN)
@@ -827,6 +845,8 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
         val rollback = normalized in setOf("ROLLBACK", "ROLLBACK TRANSACTION")
         val begin = normalized in setOf("BEGIN", "BEGIN DEFERRED TRANSACTION", "BEGIN IMMEDIATE TRANSACTION", "BEGIN EXCLUSIVE TRANSACTION")
         val housekeeping = sql in NativeHistoryOwnedSqlV2.housekeepingStatements
+        val daoScopeControl = normalized.startsWith("SAVEPOINT") || normalized.startsWith("RELEASE") ||
+            (!rollback && normalized.startsWith("ROLLBACK"))
     }
     private companion object {
         val APPLICATION_WRITE = Regex("^(?:INSERT(?: OR [A-Z]+)? INTO|UPDATE(?: OR [A-Z]+)?|DELETE FROM)\\s+[`\"]?([a-zA-Z0-9_]+)", RegexOption.IGNORE_CASE)
