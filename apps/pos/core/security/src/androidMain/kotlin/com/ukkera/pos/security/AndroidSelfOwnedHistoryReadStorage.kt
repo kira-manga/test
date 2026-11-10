@@ -96,6 +96,26 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     override suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2? = perform(phase = "history-row-metadata") { nextRowNative() }
     override suspend fun readCellChunk(): NativeHistoryCellChunkV2 = perform(phase = "history-cell-chunk", dispose={ it.clear() }) { readCellNative() }
 
+    override suspend fun readCellBatch(): List<NativeHistoryCellChunkV2> =
+        perform(phase = "history-cell-chunk-batch", dispose = { chunks -> chunks.forEach { it.clear() } }) {
+            // One fixed, non-suspending native task over this row's pinned snapshot.
+            // perform() re-proves app/namespace/journal/all native keys and pin before
+            // AND after the whole task; no proof or handle escapes between chunk reads.
+            // At most 16 unchanged 64-KiB chunks (1 MiB) are retained for delivery.
+            // This never advances nextRowNative(), so it cannot bypass row validation.
+            val chunks = ArrayList<NativeHistoryCellChunkV2>(NativeHistoryPhysicalReadProfileV2.CELL_BATCH_CHUNKS)
+            try {
+                do {
+                    work.requireActive() // Same original watchdog, including between chunks.
+                    chunks += readCellNative()
+                } while (active != null && chunks.size < NativeHistoryPhysicalReadProfileV2.CELL_BATCH_CHUNKS)
+                chunks
+            } catch (failure: Throwable) {
+                chunks.forEach { it.clear() }
+                throw failure
+            }
+        }
+
     override suspend fun openDataWorkspace(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeHistoryWorkspace =
         perform(dispose = { dataWorkspace?.closeNative() }) {
             known(session.controller === this && session.original === original)

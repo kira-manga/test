@@ -1,6 +1,8 @@
 package com.ukkera.pos.database
 
 import com.ukkera.pos.security.NativeHistoryCellMetadataV2
+import com.ukkera.pos.security.NativeHistoryCellChunkV2
+import com.ukkera.pos.security.NativeHistoryPhysicalReadProfileV2
 import com.ukkera.pos.security.NativeHistoryPhysicalCellV2
 import com.ukkera.pos.security.NativeHistoryPhysicalRowV2
 import com.ukkera.pos.security.NativeHistoryPhysicalRowWireV2
@@ -28,7 +30,20 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
     suspend fun next(): RuntimeHistoryReadItem? {
         currentCoroutineContext().ensureActive()
         val metadata = session.nextRowMetadata()?.let(RuntimeHistoryReadMetadata::fromNative) ?: return null
-        return when (metadata.kind) {
+        val chunks = ArrayDeque<NativeHistoryCellChunkV2>()
+        try {
+            val result = readRow(metadata, chunks)
+            try {
+                // Prefetched DATA must end exactly with the announced row. A surplus
+                // cannot become the next row or be silently dropped as a valid prefix.
+                historyShapeV2(chunks.isEmpty())
+                return result
+            } catch (failure: Throwable) { result.clear(); throw failure }
+        } finally { chunks.forEach { it.clear() } }
+    }
+
+    private suspend fun readRow(metadata: RuntimeHistoryReadMetadata,
+        chunks: ArrayDeque<NativeHistoryCellChunkV2>): RuntimeHistoryReadItem = when (metadata.kind) {
             NativeHistoryRowKindV2.GROUP_END, NativeHistoryRowKindV2.PASS_END -> {
                 historyShapeV2(metadata.cells.isEmpty() && metadata.rowId == null && metadata.protectedBinding == null)
                 RuntimeHistoryReadItem.Boundary(metadata)
@@ -40,7 +55,7 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
                 val cells = mutableListOf<NativeHistoryPhysicalCellV2>()
                 try {
                     for ((index, actual) in metadata.cells.withIndex()) {
-                        val bytes = readCell(index, actual)
+                        val bytes = readCell(index, actual, chunks)
                         try {
                             val cell = when (actual.type) {
                                 RuntimeSqliteTypeV2.NULL -> NativeHistoryPhysicalCellV2.Null
@@ -68,7 +83,7 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
                 historyShapeV2(metadata.table?.application == true && metadata.rowId != null &&
                     metadata.protectedBinding == null && metadata.cells.size == 1 &&
                     metadata.cells[0].name == "image" && metadata.cells[0].type == RuntimeSqliteTypeV2.BLOB)
-                val bytes = readCell(0, metadata.cells[0])
+                val bytes = readCell(0, metadata.cells[0], chunks)
                 try {
                     val physical = RuntimeHistoryRowCodecV2.decode(bytes)
                     try {
@@ -83,16 +98,16 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
                     metadata.cells.size == 1 && metadata.cells[0].name == "plaintext" &&
                     metadata.cells[0].type == RuntimeSqliteTypeV2.BLOB)
                 historyCapacityV2(metadata.cells[0].byteCount <= binding.table.maximumPlaintextBytes)
-                val bytes = readCell(0, metadata.cells[0])
+                val bytes = readCell(0, metadata.cells[0], chunks)
                 try {
                     binding.requirePlaintextSize(bytes.size)
                     RuntimeHistoryReadItem.Plaintext(metadata, bytes)
                 } catch (failure: Throwable) { bytes.fill(0); throw failure }
             }
         }
-    }
 
-    private suspend fun readCell(column: Int, metadata: NativeHistoryCellMetadataV2): ByteArray {
+    private suspend fun readCell(column: Int, metadata: NativeHistoryCellMetadataV2,
+        chunks: ArrayDeque<NativeHistoryCellChunkV2>): ByteArray {
         historyShapeV2(metadata.byteCount >= 0)
         historyCapacityV2(metadata.byteCount <= RuntimeHistoryProfileV2.MAX_ROW_BYTES)
         val bytes = ByteArray(metadata.byteCount.toInt())
@@ -100,7 +115,14 @@ internal class RuntimeHistoryDao(private val session: SelfOwnedNativeHistoryRead
         try {
             do {
                 currentCoroutineContext().ensureActive()
-                val chunk = session.readCellChunk()
+                if (chunks.isEmpty()) {
+                    val batch = session.readCellBatch()
+                    try {
+                        historyShapeV2(batch.isNotEmpty() && batch.size <= NativeHistoryPhysicalReadProfileV2.CELL_BATCH_CHUNKS)
+                        chunks.addAll(batch)
+                    } catch (failure: Throwable) { batch.forEach { it.clear() }; throw failure }
+                }
+                val chunk = chunks.removeFirst()
                 try {
                     val part = chunk.copyBytes()
                     try {

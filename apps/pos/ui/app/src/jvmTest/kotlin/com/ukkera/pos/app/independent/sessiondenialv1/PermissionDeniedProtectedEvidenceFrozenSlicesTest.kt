@@ -29,6 +29,7 @@ import com.ukkera.pos.app.LocalRetailFinancialKind
 import com.ukkera.pos.app.LocalRetailSavedOperation
 import com.ukkera.pos.app.LocalServiceProblem
 import com.ukkera.pos.app.LocalWorkflow
+import com.ukkera.pos.app.LocalWorkBusy
 import com.ukkera.pos.app.LocalWorkflowController
 import com.ukkera.pos.app.LocalWorkflowGateway
 import com.ukkera.pos.app.LocalWorkflowPage
@@ -81,6 +82,9 @@ import kotlinx.coroutines.test.setMain
  * The original selected operation ID before retirement and zero new controlled
  * mutation/physical calls are observable; full body/actor/session/evidence retention and independent
  * durable effects remain unbound. No native closure or successor writer is qualified.
+ * The stale-navigation methods deliver the fixed disposal entrypoint directly, using
+ * the same unchanged STC-S12 independent-cleanup/private-erasure oracle. They do not
+ * execute a coroutine/navigation race or prove any native close.
  * All complete frozen cases/variants and unbound required layers remain NOT_RUN.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -115,8 +119,18 @@ class PermissionDeniedProtectedEvidenceFrozenSlicesTest {
         exerciseCurrentDenial(supplierPage = true, childDenialFirst = true, explicitEnd = true)
     }
 
+    @Test
+    fun stcS12_staleNavigationClearsPrivateViewsDespiteFailedRetailOwner() = runTest {
+        exerciseCurrentDenial(supplierPage = false, staleNavigation = true)
+    }
+
+    @Test
+    fun stcS12_staleNavigationClearsPrivateViewsDespiteFailedSupplierOwner() = runTest {
+        exerciseCurrentDenial(supplierPage = true, staleNavigation = true)
+    }
+
     private suspend fun TestScope.exerciseCurrentDenial(supplierPage: Boolean, childDenialFirst: Boolean = false,
-        explicitEnd: Boolean = false) {
+        explicitEnd: Boolean = false, staleNavigation: Boolean = false) {
         val freeze = FrozenTerminalCleanupV1.load()
         val message = "${freeze.case("STC-S12")} / ${freeze.case("STC-S10")}"
         val operationId = freeze.paymentOperation()
@@ -221,7 +235,8 @@ class PermissionDeniedProtectedEvidenceFrozenSlicesTest {
                 assertEquals(physicalCalls, physical.calls, "LSP-002-A03/A04: DENIED initiates no physical call")
             }
             observeControlledFault(fault) {
-                deliverCurrentDenied(controller, supplierPage)
+                if (staleNavigation) deliverStaleNavigation(controller)
+                else deliverCurrentDenied(controller, supplierPage)
             }
 
             assertTrue(failed.attempts > 0 && later.attempts > 0,
@@ -301,6 +316,14 @@ private fun deliverCurrentDenied(controller: LocalWorkflowController, pageRead: 
         if (pageRead) "readUnavailable" else "permissionFailure", LocalServiceProblem::class.java)
     method.isAccessible = true
     try { method.invoke(controller, LocalServiceProblem.DENIED) }
+    catch (failure: InvocationTargetException) { throw failure.targetException }
+}
+
+/** Fixed late-reply disposal input. Does not claim an asynchronous navigation race run. */
+private fun deliverStaleNavigation(controller: LocalWorkflowController) {
+    val method = LocalWorkflowController::class.java.getDeclaredMethod("discardStaleNavigation", LocalWorkBusy::class.java)
+    method.isAccessible = true
+    try { method.invoke(controller, LocalWorkBusy.READING) }
     catch (failure: InvocationTargetException) { throw failure.targetException }
 }
 

@@ -1010,6 +1010,8 @@ public object NativeHistoryPhysicalReadProfileV2 {
     public const val MAX_SCHEMA_OBJECTS: Int = 1024
     public const val MAX_SQL_TEXT_BYTES: Int = 65_536
     public const val CHUNK_BYTES: Int = 65_536
+    /** In-memory read grouping only; existing cell bytes and all wire formats stay fixed. */
+    public const val CELL_BATCH_CHUNKS: Int = 16
     public const val MAX_KEY_BYTES: Int = 1024
     public const val MAX_ROW_ARRAY_BYTES: Int = 5 * 1024 * 1024
     public const val MAX_CELL_BYTES: Long = 1L * MAX_ROW_ARRAY_BYTES

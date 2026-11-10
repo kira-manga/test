@@ -17,18 +17,18 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42759031363](https://github.com/kira-manga/test/actions/runs/42759031363/artifacts/13737201155) | `testing-inputs/ukkera-pos-testing.apk`, clean source `1490aa61`; install only the application APK. Includes native RPC LAN permission guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
+| Android, latest installable diagnostic | [API 35 startup artifact, run 42784691760](https://github.com/kira-manga/test/actions/runs/42784691760/artifacts/13749530590) | `testing-inputs/ukkera-pos-testing.apk`, clean source `0ea09405`; install only the application APK. Includes native RPC LAN permission and physical-session cleanup guards; bounded activity/PID startup passed on API24/35/37 x86_64. No permission-revocation, full setup/ACK or LAN qualification. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
-| Windows x64 | [MSI artifact, run 42781011844](https://github.com/kira-manga/test/actions/runs/42781011844/artifacts/13747145391) | `UkkeraPOS-0.1.0.msi`, source `53f496da`; package/content/architecture and packaged startup passed |
-| macOS Apple Silicon | [ARM64 DMG, run 42781011844](https://github.com/kira-manga/test/actions/runs/42781011844/artifacts/13746755000) | `UkkeraPOS-1.0.0.dmg`, source `53f496da`; package/content/architecture and packaged startup passed |
-| macOS Intel | [x64 DMG, run 42781011844](https://github.com/kira-manga/test/actions/runs/42781011844/artifacts/13747100220) | `UkkeraPOS-1.0.0.dmg`, source `53f496da`; package/content/architecture and packaged startup passed |
-| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42781018288](https://github.com/kira-manga/test/actions/runs/42781018288/artifacts/13747300644) | `UkkeraPos-simulator.app.zip`, source `53f496da`; 464 simulator methods and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6; exact-PID startup also passed on iPad Pro 13-inch (M5), run 42783159441 |
+| Windows x64 | [MSI artifact, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13749776129) | `UkkeraPOS-0.1.0.msi`, source `0ea09405`; package/content/architecture and packaged startup passed |
+| macOS Apple Silicon | [ARM64 DMG, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13748845186) | `UkkeraPOS-1.0.0.dmg`, source `0ea09405`; package/content/architecture and packaged startup passed |
+| macOS Intel | [x64 DMG, run 42784260707](https://github.com/kira-manga/test/actions/runs/42784260707/artifacts/13749486417) | `UkkeraPOS-1.0.0.dmg`, source `0ea09405`; package/content/architecture and packaged startup passed |
+| iPhone/iPad Simulator on an Apple Silicon Mac | [iOS artifact, run 42784260284](https://github.com/kira-manga/test/actions/runs/42784260284/artifacts/13748917483) | `UkkeraPos-simulator.app.zip`, source `0ea09405`; link and exact-PID startup on iPhone 17 Pro passed, iOS 26.5 / Xcode 26.6. Exact-PID iPad startup also passed in run 42786909482. No new Kotlin simulator suite in this packaging run; 464 methods passed on unchanged security/types/pricing source at `53f496da` |
 | Physical iPhone/iPad | Same iOS artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip` is built but **cannot be installed until signed and provisioned** |
 | Alternative unsigned iOS Debug archive | [Debug artifact, run 42688767829](https://github.com/kira-manga/test/actions/runs/42688767829/artifacts/13706303743) | Device-only Debug archive, source `e8cedcf5`; no simulator/test rerun in this job; also not installable until signed |
 
-The package revisions differ because later changes include Android setup/native
-corrections, Windows code, test fixtures, executor scripts and evidence. Do not describe them all as one tested
-source revision. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
+The current Android, desktop and iOS packages above share source `0ea09405`.
+The explicitly labelled historical alternatives have different revisions. Kotlin
+simulator regression evidence remains bound to its actual source `53f496da`. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
 
 ## Verify package SHA-256
@@ -39,12 +39,12 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Package | SHA-256 |
 | --- | --- |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
-| Latest Android diagnostic APK (`1490aa61`) | `ee24da8d1f0279d052ef79993559fe3330bce0050a4b283c350171c2a9a5aa16` |
-| Refreshed Windows MSI | `c22296506bbcd7a60c1836fc73c905e36e08fb6daed4ddd74feb3de21b110836` |
-| macOS ARM64 DMG | `138ac633608db2eda48ed906cfd861cec7e515b9e493715855d436f4bba23f41` |
-| macOS x64 DMG | `da1871cd1c7886d786b3315920072d9f79e3ba5323d5f1aeb4b0271aa370832d` |
-| iOS Simulator app ZIP | `c00b64ff615b3a4bfa3711b573c0c217c03ff084b38a381dce888af0d30a942c` |
-| iOS unsigned Release archive ZIP | `87cbcbf092260f3cba4e699954b53612ffd86fcfc839230e09829f3e7a81221e` |
+| Latest Android diagnostic APK (`0ea09405`) | `f4a3e2598cbc84ec5a109c200b6b95dea6096db16cf190a69d8bbc74aa3bd3eb` |
+| Refreshed Windows MSI | `d094f2e12946ea7fde5bd944aaa0de661ee30b591727b3c4dad014893b28d4ec` |
+| macOS ARM64 DMG | `255c0759afb1f1e6f2a946b3c225ab1cc4aa49fb7d164a809c75f09a3253783c` |
+| macOS x64 DMG | `1d8fe6325b200e50ad2777ba3efed178e1c718da488f5324340a1c4724995e3a` |
+| iOS Simulator app ZIP | `e1d0dfcb692e622adff59175ef758d4e1ecc71cdbfb8715d122ada45c1a088f5` |
+| iOS unsigned Release archive ZIP | `9ede8636803a1b499c06e6267d51c02fabd0e9ef6c75ef9b2e409dd6e435a1ca` |
 | iOS unsigned Debug archive ZIP | `51fae2442b336fcf40359845291f185b642994c1b462e70e5e776906811c0619` |
 
 ## Android
@@ -155,10 +155,10 @@ cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
 iPad Pro 13-inch (M5) Simulator with iOS 26.5; the original launch PID survived
 five seconds and the entry screen rendered **on predecessor source `038c115e`**.
-The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The current `53f496da` ZIP also
+The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The predecessor `53f496da` ZIP also
 passed [run 42783159441](https://github.com/kira-manga/test/actions/runs/42783159441),
 with original PID 3723 visible after five seconds and the unconfigured chooser in
-the retained screenshot. Interactions, rotation, accessibility
+the retained screenshot. The current `0ea09405` ZIP passed [run 42786909482](https://github.com/kira-manga/test/actions/runs/42786909482), retaining original PID 3173 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and
@@ -180,7 +180,7 @@ With authorized signing access on a Mac:
    Use JDK 21; the checked-in Xcode framework script builds the shared code. The
    current project references a single exact Keychain group using the authorized
    profile’s App ID prefix plus bundle ID. The refreshed unsigned Release archive
-   at `53f496da` selects this entitlement file; the older Debug archive
+   at `0ea09405` selects this entitlement file; the older Debug archive
    predates that configuration. Neither unsigned archive carries usable signed,
    provisioned entitlements. Rebuild the selected source with authorized signing
    for a physical-device test. No Team ID/prefix or wildcard group is guessed.

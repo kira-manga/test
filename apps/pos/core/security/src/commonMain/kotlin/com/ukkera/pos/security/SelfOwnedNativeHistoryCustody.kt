@@ -186,6 +186,9 @@ public class SelfOwnedNativeHistoryReadSession internal constructor(
     public suspend fun readSchemaPage(): NativeHistorySchemaPageV2? = controller.readSchemaPage()
     public suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2? = controller.nextRowMetadata()
     public suspend fun readCellChunk(): NativeHistoryCellChunkV2 = controller.readCellChunk()
+    /** Bounded sequential DATA from the currently announced row only. This neither
+     * advances to another row nor changes its metadata, grammar or close requirement. */
+    public suspend fun readCellBatch(): List<NativeHistoryCellChunkV2> = controller.readCellBatch()
     /** Inert private DATA only; retains this same original session and its actual owner. */
     public suspend fun openDataWorkspace(): SelfOwnedNativeHistoryWorkspace = controller.openDataWorkspace(this)
     public suspend fun closeOriginalRead(): SelfOwnedNativeHistoryReadClosed = controller.closeOriginalRead()
@@ -331,6 +334,8 @@ internal interface SelfOwnedNativeHistoryReadController {
     suspend fun readSchemaPage(): NativeHistorySchemaPageV2?
     suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2?
     suspend fun readCellChunk(): NativeHistoryCellChunkV2
+    /** Compatibility path keeps the original single-chunk operation and checks. */
+    suspend fun readCellBatch(): List<NativeHistoryCellChunkV2> = listOf(readCellChunk())
     /** Older source controllers refuse this additive DATA protocol; they cannot fake storage. */
     suspend fun openDataWorkspace(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeHistoryWorkspace =
         throw NativeHistoryUnavailable(SelfOwnedInstallationFailureV1.UNAVAILABLE)

@@ -3127,6 +3127,40 @@ internal class LocalWorkflowController(
         }
     }
 
+    /** Retire the old navigation reply without replacing its unresolved original. */
+    private fun discardStaleNavigation(kind: LocalWorkBusy) {
+        val cleanup = LocalSessionCleanup()
+        cleanup.attempt { supplierPhysical.deactivate() }
+        cleanup.attempt { retailPhysical.deactivate() }
+        cleanup.attempt { clearPurchasingDocuments() }
+        // Accepted denial cleanup can itself change the entry's leave guard.
+        // Retire the stale ticket without erasing that newer negative result.
+        val problem = state.value.readProblem?.takeIf { it == LocalServiceProblem.DENIED }
+            ?: LocalServiceProblem.UNAVAILABLE
+        val unresolvedId = state.value.operationId.takeUnless { state.value.recordedAcknowledged }
+        val resultRead = state.value.retiredOperationRead(LocalServiceProblem.UNAVAILABLE)
+        mutableState.value = state.value.copy(page = null, form = null, formInput = null, openingCounts = null, referencePicker = null, actionApproval = null, actionApprovalLookupWorking = false, search = "", reference = null,
+            priceDraft = null, pricePreview = null, foodPricePreview = null, foodPricePreviewProblem = null,
+            foodQuery = state.value.workflow.defaultFoodQuery(), kitchenBoardOrigin = null, foodUnavailable = null,
+            branchReportQuery = state.value.branchReportQuery.copy(after = null, expectedBranchRevision = null),
+            branchReportExport = LocalBranchReportExportPresentation(),
+            pending = emptyList(), pendingLoaded = false, pendingCursor = null, readProblem = problem,
+            originalLookupInput = "", originalLookupProblem = null,
+            operationId = unresolvedId,
+            operation = unresolvedId?.let { LocalOperationResult.Unresolved(it, LocalServiceProblem.UNAVAILABLE) },
+            operationRead = resultRead)
+        if (cleanup.failed) {
+            // A stale reply must still erase private views when an original holder fails.
+            // Retain that holder and fence the attachment before any work-error path can
+            // reactivate a child or offer a replacement operation.
+            cleanup.attempt { runtime.localSessionEnded(session, LocalServiceProblem.STORAGE_UNCERTAIN) }
+        }
+        cleanup.throwIfFailed()
+        activateRetailPhysical(state.value.workflow, null, state.value.foodQuery)
+        activateSupplierPhysical()
+        if (unresolvedId != null) unresolved(unresolvedId, staging = kind == LocalWorkBusy.STAGING)
+    }
+
     private fun run(kind: LocalWorkBusy, secret: CharArray? = null, block: suspend (RequestOwner) -> Unit) {
         if (!current() || state.value.working || retailPhysical.blocksParentWork || supplierPhysical.blocksParentWork) { secret?.fill('\u0000'); return }
         mutableState.value = state.value.copy(busy = kind)
@@ -3177,30 +3211,7 @@ internal class LocalWorkflowController(
                         mutableState.value = state.value.copy(actionApprovalLookupWorking = false)
                 }
                 if (current(ticket.activation)) {
-                    if (!runtime.navigator.isCurrent(ticket.navigation)) {
-                        supplierPhysical.deactivate()
-                        retailPhysical.deactivate()
-                        clearPurchasingDocuments()
-                        // Accepted denial cleanup can itself change the entry's leave guard.
-                        // Retire the stale ticket without erasing that newer negative result.
-                        val problem = state.value.readProblem?.takeIf { it == LocalServiceProblem.DENIED }
-                            ?: LocalServiceProblem.UNAVAILABLE
-                        val unresolvedId = state.value.operationId.takeUnless { state.value.recordedAcknowledged }
-                        val resultRead = state.value.retiredOperationRead(LocalServiceProblem.UNAVAILABLE)
-                        mutableState.value = state.value.copy(page = null, form = null, formInput = null, openingCounts = null, referencePicker = null, actionApproval = null, actionApprovalLookupWorking = false, search = "", reference = null,
-                            priceDraft = null, pricePreview = null, foodPricePreview = null, foodPricePreviewProblem = null,
-                            foodQuery = state.value.workflow.defaultFoodQuery(), kitchenBoardOrigin = null, foodUnavailable = null,
-                            branchReportQuery = state.value.branchReportQuery.copy(after = null, expectedBranchRevision = null),
-                            branchReportExport = LocalBranchReportExportPresentation(),
-                            pending = emptyList(), pendingLoaded = false, pendingCursor = null, readProblem = problem,
-                            originalLookupInput = "", originalLookupProblem = null,
-                            operationId = unresolvedId,
-                            operation = unresolvedId?.let { LocalOperationResult.Unresolved(it, LocalServiceProblem.UNAVAILABLE) },
-                            operationRead = resultRead)
-                        activateRetailPhysical(state.value.workflow, null, state.value.foodQuery)
-                        activateSupplierPhysical()
-                        if (unresolvedId != null) unresolved(unresolvedId, staging = kind == LocalWorkBusy.STAGING)
-                    }
+                    if (!runtime.navigator.isCurrent(ticket.navigation)) discardStaleNavigation(kind)
                     mutableState.value = state.value.copy(busy = LocalWorkBusy.NONE,
                         purchasingDocuments = state.value.purchasingDocuments.copy(workingDocumentId = null))
                     work = null
