@@ -77,17 +77,36 @@ internal fun collectionBeforeKey(operationId: OperationId, role: String): Aggreg
 internal suspend fun requireNormalizedCollectionReservation(collection: CollectionLock,
     header: com.ukkera.pos.inventory.InventoryReservationHeader,
     each: suspend (suspend (com.ukkera.pos.inventory.InventoryAllocationRecord) -> Unit) -> Unit) {
-    check(collection.stockRequirements.normalized && header.id == collection.reservationId &&
-        header.binding == com.ukkera.pos.inventory.CollectionBinding(collection.orderId, collection.quote.revision,
-            collection.id, collection.collectorId, CollectionExposure.UNKNOWN))
+    requireNormalizedCollectionBinding(collection, header)
     requireRetailAllocations(checkNotNull(collection.stockRequirements.normalizedLines), header, each)
     check((collection.saleId == null) || header.status == com.ukkera.pos.inventory.ReservationStatus.ISSUED)
 }
+
+private fun requireNormalizedCollectionBinding(collection: CollectionLock,
+    header: com.ukkera.pos.inventory.InventoryReservationHeader) {
+    check(collection.stockRequirements.normalized && header.id == collection.reservationId &&
+        header.binding == com.ukkera.pos.inventory.CollectionBinding(collection.orderId, collection.quote.revision,
+            collection.id, collection.collectorId, CollectionExposure.UNKNOWN))
+}
+
+internal data class NormalizedCollectionStockRead(
+    val header: com.ukkera.pos.inventory.InventoryReservationHeader,
+    val read: com.ukkera.pos.inventory.store.LocalStockRelationalRead,
+)
+
 internal suspend fun normalizedCollectionStock(view: CommandReadView, stock: com.ukkera.pos.inventory.store.LocalStockRepository,
-    collection: CollectionLock): com.ukkera.pos.inventory.InventoryReservationHeader {
+    collection: CollectionLock): com.ukkera.pos.inventory.InventoryReservationHeader =
+    normalizedCollectionStockRead(view, stock, collection).header
+
+/** Uses one checked member stream for demand totals and the caller's bounded hold projection. */
+internal suspend fun normalizedCollectionStockRead(view: CommandReadView, stock: com.ukkera.pos.inventory.store.LocalStockRepository,
+    collection: CollectionLock, hold: suspend (com.ukkera.pos.inventory.InventoryHoldRecord) -> Unit = { }): NormalizedCollectionStockRead {
     val read = stock.observeRelational(view)
-    val header = checkNotNull(read.reservation(collection.reservationId))
-    requireNormalizedCollectionReservation(collection, header) { read.allocations(collection.reservationId, it) }
+    val allocations = RetailAllocationCheck(checkNotNull(collection.stockRequirements.normalizedLines), collection.reservationId)
+    val header = checkNotNull(read.reservationWithMembers(collection.reservationId, { _, member -> allocations.observe(member) }, hold))
+    requireNormalizedCollectionBinding(collection, header)
+    allocations.finish(header)
+    check((collection.saleId == null) || header.status == com.ukkera.pos.inventory.ReservationStatus.ISSUED)
     header.issueId?.let { id ->
         val issue = checkNotNull(read.issue(id))
         check(issue.reservationId == header.id && issue.binding == header.binding && issue.purpose == com.ukkera.pos.inventory.ValueIssuePurpose.RETAIL &&
@@ -104,5 +123,5 @@ internal suspend fun normalizedCollectionStock(view: CommandReadView, stock: com
             request.issueId == id && request.orderId == collection.orderId && request.collectionId == collection.id &&
             request.saleId == collection.saleId && original.original.identity.producer.originalActorId == collection.collectorId)
     }
-    return header
+    return NormalizedCollectionStockRead(header, read)
 }

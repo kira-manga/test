@@ -71,12 +71,10 @@ public class LocalCollectionStockReadHandler(private val stock: LocalStockReposi
                 revision = cut.collection.value.revision
                 val collection = cut.collection.value
                 if (collection.stockRequirements.normalized) {
-                    val header = normalizedCollectionStock(loan, stock, collection)
-                    val read = stock.observeRelational(loan)
                     val page = mutableListOf<Pair<String, LocalCollectionStockHoldV2>>()
                     var remaining = 0L
                     var cursorPresent = query.afterHold == null
-                    read.holds(header.id) { member ->
+                    val normalizedStock = normalizedCollectionStockRead(loan, stock, collection) { member ->
                         val hold = member.hold
                         val cursor = hold.reason.name + "/" + (hold.position?.let {
                             com.ukkera.pos.inventory.store.LocalStockRelationalProfileV2.positionKey(it).id.value } ?: "none")
@@ -91,6 +89,8 @@ public class LocalCollectionStockReadHandler(private val stock: LocalStockReposi
                             if (page.size > query.holdLimit) page.removeAt(page.lastIndex)
                         }
                     }
+                    val header = normalizedStock.header
+                    val read = normalizedStock.read
                     check(cursorPresent) { "sales.stock.stale_hold_cursor" }
                     result = LocalCollectionStockReadResultV2.NormalizedCut(collection.id, header.id, header.revision, header.status.name,
                         header.allocationCount, header.holdCount, page.map { it.second }, if (remaining > page.size) page.last().first else null,

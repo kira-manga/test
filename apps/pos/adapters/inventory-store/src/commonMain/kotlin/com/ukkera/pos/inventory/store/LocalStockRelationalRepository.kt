@@ -299,10 +299,19 @@ public class LocalStockRelationalRead internal constructor(
     public suspend fun pool(key: StockPoolKey): InventoryPoolProjection? =
         record(LocalStockRelationalProfileV2.poolKey(key))?.let { (it.body as? StockRelationalBody.Pool)?.value ?: inconsistentStock() }
 
-    public suspend fun reservation(id: DomainId): InventoryReservationHeader? {
-        val record = reservationRecord(id) ?: return null
-        val header = (record.body as StockRelationalBody.Reservation).value
-        requireMembership(header)
+    public suspend fun reservation(id: DomainId): InventoryReservationHeader? =
+        reservationWithMembers(id, { _, _ -> }, { })
+
+    /**
+     * One actual header and complete member range on this loan. Consumers see checked members,
+     * but only normal return proves both terminal counts. No proof or row cache is retained.
+     */
+    public suspend fun reservationWithMembers(id: DomainId,
+        allocation: suspend (InventoryReservationHeader, InventoryAllocationRecord) -> Unit,
+        hold: suspend (InventoryHoldRecord) -> Unit): InventoryReservationHeader? {
+        val source = reservationRecord(id) ?: return null
+        val header = (source.body as StockRelationalBody.Reservation).value
+        reservationMembers(source, { allocation(header, it) }, hold)
         return header
     }
 
@@ -349,7 +358,13 @@ public class LocalStockRelationalRead internal constructor(
     private suspend fun reservationMembers(reservationId: DomainId,
         allocation: suspend (InventoryAllocationRecord) -> Unit, hold: suspend (InventoryHoldRecord) -> Unit) {
         val source = reservationRecord(reservationId) ?: missingStock()
+        reservationMembers(source, allocation, hold)
+    }
+
+    private suspend fun reservationMembers(source: StockRelationalRecordV2,
+        allocation: suspend (InventoryAllocationRecord) -> Unit, hold: suspend (InventoryHoldRecord) -> Unit) {
         val header = (source.body as StockRelationalBody.Reservation).value
+        val reservationId = header.id
         var allocations = 0L; var holds = 0L
         query(StockQueryV2.ReservationMembers(reservationId)) { index ->
             val record = record(index.identity.key) ?: inconsistentStock()

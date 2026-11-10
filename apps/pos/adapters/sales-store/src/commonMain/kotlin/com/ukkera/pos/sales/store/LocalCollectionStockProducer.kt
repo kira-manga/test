@@ -359,17 +359,28 @@ internal suspend fun requireNoStockActions(stock: LocalStockRelationalInspection
 }
 internal suspend fun requireRetailAllocations(lines: List<RetailStockDemandV2>, header: InventoryReservationHeader,
     each: suspend (suspend (InventoryAllocationRecord) -> Unit) -> Unit) {
-    val byLine = lines.associateBy { it.portionId }
-    val totals = lines.associate { it.portionId to Quantity(it.quantity.unitId, 0, it.quantity.scale) }.toMutableMap()
-    var count = 0L
-    each { member ->
+    val check = RetailAllocationCheck(lines, header.id)
+    each { check.observe(it) }
+    check.finish(header)
+}
+
+/** Bounded logical demand totals only; no physical allocation rows or source proofs are cached. */
+internal class RetailAllocationCheck(private val lines: List<RetailStockDemandV2>, private val reservationId: DomainId) {
+    private val byLine = lines.associateBy { it.portionId }
+    private val totals = lines.associate { it.portionId to Quantity(it.quantity.unitId, 0, it.quantity.scale) }.toMutableMap()
+    private var count = 0L
+
+    fun observe(member: InventoryAllocationRecord) {
         val a = member.allocation; val demand = byLine[a.lineId] ?: error("sales.stock.unrequested_line")
-        check(member.reservationId == header.id && a.position.pool.skuId == demand.skuId && a.position.pool.warehouseId == demand.warehouseId &&
+        check(member.reservationId == reservationId && a.position.pool.skuId == demand.skuId && a.position.pool.warehouseId == demand.warehouseId &&
             a.position.pool.ownership == StockOwnership.CompanyOwned && a.position.custody == StockCustody.RELEASED &&
             a.position.serialId == null && a.quantity.scaled > 0)
         totals[a.lineId] = totals.getValue(a.lineId) + a.quantity; check(count < Long.MAX_VALUE); count++
     }
-    check(count == header.allocationCount && lines.all { totals.getValue(it.portionId) == it.quantity })
+
+    fun finish(header: InventoryReservationHeader) {
+        check(header.id == reservationId && count == header.allocationCount && lines.all { totals.getValue(it.portionId) == it.quantity })
+    }
 }
 
 

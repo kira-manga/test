@@ -18,6 +18,9 @@ class IosAppHost private constructor(
     private var documentBinding: IosLocalPurchasingDocumentFiles.Binding? = null
     private var reportBinding: AutoCloseable? = null
     private var closed = false
+    private var closing = false
+    private var documentOwnerRetired = false
+    private var reportOwnerRetired = false
 
     constructor() : this(AppDependencies(platform = PlatformCapabilities(PlatformFamily.IOS)))
     /** Trusted native composition supplies real adapters; unavailable business services stay held. */
@@ -47,33 +50,55 @@ class IosAppHost private constructor(
         check(NSThread.isMainThread)
         if (closed) return
         // End native output admission before withdrawing the shared presentation/session.
-        endBindings()
-        runtime.lock(runtime.navigator.token())
+        val cleanup = LocalSessionCleanup()
+        cleanup.attempt { endBindings() }
+        // Failed native presentation cleanup cannot preserve private session state.
+        cleanup.attempt { runtime.lock(runtime.navigator.token()) }
+        cleanup.throwIfFailed()
     }
 
     /** Only disposal of this exact scene controller can release its bindings. */
     fun releaseViewController(retiring: UIViewController) {
         check(NSThread.isMainThread)
         if (controller !== retiring) return
-        lockForBackground()
-        controller = null
+        try { lockForBackground() }
+        finally { controller = null }
     }
 
     fun close() {
-        if (closed) return
-        closed = true
-        endBindings()
-        controller = null
-        documents?.close()
-        reports?.close()
-        runtime.close()
+        check(!closing) { "iOS presentation cleanup is already in progress" }
+        closed = true // Fence presentation admission before attempting any cleanup.
+        closing = true
+        try {
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { endBindings() }
+            controller = null
+            if (!documentOwnerRetired) cleanup.attempt {
+                documents?.close()
+                documentOwnerRetired = true
+            }
+            if (!reportOwnerRetired) cleanup.attempt {
+                reports?.close()
+                reportOwnerRetired = true
+            }
+            // Runtime.close retains its exact failed negative holders for a later retry.
+            // Returning from these presentation adapters is not native-owner close proof.
+            cleanup.attempt { runtime.close() }
+            cleanup.throwIfFailed()
+        } finally { closing = false }
     }
 
     private fun endBindings() {
-        reportBinding?.close()
-        reportBinding = null
-        documentBinding?.close()
-        documentBinding = null
+        val cleanup = LocalSessionCleanup()
+        cleanup.attempt {
+            reportBinding?.close()
+            reportBinding = null
+        }
+        cleanup.attempt {
+            documentBinding?.close()
+            documentBinding = null
+        }
+        cleanup.throwIfFailed()
     }
 
     private class Composition(
@@ -86,19 +111,24 @@ class IosAppHost private constructor(
         /** Preserve injected providers; instantiate only missing platform file adapters. */
         fun compose(dependencies: AppDependencies): Composition {
             require(dependencies.platform.family == PlatformFamily.IOS)
-            val documents = if (dependencies.documentFiles === UnavailableLocalPurchasingDocumentFiles)
-                IosLocalPurchasingDocumentFiles() else null
-            val reports = if (dependencies.branchReportFiles === UnavailableLocalBranchReportFiles)
-                IosLocalBranchReportFiles(if (dependencies.compositionMode == LocalSetupCompositionMode.TRAINING)
-                    IosLocalBranchReportStorageV1.TRAINING else IosLocalBranchReportStorageV1.LIVE) else null
+            var documents: IosLocalPurchasingDocumentFiles? = null
+            var reports: IosLocalBranchReportFiles? = null
             return try {
+                documents = if (dependencies.documentFiles === UnavailableLocalPurchasingDocumentFiles)
+                    IosLocalPurchasingDocumentFiles() else null
+                reports = if (dependencies.branchReportFiles === UnavailableLocalBranchReportFiles)
+                    IosLocalBranchReportFiles(if (dependencies.compositionMode == LocalSetupCompositionMode.TRAINING)
+                        IosLocalBranchReportStorageV1.TRAINING else IosLocalBranchReportStorageV1.LIVE) else null
                 Composition(UkkeraRuntime(dependencies.copy(
                     documentFiles = documents ?: dependencies.documentFiles,
                     branchReportFiles = reports ?: dependencies.branchReportFiles,
                 )), documents, reports)
             } catch (failure: Throwable) {
-                documents?.close()
-                reports?.close()
+                val cleanup = LocalSessionCleanup()
+                cleanup.attempt { documents?.close() }
+                cleanup.attempt { reports?.close() }
+                try { cleanup.throwIfFailed() }
+                catch (problem: Throwable) { if (problem !== failure) failure.addSuppressed(problem) }
                 throw failure
             }
         }
