@@ -17,7 +17,7 @@ package signing.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
+| Android, latest installable diagnostic | [API 35 startup artifact, run 42747967931](https://github.com/kira-manga/test/actions/runs/42747967931/artifacts/13732945521) | `testing-inputs/ukkera-pos-testing.apk`, clean source `ecc42c63`; only install the application APK. Bounded activity/process startup passed on API24/35/37 x86_64 and API24 x86; the same APK passed 3/3 native I/O slices on API24 x86. The separate native closed-read run ended with signal 9 and zero completed methods. Setup/ACK remains unqualified. |
 | Android, API 24+ | [API 37 artifact, run 42687218267](https://github.com/kira-manga/test/actions/runs/42687218267/artifacts/13704653553) | `ukkera-pos-testing.apk`, source `afc7f369`; install the application APK, not the instrumentation APK |
 | Windows x64 | [MSI artifact, run 42689314277](https://github.com/kira-manga/test/actions/runs/42689314277/artifacts/13707405198) | `UkkeraPOS-0.1.0.msi`, source `35441670`; includes the Windows namespace serialization and DPAPI envelope fixes |
 | macOS Apple Silicon | [ARM64 DMG, run 42679207040](https://github.com/kira-manga/test/actions/runs/42679207040/artifacts/13701379955) | `UkkeraPOS-1.0.0.dmg`, source `f71044b8` |

@@ -12,6 +12,12 @@ on:
         type: choice
         default: '35'
         options: ['24', '35', '37.0']
+      emulator_arch:
+        description: 'x86_64, or explicit API24-only legacy x86 native comparison'
+        required: true
+        type: choice
+        default: x86_64
+        options: [x86_64, x86]
       runner:
         description: Explicit supported emulator host; preserves the same APKs and assertions
         required: true
@@ -48,6 +54,15 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
+      - name: Require a supported architecture and API pair
+        env:
+          EMULATOR_ARCH: ${{ inputs.emulator_arch }}
+          REQUESTED_API: ${{ inputs.api_level }}
+        run: |
+          if [[ "$EMULATOR_ARCH" == x86 && "$REQUESTED_API" != 24 ]]; then
+            echo 'Legacy x86 comparison requires API24; no substituted ABI is permitted.' >&2
+            exit 2
+          fi
       - name: Enable disposable hosted emulator on Linux
         if: runner.os == 'Linux'
         run: sudo chmod 666 /dev/kvm
@@ -65,11 +80,12 @@ jobs:
           POS_AOT_COMPILE: ${{ inputs.aot_compile }}
           POS_NATIVE_ACK_SEGMENT: ${{ matrix.segment }}
           POS_EXPECTED_ANDROID_API: ${{ inputs.api_level == '37.0' && '37' || inputs.api_level }}
+          POS_EXPECTED_ANDROID_ABI: ${{ inputs.emulator_arch }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
           api-level: ${{ inputs.api_level }}
           target: google_apis
-          arch: x86_64
+          arch: ${{ inputs.emulator_arch }}
           ram-size: 2048M
           disk-size: 4096M
           disable-animations: true
@@ -79,7 +95,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-android-ack-api${{ inputs.api_level }}-${{ matrix.segment }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pos-android-ack-api${{ inputs.api_level }}-${{ matrix.segment }}-${{ inputs.emulator_arch }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             native-ack-output
             testing-inputs/ukkera-pos-testing.apk
