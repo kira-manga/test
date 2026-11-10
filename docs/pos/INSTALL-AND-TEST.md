@@ -19,7 +19,12 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest stock composition build | [Stock revision artifact, run 42854976285](https://github.com/kira-manga/test/actions/runs/42854976285/artifacts/13782961958) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9bf03ee1`; install only the application APK. Signed packaging/fatal lint and 581 existing catalogue/inventory methods passed. Native API35 x86_64 reached recorded opening stock and collection begin, then signal9 before Start was observed; zero methods completed. Full checkout and cold recovery remain unverified. |
+| Android, current complete stock stream build | [Stock stream artifact, run 42865852079](https://github.com/kira-manga/test/actions/runs/42865852079/artifacts/13787209057) | `testing-inputs/ukkera-pos-testing.apk`, clean source `583b857a`; install only the application APK. Signed packaging/fatal lint,1,835 existing JVM methods and562 affected Apple common methods passed (one JVM skip). Native API35 reached and returned the post-Begin normalized stock cut and assertions, then signal9 during original Start without a reply; zero methods completed. Financial/cold recovery remains unverified. |
+| macOS ARM64, current presentation cleanup build | [ARM artifact, run42865844485 attempt2](https://github.com/kira-manga/test/actions/runs/42865844485/artifacts/13789246576) | `UkkeraPOS-1.0.0.dmg`, source `583b857a`; mount/content/architecture and packaged startup passed after a hosted-runner capacity retry. Unsigned, unnotarized, unconfigured bootstrap. |
+| macOS Intel, current presentation cleanup build | [Intel artifact, run 42865844485](https://github.com/kira-manga/test/actions/runs/42865844485/artifacts/13787308947) | `UkkeraPOS-1.0.0.dmg`, source `583b857a`; mount/content/architecture and packaged startup passed. Unsigned, unnotarized, unconfigured bootstrap. |
+| iOS Simulator, shutdown cleanup build | [Apple artifact, run 42861638887](https://github.com/kira-manga/test/actions/runs/42861638887/artifacts/13787303446) | `UkkeraPos-simulator.app.zip`, source `72af8eb1`; framework/Xcode linking and exact-PID startup on iPhone17 Pro passed. Includes shutdown cleanup; predates foreground fix `962bb3a8`. Final changed-source package run42867498835 pending. |
+| Physical iPhone/iPad, shutdown cleanup archive | Same Apple artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip`, source `72af8eb1`; native archive passed but requires authorized signing/provisioning before installation. |
+| Android, previous stock composition build | [Stock revision artifact, run 42854976285](https://github.com/kira-manga/test/actions/runs/42854976285/artifacts/13782961958) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9bf03ee1`; install only the application APK. Signed packaging/fatal lint and 581 existing catalogue/inventory methods passed. Native API35 x86_64 reached recorded opening stock and collection begin, then signal9 before Start was observed; zero methods completed. Full checkout and cold recovery remain unverified. |
 | Android, current authenticated STOP/close build | [Lifecycle artifact, run 42816765743](https://github.com/kira-manga/test/actions/runs/42816765743/artifacts/13764751908) | `testing-inputs/ukkera-pos-testing.apk`, clean source `f01bbb41`; install only the application APK. Signed package/fatal lint, 18 focused lifecycle JVM methods, full database regression and one API35 x86_64 native STOP/close supporting method passed without AOT. Full lifecycle/business/LAN/owner qualification remains open. |
 | Android, actual-owner refresh/lifecycle diagnostic | [Lifecycle artifact, run 42807559079](https://github.com/kira-manga/test/actions/runs/42807559079/artifacts/13761390342) | `testing-inputs/ukkera-pos-testing.apk`, clean source `4c045a36`; install only the application APK. Signed package/fatal lint and full database regression passed. Three native lifecycle methods failed at authenticated STOP; the background method passed current-Master refresh and existing-only RUN reopen assertions before STOP failed. |
 | Android, lifecycle closure-accounting build | [STOP/resume artifact, run 42834923867](https://github.com/kira-manga/test/actions/runs/42834923867/artifacts/13773606677) | `testing-inputs/ukkera-pos-testing.apk`, clean source `a476d536`; install only the application APK. Clean signed packaging/fatal lint and one unchanged API35 x86_64 supporting STOP/resume method passed. Whole lifecycle/financial/LAN/platform acceptance remains open. |
@@ -48,7 +53,12 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Latest stock composition Android APK (`9bf03ee1`) | `e5131da7ad3a7d5ff5caad9565254a5e3800a80dc60f814a3c6262a748de10f2` |
+| Current stock stream Android APK (`583b857a`) | `d4f04bf673c52d3ba41453641f50a8d07c16ce7efef6bfb6f96e9f98de91e997` |
+| Current macOS ARM64 DMG (`583b857a`) | `3bc146a30d3362e41e90a52f31bb59e9ee41c16506ee28ed9bce29be6333b2d4` |
+| Current macOS Intel DMG (`583b857a`) | `790a0c16e09e36ad998134efbd1e63fe3b539389e7f7c33f8e60d6ca7e1a49a0` |
+| Shutdown cleanup iOS Simulator ZIP (`72af8eb1`) | `a810068ac07fca859597efee8ece7e025b763f2b396fec727c52e9bc7f009590` |
+| Shutdown cleanup unsigned Release ZIP (`72af8eb1`) | `c53266ef39738086dc39ce05d5d3f56bef9fa406f89b60f7258f89837a5de8ad` |
+| Previous stock composition Android APK (`9bf03ee1`) | `e5131da7ad3a7d5ff5caad9565254a5e3800a80dc60f814a3c6262a748de10f2` |
 | Lifecycle closure-accounting Android APK (`a476d536`) | `07854fcdc6010bacffc7fe041774d141c73de74256f4386990f304a8bcc25f04` |
 | Older Android startup APK (`afc7f369`) | `773aa6b0ee98475dfb8d32b579a1e2d3f352879f19f23cdd84142e40558891d7` |
 | Current Android STOP/close APK (`f01bbb41`) | `4bd95a718ecf21f580fe5ba5b8295a21e7247aeefd5e249e26a8edccfe470bb6` |
@@ -85,7 +95,14 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Latest stock composition build:** `9bf03ee1` corrects the installed stock
+**Current stock stream build:** `583b857a` passes all observed post-Begin
+collection/normalized-stock reads and frozen stock assertions in the native
+baseline. The process later ends with signal9 after dispatch of original Start,
+with no reply or final cleanup. No complete financial method passes. Preserve
+that original and its saved request; do not create a replacement.
+[Exact source, pair and outcome](../../qa/pos/traceability/normalized-stock-member-stream-20261110/android-native-results.json).
+
+**Previous stock composition build:** `9bf03ee1` corrects the installed stock
 authority instance and preserves valid zero-based signed domain revisions. The
 unchanged native selector reached recorded opening stock and collection begin,
 then terminated with signal9 before an original Start was observed. No complete

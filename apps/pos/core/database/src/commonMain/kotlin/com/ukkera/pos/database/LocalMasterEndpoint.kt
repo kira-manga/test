@@ -862,8 +862,12 @@ public class LocalMasterEndpoint internal constructor(
         override fun busy(): PhysicalFreshStartReply = refused(DeferredReason.SERVICE_BUSY)
         override fun denied(): PhysicalFreshStartReply = refused(DeferredReason.AUTHORIZATION_DENIED)
         override suspend fun perform(): PhysicalFreshStartReply = refused(DeferredReason.PHYSICAL_RECORDING_HELD)
-        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): PhysicalFreshStartReply =
-            store.startPhysicalFromOwnedIngress(principals.authenticateLocal(credentials), request, lifetime, physicalIngress)
+        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): PhysicalFreshStartReply {
+            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_AUTHENTICATION_ENTERED)
+            val principal = principals.authenticateLocal(credentials)
+            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_AUTHENTICATION_RETURNED)
+            return store.startPhysicalFromOwnedIngress(principal, request, lifetime, physicalIngress)
+        }
         override fun onWaitAbandoned() { lifetime.deny() }
         override fun clearInput() { credentials.bearer.destroy() }
         override fun discard(value: PhysicalFreshStartReply) {

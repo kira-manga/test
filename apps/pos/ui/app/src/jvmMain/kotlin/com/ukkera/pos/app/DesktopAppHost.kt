@@ -29,16 +29,20 @@ class DesktopAppHost private constructor(composition: Composition) : AutoCloseab
     /** Only disposal of the exact current window attachment can release its bindings. */
     fun bind(window: Window): AutoCloseable {
         check(EventQueue.isDispatchThread() && !closed)
-        endBindings()
         val owner = Any()
-        bindingOwner = owner
+        var attaching = false
         try {
+            endBindings()
+            bindingOwner = owner
+            attaching = true
             reportBinding = reports?.bind(window)
             documentBinding = documents?.bind(window)
         } catch (failure: Throwable) {
             val cleanup = LocalSessionCleanup()
             cleanup.attempt { throw failure }
-            cleanup.attempt { endBindings() }
+            // endBindings already attempted both old peers. Retain a failed old
+            // holder without repeating that close; release any newly bound peers.
+            if (attaching) cleanup.attempt { endBindings() }
             cleanup.attempt { runtime.lock(runtime.navigator.token()) }
             cleanup.throwIfFailed()
             throw failure

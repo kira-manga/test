@@ -985,8 +985,10 @@ public class AtomicMasterStore internal constructor(
 
         // Native-free, real domain preflight. Positive operation+journal recovery occurs first
         // and remains available even when no endpoint/native owner exists or capacity is full.
+        if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PREFLIGHT_ENTERED)
         val first = executeTransaction(principal, request, handler, normalized, digest, identity,
             physicalAction, true, null)
+        if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PREFLIGHT_RETURNED)
         if (first !is KernelReply.PhysicalAdmission) return publish(first, request.operationId)
         if (ingress == null || !physicalWorkerCurrent(ingress, currentCoroutineContext()) || !physicalService.current()) {
             return deferred(DeferredReason.PHYSICAL_RECORDING_HELD)
@@ -1002,7 +1004,9 @@ public class AtomicMasterStore internal constructor(
             var nativeLease: PhysicalRecordingNativeLease? = null
             var cleanupUncertain = false
             val result = try {
+                if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_NATIVE_ACQUIRE_ENTERED)
                 val acquired = physicalRecordingGate.acquire(binding)
+                if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_NATIVE_ACQUIRE_RETURNED)
                 // Claim an actually returned SAME-binding lease before any cancellation check can
                 // throw. A provider owns handles whose delivery never resumes this continuation.
                 if (acquired is PhysicalRecordingAcquire.Ready) {
@@ -1024,8 +1028,10 @@ public class AtomicMasterStore internal constructor(
                             // The actual writer rechecks positive history BEFORE ticket/latch checks.
                             // A concurrent winner yields nonarming replay even after withdrawal and
                             // keeps surplus allocation; no native/current latch precheck masks it.
+                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_COMMIT_ENTERED)
                             val stored = executeTransaction(principal, request, handler, normalized, digest, identity,
                                 physicalAction, false, ticket)
+                            if (physicalAction.isStart()) reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_COMMIT_RETURNED)
                             if (stored !is KernelReply.Recorded || stored.replayed ||
                                 stored.physicalOutcome !is PhysicalRecordingOutcome.Start) {
                                 publish(stored, request.operationId)
@@ -1333,7 +1339,11 @@ public class AtomicMasterStore internal constructor(
                                 digest, ticket?.transaction, physicalAction?.let { PhysicalRecordingParticipants(authority, principal.deviceId, principal.actorId) },
                                 actionApprovalRequested = request.actionApprovalId != null)
                             view.bindStockCommand(commandContext)
+                            if (physicalAction?.isStart() == true)
+                                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PREPARATION_ENTERED)
                             val prepared = handler.prepare(normalized, view, commandContext)
+                            if (physicalAction?.isStart() == true)
+                                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_START_PREPARATION_RETURNED)
                             require(prepared.requirement.scope == scope) { "Handler returned a cross-scope requirement" }
                             val bound = prepared.requirement.binding
                             require(bound != null && bound.operationId == request.operationId && bound.payloadDigest == digest) {
