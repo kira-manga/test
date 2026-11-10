@@ -39,6 +39,13 @@ retain_outcome() {
   local status=$?
   if [[ "$status" -ne 0 ]]; then
     printf 'FAIL: phase=%s exit_status=%s\n' "$PHASE" "$status" > "$OUT/failure.txt"
+    # Installation can fail before instrumentation owns its usual diagnostics.
+    # Query only an explicitly confirmed disposable emulator; preserve any earlier
+    # canonical exit observation rather than replacing its evidence at EXIT.
+    if [[ "${DISPOSABLE_CONFIRMED:-false}" == true ]]; then
+      timeout 20s "${ADB[@]}" logcat -d -b crash > "$OUT/failure-crash-log.txt" 2>&1 || true
+      if [[ ! -e "$OUT/process-exit.json" ]]; then collect_process_exit; fi
+    fi
   fi
 }
 trap retain_outcome EXIT
@@ -57,6 +64,7 @@ record = {
     'snapshot_source_revision': source_file.read_text().strip() if source_file.is_file() else 'unavailable',
     'expected_apk_source_revision': os.environ.get('POS_EXPECTED_APK_SOURCE', ''),
     'expected_android_sdk': os.environ.get('POS_EXPECTED_ANDROID_API', ''),
+    'expected_android_abi': os.environ.get('POS_EXPECTED_ANDROID_ABI', ''),
     'repository': os.environ.get('GITHUB_REPOSITORY', ''),
     'workflow': os.environ.get('GITHUB_WORKFLOW', ''),
     'run_id': os.environ.get('GITHUB_RUN_ID', ''),
@@ -81,6 +89,7 @@ fi
 [[ "$SERIAL" == emulator-* && "$SERIAL" != *$'\n'* ]] || { echo 'Select exactly one emulator with ANDROID_SERIAL.' >&2; exit 2; }
 ADB=(adb -s "$SERIAL")
 [[ "$("${ADB[@]}" shell getprop ro.kernel.qemu | tr -d '\r')" == 1 ]] || { echo 'Native slices require an emulator.' >&2; exit 2; }
+DISPOSABLE_CONFIRMED=true
 SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 APKSIGNER="${APKSIGNER:-}"
 if [[ -z "$APKSIGNER" ]]; then
@@ -121,6 +130,10 @@ sha256sum "$APP_APK" "$TEST_APK" > "$OUT/input-apk-sha256.txt"
 "${ADB[@]}" shell getprop ro.build.version.sdk > "$OUT/api-level.txt"
 [[ "$(tr -d '\r\n' < "$OUT/api-level.txt")" == "$POS_EXPECTED_ANDROID_API" ]] || { echo 'Emulator SDK differs from requested SDK.' >&2; exit 2; }
 "${ADB[@]}" shell getprop ro.product.cpu.abi > "$OUT/abi.txt"
+"${ADB[@]}" shell getprop ro.product.cpu.abilist > "$OUT/abi-list.txt"
+if [[ -n "${POS_EXPECTED_ANDROID_ABI:-}" ]]; then
+  [[ "$(tr -d '\r\n' < "$OUT/abi.txt")" == "$POS_EXPECTED_ANDROID_ABI" ]] || { echo 'Emulator ABI differs from requested ABI.' >&2; exit 2; }
+fi
 PHASE=install
 if [[ "${POS_NATIVE_SLICE_GROUP:-io}" == ack || "${POS_NATIVE_SLICE_GROUP:-io}" == cold-original || "${POS_NATIVE_SLICE_GROUP:-io}" == lifecycle || "${POS_NATIVE_SLICE_GROUP:-io}" == startup ]]; then
   existing="$("${ADB[@]}" shell pm path com.ukkera.pos.local.testing 2>/dev/null || true)"
@@ -174,6 +187,7 @@ record = {
     'status': 'BOUNDED_PROCESS_STARTUP_OBSERVED' if passed else 'STARTUP_NOT_CONFIRMED',
     'source_revision': os.environ['POS_EXPECTED_APK_SOURCE'],
     'expected_android_sdk': os.environ['POS_EXPECTED_ANDROID_API'],
+    'observed_android_abi': (out / 'abi.txt').read_text().strip(),
     'package': 'com.ukkera.pos.local.testing',
     'initial_pid': start, 'final_pid': end, 'sample_interval_seconds': 5,
     'observed': observed,

@@ -12,6 +12,12 @@ on:
         type: choice
         options: [io, keys, startup]
         default: io
+      emulator_arch:
+        description: 'x86_64 on APIs 24/35/37, or legacy 32-bit x86 on API24 only'
+        required: true
+        type: choice
+        options: [x86_64, x86]
+        default: x86_64
 permissions:
   contents: read
 jobs:
@@ -23,7 +29,7 @@ jobs:
       fail-fast: false
       max-parallel: 2
       matrix:
-        api: ['24', '35', '37.0']
+        api: ${{ inputs.emulator_arch == 'x86' && fromJSON('["24"]') || fromJSON('["24","35","37.0"]') }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,11 +45,12 @@ jobs:
           POS_DISPOSABLE_ANDROID: 'true'
           POS_NATIVE_SLICE_GROUP: ${{ inputs.slice_group }}
           POS_EXPECTED_ANDROID_API: ${{ matrix.api == '37.0' && '37' || matrix.api }}
+          POS_EXPECTED_ANDROID_ABI: ${{ inputs.emulator_arch }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
           api-level: ${{ matrix.api }}
           target: google_apis
-          arch: x86_64
+          arch: ${{ inputs.emulator_arch }}
           ram-size: 2048M
           disk-size: 4096M
           disable-animations: true
@@ -53,7 +60,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ inputs.emulator_arch }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             native-io-output
             testing-inputs/ukkera-pos-testing.apk
