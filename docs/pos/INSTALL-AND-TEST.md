@@ -62,6 +62,13 @@ The explicitly labelled historical alternatives have different revisions. The 46
 `0ea09405` packages and iPad observations remain in the dated refresh evidence. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
 
+The newer `1bc40eba` ASCII stock-frame application has passed local signed
+packaging/fatal lint and the existing 1,835-method JVM selection (two explicit
+namespace skips). Its exact-source [Android run42945521251](https://github.com/kira-manga/test/actions/runs/42945521251)
+and [Apple simulator run42945528804](https://github.com/kira-manga/test/actions/runs/42945528804)
+are still in progress. No verified downloadable artifact from these runs is
+listed yet. [Current source and pending checks](../../qa/pos/traceability/stock-frame-ascii-20261111/README.md).
+
 ## Verify package SHA-256
 
 On macOS/Linux use `shasum -a 256 <package>`. On Windows use

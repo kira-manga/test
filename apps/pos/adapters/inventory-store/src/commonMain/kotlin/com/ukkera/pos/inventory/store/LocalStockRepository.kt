@@ -80,10 +80,10 @@ public class LocalStockRepository(
     public suspend fun requireRelationalProducer(view: CommandReadView,
         original: com.ukkera.pos.database.RetainedStreamedCommand): LocalStockRelationalInspection {
         val read = relational.open(view, active = false)
-        val actual = read.original(original.identity.producer.operationId)
+        val (actual, inspection) = read.originalWithInspection(original.identity.producer.operationId)
         localStockCheck(actual.identity == original.identity && actual.journalHash == original.journalHash &&
             actual.normalized == original.normalized && actual.result == original.result, LocalStockFailure.STORAGE_INCONSISTENT)
-        return relational.requireComplete(actual)
+        return inspection
     }
 
     /** Core-native startup capability only, never a fabricated historical current view.

@@ -68,7 +68,7 @@ public suspend fun LocalStockRepository.observePaymentReservation(view: CommandR
     observeResource?.invoke(RecoveryResourceKey(com.ukkera.pos.recovery.RecoveryResourceKind.STOCK, view.scope.branchId))
     read.paymentResourceObserver = observeResource
     try {
-        return read.withPaymentProducerProof {
+        return read.withCompletedProducerProof {
             val allocations = mutableListOf<InventoryAllocationRecord>()
             val own = linkedMapOf<StockPositionKey, Quantity>()
             // Collect the existing selected allocation cut during the SAME complete checked

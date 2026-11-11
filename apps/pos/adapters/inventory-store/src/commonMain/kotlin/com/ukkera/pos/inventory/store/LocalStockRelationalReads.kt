@@ -15,13 +15,15 @@ internal val stockRelationalReadKeys: Set<ReadKey> get() = setOf(LocalStockStore
 internal suspend fun prepareStockRelationalRead(repository: LocalStockRepository, normalized: StoredBytes,
     view: CommandReadView, context: ReadContext): PreparedRead {
     val read = repository.observeRelational(view)
-    return when (context.key) {
-        LocalStockStoreProfile.ITEMS -> relationalItems(read, normalized, view, context)
-        LocalStockStoreProfile.QUANTITIES, LocalStockStoreProfile.QUANTITY_POSITION -> relationalQuantities(repository, read, normalized, context)
-        LocalStockStoreProfile.COSTS -> relationalCosts(read, normalized, context)
-        LocalStockStoreProfile.TRANSFER_DETAIL, LocalStockStoreProfile.TRANSFER_COSTS ->
-            relationalTransfer(repository, read, normalized, context)
-        else -> inconsistentStock()
+    return read.withCompletedProducerProof {
+        when (context.key) {
+            LocalStockStoreProfile.ITEMS -> relationalItems(read, normalized, view, context)
+            LocalStockStoreProfile.QUANTITIES, LocalStockStoreProfile.QUANTITY_POSITION -> relationalQuantities(repository, read, normalized, context)
+            LocalStockStoreProfile.COSTS -> relationalCosts(read, normalized, context)
+            LocalStockStoreProfile.TRANSFER_DETAIL, LocalStockStoreProfile.TRANSFER_COSTS ->
+                relationalTransfer(repository, read, normalized, context)
+            else -> inconsistentStock()
+        }
     }
 }
 
@@ -336,24 +338,26 @@ internal class StockHistoryRead(private val repository: LocalStockRepository) : 
         localStockCheck(context.key == key && view.scope == context.scope && queryDigest(context.scope, context.actorId, key, normalized) == context.semanticDigest)
         val input = stockDecode(normalized, StockHistoryQueryV2.serializer())
         val read = repository.observeRelational(view)
-        val version = read.itemVersion(input.skuId)
-        val poolKey = StockPoolKey(InventoryScope(context.scope.companyId, context.scope.branchId), input.skuId, input.warehouseId, StockOwnership.CompanyOwned)
-        val pool = read.pool(poolKey)
-        val rows = mutableListOf<LocalStockHistoryRowV2>()
-        if (pool != null) {
-            requireStockPoolHistory(read, pool)
-            read.query(StockQueryV2.PoolValues(LocalStockRelationalProfileV2.poolKey(poolKey).id)) { index ->
-                val row = read.record(index.identity.key) ?: inconsistentStock()
-                val event = row.body as? StockRelationalBody.ValueEvent
-                if (event != null && event.ordinal > input.after && rows.size <= input.limit) rows += LocalStockHistoryRowV2(event.sourceId,
-                    event.ordinal, event.event.name, event.quantityDelta, event.originalValueDelta, event.carryingValueDelta,
-                    event.after.onHand, event.after.carryingValue, read.original(row.producer.operationId).identity.recordedAt)
+        return read.withCompletedProducerProof {
+            val version = read.itemVersion(input.skuId)
+            val poolKey = StockPoolKey(InventoryScope(context.scope.companyId, context.scope.branchId), input.skuId, input.warehouseId, StockOwnership.CompanyOwned)
+            val pool = read.pool(poolKey)
+            val rows = mutableListOf<LocalStockHistoryRowV2>()
+            if (pool != null) {
+                requireStockPoolHistory(read, pool)
+                read.query(StockQueryV2.PoolValues(LocalStockRelationalProfileV2.poolKey(poolKey).id)) { index ->
+                    val row = read.record(index.identity.key) ?: inconsistentStock()
+                    val event = row.body as? StockRelationalBody.ValueEvent
+                    if (event != null && event.ordinal > input.after && rows.size <= input.limit) rows += LocalStockHistoryRowV2(event.sourceId,
+                        event.ordinal, event.event.name, event.quantityDelta, event.originalValueDelta, event.carryingValueDelta,
+                        event.after.onHand, event.after.carryingValue, read.original(row.producer.operationId).identity.recordedAt)
+                }
             }
+            val next = if (rows.size > input.limit) rows[input.limit - 1].ordinal else null
+            val output = StockHistoryPageWireV2(2, input.skuId, input.warehouseId, version.storageRevision, rows.take(input.limit), next)
+            stockReadProjection(context, listOf(SecurityAction.INVENTORY_QUANTITY_READ, SecurityAction.INVENTORY_COST_READ).map {
+                relationalStockReadRequirement(context, it, input.skuId, version.storageRevision ?: Revision(0))
+            }) { stockEncode(output, StockHistoryPageWireV2.serializer()) }
         }
-        val next = if (rows.size > input.limit) rows[input.limit - 1].ordinal else null
-        val output = StockHistoryPageWireV2(2, input.skuId, input.warehouseId, version.storageRevision, rows.take(input.limit), next)
-        return stockReadProjection(context, listOf(SecurityAction.INVENTORY_QUANTITY_READ, SecurityAction.INVENTORY_COST_READ).map {
-            relationalStockReadRequirement(context, it, input.skuId, version.storageRevision ?: Revision(0))
-        }) { stockEncode(output, StockHistoryPageWireV2.serializer()) }
     }
 }

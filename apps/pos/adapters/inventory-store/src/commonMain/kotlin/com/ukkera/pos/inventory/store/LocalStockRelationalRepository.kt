@@ -263,11 +263,11 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
     }
 }
 
-/** Completed immutable producer proofs within ONE payment reservation read. Actual
+/** Completed immutable producer proofs within ONE explicit protected stock read. Actual
  * originals, current rows/claims/ranges and selected writes are still read on the
  * same active loan. This is private bookkeeping, never a supplied producer pass.
  * The bounded optimization falls back to full proof rather than adding a row cap. */
-private class PaymentProducerProof(private val repository: LocalStockRelationalRepository) {
+private class StockReadProducerProof(private val repository: LocalStockRelationalRepository) {
     private val completed = linkedMapOf<OperationId, RetainedStreamedCommand>()
     private var bytes = 0L
     private var open = true
@@ -298,7 +298,7 @@ private class PaymentProducerProof(private val repository: LocalStockRelationalR
 /**
  * Read facade confined by the actual core loan on EVERY access. No adapter-owned validation
  * cache survives invalidation/exit: each original is traversed on the active loan. One explicit
- * payment reservation read may share already-complete immutable producer proof; it retains no
+ * protected stock read may share already-complete immutable producer proof; it retains no
  * current-row, claim, range or selected-write result and clears every entry before returning.
  */
 public class LocalStockRelationalRead internal constructor(
@@ -308,18 +308,18 @@ public class LocalStockRelationalRead internal constructor(
     internal val sink: StreamedCommandSink?,
 ) {
     public val scope: BranchScope get() = view.scope
-    private var paymentProducerProof: PaymentProducerProof? = null
+    private var stockReadProducerProof: StockReadProducerProof? = null
 
-    internal suspend fun <T> withPaymentProducerProof(block: suspend () -> T): T {
-        localStockCheck(paymentProducerProof == null)
-        val proof = PaymentProducerProof(repository)
-        paymentProducerProof = proof
+    internal suspend fun <T> withCompletedProducerProof(block: suspend () -> T): T {
+        localStockCheck(stockReadProducerProof == null)
+        val proof = StockReadProducerProof(repository)
+        stockReadProducerProof = proof
         try { return block() }
-        finally { paymentProducerProof = null; proof.close() }
+        finally { stockReadProducerProof = null; proof.close() }
     }
 
     private suspend fun requireCompleteProducer(original: RetainedStreamedCommand) {
-        val proof = paymentProducerProof
+        val proof = stockReadProducerProof
         if (proof == null) repository.requireComplete(original) else proof.requireComplete(original)
     }
 
@@ -534,6 +534,17 @@ public class LocalStockRelationalRead internal constructor(
         requireCompleteProducer(value)
         requireDirectSources(value)
         return value
+    }
+
+    /** Same original and direct-source qualification as original(), retaining the root
+     * inspection already produced by its complete traversal. This invocation has no
+     * shared-proof scope; returning that exact inspection avoids a second whole traversal.
+     * It is literal projection DATA, never current authority or a supplied producer pass. */
+    internal suspend fun originalWithInspection(operationId: OperationId): Pair<RetainedStreamedCommand, LocalStockRelationalInspection> {
+        val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
+        val inspection = repository.requireComplete(value)
+        requireDirectSources(value)
+        return value to inspection
     }
 
     /** One genuine predecessor hop, processed in bounded batches of actual source
