@@ -766,7 +766,15 @@ internal class StockFrameWriterV2(private val maximum: Int) {
     fun int(value: Int) { need(4); for (shift in 24 downTo 0 step 8) bytes[at++] = (value ushr shift).toByte() }
     fun long(value: Long) { need(8); for (shift in 56 downTo 0 step 8) bytes[at++] = (value ushr shift).toByte() }
     fun bytes(value: ByteArray, maximum: Int) { stockSqlRequireV2(value.size <= maximum); need(4 + value.size); int(value.size); value.copyInto(bytes, at); at += value.size }
-    fun text(value: String, maximum: Int) { stockSqlRequireV2('\u0000' !in value); bytes(value.encodeToByteArray(throwOnInvalidSequence = true), maximum) }
+    fun text(value: String, maximum: Int) {
+        stockSqlRequireV2('\u0000' !in value)
+        // ASCII is already canonical UTF-8. Keep strict conversion for every
+        // non-ASCII code unit, including malformed surrogate sequences.
+        val encoded = if (value.all { it.code <= 0x7f }) {
+            ByteArray(value.length) { value[it].code.toByte() }
+        } else value.encodeToByteArray(throwOnInvalidSequence = true)
+        bytes(encoded, maximum)
+    }
     fun id(value: DomainId) { text(value.value, 36) }
     fun optionalId(value: DomainId?) { text(value?.value.orEmpty(), 36) }
     fun digest(value: PayloadDigest) { text(value.value, 64) }
@@ -822,7 +830,16 @@ internal class StockFrameReaderV2(private val bytes: ByteArray, maximum: Int) {
     fun int(): Int { need(4); var value = 0; repeat(4) { value = (value shl 8) or (bytes[at++].toInt() and 255) }; return value }
     fun long(): Long { need(8); var value = 0L; repeat(8) { value = (value shl 8) or (bytes[at++].toLong() and 255) }; return value }
     fun bytes(maximum: Int): ByteArray { val size = int(); stockSqlRequireV2(size in 0..maximum); need(size); return bytes.copyOfRange(at, at + size).also { at += size } }
-    fun text(maximum: Int): String = bytes(maximum).decodeToString(throwOnInvalidSequence = true).also { stockSqlRequireV2('\u0000' !in it) }
+    fun text(maximum: Int): String {
+        val value = bytes(maximum)
+        // Every nonnegative byte is a complete canonical ASCII scalar. Any
+        // high-bit byte still goes through the existing strict UTF-8 decoder.
+        val text = if (value.all { it >= 0 }) {
+            buildString(value.size) { for (byte in value) append(byte.toInt().toChar()) }
+        } else value.decodeToString(throwOnInvalidSequence = true)
+        stockSqlRequireV2('\u0000' !in text)
+        return text
+    }
     fun id(): DomainId = DomainId(text(36))
     fun optionalId(): DomainId? = text(36).let { if (it.isEmpty()) null else DomainId(it) }
     fun digest(): PayloadDigest = PayloadDigest(text(64))
