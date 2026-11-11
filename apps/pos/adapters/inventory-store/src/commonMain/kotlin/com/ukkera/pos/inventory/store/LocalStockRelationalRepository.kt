@@ -263,10 +263,43 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
     }
 }
 
+/** Completed immutable producer proofs within ONE payment reservation read. Actual
+ * originals, current rows/claims/ranges and selected writes are still read on the
+ * same active loan. This is private bookkeeping, never a supplied producer pass.
+ * The bounded optimization falls back to full proof rather than adding a row cap. */
+private class PaymentProducerProof(private val repository: LocalStockRelationalRepository) {
+    private val completed = linkedMapOf<OperationId, RetainedStreamedCommand>()
+    private var bytes = 0L
+    private var open = true
+
+    suspend fun requireComplete(original: RetainedStreamedCommand) {
+        localStockCheck(open)
+        val previous = completed[original.identity.producer.operationId]
+        if (previous != null) {
+            localStockCheck(previous.identity == original.identity && previous.journalHash == original.journalHash &&
+                previous.normalized == original.normalized && previous.result == original.result,
+                LocalStockFailure.STORAGE_INCONSISTENT)
+            return
+        }
+        // Only normal completion of the existing entire typed producer/ancestry
+        // traversal may be remembered. A partial/failing traversal grants nothing.
+        repository.requireComplete(original)
+        localStockCheck(open)
+        val size = 512L + original.normalized.size + original.result.size
+        if (completed.size < 128 && size <= 8L * 1_024 * 1_024 - bytes) {
+            completed[original.identity.producer.operationId] = original
+            bytes += size
+        }
+    }
+
+    fun close() { open = false; completed.clear(); bytes = 0L }
+}
+
 /**
  * Read facade confined by the actual core loan on EVERY access. No adapter-owned validation
- * cache survives invalidation/exit: each original is traversed on the active loan. This trades
- * repeated bounded reads for explicit lifetime safety; it is not a performance qualification.
+ * cache survives invalidation/exit: each original is traversed on the active loan. One explicit
+ * payment reservation read may share already-complete immutable producer proof; it retains no
+ * current-row, claim, range or selected-write result and clears every entry before returning.
  */
 public class LocalStockRelationalRead internal constructor(
     private val repository: LocalStockRelationalRepository,
@@ -275,6 +308,21 @@ public class LocalStockRelationalRead internal constructor(
     internal val sink: StreamedCommandSink?,
 ) {
     public val scope: BranchScope get() = view.scope
+    private var paymentProducerProof: PaymentProducerProof? = null
+
+    internal suspend fun <T> withPaymentProducerProof(block: suspend () -> T): T {
+        localStockCheck(paymentProducerProof == null)
+        val proof = PaymentProducerProof(repository)
+        paymentProducerProof = proof
+        try { return block() }
+        finally { paymentProducerProof = null; proof.close() }
+    }
+
+    private suspend fun requireCompleteProducer(original: RetainedStreamedCommand) {
+        val proof = paymentProducerProof
+        if (proof == null) repository.requireComplete(original) else proof.requireComplete(original)
+    }
+
     /** Read-only alias sink for the bounded payment reader; never an acceptance predicate. */
     internal var paymentResourceObserver: (suspend (RecoveryResourceKey) -> Unit)? = null
 
@@ -483,7 +531,7 @@ public class LocalStockRelationalRead internal constructor(
 
     internal suspend fun original(operationId: OperationId): RetainedStreamedCommand {
         val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
-        repository.requireComplete(value)
+        requireCompleteProducer(value)
         requireDirectSources(value)
         return value
     }
@@ -512,7 +560,7 @@ public class LocalStockRelationalRead internal constructor(
                                 old.identity.sequence < original.identity.sequence), LocalStockFailure.STORAGE_INCONSISTENT)
                         requireDirectOriginalWrites(old, selected)
                         // Complete normalized stock + commerce qualification stays mandatory.
-                        repository.requireComplete(old)
+                        requireCompleteProducer(old)
                     }
                     is RetainedOriginalV2.Legacy -> {
                         val old = producer.evidence

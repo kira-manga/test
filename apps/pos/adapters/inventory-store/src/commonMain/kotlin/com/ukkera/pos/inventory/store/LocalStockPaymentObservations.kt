@@ -68,22 +68,24 @@ public suspend fun LocalStockRepository.observePaymentReservation(view: CommandR
     observeResource?.invoke(RecoveryResourceKey(com.ukkera.pos.recovery.RecoveryResourceKind.STOCK, view.scope.branchId))
     read.paymentResourceObserver = observeResource
     try {
-        val allocations = mutableListOf<InventoryAllocationRecord>()
-        val own = linkedMapOf<StockPositionKey, Quantity>()
-        // Collect the existing selected allocation cut during the SAME complete checked
-        // member range. Normal return still proves both allocation and hold counts;
-        // callbacks alone cannot establish completeness or replace source verification.
-        val header = read.reservationWithMembers(reservationId, { _, record ->
-            allocations += record
-            val allocation = record.allocation
-            own[allocation.position] = own[allocation.position]?.plus(allocation.quantity) ?: allocation.quantity
-        }, { }) ?: missingStock()
-        localStockCheck(allocations.size.toLong() == header.allocationCount)
-        val positions = linkedMapOf<StockPositionKey, Pair<InventoryPositionAvailability, Quantity>>()
-        for ((position, quantity) in own) positions[position] = read.availability(position) to quantity
-        val items = own.keys.map { it.pool.skuId }.distinct().sortedBy { it.value }.map { read.itemVersion(it) }
-        localStockCheck(items.all { it.storageRevision != null })
-        return LocalStockPaymentCut(header, allocations, items, positions)
+        return read.withPaymentProducerProof {
+            val allocations = mutableListOf<InventoryAllocationRecord>()
+            val own = linkedMapOf<StockPositionKey, Quantity>()
+            // Collect the existing selected allocation cut during the SAME complete checked
+            // member range. Normal return still proves both allocation and hold counts;
+            // callbacks alone cannot establish completeness or replace source verification.
+            val header = read.reservationWithMembers(reservationId, { _, record ->
+                allocations += record
+                val allocation = record.allocation
+                own[allocation.position] = own[allocation.position]?.plus(allocation.quantity) ?: allocation.quantity
+            }, { }) ?: missingStock()
+            localStockCheck(allocations.size.toLong() == header.allocationCount)
+            val positions = linkedMapOf<StockPositionKey, Pair<InventoryPositionAvailability, Quantity>>()
+            for ((position, quantity) in own) positions[position] = read.availability(position) to quantity
+            val items = own.keys.map { it.pool.skuId }.distinct().sortedBy { it.value }.map { read.itemVersion(it) }
+            localStockCheck(items.all { it.storageRevision != null })
+            LocalStockPaymentCut(header, allocations, items, positions)
+        }
     } finally { read.paymentResourceObserver = null }
 }
 
