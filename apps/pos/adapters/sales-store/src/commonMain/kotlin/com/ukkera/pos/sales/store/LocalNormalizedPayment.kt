@@ -217,17 +217,44 @@ private fun requirePaymentSourceWrite(original: RetainedCommandEvidence, source:
     check(write.storageGeneration == source.generation && write.schema == source.schema && write.payload == source.payload &&
         write.payloadDigest == source.payloadHash)
 }
-private suspend fun requirePaymentSourceWrite(original: RetainedStreamedCommand, source: StreamedSourceObservationV2.Current) {
-    var found = false
-    original.frames { frame ->
-        val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
-        if (write.key == source.key) {
-            check(!found && write.storageGeneration == source.generation && write.schema == source.schema &&
-                write.payload == source.payload && write.payloadDigest == source.payloadHash)
-            found = true
+/** Finite nonstock source selection for ONE financial original. Each selection comes
+ * from an actual original lookup. A repeated producer must match its complete retained
+ * identity/body before its rows join the group; no producer pass is inferred here. */
+private class PaymentStreamedSources {
+    private class Group(val original: RetainedStreamedCommand) {
+        val rows = linkedMapOf<AggregateKey, StreamedSourceObservationV2.Current>()
+    }
+    private val groups = linkedMapOf<OperationId, Group>()
+
+    fun select(original: RetainedStreamedCommand, vararg rows: StreamedSourceObservationV2.Current) {
+        check(rows.isNotEmpty())
+        val group = groups.getOrPut(original.identity.producer.operationId) { Group(original) }
+        val previous = group.original
+        check(previous.identity == original.identity && previous.journalHash == original.journalHash &&
+            previous.normalized == original.normalized && previous.result == original.result)
+        for (row in rows) {
+            val existing = group.rows.put(row.key, row)
+            check(existing == null || existing == row)
         }
     }
-    check(found) { "sales.stock.payment_original_write_missing" }
+
+    suspend fun qualify(view: CommandReadView) {
+        try {
+            for (group in groups.values) {
+                // Complete producer proof still precedes the selected-write proof. Every
+                // frame must return normally; a matching early write proves no completeness.
+                commerceRepository(view).requireRelationalProducer(view, group.original)
+                val found = mutableSetOf<AggregateKey>()
+                group.original.frames { frame ->
+                    val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
+                    val row = group.rows[write.key] ?: return@frames
+                    check(found.add(write.key) && write.storageGeneration == row.generation &&
+                        write.schema == row.schema && write.payload == row.payload && write.payloadDigest == row.payloadHash)
+                }
+                check(found == group.rows.keys) { "sales.stock.payment_original_write_missing" }
+            }
+        } finally { groups.clear() }
+    }
 }
 
 internal class NormalizedPaymentOriginCapacity : IllegalStateException("sales.stock.payment_origin_capacity_required")
@@ -337,7 +364,7 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
     }
     fun discard() { open = false; current = null; required.clear(); pending.clear() }
     private suspend fun qualifyLink(owner: RetainedCommandEvidence, observed: StockReadObservations,
-        row: StreamedSourceObservationV2.Current) {
+        row: StreamedSourceObservationV2.Current, streamed: PaymentStreamedSources) {
         val source = observed.current(commerceLinkKey(row.key)) ?: error("sales.stock.payment_link_source_missing")
         check(source.schema == commerceLinkSchema())
         val link = localSalesDecode(source.payload, CommerceRowLinkV2.serializer())
@@ -348,8 +375,7 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
             is RetainedOriginalV2.Streamed -> {
                 val value = previous.evidence
                 check(value.identity.producer == identity && value.identity.producer.command == StockStreamingCommandsV2.COLLECTION)
-                view.commerceStock.requireRelationalProducer(view, value)
-                requirePaymentSourceWrite(value, row); requirePaymentSourceWrite(value, source)
+                streamed.select(value, row, source)
             }
             is RetainedOriginalV2.Legacy -> {
                 val value = previous.evidence
@@ -425,15 +451,17 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
             }
             else -> error("sales.stock.payment_producer_subtype")
         }
+        val streamed = PaymentStreamedSources()
         for (row in observed.sources.filterIsInstance<StreamedSourceObservationV2.Current>()) {
-            if (row.key.kind in setOf(LocalSalesStoreProfile.ORDER_KIND, LocalSalesStoreProfile.COLLECTION_KIND)) qualifyLink(owner, observed, row)
+            if (row.key.kind in setOf(LocalSalesStoreProfile.ORDER_KIND, LocalSalesStoreProfile.COLLECTION_KIND))
+                qualifyLink(owner, observed, row, streamed)
             if (row.key.kind == LocalSalesStoreProfile.PRICE_SOURCES_KIND) {
                 val price = localSalesDecode(row.payload, LocalSalesPriceSourcesV2.serializer())
                 val quote = (original(price.originalQuoteOperationId) as? RetainedOriginalV2.Streamed)?.evidence
                     ?: error("sales.stock.payment_quote_original_missing")
                 check(price.normalizedStock)
                 requireNormalizedPaymentQuoteRequest(quote, price.orderId, price.quoteRevision)
-                view.commerceStock.requireRelationalProducer(view, quote); requirePaymentSourceWrite(quote, row)
+                streamed.select(quote, row)
             }
             if (row.key.kind == LocalSalesReturnPolicyCaptureCodecV2.KIND) {
                 val projection = requirePaymentReturnPolicySource(observed, row)
@@ -443,10 +471,10 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
                 requireNormalizedPaymentQuoteRequest(quote, capture.orderId, capture.quoteRevision)
                 // The whole original quote closes every signed PRESENT/ABSENT publication.
                 // BOTH exact immutable writes belong to that same genuinely joined producer.
-                view.commerceStock.requireRelationalProducer(view, quote)
-                requirePaymentSourceWrite(quote, row); requirePaymentSourceWrite(quote, projection.priceSource)
+                streamed.select(quote, row, projection.priceSource)
             }
         }
+        streamed.qualify(view)
     }
 }
 
