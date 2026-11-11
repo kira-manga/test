@@ -71,6 +71,7 @@ record = {
     'run_id': os.environ.get('GITHUB_RUN_ID', ''),
     'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', ''),
     'aot_compile_requested': os.environ.get('POS_AOT_COMPILE', 'false'),
+    'payment_stock_method_sample_requested': os.environ.get('POS_SAMPLE_PAYMENT_STOCK', 'false'),
     'runner_os': os.environ.get('RUNNER_OS', ''),
     'runner_arch': os.environ.get('RUNNER_ARCH', ''),
     'runner_image': os.environ.get('ImageOS', ''),
@@ -351,6 +352,14 @@ PYLIFECYCLEPASS
     exit 0 ;;
   cold-original)
     PHASE=cold-original
+    # Optional diagnostics on the unchanged synthetic APK pair. The collector owns
+    # only ART sampling/logcat; the native work budget and pass assertions remain.
+    sample_pid=''
+    [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}" == true || "${POS_SAMPLE_PAYMENT_STOCK:-false}" == false ]] || exit 2
+    if [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}" == true ]]; then
+      python3 scripts/pos/android/sample-payment-stock.py --serial "$SERIAL" --output "$OUT/method-sample" &
+      sample_pid=$!
+    fi
     set +e
     timeout 1200s "${ADB[@]}" shell am instrument -w -r \
       -e class com.ukkera.pos.android.independent.coldoriginalstartv1.NativeColdOriginalTest#cos001NativeCashOriginalAcrossTwoColdReopens \
@@ -358,6 +367,10 @@ PYLIFECYCLEPASS
       com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
       | tee "$OUT/cold-original.txt"
     status=$?
+    if [[ -n "$sample_pid" ]]; then
+      touch "$OUT/sampling-instrumentation-finished"
+      wait "$sample_pid" || true
+    fi
     set -e
     "${ADB[@]}" logcat -d -b crash > "$OUT/crash-log.txt"
     collect_process_exit
