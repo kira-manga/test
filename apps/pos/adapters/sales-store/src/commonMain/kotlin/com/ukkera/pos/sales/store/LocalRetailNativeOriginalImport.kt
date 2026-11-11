@@ -100,6 +100,14 @@ public class LocalRetailNativeOriginalImport(override val domain: NativeOriginal
     override suspend fun verifyExisting(borrowed: CommandReadView, context: NativeOriginalImportContext,
         original: RetainedCommandEvidence): Boolean {
         val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies) } ?: borrowed
+        return if (domain == NativeOriginalDomain.RETAIL_PAYMENT_V3 && view is CommerceStockView &&
+            context.historicalStart.aggregateWrites.any { it.key.kind == StockReadEvidenceV1.KIND }) {
+            withNativePaymentOriginalProof(view) { verifyRetailExisting(it, context, original) }
+        } else verifyRetailExisting(view, context, original)
+    }
+
+    private suspend fun verifyRetailExisting(view: CommandReadView, context: NativeOriginalImportContext,
+        original: RetainedCommandEvidence): Boolean {
         val projection = project(context.native)
         if (view.scope != projection.scope || original.operationId != projection.recordingOperationId ||
             original.scope != view.scope || original.command != domain.command ||

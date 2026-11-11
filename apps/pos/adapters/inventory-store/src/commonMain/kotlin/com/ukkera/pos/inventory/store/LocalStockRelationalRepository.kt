@@ -559,7 +559,14 @@ public class LocalStockRelationalRead internal constructor(
         return value
     }
 
-    internal suspend fun original(operationId: OperationId): RetainedStreamedCommand {
+    /** Ordinary row readers also retain the CLOSED graph only through their own direct-source
+     * pass. An enclosing projection keeps its existing scope; otherwise this call owns/clears
+     * one in finally. Actual original lookups, selected writes and current reads are unchanged. */
+    internal suspend fun original(operationId: OperationId): RetainedStreamedCommand =
+        if (stockReadProducerProof == null) withCompletedProducerProof { qualifiedOriginal(operationId) }
+        else qualifiedOriginal(operationId)
+
+    private suspend fun qualifiedOriginal(operationId: OperationId): RetainedStreamedCommand {
         val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
         requireCompleteProducer(value)
         requireDirectSources(value)

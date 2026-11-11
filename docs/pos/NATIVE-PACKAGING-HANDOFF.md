@@ -381,6 +381,19 @@ requests/results and private native cuts from the artifact. Source preparation
 and configuration validation alone are not native execution evidence; consult
 the dated run record for any actual result.
 
+For a bounded diagnostic run, select **one** of `sample_payment_stock=true`
+(first fixed payment stock-preparation log phase) or
+`sample_original_finalization=true` (the fixed synthetic COS-001 record reports
+`ORIGINAL_FINALIZATION` as `DISPATCH_PENDING`). The latter requires read-only
+`su 0` access to that exact test record on the disposable userdebug emulator;
+unavailable access or an already observed reply records a missed sample. Only
+its phase status is retained; requests/results stay in memory and are not copied
+into diagnostics. Both choices collect one five-second ART method sample at a
+10-ms interval from the sole current target PID. They never launch/stop the app,
+write the test record, modify APKs/assertions, or extend/renew/split the original
+shared 30,000-ms native work budget. Sampling adds observation overhead and is not
+a controlled speed comparison, passing case, original outcome or exit-cause proof.
+
 ## Android persisted STOP lifecycle executor
 
 `pos-android-lifecycle.yml` selects the existing

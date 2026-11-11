@@ -497,11 +497,21 @@ internal suspend fun requireNormalizedPaymentOrigin(view: CommandReadView, expec
  * inside this one proof. No current row, permission, native lease or grant is cached;
  * the private view and every proof entry are discarded before the requirement returns. */
 internal suspend fun withCollectionInstructionOriginalProof(view: CommandReadView,
-    prepare: suspend (CommandReadView) -> PhysicalRetainedStartRequirement?): PhysicalRetainedStartRequirement? {
+    prepare: suspend (CommandReadView) -> PhysicalRetainedStartRequirement?): PhysicalRetainedStartRequirement? =
+    withNormalizedPaymentOriginalProof(view, prepare)
+
+/** One existing native-payment import verification on the SAME writer loan. Each reader
+ * still closes its required ancestry before returning. This scope shares only completed
+ * immutable financial-original proofs; actual current reads and comparisons remain fresh. */
+internal suspend fun withNativePaymentOriginalProof(view: CommandReadView,
+    verify: suspend (CommandReadView) -> Boolean): Boolean = withNormalizedPaymentOriginalProof(view, verify)
+
+private suspend fun <T> withNormalizedPaymentOriginalProof(view: CommandReadView,
+    read: suspend (CommandReadView) -> T): T {
     check(view is CommerceStockView && view !is NormalizedPaymentOriginView)
     val traversal = NormalizedPaymentTraversal(view)
     try {
-        val result = prepare(traversal.view)
+        val result = read(traversal.view)
         traversal.finish()
         return result
     } finally { traversal.discard() }
