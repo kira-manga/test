@@ -19,7 +19,7 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest reservation-producer proof build | [Exact signed pair, run42941979749](https://github.com/kira-manga/test/actions/runs/42941979749/artifacts/13821129092) | `testing-inputs/ukkera-pos-testing.apk`, clean source `a76724d4`; install only the application APK. Signed packaging/fatal lint, 1,835 existing JVM methods (two namespace skips) and 562 Apple stock simulator methods passed. Android recorded Start and adopted the genuine native cash publication, then signal9; zero methods completed. Capture, durable financial outcome and final cleanup were not observed. Preserve the unresolved original. Full checkout/recovery remain unverified. |
+| Android, latest collected canonical-ASCII build | [Exact signed pair, run42945521251](https://github.com/kira-manga/test/actions/runs/42945521251/artifacts/13823516639) | `testing-inputs/ukkera-pos-testing.apk`, clean source `1bc40eba`; install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips). The native run observed durable successful capture/import and financial application `RECORDED`, then exited with signal9 after finalization dispatch. Finalization, final close and cold reopens are unobserved; zero methods completed. Synthetic diagnostics only; preserve the unresolved finalization and all earlier unknown originals. |
 | Android, prior grouped-source build | [Exact signed pair, run42935013259](https://github.com/kira-manga/test/actions/runs/42935013259/artifacts/13818472127) | `testing-inputs/ukkera-pos-testing.apk`, source `dbd89440`; install only the application APK. Signed packaging/fatal lint, 1,652 existing JVM methods (two namespace skips) and 562 Apple stock simulator methods passed. Android failed one method: Start returned `STORAGE_UNCERTAIN`, instruction authorization was not reached, and final native close was unconfirmed. Preserve the unresolved original; full checkout/recovery remain unverified. |
 | Android, prior instruction-proof build | [Exact signed pair, run42931770736](https://github.com/kira-manga/test/actions/runs/42931770736/artifacts/13816931217) | `testing-inputs/ukkera-pos-testing.apk`, clean source `9087e117`; install only the application APK. Fatal lint/signed pair and1,652 existing JVM methods passed (two explicit namespace skips);562 existing Apple stock simulator methods passed. Android recorded Start, native instruction preparation and retained Start read returned, then signal9 during domain authorization preparation. One method started, zero completed; instruction adoption, financial outcome and final cleanup remain unobserved. Preserve the unresolved original. |
 | Android, prior selected-write batch / instruction diagnostic | [Exact signed pair, run42927423739](https://github.com/kira-manga/test/actions/runs/42927423739/artifacts/13814623650) | `testing-inputs/ukkera-pos-testing.apk`, clean source `088ba505`; install only the application APK. Fatal lint/signed pair and1,835 existing JVM methods passed (two explicit namespace skips);562 Apple stock simulator methods passed. Android recorded Start, native instruction preparation and retained Start read returned, then signal9 during domain authorization preparation. Zero methods completed; instruction adoption, financial outcome and final cleanup remain unobserved. Preserve the unresolved original. |
@@ -62,12 +62,13 @@ The explicitly labelled historical alternatives have different revisions. The 46
 `0ea09405` packages and iPad observations remain in the dated refresh evidence. See [latest Android startup verification](../../qa/pos/traceability/android-bounded-startup-20261110/README.md) and [exact verification](../../qa/pos/traceability/epic3-native-qualification-20261109/README.md)
 for the boundaries and preserved failed runs. The [10 November refresh](../../qa/pos/traceability/native-build-refresh-20261110/README.md) records the newer desktop/iOS source, packages and actual checks.
 
-The newer `1bc40eba` ASCII stock-frame application has passed local signed
-packaging/fatal lint and the existing 1,835-method JVM selection (two explicit
-namespace skips). Its exact-source [Android run42945521251](https://github.com/kira-manga/test/actions/runs/42945521251)
-and [Apple simulator run42945528804](https://github.com/kira-manga/test/actions/runs/42945528804)
-are still in progress. No verified downloadable artifact from these runs is
-listed yet. [Current source and pending checks](../../qa/pos/traceability/stock-frame-ascii-20261111/README.md).
+The newer `ec18aa3d` retained-inspection application includes the projection
+proof scope and passed1,835 existing JVM methods/two explicit namespace skips,
+Android/both iOS inventory compilation and clean signed pair/fatal lint. Its exact
+[Android run42951088557](https://github.com/kira-manga/test/actions/runs/42951088557) and
+[Apple run42951096176](https://github.com/kira-manga/test/actions/runs/42951096176) are pending
+collection. No verified downloadable artifact from those runs is listed yet.
+[Current source/checks/pair](../../qa/pos/traceability/stock-producer-inspection-20261111/README.md).
 
 ## Verify package SHA-256
 
@@ -76,7 +77,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Latest collected reservation-producer proof Android APK (`a76724d4`) | `6336564932d24ef5ee48202a8ec4d7e9929d2c711577a310678d61c4ba894eb4` |
+| Latest collected canonical-ASCII Android APK (`1bc40eba`) | `b82fb982105703d2910073070ff664e5a00d12fd3b52021b5f4b9f8e312fba8b` |
+| Prior reservation-producer proof Android APK (`a76724d4`) | `6336564932d24ef5ee48202a8ec4d7e9929d2c711577a310678d61c4ba894eb4` |
 | Prior grouped-source Android APK (`dbd89440`) | `5a10cd2e8baf48843f5c7009a5d557992f1e05013705219fcc3389613d6b5943` |
 | Prior instruction-proof Android APK (`9087e117`) | `a5021d71abb8f6739b734846917e4ba8020a3e4e178e66478e4f444c95a581e5` |
 | Prior selected-write batch Android APK (`088ba505`) | `2219b41bc189bb6bb11ab2b9fec562e8244ca9a4c5edb782c32a2d50a06e87ca` |

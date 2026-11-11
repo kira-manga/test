@@ -66,7 +66,17 @@ internal class LocalStockRelationalRepository(
         traversal.requireSame(previous, actual)
         traversal.requireComplete(owner, previous)
     }
-    suspend fun requireComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection {
+    suspend fun requireComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection =
+        inspectComplete(original, retainCompleted = false).first
+
+    /** Returns only originals from the normally CLOSED entire graph. The private read scope
+     * may remember their exact immutable identities; this is not a supplied validation pass. */
+    suspend fun requireCompleteRetainingOriginals(original: RetainedStreamedCommand):
+        Pair<LocalStockRelationalInspection, List<RetainedStreamedCommand>> =
+        inspectComplete(original, retainCompleted = true)
+
+    private suspend fun inspectComplete(original: RetainedStreamedCommand, retainCompleted: Boolean):
+        Pair<LocalStockRelationalInspection, List<RetainedStreamedCommand>> {
         val traversal = StockOriginalTraversal(original)
         var result: LocalStockRelationalInspection? = null
         try {
@@ -77,8 +87,8 @@ internal class LocalStockRelationalRepository(
                 if (required === original) result = inspection
                 traversal.complete(required)
             }
-            traversal.close()
-            return result ?: inconsistentStock()
+            val completed = traversal.close(retainCompleted)
+            return (result ?: inconsistentStock()) to completed
         } catch (failure: Throwable) {
             traversal.fail()
             throw failure
@@ -116,8 +126,9 @@ internal class LocalStockRelationalRepository(
 /**
  * One closed, loan-bound complete-producer traversal. Required originals are processed by the
  * repository's iterative queue, never by recursive commerce callbacks. Only exact genuine
- * identities may share one completion inside this proof; no rows, grants or completion sets
- * survive it. The existing commerce request envelope (4096 originals / 64 MiB) is cumulative
+ * identities may share one completion inside this proof. A private protected read scope may
+ * retain exact immutable identities only after the WHOLE graph closes normally; no current
+ * rows or grants are retained. The commerce request envelope (4096 originals / 64 MiB) is cumulative
  * over the whole mixed legacy/normalized subtree, not freshly available at each handoff.
  * Physical stock frames remain streamed and are not converted into a lot/holder/row cap.
  */
@@ -156,9 +167,13 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
         node.complete = true
         current = null
     }
-    fun close() {
+    fun close(retainCompleted: Boolean): List<RetainedStreamedCommand> {
         localStockCheck(open && !closed && current == null && pending.isEmpty() && required.values.all { it.complete })
+        // Nothing escapes an incomplete graph: every node, edge/cycle check, typed producer
+        // and resource closure has finished before the existing read scope may remember it.
+        val completed = if (retainCompleted) required.values.map { it.original } else emptyList()
         clear()
+        return completed
     }
     fun fail() { clear() }
     private fun clear() {
@@ -281,15 +296,30 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
                 LocalStockFailure.STORAGE_INCONSISTENT)
             return
         }
-        // Only normal completion of the existing entire typed producer/ancestry
-        // traversal may be remembered. A partial/failing traversal grants nothing.
-        repository.requireComplete(original)
+        inspectComplete(original)
+    }
+
+    suspend fun inspectComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection {
         localStockCheck(open)
-        val size = 512L + original.normalized.size + original.result.size
-        if (completed.size < 128 && size <= 8L * 1_024 * 1_024 - bytes) {
-            completed[original.identity.producer.operationId] = original
-            bytes += size
+        // Keep the root inspection from the actual full traversal. Remember ancestors only
+        // after the entire graph closes, never as each individual queue node finishes.
+        val (inspection, originals) = repository.requireCompleteRetainingOriginals(original)
+        localStockCheck(open)
+        for (value in originals) {
+            val previous = completed[value.identity.producer.operationId]
+            if (previous != null) {
+                localStockCheck(previous.identity == value.identity && previous.journalHash == value.journalHash &&
+                    previous.normalized == value.normalized && previous.result == value.result,
+                    LocalStockFailure.STORAGE_INCONSISTENT)
+            } else {
+                val size = 512L + value.normalized.size + value.result.size
+                if (completed.size < 128 && size <= 8L * 1_024 * 1_024 - bytes) {
+                    completed[value.identity.producer.operationId] = value
+                    bytes += size
+                }
+            }
         }
+        return inspection
     }
 
     fun close() { open = false; completed.clear(); bytes = 0L }
@@ -536,16 +566,17 @@ public class LocalStockRelationalRead internal constructor(
         return value
     }
 
-    /** Same original and direct-source qualification as original(), retaining the root
-     * inspection already produced by its complete traversal. This invocation has no
-     * shared-proof scope; returning that exact inspection avoids a second whole traversal.
+    /** Same original and direct-source qualification as original(), retaining the exact root
+     * inspection. Its one-call scope shares only normally completed immutable ancestors;
+     * actual direct sources and selected writes are still read/compared before scope exit.
      * It is literal projection DATA, never current authority or a supplied producer pass. */
-    internal suspend fun originalWithInspection(operationId: OperationId): Pair<RetainedStreamedCommand, LocalStockRelationalInspection> {
-        val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
-        val inspection = repository.requireComplete(value)
-        requireDirectSources(value)
-        return value to inspection
-    }
+    internal suspend fun originalWithInspection(operationId: OperationId): Pair<RetainedStreamedCommand, LocalStockRelationalInspection> =
+        withCompletedProducerProof {
+            val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
+            val inspection = checkNotNull(stockReadProducerProof).inspectComplete(value)
+            requireDirectSources(value)
+            value to inspection
+        }
 
     /** One genuine predecessor hop, processed in bounded batches of actual source
      * frames. Equal complete producer identities share one read/qualification inside
