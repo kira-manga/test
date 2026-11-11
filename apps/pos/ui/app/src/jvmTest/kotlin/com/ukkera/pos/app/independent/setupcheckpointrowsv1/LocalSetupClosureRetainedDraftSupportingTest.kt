@@ -46,6 +46,9 @@ import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
 import com.ukkera.pos.types.UtcInstant
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,7 +92,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             assertEquals(listOf(stock(11)), controller.state.value.openingStockRows)
             assertEquals(listOf(float(21)), controller.state.value.openingFloatRows)
 
-            controller.addCatalogReference(catalog(3))
+            controller.addCatalogReference(token, catalog(3))
             gateway.checkpoints = checkpointView(catalog = listOf(catalog(1)), stock = listOf(stock(12)),
                 float = listOf(float(22)))
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
@@ -134,7 +137,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             assertEquals(listOf(stock(11)), controller.state.value.openingStockRows)
             assertEquals(listOf(float(21)), controller.state.value.openingFloatRows)
 
-            controller.addCatalogReference(catalog(2))
+            controller.addCatalogReference(token, catalog(2))
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
                 LocalSetupOperationKind.CATALOG_IMPORT_COMPLETE, committed = false, code = "setup.catalog.rejected",
                 catalogCompletion = gateway.catalogManifestPreview(controller.state.value.catalogRows))
@@ -154,7 +157,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             assertEquals(listOf(catalog(2)), controller.state.value.catalogRows,
                 "Committed opening completion cleared the unrelated catalog draft")
 
-            controller.addOpeningStockReference(stock(13))
+            controller.addOpeningStockReference(token, stock(13))
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
                 LocalSetupOperationKind.OPENING_COMPLETE, committed = false, code = "setup.opening.rejected",
                 openingCompletion = gateway.openingManifestPreview(
@@ -221,9 +224,9 @@ class LocalSetupClosureRetainedDraftSupportingTest {
                 catalog = listOf(catalog(1)), stock = listOf(stock(11)), float = listOf(float(21)))
             controller.loadCheckpoints(token)
             runCurrent()
-            controller.addCatalogReference(catalog(2))
-            controller.addOpeningStockReference(stock(12))
-            controller.addOpeningFloatReference(float(22))
+            controller.addCatalogReference(token, catalog(2))
+            controller.addOpeningStockReference(token, stock(12))
+            controller.addOpeningFloatReference(token, float(22))
 
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
                 LocalSetupOperationKind.CATALOG_IMPORT_COMPLETE, committed = true,
@@ -268,7 +271,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             assertEquals(listOf(float(21), float(22)), controller.state.value.openingFloatRows,
                 "A changed float partition was cleared by an older recovered completion")
 
-            controller.addOpeningStockReference(stock(13))
+            controller.addOpeningStockReference(token, stock(13))
             val floatCurrent = gateway.openingManifestPreview(
                 emptyList(), controller.state.value.openingFloatRows).float
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
@@ -283,9 +286,9 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             assertTrue(controller.state.value.openingFloatRows.isEmpty(),
                 "A matching float partition was not cleared independently of explicit zero stock")
 
-            controller.addCatalogReference(catalog(3))
-            controller.addOpeningStockReference(stock(14))
-            controller.addOpeningFloatReference(float(23))
+            controller.addCatalogReference(token, catalog(3))
+            controller.addOpeningStockReference(token, stock(14))
+            controller.addOpeningFloatReference(token, float(23))
             gateway.nextMutation = LocalSetupMutationResult.Recorded(OperationId.random(),
                 LocalSetupOperationKind.CATALOG_IMPORT_COMPLETE, committed = true,
                 code = "setup.catalog.settled", catalogCompletion = null)
@@ -312,7 +315,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             gateway.checkpoints = checkpointView(catalog = listOf(catalog(1)))
             controller.loadCheckpoints(token)
             runCurrent()
-            controller.addCatalogReference(catalog(2))
+            controller.addCatalogReference(token, catalog(2))
 
             gateway.checkpointProblem = LocalServiceProblem.STORAGE_UNCERTAIN
             controller.loadCheckpoints(token)
@@ -324,9 +327,107 @@ class LocalSetupClosureRetainedDraftSupportingTest {
         }
     }
 
+    /** Supporting wiring of frozen STC-S04/S05: private state retires; pending originals
+     * survive. This is a controlled presentation slice, not whole-case native qualification. */
+    @Test
+    fun stcRetirementClearsPrivateSetupProjectionAndRejectsRetiredCallbacks() = runTest {
+        withController { gateway, controller, token ->
+            gateway.checkpoints = checkpointView(listOf(catalog(1)), listOf(stock(11)), listOf(float(21)))
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertNotNull(controller.state.value.result)
+            assertNotNull(controller.state.value.checkpoints)
+            gateway.nextMutation = LocalSetupMutationResult.Pending(OperationId.random(), LocalSetupOperationKind.ACKNOWLEDGE)
+            controller.acknowledge(token)
+            runCurrent()
+            val original = assertNotNull(gateway.lastOperation)
+            assertEquals(original, controller.state.value.acknowledgeOperation)
+
+            controller.deactivate()
+            assertNull(controller.state.value.result)
+            assertNull(controller.state.value.checkpoints)
+            assertTrue(controller.state.value.catalogRows.isEmpty())
+            assertTrue(controller.state.value.openingStockRows.isEmpty())
+            assertTrue(controller.state.value.openingFloatRows.isEmpty())
+            assertEquals(original, controller.state.value.acknowledgeOperation)
+            controller.addCatalogReference(token, catalog(2))
+            controller.goLive(token)
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertTrue(controller.state.value.catalogRows.isEmpty())
+            assertNull(controller.state.value.checkpoints)
+            assertEquals(original, gateway.lastOperation, "A retired callback dispatched a replacement")
+
+            controller.close()
+            controller.activate(token)
+            controller.acknowledge(token)
+            runCurrent()
+            assertNull(controller.state.value.result)
+            assertEquals(original, gateway.lastOperation)
+        }
+    }
+
+    /** Frozen STC-S04 delayed old events must not reopen or overwrite a successor context. */
+    @Test
+    fun stcDelayedCancelledReplyCannotPublishIntoReactivatedSetupOrClearItsWork() = runTest {
+        withController { gateway, controller, token ->
+            val oldReply = CompletableDeferred<Unit>()
+            gateway.beforeMutationReturn = { withContext(NonCancellable) { oldReply.await() } }
+            gateway.nextMutation = LocalSetupMutationResult.Pending(OperationId.random(), LocalSetupOperationKind.ACKNOWLEDGE)
+            controller.acknowledge(token)
+            runCurrent()
+            val original = assertNotNull(gateway.lastOperation)
+            controller.deactivate()
+            controller.activate(token)
+            runCurrent()
+
+            val freshRead = CompletableDeferred<Unit>()
+            gateway.checkpoints = checkpointView(listOf(catalog(3)))
+            gateway.beforeCheckpointReturn = { freshRead.await() }
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertTrue(controller.state.value.busy)
+            oldReply.complete(Unit)
+            runCurrent()
+            assertTrue(controller.state.value.busy, "Old work cleared the successor's busy state")
+            assertNull(controller.state.value.lastMessage, "Old pending reply republished private presentation")
+            assertNull(controller.state.value.checkpoints)
+            assertEquals(original, controller.state.value.acknowledgeOperation)
+            freshRead.complete(Unit)
+            runCurrent()
+            assertEquals(listOf(catalog(3)), controller.state.value.catalogRows)
+            assertTrue(!controller.state.value.busy)
+            assertEquals(original, gateway.lastOperation)
+        }
+    }
+
+    /** Frozen STC-S05 stale navigation callbacks cannot acquire a current presentation lifetime. */
+    @Test
+    fun stcStaleNavigationCannotDispatchSetupOrEditItsManifest() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            val guard = assertNotNull(runtime.navigator.registerGuard(token.entryId,
+                com.ukkera.pos.app.navigation.LeaveGuard.DIRTY))
+            val currentToken = runtime.navigator.token()
+            assertTrue(!runtime.navigator.isCurrent(token))
+            controller.addCatalogReference(token, catalog(1))
+            controller.recordCatalogRow(token, catalog(2))
+            runCurrent()
+            assertTrue(controller.state.value.catalogRows.isEmpty())
+            assertNull(gateway.lastOperation)
+            controller.addCatalogReference(currentToken, catalog(3))
+            assertEquals(listOf(catalog(3)), controller.state.value.catalogRows)
+            runtime.navigator.removeGuard(guard)
+        }
+    }
+
     private suspend fun TestScope.withController(
         body: suspend TestScope.(ControlledSetupGateway, LocalSetupClosureController,
             com.ukkera.pos.app.navigation.NavigationToken) -> Unit,
+    ) = withControllerAndRuntime { gateway, controller, token, _ -> body(gateway, controller, token) }
+
+    private suspend fun TestScope.withControllerAndRuntime(
+        body: suspend TestScope.(ControlledSetupGateway, LocalSetupClosureController,
+            com.ukkera.pos.app.navigation.NavigationToken, UkkeraRuntime) -> Unit,
     ) {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val session = ControlledSetupSession(display())
@@ -348,7 +449,7 @@ class LocalSetupClosureRetainedDraftSupportingTest {
             val controller = assertNotNull(entry.setupClosure(runtime, runtime.navigator.token()))
             controller.activate(runtime.navigator.token())
             runCurrent()
-            body(this, session.gateway, controller, runtime.navigator.token())
+            body(this, session.gateway, controller, runtime.navigator.token(), runtime)
         } finally {
             runtime.close()
             Dispatchers.resetMain()
@@ -405,12 +506,17 @@ private class ControlledSetupGateway : LocalSetupClosureUiGateway {
     var nextMutation: LocalSetupMutationResult = LocalSetupMutationResult.NotStaged(
         OperationId.random(), LocalServiceProblem.UNAVAILABLE, LocalSetupOperationKind.UNKNOWN)
     var lastOperation: OperationId? = null
+    var beforeMutationReturn: (suspend () -> Unit)? = null
+    var beforeCheckpointReturn: (suspend () -> Unit)? = null
     override fun availability(): LocalSetupClosureAvailability = LocalSetupClosureAvailability.AVAILABLE
     override suspend fun readResult(): LocalSetupReadResult<LocalSetupResultView> =
         LocalSetupReadResult.Available(resultView())
-    override suspend fun readCheckpoints(): LocalSetupReadResult<LocalSetupCheckpointView> =
-        checkpointProblem?.let { LocalSetupReadResult.Unavailable(it) }
+    override suspend fun readCheckpoints(): LocalSetupReadResult<LocalSetupCheckpointView> {
+        val result = checkpointProblem?.let { LocalSetupReadResult.Unavailable(it) }
             ?: LocalSetupReadResult.Available(checkpoints)
+        beforeCheckpointReturn?.invoke()
+        return result
+    }
     override suspend fun pending(): LocalSetupReadResult<List<LocalSetupPendingView>> =
         LocalSetupReadResult.Available(emptyList())
     override suspend fun acknowledge(operationId: OperationId): LocalSetupMutationResult =
@@ -450,14 +556,16 @@ private class ControlledSetupGateway : LocalSetupClosureUiGateway {
         LocalSetupManifestPreview(values.size,
             if (values.isEmpty()) null else "$prefix:${values.sorted().joinToString("|")}")
 
-    private fun record(operationId: OperationId): LocalSetupMutationResult {
+    private suspend fun record(operationId: OperationId): LocalSetupMutationResult {
         lastOperation = operationId
-        return when (val result = nextMutation) {
+        val observed = when (val result = nextMutation) {
             is LocalSetupMutationResult.Recorded -> result.copy(operationId = operationId)
             is LocalSetupMutationResult.Pending -> result.copy(operationId = operationId)
             is LocalSetupMutationResult.NotStaged -> result.copy(operationId = operationId)
             is LocalSetupMutationResult.Unresolved -> result.copy(operationId = operationId)
         }
+        beforeMutationReturn?.invoke()
+        return observed
     }
 
     private fun resultView(): LocalSetupResultView = LocalSetupResultView(

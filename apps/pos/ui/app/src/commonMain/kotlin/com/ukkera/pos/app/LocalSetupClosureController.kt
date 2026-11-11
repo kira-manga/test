@@ -4,6 +4,9 @@ import com.ukkera.pos.app.navigation.NavigationToken
 import com.ukkera.pos.types.OperationId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,16 +60,42 @@ internal class LocalSetupClosureController(
     private val mutableState = MutableStateFlow(LocalSetupClosureState(availability = gateway.availability()))
     val state: StateFlow<LocalSetupClosureState> = mutableState.asStateFlow()
     private var activated = false
+    private var closed = false
+    private var activation = 0L
     private var work: Job? = null
 
     fun activate(token: NavigationToken) {
-        if (activated) return
+        if (closed || activated || !owns(token)) return
         activated = true
+        activation++
         refresh(token)
     }
 
+    /** Retire private projections immediately. Durable requests remain in the client journal;
+     * retain only their already selected IDs for same-controller recovery after reactivation. */
     fun deactivate() {
         activated = false
+        activation++
+        val pendingWork = work
+        work = null
+        val previous = state.value
+        mutableState.value = LocalSetupClosureState(
+            availability = previous.availability,
+            acknowledgeOperation = previous.acknowledgeOperation,
+            goLiveOperation = previous.goLiveOperation,
+            configurationOperation = previous.configurationOperation,
+            catalogRowOperation = previous.catalogRowOperation,
+            catalogCompleteOperation = previous.catalogCompleteOperation,
+            openingStockOperation = previous.openingStockOperation,
+            openingFloatOperation = previous.openingFloatOperation,
+            openingCompleteOperation = previous.openingCompleteOperation,
+        )
+        pendingWork?.cancel()
+    }
+
+    fun close() {
+        closed = true
+        deactivate()
     }
 
     fun refresh(token: NavigationToken) = launch(token) {
@@ -79,10 +108,11 @@ internal class LocalSetupClosureController(
     }
 
     fun acknowledge(token: NavigationToken) {
+        if (!current(token) || state.value.busy) return
         val operation = state.value.acknowledgeOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(acknowledgeOperation = operation)
-            when (val result = gateway.acknowledge(operation)) {
+            when (val result = observe(token) { gateway.acknowledge(operation) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     acknowledgeOperation = operation,
@@ -96,10 +126,11 @@ internal class LocalSetupClosureController(
     }
 
     fun goLive(token: NavigationToken) {
+        if (!current(token) || state.value.busy) return
         val operation = state.value.goLiveOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(goLiveOperation = operation)
-            when (val result = gateway.goLive(operation)) {
+            when (val result = observe(token) { gateway.goLive(operation) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     goLiveOperation = operation,
@@ -113,10 +144,11 @@ internal class LocalSetupClosureController(
     }
 
     fun configure(token: NavigationToken, input: LocalSetupConfigurationInput) {
+        if (!current(token) || state.value.busy) return
         val operation = state.value.configurationOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(configurationOperation = operation)
-            when (val result = gateway.configure(operation, input)) {
+            when (val result = observe(token) { gateway.configure(operation, input) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     configurationOperation = operation,
@@ -130,6 +162,7 @@ internal class LocalSetupClosureController(
     }
 
     fun recordCatalogRow(token: NavigationToken, row: LocalSetupCatalogRow) {
+        if (!current(token) || state.value.busy) return
         if (state.value.catalogRows.any { it.sourceId == row.sourceId } ||
             state.value.catalogRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS) {
             mutableState.value = state.value.copy(lastProblem = LocalServiceProblem.INVALID_INPUT)
@@ -138,7 +171,7 @@ internal class LocalSetupClosureController(
         val operation = state.value.catalogRowOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(catalogRowOperation = operation)
-            when (val result = gateway.recordCatalogRow(operation, row)) {
+            when (val result = observe(token) { gateway.recordCatalogRow(operation, row) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     catalogRowOperation = operation,
@@ -152,18 +185,21 @@ internal class LocalSetupClosureController(
     }
 
     /** Add an already retained row reference to the completion manifest without dispatching. */
-    fun addCatalogReference(row: LocalSetupCatalogRow) {
+    fun addCatalogReference(token: NavigationToken, row: LocalSetupCatalogRow) {
+        if (!current(token)) return
         if (!state.value.canMutate || state.value.catalogRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS ||
             state.value.catalogRows.any { it.sourceId == row.sourceId }) return
         mutableState.value = state.value.copy(catalogRows = state.value.catalogRows + row)
     }
 
-    fun removeCatalogRow(sourceId: com.ukkera.pos.types.DomainId) {
+    fun removeCatalogRow(token: NavigationToken, sourceId: com.ukkera.pos.types.DomainId) {
+        if (!current(token)) return
         if (!state.value.canMutate) return
         mutableState.value = state.value.copy(catalogRows = state.value.catalogRows.filterNot { it.sourceId == sourceId })
     }
 
     fun completeCatalogImport(token: NavigationToken, explicitNoImport: Boolean) {
+        if (!current(token) || state.value.busy) return
         val input = try {
             LocalSetupCatalogCompletionInput(explicitNoImport, if (explicitNoImport) emptyList() else state.value.catalogRows)
         } catch (_: IllegalArgumentException) {
@@ -173,7 +209,7 @@ internal class LocalSetupClosureController(
         val operation = state.value.catalogCompleteOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(catalogCompleteOperation = operation)
-            when (val result = gateway.completeCatalogImport(operation, input)) {
+            when (val result = observe(token) { gateway.completeCatalogImport(operation, input) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     catalogCompleteOperation = operation,
@@ -187,6 +223,7 @@ internal class LocalSetupClosureController(
     }
 
     fun recordOpeningStockRow(token: NavigationToken, row: LocalSetupOpeningStockRow) {
+        if (!current(token) || state.value.busy) return
         if (state.value.openingStockRows.any { it.sourceId == row.sourceId } ||
             state.value.openingStockRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS) {
             mutableState.value = state.value.copy(lastProblem = LocalServiceProblem.INVALID_INPUT)
@@ -195,7 +232,7 @@ internal class LocalSetupClosureController(
         val operation = state.value.openingStockOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(openingStockOperation = operation)
-            when (val result = gateway.recordOpeningStockRow(operation, row)) {
+            when (val result = observe(token) { gateway.recordOpeningStockRow(operation, row) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     openingStockOperation = operation,
@@ -208,13 +245,15 @@ internal class LocalSetupClosureController(
         }
     }
 
-    fun addOpeningStockReference(row: LocalSetupOpeningStockRow) {
+    fun addOpeningStockReference(token: NavigationToken, row: LocalSetupOpeningStockRow) {
+        if (!current(token)) return
         if (!state.value.canMutate || state.value.openingStockRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS ||
             state.value.openingStockRows.any { it.sourceId == row.sourceId }) return
         mutableState.value = state.value.copy(openingStockRows = state.value.openingStockRows + row)
     }
 
     fun recordOpeningFloatRow(token: NavigationToken, row: LocalSetupOpeningFloatRow) {
+        if (!current(token) || state.value.busy) return
         if (state.value.openingFloatRows.any { it.sourceId == row.sourceId } ||
             state.value.openingFloatRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS) {
             mutableState.value = state.value.copy(lastProblem = LocalServiceProblem.INVALID_INPUT)
@@ -223,7 +262,7 @@ internal class LocalSetupClosureController(
         val operation = state.value.openingFloatOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(openingFloatOperation = operation)
-            when (val result = gateway.recordOpeningFloatRow(operation, row)) {
+            when (val result = observe(token) { gateway.recordOpeningFloatRow(operation, row) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     openingFloatOperation = operation,
@@ -236,23 +275,27 @@ internal class LocalSetupClosureController(
         }
     }
 
-    fun addOpeningFloatReference(row: LocalSetupOpeningFloatRow) {
+    fun addOpeningFloatReference(token: NavigationToken, row: LocalSetupOpeningFloatRow) {
+        if (!current(token)) return
         if (!state.value.canMutate || state.value.openingFloatRows.size >= LOCAL_SETUP_MAX_MANIFEST_ROWS ||
             state.value.openingFloatRows.any { it.sourceId == row.sourceId }) return
         mutableState.value = state.value.copy(openingFloatRows = state.value.openingFloatRows + row)
     }
 
-    fun removeOpeningStockRow(sourceId: com.ukkera.pos.types.DomainId) {
+    fun removeOpeningStockRow(token: NavigationToken, sourceId: com.ukkera.pos.types.DomainId) {
+        if (!current(token)) return
         if (!state.value.canMutate) return
         mutableState.value = state.value.copy(openingStockRows = state.value.openingStockRows.filterNot { it.sourceId == sourceId })
     }
 
-    fun removeOpeningFloatRow(sourceId: com.ukkera.pos.types.DomainId) {
+    fun removeOpeningFloatRow(token: NavigationToken, sourceId: com.ukkera.pos.types.DomainId) {
+        if (!current(token)) return
         if (!state.value.canMutate) return
         mutableState.value = state.value.copy(openingFloatRows = state.value.openingFloatRows.filterNot { it.sourceId == sourceId })
     }
 
     fun completeOpening(token: NavigationToken, stockExplicitZero: Boolean, floatExplicitZero: Boolean) {
+        if (!current(token) || state.value.busy) return
         val input = try {
             LocalSetupOpeningCompletionInput(
                 stockExplicitZero = stockExplicitZero,
@@ -267,7 +310,7 @@ internal class LocalSetupClosureController(
         val operation = state.value.openingCompleteOperation ?: OperationId.random()
         launch(token) {
             mutableState.value = state.value.copy(openingCompleteOperation = operation)
-            when (val result = gateway.completeOpening(operation, input)) {
+            when (val result = observe(token) { gateway.completeOpening(operation, input) }) {
                 is LocalSetupMutationResult.Recorded -> adoptRecovery(token, result)
                 is LocalSetupMutationResult.Pending -> mutableState.value = state.value.copy(
                     openingCompleteOperation = operation,
@@ -281,15 +324,15 @@ internal class LocalSetupClosureController(
     }
 
     fun lookup(token: NavigationToken, operationId: OperationId) = launch(token) {
-        adoptRecovery(token, gateway.lookup(operationId))
+        adoptRecovery(token, observe(token) { gateway.lookup(operationId) })
     }
 
     fun resume(token: NavigationToken, operationId: OperationId) = launch(token) {
-        adoptRecovery(token, gateway.resume(operationId))
+        adoptRecovery(token, observe(token) { gateway.resume(operationId) })
     }
 
     fun acknowledgeRecorded(token: NavigationToken, operationId: OperationId) = launch(token) {
-        when (val result = gateway.acknowledgeRecorded(operationId)) {
+        when (val result = observe(token) { gateway.acknowledgeRecorded(operationId) }) {
             is LocalAcknowledgementResult.Acknowledged -> {
                 if (!current(token)) return@launch
                 mutableState.value = state.value.copy(lastMessage = LocalText(
@@ -379,7 +422,7 @@ internal class LocalSetupClosureController(
     }
 
     private suspend fun loadResultLocked(token: NavigationToken) {
-        val result = gateway.readResult()
+        val result = observe(token) { gateway.readResult() }
         if (!current(token)) return
         mutableState.value = when (result) {
             is LocalSetupReadResult.Available -> state.value.copy(result = result.value, resultProblem = null)
@@ -388,7 +431,7 @@ internal class LocalSetupClosureController(
     }
 
     private suspend fun loadCheckpointsLocked(token: NavigationToken, restoreRows: Boolean = true) {
-        val result = gateway.readCheckpoints()
+        val result = observe(token) { gateway.readCheckpoints() }
         if (!current(token)) return
         mutableState.value = when (result) {
             is LocalSetupReadResult.Available -> state.value.copy(
@@ -403,7 +446,7 @@ internal class LocalSetupClosureController(
     }
 
     private suspend fun loadPendingLocked(token: NavigationToken) {
-        val result = gateway.pending()
+        val result = observe(token) { gateway.pending() }
         if (!current(token)) return
         mutableState.value = when (result) {
             is LocalSetupReadResult.Available -> state.value.copy(pending = result.value, pendingProblem = null)
@@ -412,31 +455,53 @@ internal class LocalSetupClosureController(
     }
 
     private fun launch(token: NavigationToken, block: suspend () -> Unit) {
-        if (mutableState.value.busy || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+        if (state.value.busy || !current(token)) return
+        val generation = activation
         mutableState.value = state.value.copy(busy = true, lastProblem = null, lastMessage = null)
-        work = scope.launch {
+        val job = scope.launch(start = CoroutineStart.LAZY) {
             var failure: LocalServiceProblem? = null
             try {
                 if (!current(token)) return@launch
                 block()
+                currentCoroutineContext().ensureActive()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 failure = LocalServiceProblem.UNAVAILABLE
             } finally {
-                if (runtime.ownsLocalAttachment(session, owner, attachmentKey)) {
-                    mutableState.value = state.value.copy(
-                        busy = false,
-                        lastProblem = state.value.lastProblem ?: failure,
-                    )
+                // A cancelled provider may return after a successor activation starts.
+                // It cannot clear that successor's busy flag or publish an old failure.
+                if (activated && generation == activation) {
+                    work = null
+                    if (runtime.ownsLocalAttachment(session, owner, attachmentKey)) {
+                        mutableState.value = state.value.copy(
+                            busy = false,
+                            lastProblem = state.value.lastProblem ?: failure?.takeIf { current(token) },
+                        )
+                    }
                 }
             }
         }
+        work = job
+        job.start()
     }
 
-    private suspend fun current(token: NavigationToken): Boolean =
-        runtime.ownsLocalAttachment(session, owner, attachmentKey) &&
-            try { session.isCurrent() } catch (_: Exception) { false }
+    private fun owns(token: NavigationToken): Boolean =
+        token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area &&
+            runtime.navigator.isCurrent(token) && runtime.ownsLocalAttachment(session, owner, attachmentKey)
+
+    private fun current(token: NavigationToken): Boolean = !closed && activated && owns(token)
+
+    /** Cancellation is checked even if a provider swallowed it or returned from NonCancellable.
+     * This fences presentation only; the gateway/master still own the original durable outcome. */
+    private suspend fun <T> observe(token: NavigationToken, block: suspend () -> T): T {
+        currentCoroutineContext().ensureActive()
+        if (!current(token)) throw CancellationException("Setup presentation retired")
+        val value = block()
+        currentCoroutineContext().ensureActive()
+        if (!current(token)) throw CancellationException("Setup presentation retired")
+        return value
+    }
 
     private fun sameOriginalMessage(): LocalText = LocalText(
         "No terminal result was observed. Keep this original operation ID and look it up or resume the same original; do not start a replacement attempt.",

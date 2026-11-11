@@ -841,7 +841,7 @@ internal class EntryViewModel(val entryId: Long, val resources: EntryState, priv
             administrationController?.let { administrationContinuation = it.retireForAttachment() }
             administrationController = null
         }
-        cleanup.attempt { setupClosureController?.deactivate(); setupClosureController = null }
+        cleanup.attempt { setupClosureController?.close(); setupClosureController = null }
         if (retainGeneral) {
             cleanup.attempt { companyCatalogDrafts.retireAttachment() }
             cleanup.attempt { foodConfigurationDrafts.retireAttachment() }
@@ -900,7 +900,7 @@ internal class EntryViewModel(val entryId: Long, val resources: EntryState, priv
         val cleanup = LocalSessionCleanup()
         cleanup.attempt { localController?.close(); localController = null }
         cleanup.attempt { administrationController?.close(); administrationController = null }
-        cleanup.attempt { setupClosureController?.deactivate(); setupClosureController = null }
+        cleanup.attempt { setupClosureController?.close(); setupClosureController = null }
         workflowContinuation = null
         administrationContinuation = null
         cleanup.attempt { clearLocalConfigurationDrafts() }

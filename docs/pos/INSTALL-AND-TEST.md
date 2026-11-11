@@ -19,7 +19,8 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest collected financial-node stock proof build | [Exact signed pair, run42969676284](https://github.com/kira-manga/test/actions/runs/42969676284/artifacts/13832724738) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `6593e72f` (same production tree as `b5e52af5`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips). Exact retained executor keeps source51 provenance. Native capture/import, same-ID result recovery and financial application were recorded, then signal9 while finalization was pending. Finalization, final close and cold reopens remain unknown; zero completed methods. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. |
+| Android, latest collected closed-ancestor inspection build | [Exact signed pair, run42976531281](https://github.com/kira-manga/test/actions/runs/42976531281/artifacts/13836173015) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `2f960d6b` (inventory implementation `e3203739`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips); Apple passed562 stock simulator methods. Exact retained executor3213c7a0 keeps source51 provenance. Android recorded original capture/import and financial application, then signal9 while finalization was pending. The native owner logged a guard-refusal exclusion request at the shared deadline. Finalization, final close and cold reopens remain unknown; zero completed methods and no observed cleanup. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. Does not contain later setup-closure UI retirement changes. |
+| Android, preceding financial-node stock proof build | [Exact signed pair, run42969676284](https://github.com/kira-manga/test/actions/runs/42969676284/artifacts/13832724738) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `6593e72f` (same production tree as `b5e52af5`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips). Exact retained executor keeps source51 provenance. Native capture/import, same-ID result recovery and financial application were recorded, then signal9 while finalization was pending. Finalization, final close and cold reopens remain unknown; zero completed methods. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. |
 | Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
 | macOS ARM64, current presentation cleanup build | [ARM artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792366363) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed, including the failed-old-binding lock correction. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
 | macOS Intel, current presentation cleanup build | [Intel artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792331313) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
@@ -90,7 +91,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Latest collected financial-node stock Android APK (`6593e72f`) | `6f9401ac562f99765b24de7597df05e0edacbd5c94e6a40aa387dde98afd1b8b` |
+| Closed-ancestor inspection Android APK (`2f960d6b`) | `f41301888c7717a23221dc31ed05540566db6cdf78e9f0a499d9cbe572847946` |
+| Preceding financial-node stock Android APK (`6593e72f`) | `6f9401ac562f99765b24de7597df05e0edacbd5c94e6a40aa387dde98afd1b8b` |
 | Prior native-payment Android APK (`99e8ba9e`) | `9aa9dcde1b1971a62974b520879e87237be726e0f92db20d3b1ca256457c9ae9` |
 | Prior closed-ancestry Android APK (`355ea18a`) | `84a8d07fefe98ccf308c9018ad6e61451ee787803dd0a1363c560abd0910c58f` |
 | Prior retained-inspection Android APK (`ec18aa3d`) | `f95f7def4060c48528d4ab485f2db925738aa0fb1dc279d5684f494dc150d6df` |
@@ -134,7 +136,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 ## Android
 
-Latest Android application SHA-256: `6f9401ac562f99765b24de7597df05e0edacbd5c94e6a40aa387dde98afd1b8b` (34,251,438 bytes). The runtime-test APK is an executor for disposable automated runs and is not needed for owner installation.
+Latest Android application SHA-256: `f41301888c7717a23221dc31ed05540566db6cdf78e9f0a499d9cbe572847946` (34,251,438 bytes). The runtime-test APK is an executor for disposable automated runs and is not needed for owner installation.
 
 1. Use a disposable test device/profile on API 24 or later. Preserve existing test
    data unless an independently agreed clean-install case requires clearing it.

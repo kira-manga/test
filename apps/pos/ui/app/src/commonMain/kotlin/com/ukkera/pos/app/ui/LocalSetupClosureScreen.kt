@@ -72,7 +72,9 @@ internal fun LocalSetupClosureScreen(runtime: UkkeraRuntime, token: NavigationTo
     }
     val state by controller.state.collectAsState()
     val active = runtime.navigator.isActiveEntry(token)
-    LaunchedEffect(controller, presentation.localAttachment) { controller.activate(token) }
+    LaunchedEffect(controller, presentation.localAttachment, active) {
+        if (active) controller.activate(token)
+    }
     DisposableEffect(controller, active) {
         if (!active) controller.deactivate()
         onDispose { if (!runtime.navigator.isActiveEntry(token)) controller.deactivate() }
@@ -438,7 +440,7 @@ private fun CatalogImportSection(checkpoints: LocalSetupCheckpointView,
                 "كل صف يحدد مصدر كتالوج وSKU وعملية مصدر محفوظة بدقة. يتحقق الجهاز الرئيسي من الأثر الفعلي؛ ولا تنشئ هذه الشاشة SKU أو إصدارًا تجريبيًا."),
                 style = MaterialTheme.typography.bodyMedium)
             state.catalogRows.forEach { row ->
-                CatalogRowCard(row, enabled = state.canMutate, remove = { controller.removeCatalogRow(row.sourceId) })
+                CatalogRowCard(row, enabled = state.canMutate, remove = { controller.removeCatalogRow(token, row.sourceId) })
             }
             val preview = controller.catalogPreview()
             ReviewField(t("Explicit manifest count", "عدد البيان الصريح"), preview.rowCount.toString())
@@ -456,7 +458,7 @@ private fun CatalogImportSection(checkpoints: LocalSetupCheckpointView,
                                 "أدخل معرفات المصدر وSKU وعملية الكتالوج المحفوظة الدقيقة.")
                         } else {
                             localProblem = null
-                            controller.addCatalogReference(row)
+                            controller.addCatalogReference(token, row)
                         }
                     },
                     enabled = state.canMutate,
@@ -565,7 +567,7 @@ private fun OpeningSection(checkpoints: LocalSetupCheckpointView,
             state.openingStockRows.forEach { row ->
                 ReferenceRow(row.sourceId, t("Receipt: ${row.receiptId.value}", "الاستلام: ${row.receiptId.value}"),
                     t("Operation: ${row.openingOperationId.value}", "العملية: ${row.openingOperationId.value}"),
-                    enabled = state.canMutate, remove = { controller.removeOpeningStockRow(row.sourceId) })
+                    enabled = state.canMutate, remove = { controller.removeOpeningStockRow(token, row.sourceId) })
             }
             ReviewField(t("Stock count / digest", "عدد المخزون / البصمة"),
                 "${preview.stock.rowCount} / ${preview.stock.digest ?: t("none", "لا يوجد")}")
@@ -578,7 +580,7 @@ private fun OpeningSection(checkpoints: LocalSetupCheckpointView,
                         val row = parseStockRow(stockSource, stockReceipt, stockOperation)
                         if (row == null) localProblem = LocalText("Enter exact stock source, receipt and opening operation identifiers.",
                             "أدخل معرفات مصدر المخزون والاستلام وعملية الافتتاح الدقيقة.")
-                        else { localProblem = null; controller.addOpeningStockReference(row) }
+                        else { localProblem = null; controller.addOpeningStockReference(token, row) }
                     },
                     enabled = state.canMutate, modifier = Modifier.touchTarget(),
                 ) { Text(t("Add retained stock reference only", "إضافة مرجع مخزون محفوظ فقط")) }
@@ -608,7 +610,7 @@ private fun OpeningSection(checkpoints: LocalSetupCheckpointView,
             state.openingFloatRows.forEach { row ->
                 ReferenceRow(row.sourceId, t("Session: ${row.sessionId.value}", "الجلسة: ${row.sessionId.value}"),
                     t("Operation: ${row.openingOperationId.value}", "العملية: ${row.openingOperationId.value}"),
-                    enabled = state.canMutate, remove = { controller.removeOpeningFloatRow(row.sourceId) })
+                    enabled = state.canMutate, remove = { controller.removeOpeningFloatRow(token, row.sourceId) })
             }
             ReviewField(t("Float count / digest", "عدد العهدة / البصمة"),
                 "${preview.float.rowCount} / ${preview.float.digest ?: t("none", "لا يوجد")}")
@@ -621,7 +623,7 @@ private fun OpeningSection(checkpoints: LocalSetupCheckpointView,
                         val row = parseFloatRow(floatSource, floatSession, floatOperation)
                         if (row == null) localProblem = LocalText("Enter exact float source, cash session and opening operation identifiers.",
                             "أدخل معرفات مصدر العهدة وجلسة النقدية وعملية الافتتاح الدقيقة.")
-                        else { localProblem = null; controller.addOpeningFloatReference(row) }
+                        else { localProblem = null; controller.addOpeningFloatReference(token, row) }
                     },
                     enabled = state.canMutate, modifier = Modifier.touchTarget(),
                 ) { Text(t("Add retained float reference only", "إضافة مرجع عهدة محفوظ فقط")) }
