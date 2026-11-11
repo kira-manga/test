@@ -69,16 +69,18 @@ internal class LocalStockRelationalRepository(
     suspend fun requireComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection =
         inspectComplete(original, retainCompleted = false).first
 
-    /** Returns only originals from the normally CLOSED entire graph. The private read scope
-     * may remember their exact immutable identities; this is not a supplied validation pass. */
-    suspend fun requireCompleteRetainingOriginals(original: RetainedStreamedCommand):
-        Pair<LocalStockRelationalInspection, List<RetainedStreamedCommand>> =
+    /** Literal inspections escape only after the normally CLOSED entire graph. The private
+     * read scope may retain them alongside their exact immutable originals, never a pass
+     * supplied by the caller or data from an incompletely qualified ancestor. */
+    suspend fun requireCompleteRetainingInspections(original: RetainedStreamedCommand):
+        Pair<LocalStockRelationalInspection, List<LocalStockRelationalInspection>> =
         inspectComplete(original, retainCompleted = true)
 
     private suspend fun inspectComplete(original: RetainedStreamedCommand, retainCompleted: Boolean):
-        Pair<LocalStockRelationalInspection, List<RetainedStreamedCommand>> {
+        Pair<LocalStockRelationalInspection, List<LocalStockRelationalInspection>> {
         val traversal = StockOriginalTraversal(original)
         var result: LocalStockRelationalInspection? = null
+        val completed = mutableListOf<LocalStockRelationalInspection>()
         try {
             traversal.begin()
             while (true) {
@@ -86,10 +88,14 @@ internal class LocalStockRelationalRepository(
                 val inspection = requireOneComplete(required, traversal)
                 if (required === original) result = inspection
                 traversal.complete(required)
+                if (retainCompleted) completed += inspection
             }
-            val completed = traversal.close(retainCompleted)
+            // No inspection may be reused while any queued ancestor, cycle or resource
+            // closure remains unchecked. Closing invalidates the traversal's lookup API.
+            traversal.close()
             return (result ?: inconsistentStock()) to completed
         } catch (failure: Throwable) {
+            completed.clear()
             traversal.fail()
             throw failure
         }
@@ -132,7 +138,11 @@ internal class LocalStockRelationalRepository(
  * over the whole mixed legacy/normalized subtree, not freshly available at each handoff.
  * Physical stock frames remain streamed and are not converted into a lot/holder/row cap.
  */
-internal class StockOriginalTraversal(private val root: RetainedStreamedCommand) {
+internal class StockOriginalTraversal(root: RetainedStreamedCommand) {
+    private val scope = root.identity.scope
+    // Only begin needs the root handle. Closed ancestor inspections must not keep
+    // a different, potentially unretained root alive outside the read-scope budget.
+    private var initialRoot: RetainedStreamedCommand? = root
     private class Required(val original: RetainedStreamedCommand) {
         val dependencies = mutableSetOf<OperationId>()
         var complete = false
@@ -148,11 +158,13 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
     suspend fun begin() {
         localStockCheck(!open && !closed && required.isEmpty())
         open = true
+        val root = initialRoot ?: inconsistentStock()
         call()
         charge(root)
         val first = Required(root)
         required[root.identity.producer.operationId] = first
         pending.addLast(first)
+        initialRoot = null
     }
     fun next(): RetainedStreamedCommand? {
         localStockCheck(open && !closed && current == null)
@@ -167,17 +179,13 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
         node.complete = true
         current = null
     }
-    fun close(retainCompleted: Boolean): List<RetainedStreamedCommand> {
+    fun close() {
         localStockCheck(open && !closed && current == null && pending.isEmpty() && required.values.all { it.complete })
-        // Nothing escapes an incomplete graph: every node, edge/cycle check, typed producer
-        // and resource closure has finished before the existing read scope may remember it.
-        val completed = if (retainCompleted) required.values.map { it.original } else emptyList()
         clear()
-        return completed
     }
     fun fail() { clear() }
     private fun clear() {
-        open = false; closed = true; current = null; required.clear(); pending.clear()
+        open = false; closed = true; initialRoot = null; current = null; required.clear(); pending.clear()
     }
     private fun requireOwner(value: RetainedStreamedCommand): Required {
         val node = current ?: inconsistentStock()
@@ -193,7 +201,7 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
         when (actual) {
             is RetainedOriginalV2.Legacy -> {
                 val value = actual.evidence
-                localStockCheck(value.scope == root.identity.scope && value.operationId == id &&
+                localStockCheck(value.scope == scope && value.operationId == id &&
                     (value.assignmentId != owner.identity.assignmentId || value.authorityEpoch != owner.identity.authorityEpoch ||
                         value.sequence < owner.identity.sequence))
                 data(8_192L + value.normalized.size + value.result.size)
@@ -203,7 +211,7 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
             }
             is RetainedOriginalV2.Streamed -> {
                 val value = actual.evidence
-                localStockCheck(value.identity.scope == root.identity.scope && value.identity.producer.operationId == id &&
+                localStockCheck(value.identity.scope == scope && value.identity.producer.operationId == id &&
                     (value.identity.assignmentId != owner.identity.assignmentId || value.identity.authorityEpoch != owner.identity.authorityEpoch ||
                         value.identity.sequence < owner.identity.sequence))
                 charge(value)
@@ -220,7 +228,7 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
         val from = requireOwner(owner)
         val id = original.identity.producer.operationId
         val ownerId = owner.identity.producer.operationId
-        localStockCheck(id != ownerId && original.identity.scope == root.identity.scope)
+        localStockCheck(id != ownerId && original.identity.scope == scope)
         val existing = required[id]
         if (existing != null) requireSame(existing.original, original)
         // A complete node may later acquire an incoming edge; detect cycles across the WHOLE
@@ -310,30 +318,29 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
                 LocalStockFailure.STORAGE_INCONSISTENT)
             inspections[id]?.let { return it }
         }
-        // Keep the root inspection from the actual full traversal. Remember ancestors only
-        // after the entire graph closes, never as each individual queue node finishes.
-        val (inspection, originals) = repository.requireCompleteRetainingOriginals(original)
+        // Keep every eligible literal inspection from this normally CLOSED graph. A
+        // later ancestor request otherwise has a completed identity but repeats the full
+        // graph just to obtain the inspection. Actual lookups/direct sources stay below
+        // in the read facade, regardless of which closed inspection is retained here.
+        val (inspection, closed) = repository.requireCompleteRetainingInspections(original)
         localStockCheck(open)
-        for (value in originals) {
-            val previous = completed[value.identity.producer.operationId]
+        for (value in closed) {
+            val evidence = value.original
+            val operationId = evidence.identity.producer.operationId
+            val previous = completed[operationId]
             if (previous != null) {
-                localStockCheck(previous.identity == value.identity && previous.journalHash == value.journalHash &&
-                    previous.normalized == value.normalized && previous.result == value.result,
+                localStockCheck(previous.identity == evidence.identity && previous.journalHash == evidence.journalHash &&
+                    previous.normalized == evidence.normalized && previous.result == evidence.result,
                     LocalStockFailure.STORAGE_INCONSISTENT)
+                inspections[operationId] = value
             } else {
-                val size = 512L + value.normalized.size + value.result.size
+                val size = 512L + evidence.normalized.size + evidence.result.size
                 if (completed.size < 128 && size <= 8L * 1_024 * 1_024 - bytes) {
-                    completed[value.identity.producer.operationId] = value
+                    completed[operationId] = evidence
+                    inspections[operationId] = value
                     bytes += size
                 }
             }
-        }
-        // Retain a root inspection only within the existing 128-original / 8-MiB
-        // optimization envelope. Its traversal is already CLOSED. Literal frame access
-        // still checks the actual loan; no current rows or authority enter this map.
-        if (completed[id] != null) {
-            completed[id] = original
-            inspections[id] = inspection
         }
         return inspection
     }
