@@ -83,7 +83,7 @@ def main():
             observed['target_pid'] = int(target_pid)
             result = command('shell', 'am', 'profile', 'start', '--user', 'current',
                              '--clock-type', 'dual', '--sampling', str(SAMPLE_MICROS), target_pid, DEVICE_TRACE)
-            observed['start_exit_status'] = result.returncode
+            observed['start_request_exit_status'] = result.returncode
             (out / 'profile-start.txt').write_text(result.stdout + result.stderr)
             if result.returncode or re.search(r'error|failed|exception', result.stdout + result.stderr, re.I):
                 observed['status'] = 'PROFILE_START_NOT_CONFIRMED'
@@ -91,17 +91,47 @@ def main():
             started = True
             time.sleep(SAMPLE_SECONDS)
             result = command('shell', 'am', 'profile', 'stop', '--user', 'current', target_pid)
-            observed['stop_exit_status'] = result.returncode
+            observed['stop_request_exit_status'] = result.returncode
             (out / 'profile-stop.txt').write_text(result.stdout + result.stderr)
             started = False
             if result.returncode or re.search(r'error|failed|exception', result.stdout + result.stderr, re.I):
                 observed['status'] = 'PROFILE_STOP_NOT_CONFIRMED'
                 return
-            result = command('pull', DEVICE_TRACE, str(out / 'payment-stock.trace'), timeout=30)
-            observed['pull_exit_status'] = result.returncode
-            trace = out / 'payment-stock.trace'
-            observed['trace_bytes'] = trace.stat().st_size if trace.exists() else 0
-            observed['status'] = 'BOUNDED_DIAGNOSTIC_TRACE_COLLECTED' if result.returncode == 0 and observed['trace_bytes'] else 'TRACE_NOT_COLLECTED'
+            # ActivityManager sends asynchronous profiler-control Binder messages.
+            # A successful shell command does not prove the app has flushed its FD.
+            # Observe the completed file rather than immediately copying its initial
+            # zero-length placeholder. This wait never changes the app work budget.
+            observed['profile_requests_sent'] = True
+            capture_deadline = time.monotonic() + MAX_WAIT_SECONDS
+            previous_size = None
+            stable = 0
+            while time.monotonic() < capture_deadline:
+                result = command('shell', 'stat', '-c', '%s', DEVICE_TRACE, timeout=5)
+                value = result.stdout.strip()
+                size = int(value) if re.fullmatch(r'[0-9]+', value) else 0
+                stable = stable + 1 if size > 0 and size == previous_size else 0
+                previous_size = size
+                finished = (out.parent / 'sampling-instrumentation-finished').exists()
+                if stable >= 2 or finished:
+                    observed['capture_after_instrumentation_return'] = finished
+                    # The final marker follows the test-process result. Retain the
+                    # actual file even when it remains empty, without inventing a
+                    # profile or a successful native result.
+                    result = command('pull', DEVICE_TRACE, str(out / 'payment-stock.trace'), timeout=30)
+                    observed['pull_exit_status'] = result.returncode
+                    trace = out / 'payment-stock.trace'
+                    observed['trace_bytes'] = trace.stat().st_size if trace.exists() else 0
+                    observed['status'] = 'BOUNDED_DIAGNOSTIC_TRACE_COLLECTED' if result.returncode == 0 and observed['trace_bytes'] else 'TRACE_NOT_COLLECTED'
+                    errors = command('logcat', '-d', '-v', 'brief', '-s', 'ActivityThread:W', 'art:W', 'AndroidRuntime:W', '*:S')
+                    # Keep error TYPE counts only, no exception messages/arguments,
+                    # application data or arbitrary system log lines in this summary.
+                    observed['profiling_failed_warning_count'] = errors.stdout.count('Profiling failed on path')
+                    error_types = re.findall(r'\b(?:[a-zA-Z_$][\w$]*\.)+[A-Z][\w$]*(?:Exception|Error)\b', errors.stdout)
+                    observed['profiler_error_types'] = {name: error_types.count(name) for name in sorted(set(error_types))}
+                    return
+                time.sleep(0.5)
+            observed['status'] = 'TRACE_FLUSH_NOT_OBSERVED_WITHIN_HOST_WAIT'
+
             return
         observed['status'] = 'FIXED_PHASE_WAIT_EXPIRED'
     except (OSError, RuntimeError, subprocess.SubprocessError) as failure:
