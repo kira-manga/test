@@ -72,6 +72,7 @@ record = {
     'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', ''),
     'aot_compile_requested': os.environ.get('POS_AOT_COMPILE', 'false'),
     'payment_stock_method_sample_requested': os.environ.get('POS_SAMPLE_PAYMENT_STOCK', 'false'),
+    'original_finalization_method_sample_requested': os.environ.get('POS_SAMPLE_ORIGINAL_FINALIZATION', 'false'),
     'runner_os': os.environ.get('RUNNER_OS', ''),
     'runner_arch': os.environ.get('RUNNER_ARCH', ''),
     'runner_image': os.environ.get('ImageOS', ''),
@@ -356,8 +357,13 @@ PYLIFECYCLEPASS
     # only ART sampling/logcat; the native work budget and pass assertions remain.
     sample_pid=''
     [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}" == true || "${POS_SAMPLE_PAYMENT_STOCK:-false}" == false ]] || exit 2
-    if [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}" == true ]]; then
-      python3 scripts/pos/android/sample-payment-stock.py --serial "$SERIAL" --output "$OUT/method-sample" &
+    [[ "${POS_SAMPLE_ORIGINAL_FINALIZATION:-false}" == true || "${POS_SAMPLE_ORIGINAL_FINALIZATION:-false}" == false ]] || exit 2
+    [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}:${POS_SAMPLE_ORIGINAL_FINALIZATION:-false}" != true:true ]] || exit 2
+    sample_phase=''
+    if [[ "${POS_SAMPLE_PAYMENT_STOCK:-false}" == true ]]; then sample_phase=payment-stock; fi
+    if [[ "${POS_SAMPLE_ORIGINAL_FINALIZATION:-false}" == true ]]; then sample_phase=original-finalization; fi
+    if [[ -n "$sample_phase" ]]; then
+      python3 scripts/pos/android/sample-payment-stock.py --serial "$SERIAL" --output "$OUT/method-sample" --phase "$sample_phase" &
       sample_pid=$!
     fi
     set +e

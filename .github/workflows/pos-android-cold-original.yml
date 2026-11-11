@@ -22,6 +22,11 @@ on:
         required: true
         type: boolean
         default: false
+      sample_original_finalization:
+        description: Diagnostic-only five-second ART sample when the exact synthetic finalization is pending
+        required: true
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -45,6 +50,7 @@ jobs:
           POS_NATIVE_SLICE_GROUP: cold-original
           POS_AOT_COMPILE: ${{ inputs.aot_compile }}
           POS_SAMPLE_PAYMENT_STOCK: ${{ inputs.sample_payment_stock }}
+          POS_SAMPLE_ORIGINAL_FINALIZATION: ${{ inputs.sample_original_finalization }}
           POS_EXPECTED_ANDROID_API: ${{ inputs.api_level == '37.0' && '37' || inputs.api_level }}
           POS_EXPECTED_APK_SOURCE: ${{ inputs.apk_source_revision }}
         with:
