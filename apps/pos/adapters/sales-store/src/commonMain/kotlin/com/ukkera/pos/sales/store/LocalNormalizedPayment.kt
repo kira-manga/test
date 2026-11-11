@@ -317,16 +317,25 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
         }
         return false
     }
-    suspend fun finish() {
-        try {
-            while (pending.isNotEmpty()) {
-                val node = pending.removeFirst(); check(!node.complete && current == null); current = node
-                requireOne(node.original)
-                node.complete = true; current = null
-            }
-            check(required.values.all { it.complete })
-        } finally { open = false; current = null; required.clear(); pending.clear() }
+    /** A top-level reader never returns with queued, unqualified ancestry. Nested
+     * original joins keep the existing iterative queue instead of recursive proof calls. */
+    suspend fun qualifyIfIdle() {
+        check(open)
+        if (current == null) drain()
     }
+    private suspend fun drain() {
+        check(open && current == null)
+        while (pending.isNotEmpty()) {
+            val node = pending.removeFirst(); check(!node.complete && current == null); current = node
+            requireOne(node.original)
+            node.complete = true; current = null
+        }
+        check(required.values.all { it.complete })
+    }
+    suspend fun finish() {
+        try { drain() } finally { discard() }
+    }
+    fun discard() { open = false; current = null; required.clear(); pending.clear() }
     private suspend fun qualifyLink(owner: RetainedCommandEvidence, observed: StockReadObservations,
         row: StreamedSourceObservationV2.Current) {
         val source = observed.current(commerceLinkKey(row.key)) ?: error("sales.stock.payment_link_source_missing")
@@ -450,5 +459,22 @@ internal suspend fun requireNormalizedPaymentOrigin(view: CommandReadView, expec
         ?: error("sales.stock.payment_original_missing")
     requireSamePaymentOriginal(actual, expected)
     traversal.require(actual)
-    if (active == null) traversal.finish()
+    if (active == null) traversal.finish() else traversal.qualifyIfIdle()
+}
+
+/** One collection-instruction authorization on the SAME active kernel writer loan.
+ * Slot and current-collection reads still perform their actual original lookups and
+ * exact identity/write comparisons, closing all required ancestry before each reader
+ * returns. Only already-complete immutable financial originals may share completion
+ * inside this one proof. No current row, permission, native lease or grant is cached;
+ * the private view and every proof entry are discarded before the requirement returns. */
+internal suspend fun withCollectionInstructionOriginalProof(view: CommandReadView,
+    prepare: suspend (CommandReadView) -> PhysicalRetainedStartRequirement?): PhysicalRetainedStartRequirement? {
+    check(view is CommerceStockView && view !is NormalizedPaymentOriginView)
+    val traversal = NormalizedPaymentTraversal(view)
+    try {
+        val result = prepare(traversal.view)
+        traversal.finish()
+        return result
+    } finally { traversal.discard() }
 }

@@ -1,4 +1,4 @@
-# Local installation and testing — 10 November 2026
+# Local installation and testing — 11 November 2026
 
 These are synthetic local qualification builds. Epic 3 development and owner
 acceptance remain incomplete. Android has native setup/service integration;
@@ -19,7 +19,8 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest physical Start diagnostic | [Exact signed pair, run 42921427334](https://github.com/kira-manga/test/actions/runs/42921427334/artifacts/13812197159) | `testing-inputs/ukkera-pos-testing.apk`, clean source `bc1407ae`; install only the application APK. Signed packaging/fatal lint and 1,067 existing database methods passed (two explicit namespace skips). Start returned RECORDED after native acquisition, SQL execution, recheck, persistence and release returned. Signal9 followed before instruction adoption, financial outcome or final cleanup; zero methods completed. Full checkout and recovery remain unverified. |
+| Android, latest selected-write batch / instruction diagnostic | [Exact signed pair, run42927423739](https://github.com/kira-manga/test/actions/runs/42927423739/artifacts/13814623650) | `testing-inputs/ukkera-pos-testing.apk`, clean source `088ba505`; install only the application APK. Fatal lint/signed pair and1,835 existing JVM methods passed (two explicit namespace skips);562 Apple stock simulator methods passed. Android recorded Start, native instruction preparation and retained Start read returned, then signal9 during domain authorization preparation. Zero methods completed; instruction adoption, financial outcome and final cleanup remain unobserved. Preserve the unresolved original. |
+| Android, prior physical Start diagnostic | [Exact signed pair, run 42921427334](https://github.com/kira-manga/test/actions/runs/42921427334/artifacts/13812197159) | `testing-inputs/ukkera-pos-testing.apk`, clean source `bc1407ae`; install only the application APK. Signed packaging/fatal lint and 1,067 existing database methods passed (two explicit namespace skips). Start returned RECORDED after native acquisition, SQL execution, recheck, persistence and release returned. Signal9 followed before instruction adoption, financial outcome or final cleanup; zero methods completed. Full checkout and recovery remain unverified. |
 | Android, prior normalized collection-core diagnostic | [Exact signed pair, run 42915474141](https://github.com/kira-manga/test/actions/runs/42915474141/artifacts/13809242529) | `testing-inputs/ukkera-pos-testing.apk`, clean source `80d30efa`; install only the application APK. Signed packaging/fatal lint, 1,652 existing JVM methods and 562 Apple stock simulator methods passed. Android Start returned `STORAGE_UNCERTAIN`; one method failed, native cleanup unconfirmed. Full checkout and recovery remain unverified. |
 | Android, prior stock direct-source build | [Stock source artifact, run42894356180](https://github.com/kira-manga/test/actions/runs/42894356180/artifacts/13798789846) | `testing-inputs/ukkera-pos-testing.apk`, clean source `0833f397`; install only the application APK. Fatal lint/signed pair,1,835 existing JVM methods (two explicit namespace skips) and562 Apple Simulator methods passed. Android stock and complete handler preparation returned, then signal9 with no native acquisition, Start reply or confirmed cleanup; zero financial methods completed. Preserve unresolved original. |
 | Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
@@ -65,7 +66,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
-| Current physical Start diagnostic Android APK (`bc1407ae`) | `7a750a0489485e88f669a8fe7b5fa92d1d9e24782ca91fab914743d99abc5d86` |
+| Latest selected-write batch Android APK (`088ba505`) | `2219b41bc189bb6bb11ab2b9fec562e8244ca9a4c5edb782c32a2d50a06e87ca` |
+| Prior physical Start diagnostic Android APK (`bc1407ae`) | `7a750a0489485e88f669a8fe7b5fa92d1d9e24782ca91fab914743d99abc5d86` |
 | Prior stock direct-source Android APK (`0833f397`) | `31f04129cf856ee261c9ef059d60d438c74c995d04124086f5865824f8a3f360` |
 | Current macOS ARM64 DMG (`b28638df`) | `d6afdb08684905211cbf6f40b8490a57ca17ec6516df3a2d3847afcad732cb92` |
 | Current macOS Intel DMG (`b28638df`) | `34ec21f2f83ba1053381a1002d80cd7e6301fbbb735527f306e6e09cc29bea89` |
@@ -120,7 +122,22 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 5. Use synthetic setup values only. Record the exact step/result rather than
    assuming the whole setup→ACK→login→business workflow is qualified.
 
-**Latest normalized collection-core build:** `80d30efa` fixes the legacy allocation
+**Latest selected-write batch / instruction diagnostic:** `088ba505` is retained
+in artifact13814623650 above. Install only the application APK. The executor
+and original unsplit shared30,000-ms budget are unchanged. Recorded Start,
+native instruction preparation and retained Start read returned; the process
+ended with signal9 after entering domain authorization preparation. Zero methods
+completed. No instruction adoption, financial outcome or final cleanup was
+observed. Preserve this and all earlier unresolved originals; do not infer
+rollback or create a replacement. [Exact pair and observed phases](../../qa/pos/traceability/payment-original-write-batch-20261110/android-native-results.json).
+
+**Prior physical Start diagnostic:** `bc1407ae` remains available in the table above. Start returned
+`RECORDED`, then the process ended with signal9 before instruction adoption,
+financial outcome or final cleanup. Zero methods completed. Preserve this and
+all earlier unknown originals. A recorded Start does not establish checkout or
+safe recovery. [Exact pair and observed boundaries](../../qa/pos/traceability/physical-start-boundaries-20261110/android-native-results.json).
+
+**Prior normalized collection-core build:** `80d30efa` fixes the legacy allocation
 getter reached by normalized collection outcome verification. App SHA-256:
 `c5a1ff04cd8c4543d323c7b1b5b7826b85fe2d0aeeedf96d7c42fac4ba7d2ab2`.
 The exact signed app/executor pair is retained in artifact13809242529 above.
@@ -139,9 +156,9 @@ No native acquisition, Start reply or confirmed cleanup was observed; zero
 financial methods completed. This is diagnostic evidence, not successful checkout
 or proof of timeout/rollback. Preserve the original saved request; do not create a
 replacement. The original shared30,000-ms budget and frozen executor remain
-unchanged. This package includes the ordinary retained-payment mismatch source
-implementation, which still needs focused independent qualification; later
-resource-alias batching is absent from this package.
+unchanged. The ordinary retained-payment mismatch source implementation still needs focused
+independent qualification. Consult the exact source and evidence below for this
+package’s implementation boundary.
 [Exact source, pair and outcome](../../qa/pos/traceability/stock-direct-source-batch-20261110/android-native-results.json).
 
 **Previous stock composition build:** `9bf03ee1` corrects the installed stock
@@ -260,7 +277,7 @@ five seconds and the entry screen rendered **on predecessor source `038c115e`**.
 The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The predecessor `53f496da` ZIP also
 passed [run 42783159441](https://github.com/kira-manga/test/actions/runs/42783159441),
 with original PID 3723 visible after five seconds and the unconfigured chooser in
-the retained screenshot. The current `631df201` ZIP passed [run 42793999046](https://github.com/kira-manga/test/actions/runs/42793999046), retaining original PID 3541 after five seconds on iPad Pro 13-inch (M5), iOS 26.5. The screenshot shows the unconfigured workspace chooser. Interactions, rotation, accessibility
+the retained screenshot. The prior `631df201` ZIP passed [run 42793999046](https://github.com/kira-manga/test/actions/runs/42793999046), retaining original PID 3541 after five seconds. The current `8a7f7888` ZIP from packaging run42867498835/artifact13791088633 passed [the exact-package iPad check42876800066](https://github.com/kira-manga/test/actions/runs/42876800066): original PID5290 remained visible after five seconds on iPad Pro13-inch (M5), iOS26.5. [Source-bound package and startup evidence](../../qa/pos/traceability/ios-presentation-peer-cleanup-20261110/ipad-native-results.json). This proves bounded startup only; native identity, custody, setup and complete workflow remain unverified. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and

@@ -138,7 +138,9 @@ private class CommerceCurrentSource(val row: StoredAggregate, val linkRow: Store
 
 /** Simultaneous finite current roots on this actual loan. Each literal link is checked
  * before roots with the SAME complete producer identity share its actual verification.
- * No successful qualification survives this call or substitutes for a selected write. */
+ * Every selected link/write is checked in this call. An enclosing collection-instruction
+ * proof may share only exact, fully closed immutable ancestry on the SAME active loan;
+ * no qualification survives that proof or substitutes for a selected current write. */
 internal suspend fun requireCommerceCurrent(view: CommandReadView, vararg rows: StoredAggregate) {
     check(rows.isNotEmpty() && rows.size <= 2 && rows.map { it.key }.distinct().size == rows.size)
     val selected = rows.map { row ->

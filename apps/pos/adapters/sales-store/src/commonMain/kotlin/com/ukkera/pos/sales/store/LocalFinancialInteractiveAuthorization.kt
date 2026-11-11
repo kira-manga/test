@@ -52,7 +52,11 @@ internal class LocalCollectionInteractiveAuthorization(
 
     override suspend fun prepareRetainedStartAuthorization(view: CommandReadView,
         context: PhysicalRetainedStartContext): PhysicalRetainedStartRequirement? {
-        return try { prepareCurrent(commerceLoan(view, stock, tenderPolicies = tenderPolicies), context) }
+        return try {
+            withCollectionInstructionOriginalProof(commerceLoan(view, stock, tenderPolicies = tenderPolicies)) {
+                prepareCurrent(it, context)
+            }
+        }
         catch (_: NormalizedPaymentOriginCapacity) { null }
         catch (rejected: LocalStockRejected) {
             if (rejected.failure != LocalStockFailure.BOUND_EXCEEDED) throw rejected
