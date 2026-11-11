@@ -284,6 +284,7 @@ internal class StockOriginalTraversal(private val root: RetainedStreamedCommand)
  * The bounded optimization falls back to full proof rather than adding a row cap. */
 private class StockReadProducerProof(private val repository: LocalStockRelationalRepository) {
     private val completed = linkedMapOf<OperationId, RetainedStreamedCommand>()
+    private val inspections = linkedMapOf<OperationId, LocalStockRelationalInspection>()
     private var bytes = 0L
     private var open = true
 
@@ -301,6 +302,14 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
 
     suspend fun inspectComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection {
         localStockCheck(open)
+        val id = original.identity.producer.operationId
+        val previous = completed[id]
+        if (previous != null) {
+            localStockCheck(previous.identity == original.identity && previous.journalHash == original.journalHash &&
+                previous.normalized == original.normalized && previous.result == original.result,
+                LocalStockFailure.STORAGE_INCONSISTENT)
+            inspections[id]?.let { return it }
+        }
         // Keep the root inspection from the actual full traversal. Remember ancestors only
         // after the entire graph closes, never as each individual queue node finishes.
         val (inspection, originals) = repository.requireCompleteRetainingOriginals(original)
@@ -319,10 +328,38 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
                 }
             }
         }
+        // Retain a root inspection only within the existing 128-original / 8-MiB
+        // optimization envelope. Its traversal is already CLOSED. Literal frame access
+        // still checks the actual loan; no current rows or authority enter this map.
+        if (completed[id] != null) {
+            completed[id] = original
+            inspections[id] = inspection
+        }
         return inspection
     }
 
-    fun close() { open = false; completed.clear(); bytes = 0L }
+    fun close() { open = false; inspections.clear(); completed.clear(); bytes = 0L }
+}
+
+/** Original-only facade for one protected scope, never a current-stock reader or grant. */
+public class LocalStockOriginalRead internal constructor(
+    private val repository: LocalStockRepository,
+    private val read: LocalStockRelationalRead,
+) {
+    private var open = true
+    private var reading = false
+
+    /** Reopen the real original, match all identity/body fields and recheck its direct
+     * sources. Only completed immutable proof may be shared on this exact core loan. */
+    public suspend fun requireProducer(view: CommandReadView, stock: LocalStockRepository,
+        original: RetainedStreamedCommand): LocalStockRelationalInspection {
+        localStockCheck(open && !reading && stock === repository && view.requireStockRelational() === read.access)
+        reading = true
+        try { return read.requireOriginalProducer(original).also { localStockCheck(open) } }
+        finally { reading = false }
+    }
+
+    internal fun close() { open = false }
 }
 
 /**
@@ -578,12 +615,22 @@ public class LocalStockRelationalRead internal constructor(
      * actual direct sources and selected writes are still read/compared before scope exit.
      * It is literal projection DATA, never current authority or a supplied producer pass. */
     internal suspend fun originalWithInspection(operationId: OperationId): Pair<RetainedStreamedCommand, LocalStockRelationalInspection> =
-        withCompletedProducerProof {
-            val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
-            val inspection = checkNotNull(stockReadProducerProof).inspectComplete(value)
-            requireDirectSources(value)
-            value to inspection
-        }
+        if (stockReadProducerProof == null) withCompletedProducerProof { inspectedOriginal(operationId) }
+        else inspectedOriginal(operationId)
+
+    private suspend fun inspectedOriginal(operationId: OperationId): Pair<RetainedStreamedCommand, LocalStockRelationalInspection> {
+        val value = (access.originals.read(operationId) as? RetainedOriginalV2.Streamed)?.evidence ?: unavailableProducer()
+        val inspection = checkNotNull(stockReadProducerProof).inspectComplete(value)
+        requireDirectSources(value)
+        return value to inspection
+    }
+
+    internal suspend fun requireOriginalProducer(original: RetainedStreamedCommand): LocalStockRelationalInspection {
+        val (actual, inspection) = originalWithInspection(original.identity.producer.operationId)
+        localStockCheck(actual.identity == original.identity && actual.journalHash == original.journalHash &&
+            actual.normalized == original.normalized && actual.result == original.result, LocalStockFailure.STORAGE_INCONSISTENT)
+        return inspection
+    }
 
     /** One genuine predecessor hop, processed in bounded batches of actual source
      * frames. Equal complete producer identities share one read/qualification inside

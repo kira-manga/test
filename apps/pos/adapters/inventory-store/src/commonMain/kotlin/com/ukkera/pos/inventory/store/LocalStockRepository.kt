@@ -79,11 +79,19 @@ public class LocalStockRepository(
     /** Complete actual producer + one genuine direct-source hop; never a shape-only approval. */
     public suspend fun requireRelationalProducer(view: CommandReadView,
         original: com.ukkera.pos.database.RetainedStreamedCommand): LocalStockRelationalInspection {
+        return relational.open(view, active = false).requireOriginalProducer(original)
+    }
+
+    /** One original-only read scope on the SAME active core loan. Only normally closed
+     * immutable producer proofs may be shared; every requested root and direct source is
+     * still reopened and compared. This exposes no current-stock reader, activation bypass,
+     * accepting predicate, writer or authority. An escaped scope refuses after return. */
+    public suspend fun <T> withRelationalOriginalRead(view: CommandReadView,
+        consume: suspend (LocalStockOriginalRead) -> T): T {
         val read = relational.open(view, active = false)
-        val (actual, inspection) = read.originalWithInspection(original.identity.producer.operationId)
-        localStockCheck(actual.identity == original.identity && actual.journalHash == original.journalHash &&
-            actual.normalized == original.normalized && actual.result == original.result, LocalStockFailure.STORAGE_INCONSISTENT)
-        return inspection
+        val originals = LocalStockOriginalRead(this, read)
+        try { return read.withCompletedProducerProof { consume(originals) } }
+        finally { originals.close() }
     }
 
     /** Core-native startup capability only, never a fabricated historical current view.

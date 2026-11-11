@@ -384,7 +384,16 @@ public object LocalStockPaymentObservations {
     }
 
     /** Actual retained originals on the real view's loan. No accepting resolver or fake streamed command. */
-    public suspend fun requireOriginalStock(view: CommandReadView, stock: LocalStockRepository, observed: StockReadObservations, owner: RetainedCommandEvidence) {
+    public suspend fun requireOriginalStock(view: CommandReadView, stock: LocalStockRepository, observed: StockReadObservations, owner: RetainedCommandEvidence): Unit =
+        requireOriginalStockSources(view, stock, observed, owner, null)
+
+    /** Same actual original/selected-write checks within an explicit original-only loan scope. */
+    public suspend fun requireOriginalStock(view: CommandReadView, stock: LocalStockRepository, observed: StockReadObservations,
+        owner: RetainedCommandEvidence, originals: LocalStockOriginalRead): Unit =
+        requireOriginalStockSources(view, stock, observed, owner, originals)
+
+    private suspend fun requireOriginalStockSources(view: CommandReadView, stock: LocalStockRepository, observed: StockReadObservations,
+        owner: RetainedCommandEvidence, originals: LocalStockOriginalRead?) {
         localStockCheck(view.scope == observed.scope && owner.scope == observed.scope && owner.committed)
         val access = view.requireStockRelational()
         for ((operationId, rows) in records(observed).values.groupBy { it.producer.operationId }) {
@@ -392,7 +401,8 @@ public object LocalStockPaymentObservations {
             localStockCheck(original.identity.scope == owner.scope && original.identity.producer.operationId != owner.operationId &&
                 (original.identity.assignmentId != owner.assignmentId || original.identity.authorityEpoch != owner.authorityEpoch ||
                     original.identity.sequence < owner.sequence))
-            stock.requireRelationalProducer(view, original)
+            if (originals == null) stock.requireRelationalProducer(view, original)
+            else originals.requireProducer(view, stock, original)
             requireOriginalStockWrites(original, rows)
         }
     }

@@ -238,12 +238,12 @@ private class PaymentStreamedSources {
         }
     }
 
-    suspend fun qualify(view: CommandReadView) {
+    suspend fun qualify(view: CommandReadView, originals: LocalStockOriginalRead) {
         try {
             for (group in groups.values) {
                 // Complete producer proof still precedes the selected-write proof. Every
                 // frame must return normally; a matching early write proves no completeness.
-                commerceRepository(view).requireRelationalProducer(view, group.original)
+                originals.requireProducer(view, commerceRepository(view), group.original)
                 val found = mutableSetOf<AggregateKey>()
                 group.original.frames { frame ->
                     val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
@@ -416,13 +416,18 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
         }
         return fact
     }
-    private suspend fun requireOne(owner: RetainedCommandEvidence) {
+    private suspend fun requireOne(owner: RetainedCommandEvidence): Unit =
+        commerceRepository(view).withRelationalOriginalRead(view) { originals -> requireOne(owner, originals) }
+
+    /** Keep stock completion within ONE financial graph node: callbacks enqueue any
+     * financial dependencies for this owner, never for a different queued owner. */
+    private suspend fun requireOne(owner: RetainedCommandEvidence, stockOriginals: LocalStockOriginalRead) {
         val observed = StockReadEvidenceV1.read(owner) ?: error("sales.stock.payment_read_required")
         when (val result = LocalFinancialResultCodecV3.decode(owner.result)) {
             is LocalFinancialResultV3.AttemptStarted -> {
                 val slot = requireNormalizedPaymentStartOriginal(owner, commerceTenderPolicies(view))
                 check(slot.target.kind == SalesRecordingKind.PAYMENT_ATTESTATION)
-                LocalStockPaymentObservations.requireOriginalStock(view, view.commerceStock, observed, owner)
+                LocalStockPaymentObservations.requireOriginalStock(view, view.commerceStock, observed, owner, stockOriginals)
             }
             is LocalFinancialResultV3.Applied -> {
                 check(result.target.kind == SalesRecordingKind.PAYMENT_ATTESTATION && result.applicationOperationId == owner.operationId)
@@ -474,7 +479,7 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
                 streamed.select(quote, row, projection.priceSource)
             }
         }
-        streamed.qualify(view)
+        streamed.qualify(view, stockOriginals)
     }
 }
 
