@@ -37,6 +37,7 @@ internal object MacLoginKeychain {
         fun CFArrayGetCount(array: Pointer): NativeLong
         fun CFArrayGetValueAtIndex(array: Pointer, index: NativeLong): Pointer?
         fun CFArrayGetTypeID(): NativeLong
+        fun CFErrorGetCode(error: Pointer): NativeLong
     }
     private val api: Api by lazy { Native.load("/System/Library/Frameworks/Security.framework/Security", Api::class.java) }
     private val cfx: Cf by lazy { Native.load(MacSecurityNative.core.name, Cf::class.java) }
@@ -162,7 +163,9 @@ internal object MacLoginKeychain {
                 parameters.number("kSecAttrKeySizeInBits", 256)
                 base(parameters)
                 parameters.dict("kSecPrivateKeyAttrs", privateAttributes)
-                return checkNotNull(api.SecKeyCreateRandomKey(parameters.ref, null)) { "Client target key generation failed" }
+                val error = PointerByReference()
+                return api.SecKeyCreateRandomKey(parameters.ref, error)
+                    ?: error("Client target key generation failed (${errorCode(error)})")
             }
         }
     }
@@ -207,6 +210,10 @@ internal object MacLoginKeychain {
     }
 
     fun release(value: Pointer) = cf.CFRelease(value)
+
+    /** OSStatus-style code of a returned CFError (diagnostic only); the error is released. */
+    private fun errorCode(error: PointerByReference): Long =
+        error.value?.let { try { cfx.CFErrorGetCode(it).toLong() } finally { cf.CFRelease(it) } } ?: 0L
 }
 
 /** macOS in-app Client target key (login Keychain, non-extractable P-256). */

@@ -44,7 +44,9 @@ internal object DesktopIdentityProbe {
     private fun failureLine(failure: Throwable): String {
         val frames = failure.stackTrace.filter { it.className.startsWith("com.ukkera.") }.take(4)
             .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
-        return "FAILED ${failure::class.simpleName}: ${failure.message?.take(160)} at $frames"
+        val causes = (failure.suppressed.toList() + listOfNotNull(failure.cause)).take(2)
+            .joinToString("") { " | cause ${it::class.simpleName}: ${it.message?.take(160)}" }
+        return "FAILED ${failure::class.simpleName}: ${failure.message?.take(160)} at $frames$causes"
     }
 
     const val CLIENT_TARGET_ARGUMENT = "--client-target-probe="

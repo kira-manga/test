@@ -109,7 +109,7 @@ internal class DesktopDevicePairingTargetNative(private val platform: DesktopCli
     override fun generateKey(preparationId: DomainId, keyId: DomainId) {
         known(key == null)
         keyIds = preparationId to keyId
-        key = try { platform.createKey(preparationId, keyId) } catch (_: Exception) { keyFailure() }
+        key = try { platform.createKey(preparationId, keyId) } catch (cause: Exception) { keyFailure(cause) }
     }
 
     /** The retained original key, opened existing-only against the retained key-intent point. */
@@ -119,7 +119,7 @@ internal class DesktopDevicePairingTargetNative(private val platform: DesktopCli
         val point = TargetWire.decodeKeyIntent(intentBytes, variant).point.copyBytes()
         try {
             keyIds = preparationId to keyId
-            return (try { platform.openKey(preparationId, keyId, point) } catch (_: Exception) { keyFailure() }).also { key = it }
+            return (try { platform.openKey(preparationId, keyId, point) } catch (cause: Exception) { keyFailure(cause) }).also { key = it }
         } finally { point.fill(0) }
     }
 
@@ -159,7 +159,8 @@ internal class DesktopDevicePairingTargetNative(private val platform: DesktopCli
     private companion object {
         const val LEDGER_PREFIX = "boot-ledger-"
         fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
-        fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
+        fun keyFailure(cause: Throwable? = null): Nothing =
+            throw SelfOwnedFailureV1(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN).also { failure -> cause?.let(failure::addSuppressed) }
     }
 }
 
