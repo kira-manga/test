@@ -361,6 +361,22 @@ else
       fail "could not extract the MSI for verification; see diagnostics/msi-admin-stdout.txt"
     fi
   fi
+  # Windows Installer writes its native verbose log as BOM-marked UTF-16.
+  # Normalize this known text producer; the public sanitizer remains strict UTF-8
+  # and still withholds malformed, NUL-bearing, oversized or unsupported files.
+  "$PYTHON" - "$DIAG/msi-admin-install.log" <<'PYLOG'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+if path.is_file():
+    data = path.read_bytes()
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = data.decode("utf-16", errors="strict")
+        if "\x00" in text:
+            raise ValueError("invalid Windows Installer text log")
+        path.write_text(text, encoding="utf-8", newline="\n")
+PYLOG
   EXE_PATH="$(find "$EXTRACT_DIR" -type f -name 'UkkeraPOS.exe' -print -quit)"
   [[ -n "$EXE_PATH" && -f "$EXE_PATH" ]] || fail "MSI extraction did not contain UkkeraPOS.exe."
   file "$EXE_PATH" > "$DIAG/msi-executable-file.txt" 2>&1
