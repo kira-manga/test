@@ -24,6 +24,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(libs.jna)
+    implementation(libs.jna.platform)
     testImplementation(kotlin("test-junit"))
 }
 

@@ -83,6 +83,22 @@ if ($Probe) {
         if ($process.ExitCode -ne 0 -or -not $summary.probe.StartsWith("DATA pfn=$ExpectedFamilyName ")) {
             throw "Native identity probe failed: exit $($process.ExitCode) $($summary.probe)"
         }
+        # Packaged-service identity is an experiment: record the actual outcome, never infer it.
+        $probeDir = Join-Path $env:ProgramData 'UkkeraPOSTestProbe'
+        New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
+        & icacls.exe $probeDir /grant '*S-1-5-19:(OI)(CI)M' | Out-Null
+        $summary.service_sid_type = (& sc.exe qsidtype UkkeraPOSTestMaster | Out-String).Trim()
+        try {
+            Start-Service -Name UkkeraPOSTestMaster
+            $serviceFile = Join-Path $probeDir 'service-probe.txt'
+            $deadline = (Get-Date).AddSeconds(90)
+            while (-not (Test-Path $serviceFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
+            $summary.service_probe = if (Test-Path $serviceFile) { (Get-Content -Raw $serviceFile).Trim() } else { 'NO_OUTPUT' }
+            $summary.service_status = (Get-Service -Name UkkeraPOSTestMaster).Status.ToString()
+            Stop-Service -Name UkkeraPOSTestMaster -ErrorAction Continue
+        } catch {
+            $summary.service_probe = "SERVICE_ERROR $($_.Exception.Message)"
+        }
     } finally {
         $summary | ConvertTo-Json | Set-Content (Join-Path $diagnostics 'msix-summary.json')
         Get-AppxPackage -Name 'Ukkera.POS.Test' | Remove-AppxPackage -ErrorAction SilentlyContinue

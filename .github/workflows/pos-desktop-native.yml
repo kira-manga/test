@@ -229,11 +229,12 @@ jobs:
       - name: Build, sign and probe test MSIX
         shell: pwsh
         env:
-          POS_ROOT: ${{ steps.pos.outputs.root }}
           PFX_BASE64: ${{ secrets.POS_WINDOWS_TEST_PFX_BASE64 }}
           POS_MSIX_PFX_PASSWORD: ${{ secrets.POS_WINDOWS_TEST_PFX_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # The bash step output is a POSIX-style path; PowerShell needs the native workspace path.
+          $env:POS_ROOT = Join-Path $env:GITHUB_WORKSPACE 'apps/pos'
           Push-Location $env:POS_ROOT
           ./gradlew.bat --no-daemon :apps:desktop:createDistributable --console=plain
           if ($LASTEXITCODE -ne 0) { throw "createDistributable failed ($LASTEXITCODE)" }
