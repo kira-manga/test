@@ -105,6 +105,13 @@ internal object WindowsOriginalNative {
         }
     }
 
+    /** Existing file/directory identity only; nothing is created. A missing entry is unexplained state. */
+    fun observeExistingEntry(path: String): WindowsOriginalFileIdentity {
+        requireSupported()
+        val handle = openDirectoryHandle(path) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        try { return fileIdentity(handle.pointer) } finally { handle.closeConfirmed() }
+    }
+
     fun openSupportDirectory(path: Path): WindowsOriginalSupport {
         requireSupported()
         val normalized = path.toAbsolutePath().normalize()

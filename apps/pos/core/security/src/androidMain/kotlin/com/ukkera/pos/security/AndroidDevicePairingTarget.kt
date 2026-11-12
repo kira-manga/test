@@ -359,7 +359,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         known(keyIntent == null && ready == null && !keyStore().containsAlias(alias()))
         // Exact original forced STARTED precedes the only native generation. Any exception,
         // cancellation/lost output or partial file leaves the same IDs, never another attempt.
-        known(original.osBoot == env().bootCount)
+        known(original.osBoot.ordinal == env().bootCount)
         val builder = KeyGenParameterSpec.Builder(alias(), KeyProperties.PURPOSE_SIGN or KeyProperties.PURPOSE_VERIFY)
             .setKeySize(256).setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1")).setDigests(KeyProperties.DIGEST_SHA256)
         AndroidNativeKeyInfo.configureService(builder, SelfOwnedKeyProtectionV1.OS_ISOLATED)
@@ -507,7 +507,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         val acquisitionBytes = TargetSdkWireV2.acquisition(acquisition)
         try { forceNew(SDK_ACQUISITION, acquisitionBytes) } finally { acquisitionBytes.fill(0) }
         validateSdkAcquisition()
-        known(acquisition.osBoot == env().bootCount && work.clock() >= acquisition.observedElapsed)
+        known(acquisition.osBoot.ordinal == env().bootCount && work.clock() >= acquisition.observedElapsed)
         val owned = AndroidDevicePairingSdkOwnerV2(application, work)
         sdkOwner = owned // Actual partial owner retained BEFORE SDK storage/construction work.
         val sdk = try {
@@ -528,7 +528,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             forceNew(SDK_SIGNING_INTENT, intentBytes)
         } finally { intentBytes.fill(0) }
         validateSdkSigningIntent(); requireCurrentSdkMatches()
-        known(intent.osBoot == env().bootCount && work.clock() >= intent.observedElapsed)
+        known(intent.osBoot.ordinal == env().bootCount && work.clock() >= intent.observedElapsed)
         val message = TargetSdkWireV2.readyMessage(snapshotBytes(IDENTITY), snapshotBytes(READY),
             snapshotBytes(SDK_ACQUISITION), snapshotBytes(SDK_SIGNING_INTENT))
         val signature = try { AndroidP256Primitives.sign(checkedNativeKey(), message) }
@@ -591,7 +591,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             validateResponseIntent()
             // The target's own boot/elapsed observations govern only its local key/work life.
             // Master boot IDs/deadlines are unsigned remote DATA, not comparable local clocks.
-            known(intent.osBoot == env().bootCount && work.clock() >= intent.observedElapsed)
+            known(intent.osBoot.ordinal == env().bootCount && work.clock() >= intent.observedElapsed)
             requireSdkForNewResponse(challenge)
             val message = NativeDevicePairingWireV1.possessionMessage(challenge)
             val signature = try { AndroidP256Primitives.sign(checkedNativeKey(), message) }
@@ -992,7 +992,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
             allocation.parentAllocationDigest == sha256(allocationBytes(previous)) &&
             allocation.previousIntentDigest == snapshots[responseIntentName(previous)]?.bytes?.let { sha256(it) } &&
             allocation.previousCompleteDigest == snapshots[completeName(previous)]?.bytes?.let { sha256(it) } &&
-            allocation.osBoot >= checkNotNull(identity).osBoot && allocation.osBoot <= env().bootCount)
+            allocation.osBoot.ordinal >= checkNotNull(identity).osBoot.ordinal && allocation.osBoot.ordinal <= env().bootCount)
         val proof = checkNotNull(allocationProof())
         validateRetirementForPrior(proof, previous)
         val oldIds = retainedTargetIds(previous)
@@ -1050,14 +1050,14 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         val original = identity ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val bytes = TargetWire.identity(original)
         try { known(snapshots[IDENTITY]?.bytes?.contentEquals(bytes) == true) } finally { bytes.fill(0) }
-        known(original.target.same(env().target) && original.namespace == capturedNamespace() && original.osBoot <= env().bootCount)
+        known(original.target.same(env().target) && original.namespace == capturedNamespace() && original.osBoot.ordinal <= env().bootCount)
     }
     private fun validateKeyIntent() {
         val intent = keyIntent ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val original = checkNotNull(identity)
         val encoded = TargetWire.keyIntent(intent)
         try { known(snapshots[KEY_INTENT]?.bytes?.contentEquals(encoded) == true) } finally { encoded.fill(0) }
-        known(intent.identityDigest == identityDigest() && intent.osBoot == original.osBoot && intent.observedElapsed >= original.observedElapsed)
+        known(intent.identityDigest == identityDigest() && intent.osBoot.ordinal == original.osBoot.ordinal && intent.observedElapsed >= original.observedElapsed)
         val point = intent.point.copyBytes()
         try { AndroidP256Primitives.publicKey(point) } finally { point.fill(0) }
     }
@@ -1089,8 +1089,8 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         val original = checkNotNull(identity)
         known(acquisition.identityDigest == identityDigest() && acquisition.readyDigest == readyDigest() &&
             acquisition.appId == profile.sdkProfile.appId(original.scope) &&
-            acquisition.osBoot >= original.osBoot && acquisition.osBoot <= env().bootCount &&
-            (acquisition.osBoot != original.osBoot || acquisition.observedElapsed >= original.observedElapsed) &&
+            acquisition.osBoot.ordinal >= original.osBoot.ordinal && acquisition.osBoot.ordinal <= env().bootCount &&
+            (acquisition.osBoot.ordinal != original.osBoot.ordinal || acquisition.observedElapsed >= original.observedElapsed) &&
             acquisition.acquisitionId !in retainedTargetIds(responseCycle, includeSdk = false))
     }
     private fun validateSdkSigningIntent() {
@@ -1100,8 +1100,8 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         try { known(snapshots[SDK_SIGNING_INTENT]?.bytes?.contentEquals(encoded) == true) } finally { encoded.fill(0) }
         val acquisition = checkNotNull(sdkAcquisition); val original = checkNotNull(identity)
         known(intent.identityDigest == identityDigest() && intent.readyDigest == readyDigest() &&
-            intent.acquisitionDigest == sha256(snapshotBytes(SDK_ACQUISITION)) && intent.osBoot == acquisition.osBoot &&
-            intent.observedElapsed >= acquisition.observedElapsed && intent.osBoot <= env().bootCount)
+            intent.acquisitionDigest == sha256(snapshotBytes(SDK_ACQUISITION)) && intent.osBoot.ordinal == acquisition.osBoot.ordinal &&
+            intent.observedElapsed >= acquisition.observedElapsed && intent.osBoot.ordinal <= env().bootCount)
         val sdk = sdkIdentityWithoutReentry(); val expected = descriptorWithoutReentry()
         val actualBytes = sdk.target.copyWireBytes(); val expectedBytes = expected.copyWireBytes()
         try { known(actualBytes.contentEquals(expectedBytes)) } finally { actualBytes.fill(0); expectedBytes.fill(0) }
@@ -1181,7 +1181,7 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         val intent = responseIntent ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val encoded = TargetWire.responseIntent(intent)
         try { known(snapshots[responseIntentName()]?.bytes?.contentEquals(encoded) == true) } finally { encoded.fill(0) }
-        known(intent.readyDigest == readyDigest() && intent.osBoot >= checkNotNull(identity).osBoot && intent.osBoot <= env().bootCount)
+        known(intent.readyDigest == readyDigest() && intent.osBoot.ordinal >= checkNotNull(identity).osBoot.ordinal && intent.osBoot.ordinal <= env().bootCount)
         val bytes = intent.challenge.copyBytes()
         val challenge = try { LocalDevicePairingChallenge.decode(bytes) } finally { bytes.fill(0) }
         requireOwnDescriptor(challenge)
@@ -1553,22 +1553,21 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         const val APPROVED_MASTER_IMPORT_INTENT = "approved-master-import-intent.v1"
         const val APPROVED_MASTER_EVIDENCE = "approved-master-evidence.v1"
         const val CREDENTIAL_ALLOCATION = "paired-device-credential-allocation.v1"
-        const val MAXIMUM_RESPONSE_CYCLES = LocalDevicePairingProfileV1.MAXIMUM_ACTIONS
-        const val TOTAL_SNAPSHOT_MAX = SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_BYTES
-        const val ALLOCATION_INTENT_MAX = LocalDevicePairingProfileV1.MAXIMUM_RETIREMENT_BYTES + 4096
-        const val ALLOCATION_READY_MAX = ALLOCATION_INTENT_MAX + 64 * 1024 + 4096
-        const val IDENTITY_MAX = 16 * 1024
-        const val KEY_INTENT_MAX = 8 * 1024
-        const val READY_MAX = 64 * 1024
-        const val SDK_ACQUISITION_MAX = 8 * 1024
-        const val SDK_SIGNING_INTENT_MAX = LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES + 4096
-        const val SDK_READY_MAX = IDENTITY_MAX + READY_MAX + SDK_ACQUISITION_MAX + SDK_SIGNING_INTENT_MAX + 8192
-        const val RESPONSE_INTENT_MAX = LocalDevicePairingProfileV1.MAXIMUM_CHALLENGE_BYTES + 4096
-        const val COMPLETE_MAX = SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_BYTES
-        const val APPROVAL_CERTIFICATE_MAX = LocalDevicePairingProfileV1.MAXIMUM_CHALLENGE_BYTES +
-            LocalDevicePairingProfileV1.COMPLETION_RESERVATION_BYTES + 1024
-        const val APPROVED_MASTER_IMPORT_INTENT_MAX = 8192
-        const val APPROVED_MASTER_EVIDENCE_MAX = SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES + 8192
+        const val MAXIMUM_RESPONSE_CYCLES = DevicePairingTargetLimitsV1.MAXIMUM_RESPONSE_CYCLES
+        const val TOTAL_SNAPSHOT_MAX = DevicePairingTargetLimitsV1.TOTAL_SNAPSHOT_MAX
+        const val ALLOCATION_INTENT_MAX = DevicePairingTargetLimitsV1.ALLOCATION_INTENT_MAX
+        const val ALLOCATION_READY_MAX = DevicePairingTargetLimitsV1.ALLOCATION_READY_MAX
+        const val IDENTITY_MAX = DevicePairingTargetLimitsV1.IDENTITY_MAX
+        const val KEY_INTENT_MAX = DevicePairingTargetLimitsV1.KEY_INTENT_MAX
+        const val READY_MAX = DevicePairingTargetLimitsV1.READY_MAX
+        const val SDK_ACQUISITION_MAX = DevicePairingTargetLimitsV1.SDK_ACQUISITION_MAX
+        const val SDK_SIGNING_INTENT_MAX = DevicePairingTargetLimitsV1.SDK_SIGNING_INTENT_MAX
+        const val SDK_READY_MAX = DevicePairingTargetLimitsV1.SDK_READY_MAX
+        const val RESPONSE_INTENT_MAX = DevicePairingTargetLimitsV1.RESPONSE_INTENT_MAX
+        const val COMPLETE_MAX = DevicePairingTargetLimitsV1.COMPLETE_MAX
+        const val APPROVAL_CERTIFICATE_MAX = DevicePairingTargetLimitsV1.APPROVAL_CERTIFICATE_MAX
+        const val APPROVED_MASTER_IMPORT_INTENT_MAX = DevicePairingTargetLimitsV1.APPROVED_MASTER_IMPORT_INTENT_MAX
+        const val APPROVED_MASTER_EVIDENCE_MAX = DevicePairingTargetLimitsV1.APPROVED_MASTER_EVIDENCE_MAX
         const val DIRECTORY_MODE = 448 //0700
         const val FILE_MODE = 384 //0600
         fun responseRole(index: Int, role: String): String {
@@ -1585,308 +1584,3 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
     }
 }
 
-private data class TargetNamespace(val path: String, val uid: Int, val volumeUuid: String, val directoryInode: Long, val lockInode: Long) {
-    init {
-        require(path.startsWith('/') && SelfOwnedCompositionNames.isDevicePairingTargetPath(path) &&
-            path.length in 1..1024 && '\u0000' !in path && path.split('/').none { it == "." || it == ".." })
-        selfOwnedUtf16(path)
-        require(uid >= 0 && directoryInode > 0 && lockInode > 0 && volumeUuid.length == 36 && volumeUuid.withIndex().all { (index, code) ->
-            if (index in listOf(8, 13, 18, 23)) code == '-' else code in '0'..'9' || code in 'a'..'f' })
-    }
-}
-private data class TargetIdentity(val preparationId: DomainId, val deviceId: DomainId, val keyId: DomainId, val responseId: DomainId,
-    val scope: BranchScope, val capabilities: List<String>, val target: SelfOwnedTargetDescriptorV1,
-    val namespace: TargetNamespace, val osBoot: Int, val observedElapsed: Long, val nonce: SelfOwnedOctetsV1) {
-    init {
-        val ids = listOf(preparationId, deviceId, keyId, responseId)
-        require(ids.distinct().size == ids.size && ids.none { it in setOf(scope.organizationId, scope.companyId, scope.branchId) } &&
-            osBoot >= 0 && observedElapsed >= 0 && nonce.size == 32 && target.applicationUid == namespace.uid)
-        require(capabilities == capabilities.sorted() && capabilities.distinct().size == capabilities.size)
-        LocalDeviceAdmission(scope, deviceId, Revision(0), true, keyId.value, null, capabilities.toSet())
-    }
-}
-private data class TargetKeyIntent(val identityDigest: PayloadDigest, val osBoot: Int, val observedElapsed: Long,
-    val security: SelfOwnedNativeSecurityV1, val point: SelfOwnedOctetsV1) {
-    init { require(osBoot >= 0 && observedElapsed >= 0 && point.size == 65) }
-}
-private data class TargetReady(val message: SelfOwnedOctetsV1, val signature: SelfOwnedOctetsV1) {
-    init { require(message.size in 1..AndroidDevicePairingTargetNative.READY_MAX && signature.size == 64) }
-}
-private data class TargetReadyFields(val identity: SelfOwnedOctetsV1, val keyIntent: SelfOwnedOctetsV1, val descriptor: SelfOwnedOctetsV1)
-private class TargetResponseSlot(var allocation: TargetResponseAllocation? = null, var allocationReady: TargetAllocationReady? = null,
-    var responseIntent: TargetResponseIntent? = null, var complete: TargetComplete? = null,
-    var approvedMasterImportIntent: TargetApprovedMasterImportIntent? = null,
-    var approvedMasterEvidence: TargetApprovedMasterEvidence? = null)
-private data class TargetResponseAllocation(val index: Int, val responseId: DomainId, val nonce: SelfOwnedOctetsV1,
-    val identityDigest: PayloadDigest, val parentAllocationDigest: PayloadDigest,
-    val previousIntentDigest: PayloadDigest?, val previousCompleteDigest: PayloadDigest?,
-    val retirement: SelfOwnedOctetsV1, val osBoot: Int, val observedElapsed: Long) {
-    init { require(index in 1 until AndroidDevicePairingTargetNative.MAXIMUM_RESPONSE_CYCLES && nonce.size == 32 &&
-        retirement.size in 1..LocalDevicePairingProfileV1.MAXIMUM_RETIREMENT_BYTES && osBoot >= 0 && observedElapsed >= 0) }
-}
-private data class TargetAllocationReady(val message: SelfOwnedOctetsV1, val signature: SelfOwnedOctetsV1) {
-    init { require(message.size in 1..AndroidDevicePairingTargetNative.ALLOCATION_READY_MAX - 1024 && signature.size == 64) }
-}
-private data class TargetAllocationReadyFields(val ready: SelfOwnedOctetsV1, val allocation: SelfOwnedOctetsV1)
-private data class TargetResponseIntent(val responseId: DomainId, val allocationIndex: Int, val allocationDigest: PayloadDigest,
-    val readyDigest: PayloadDigest, val osBoot: Int,
-    val observedElapsed: Long, val nonce: SelfOwnedOctetsV1, val challenge: SelfOwnedOctetsV1) {
-    init { require(allocationIndex in 0 until AndroidDevicePairingTargetNative.MAXIMUM_RESPONSE_CYCLES && osBoot >= 0 &&
-        observedElapsed >= 0 && nonce.size == 32 && challenge.size in 1..LocalDevicePairingProfileV1.MAXIMUM_CHALLENGE_BYTES) }
-}
-private data class TargetComplete(val message: SelfOwnedOctetsV1, val signature: SelfOwnedOctetsV1) {
-    init { require(message.size in 1..AndroidDevicePairingTargetNative.COMPLETE_MAX - 1024 && signature.size == 64) }
-}
-private data class TargetCompleteFields(val ready: SelfOwnedOctetsV1, val allocation: SelfOwnedOctetsV1,
-    val intent: SelfOwnedOctetsV1, val possession: SelfOwnedOctetsV1)
-
-/** One immutable first-import marker. Its forced presence forbids retrying a missing final
- * fragment; it links only to existing native C/P snapshots, without new IDs/signatures. */
-private data class TargetApprovedMasterImportIntent(val originalPairingActionId: DomainId,
-    val allocationIndex: Int, val responseId: DomainId,
-    val responseIntentDigest: PayloadDigest, val completeDigest: PayloadDigest,
-    val approvalCertificateDigest: PayloadDigest, val rootAnnouncementDigest: PayloadDigest) {
-    init { require(allocationIndex in 0 until AndroidDevicePairingTargetNative.MAXIMUM_RESPONSE_CYCLES &&
-        originalPairingActionId != responseId) }
-}
-/** Bounded root/approval fragments only, referencing the original native C/P through the
- * exact forced import intent. No additional complete challenge/snapshot or native signature. */
-private data class TargetApprovedMasterEvidence(val importIntentDigest: PayloadDigest,
-    val consent: NativeDevicePairingConsentV1, val approvedHead: NativeDevicePairingApprovedHeadV1,
-    val rootEndorsement: SelfOwnedOctetsV1, val rootAnnouncement: SelfOwnedOctetsV1) {
-    init { require(rootEndorsement.size == 64 && rootAnnouncement.size in
-        1..SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES) }
-}
-
-private data class TargetSdkAcquisition(val acquisitionId: DomainId, val identityDigest: PayloadDigest,
-    val readyDigest: PayloadDigest, val appId: AppId, val deviceName: String,
-    val osBoot: Int, val observedElapsed: Long, val nonce: SelfOwnedOctetsV1) {
-    init {
-        require(osBoot >= 0 && observedElapsed >= 0 && nonce.size == 32)
-        AndroidDevicePairingSdkOwnerV2.validateAcquisitionText(appId.value)
-        AndroidDevicePairingSdkOwnerV2.validateAcquisitionText(deviceName)
-    }
-}
-private data class TargetSdkSigningIntent(val identityDigest: PayloadDigest, val readyDigest: PayloadDigest,
-    val acquisitionDigest: PayloadDigest, val osBoot: Int, val observedElapsed: Long, val descriptor: SelfOwnedOctetsV1) {
-    init { require(osBoot >= 0 && observedElapsed >= 0 && descriptor.size in 1..LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES) }
-}
-private data class TargetSdkReady(val message: SelfOwnedOctetsV1, val signature: SelfOwnedOctetsV1) {
-    init { require(message.size in 1..AndroidDevicePairingTargetNative.SDK_READY_MAX - 1024 && signature.size == 64) }
-}
-private data class TargetSdkReadyFields(val identity: SelfOwnedOctetsV1, val ready: SelfOwnedOctetsV1,
-    val acquisition: SelfOwnedOctetsV1, val intent: SelfOwnedOctetsV1)
-
-/** Additive immutable approval retention, not another signing ceremony or wire upgrade. */
-private object TargetApprovedMasterWireV1 {
-    private const val PROFILE = "EXACT_ORIGINAL_MASTER_BOUND_APPROVAL_ROOT_EVIDENCE_NO_NEW_TARGET_OR_ROOT_SIGNATURE"
-    fun importIntent(value: TargetApprovedMasterImportIntent): ByteArray = selfOwnedEncode(
-        "target-original-approved-master-import-intent/v1", AndroidDevicePairingTargetNative.APPROVED_MASTER_IMPORT_INTENT_MAX) {
-        purpose(); id(value.originalPairingActionId); int(value.allocationIndex); id(value.responseId)
-        string(value.responseIntentDigest.value); string(value.completeDigest.value)
-        string(value.approvalCertificateDigest.value); string(value.rootAnnouncementDigest.value)
-    }
-    fun decodeImportIntent(bytes: ByteArray): TargetApprovedMasterImportIntent = selfOwnedDecode(
-        bytes, "target-original-approved-master-import-intent/v1") {
-        purpose(); TargetApprovedMasterImportIntent(id(), int(), id(), PayloadDigest(string(64)),
-            PayloadDigest(string(64)), PayloadDigest(string(64)), PayloadDigest(string(64)))
-    }.also { canonical(bytes, importIntent(it)) }
-    fun evidence(value: TargetApprovedMasterEvidence): ByteArray = selfOwnedEncode(
-        "target-original-approved-master-evidence/v1", AndroidDevicePairingTargetNative.APPROVED_MASTER_EVIDENCE_MAX) {
-        purpose(); string(value.importIntentDigest.value); consent(value.consent); approval(value.approvedHead)
-        octets(value.rootEndorsement); octets(value.rootAnnouncement)
-    }
-    fun decodeEvidence(bytes: ByteArray): TargetApprovedMasterEvidence = selfOwnedDecode(
-        bytes, "target-original-approved-master-evidence/v1") {
-        purpose(); TargetApprovedMasterEvidence(PayloadDigest(string(64)), consent(), approval(), octets(64),
-            octets(SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES))
-    }.also { canonical(bytes, evidence(it)) }
-    private fun SelfOwnedWireWriterV1.consent(value: NativeDevicePairingConsentV1) {
-        id(value.consentId); string(value.actionDigest.value); id(value.observation.issuerContextId)
-        id(value.observation.moment.bootId); long(value.observation.moment.elapsedMillis)
-        long(value.accountRevision); long(value.credentialRevision); long(value.retainedRevision)
-        int(value.osBootCount); long(value.deadlineElapsedMillis)
-    }
-    private fun SelfOwnedWireReaderV1.consent(): NativeDevicePairingConsentV1 = NativeDevicePairingConsentV1(
-        id(), PayloadDigest(string(64)), LocalAuthenticationObservation(id(), MonotonicMoment(id(), long())),
-        long(), long(), long(), int(), long())
-    private fun SelfOwnedWireWriterV1.approval(value: NativeDevicePairingApprovedHeadV1) {
-        long(value.accountRevision); long(value.credentialRevision); long(value.retainedRevision)
-        int(value.osBootCount); long(value.deadlineElapsedMillis)
-    }
-    private fun SelfOwnedWireReaderV1.approval(): NativeDevicePairingApprovedHeadV1 =
-        NativeDevicePairingApprovedHeadV1(long(), long(), long(), int(), long())
-    private fun SelfOwnedWireWriterV1.purpose() { string(LocalDevicePairingProfileV2.PURPOSE); string(PROFILE) }
-    private fun SelfOwnedWireReaderV1.purpose() {
-        require(string(128) == LocalDevicePairingProfileV2.PURPOSE && string(128) == PROFILE)
-    }
-    private fun canonical(actual: ByteArray, encoded: ByteArray) {
-        try { require(actual.contentEquals(encoded)) } finally { encoded.fill(0) }
-    }
-}
-
-/** Separately additive private metadata. No change to native V1 files, signing domains,
- * original descriptor/fingerprint, fixed identity allocation or retained response history. */
-private object TargetSdkWireV2 {
-    private const val PROFILE = "TARGET_OWNED_OFFICIAL_ANDROID_SDK_X25519_NATIVE_P256_ASSOCIATION_V2"
-    fun acquisition(value: TargetSdkAcquisition): ByteArray = selfOwnedEncode("target-original-sdk-acquisition-intent/v2",
-        AndroidDevicePairingTargetNative.SDK_ACQUISITION_MAX) {
-        purpose(); string("ONE_ORIGINAL_SDK_CREATION_NO_UNKNOWN_RETRY_NO_START_OR_PEER_ADMISSION")
-        id(value.acquisitionId); string(value.identityDigest.value); string(value.readyDigest.value)
-        string(value.appId.value); string(value.deviceName); int(value.osBoot); long(value.observedElapsed); octets(value.nonce)
-    }
-    fun decodeAcquisition(bytes: ByteArray): TargetSdkAcquisition = selfOwnedDecode(bytes, "target-original-sdk-acquisition-intent/v2") {
-        purpose(); require(string(128) == "ONE_ORIGINAL_SDK_CREATION_NO_UNKNOWN_RETRY_NO_START_OR_PEER_ADMISSION")
-        TargetSdkAcquisition(id(), PayloadDigest(string(64)), PayloadDigest(string(64)),
-            AppId(string(LocalDevicePairingProfileV2.MAXIMUM_SDK_APP_ID_BYTES)),
-            string(LocalDevicePairingProfileV2.MAXIMUM_SDK_APP_ID_BYTES), int(), long(), octets(32))
-    }.also { canonical(bytes, acquisition(it)) }
-    fun signingIntent(value: TargetSdkSigningIntent): ByteArray = selfOwnedEncode("target-original-sdk-metadata-signing-intent/v2",
-        AndroidDevicePairingTargetNative.SDK_SIGNING_INTENT_MAX) {
-        purpose(); string("ONE_ORIGINAL_SDK_ASSOCIATION_METADATA_SIGNATURE_NO_RETRY")
-        string(value.identityDigest.value); string(value.readyDigest.value); string(value.acquisitionDigest.value)
-        int(value.osBoot); long(value.observedElapsed); octets(value.descriptor)
-    }
-    fun decodeSigningIntent(bytes: ByteArray): TargetSdkSigningIntent = selfOwnedDecode(bytes, "target-original-sdk-metadata-signing-intent/v2") {
-        purpose(); require(string(128) == "ONE_ORIGINAL_SDK_ASSOCIATION_METADATA_SIGNATURE_NO_RETRY")
-        TargetSdkSigningIntent(PayloadDigest(string(64)), PayloadDigest(string(64)), PayloadDigest(string(64)),
-            int(), long(), octets(LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES))
-    }.also { canonical(bytes, signingIntent(it)) }
-    fun readyMessage(identity: ByteArray, ready: ByteArray, acquisition: ByteArray, intent: ByteArray): ByteArray = selfOwnedEncode(
-        "target-private-original-native-sdk-association-snapshot/v2", AndroidDevicePairingTargetNative.SDK_READY_MAX - 1024) {
-        purpose(); field(identity); field(ready); field(acquisition); field(intent)
-        string("ORIGINAL_SDK_ASSOCIATION_DATA_ONLY_NO_MASTER_HEAD_ADMISSION_SESSION_OR_SERVING_AUTHORITY")
-    }
-    fun decodeReadyMessage(value: SelfOwnedOctetsV1): TargetSdkReadyFields {
-        val bytes = value.copyBytes()
-        return try { selfOwnedDecode(bytes, "target-private-original-native-sdk-association-snapshot/v2") {
-            purpose(); val identity = octets(AndroidDevicePairingTargetNative.IDENTITY_MAX)
-            val ready = octets(AndroidDevicePairingTargetNative.READY_MAX)
-            val acquisition = octets(AndroidDevicePairingTargetNative.SDK_ACQUISITION_MAX)
-            val intent = octets(AndroidDevicePairingTargetNative.SDK_SIGNING_INTENT_MAX)
-            require(string(128) == "ORIGINAL_SDK_ASSOCIATION_DATA_ONLY_NO_MASTER_HEAD_ADMISSION_SESSION_OR_SERVING_AUTHORITY")
-            TargetSdkReadyFields(identity, ready, acquisition, intent)
-        } } finally { bytes.fill(0) }
-    }
-    fun ready(value: TargetSdkReady): ByteArray = selfOwnedEncode("target-signed-original-native-sdk-association-state/v2",
-        AndroidDevicePairingTargetNative.SDK_READY_MAX) { purpose(); octets(value.message); octets(value.signature) }
-    fun decodeReady(bytes: ByteArray): TargetSdkReady = selfOwnedDecode(bytes, "target-signed-original-native-sdk-association-state/v2") {
-        purpose(); TargetSdkReady(octets(AndroidDevicePairingTargetNative.SDK_READY_MAX - 1024), octets(64))
-    }.also { canonical(bytes, ready(it)) }
-    private fun SelfOwnedWireWriterV1.purpose() { string(LocalDevicePairingProfileV2.PURPOSE); string(PROFILE) }
-    private fun SelfOwnedWireReaderV1.purpose() { require(string(128) == LocalDevicePairingProfileV2.PURPOSE && string(128) == PROFILE) }
-    private fun canonical(actual: ByteArray, encoded: ByteArray) { try { require(actual.contentEquals(encoded)) } finally { encoded.fill(0) } }
-}
-
-/** Target-only named domains, no original tag/ordinal/alias/schema extension. */
-private object TargetWire {
-    private const val PROFILE = "TARGET_ONLY_ANDROID31_NONDEBUGGABLE_NATIVE_P256_OS_ISOLATED_V1"
-    fun identity(value: TargetIdentity): ByteArray = selfOwnedEncode("target-only-pairing-original-generation-intent/v1", AndroidDevicePairingTargetNative.IDENTITY_MAX) {
-        purpose(); string("STARTED_NO_GENERATION_RETRY"); id(value.preparationId); id(value.deviceId); id(value.keyId); id(value.responseId)
-        id(value.scope.organizationId); id(value.scope.companyId); id(value.scope.branchId)
-        int(value.capabilities.size); value.capabilities.forEach { string(it) }; target(value.target)
-        string(value.namespace.path); int(value.namespace.uid); string(value.namespace.volumeUuid)
-        long(value.namespace.directoryInode); long(value.namespace.lockInode); int(value.osBoot); long(value.observedElapsed); octets(value.nonce)
-    }
-    fun decodeIdentity(bytes: ByteArray): TargetIdentity = selfOwnedDecode(bytes, "target-only-pairing-original-generation-intent/v1") {
-        purpose(); require(string(64) == "STARTED_NO_GENERATION_RETRY")
-        val preparation = id(); val device = id(); val key = id(); val response = id(); val scope = BranchScope(id(), id(), id())
-        val count = int(); require(count in 0..ProtectedLocalStorageFormat.MAX_DEVICE_CAPABILITIES)
-        val capabilities = List(count) { string(ProtectedLocalStorageFormat.MAX_DEVICE_CAPABILITY_BYTES) }; val target = target()
-        val namespace = TargetNamespace(string(1024), int(), string(36), long(), long())
-        TargetIdentity(preparation, device, key, response, scope, capabilities, target, namespace, int(), long(), octets(32))
-    }.also { canonical(bytes, identity(it)) }
-    fun keyIntent(value: TargetKeyIntent): ByteArray = selfOwnedEncode("target-only-pairing-key-metadata-signing-intent/v1", AndroidDevicePairingTargetNative.KEY_INTENT_MAX) {
-        purpose(); string("ONE_ORIGINAL_READY_SNAPSHOT_SIGNATURE_NO_RETRY"); string(value.identityDigest.value)
-        int(value.osBoot); long(value.observedElapsed); string(value.security.name); octets(value.point)
-    }
-    fun decodeKeyIntent(bytes: ByteArray): TargetKeyIntent = selfOwnedDecode(bytes, "target-only-pairing-key-metadata-signing-intent/v1") {
-        purpose(); require(string(64) == "ONE_ORIGINAL_READY_SNAPSHOT_SIGNATURE_NO_RETRY")
-        val digest = PayloadDigest(string(64)); val boot = int(); val elapsed = long(); val level = string(64)
-        TargetKeyIntent(digest, boot, elapsed, requireNotNull(SelfOwnedNativeSecurityV1.entries.singleOrNull { it.name == level }), octets(65))
-    }.also { canonical(bytes, keyIntent(it)) }
-    fun readyMessage(identity: ByteArray, intent: ByteArray, descriptor: ByteArray): ByteArray = selfOwnedEncode("target-only-private-key-ready-snapshot/v1", AndroidDevicePairingTargetNative.READY_MAX) {
-        purpose(); field(identity); field(intent); field(descriptor); string("LOCAL_CUSTODY_ONLY_NOT_REMOTE_ATTESTATION_OR_MASTER_AUTHORITY")
-    }
-    fun decodeReadyMessage(value: SelfOwnedOctetsV1): TargetReadyFields {
-        val bytes = value.copyBytes()
-        return try { selfOwnedDecode(bytes, "target-only-private-key-ready-snapshot/v1") {
-            purpose(); val identity = octets(AndroidDevicePairingTargetNative.IDENTITY_MAX); val intent = octets(AndroidDevicePairingTargetNative.KEY_INTENT_MAX)
-            val descriptor = octets(ProtectedLocalTable.ADMISSION.maximumPlaintextBytes + 1024)
-            require(string(128) == "LOCAL_CUSTODY_ONLY_NOT_REMOTE_ATTESTATION_OR_MASTER_AUTHORITY")
-            TargetReadyFields(identity, intent, descriptor)
-        } } finally { bytes.fill(0) }
-    }
-    fun ready(value: TargetReady): ByteArray = selfOwnedEncode("target-only-signed-private-ready-state/v1", AndroidDevicePairingTargetNative.READY_MAX) {
-        purpose(); octets(value.message); octets(value.signature)
-    }
-    fun decodeReady(bytes: ByteArray): TargetReady = selfOwnedDecode(bytes, "target-only-signed-private-ready-state/v1") {
-        purpose(); TargetReady(octets(AndroidDevicePairingTargetNative.READY_MAX), octets(64))
-    }.also { canonical(bytes, ready(it)) }
-    fun allocation(value: TargetResponseAllocation): ByteArray = selfOwnedEncode("target-explicit-known-unsigned-response-allocation-intent/v1",
-        AndroidDevicePairingTargetNative.ALLOCATION_INTENT_MAX) {
-        purpose(); string("ONE_NEW_ALLOCATION_METADATA_SIGNATURE_NO_RETRY_OLD_KEY_AND_HISTORY_RETAINED")
-        int(value.index); id(value.responseId); octets(value.nonce); string(value.identityDigest.value); string(value.parentAllocationDigest.value)
-        bool(value.previousIntentDigest != null); value.previousIntentDigest?.let { string(it.value) }
-        bool(value.previousCompleteDigest != null); value.previousCompleteDigest?.let { string(it.value) }
-        octets(value.retirement); int(value.osBoot); long(value.observedElapsed)
-    }
-    fun decodeAllocation(bytes: ByteArray): TargetResponseAllocation = selfOwnedDecode(bytes, "target-explicit-known-unsigned-response-allocation-intent/v1") {
-        purpose(); require(string(128) == "ONE_NEW_ALLOCATION_METADATA_SIGNATURE_NO_RETRY_OLD_KEY_AND_HISTORY_RETAINED")
-        val index = int(); val id = id(); val nonce = octets(32); val identity = PayloadDigest(string(64)); val parent = PayloadDigest(string(64))
-        val intent = if (bool()) PayloadDigest(string(64)) else null; val complete = if (bool()) PayloadDigest(string(64)) else null
-        TargetResponseAllocation(index, id, nonce, identity, parent, intent, complete,
-            octets(LocalDevicePairingProfileV1.MAXIMUM_RETIREMENT_BYTES), int(), long())
-    }.also { canonical(bytes, allocation(it)) }
-    fun allocationReadyMessage(ready: ByteArray, allocation: ByteArray): ByteArray = selfOwnedEncode("target-private-known-unsigned-response-allocation-snapshot/v1",
-        AndroidDevicePairingTargetNative.ALLOCATION_READY_MAX - 1024) {
-        purpose(); field(ready); field(allocation); string("EXPLICIT_APPEND_ONLY_NO_MASTER_TRUST_PERMISSION_OR_OLD_SIGNATURE_RETRY")
-    }
-    fun decodeAllocationReadyMessage(value: SelfOwnedOctetsV1): TargetAllocationReadyFields {
-        val bytes = value.copyBytes()
-        return try { selfOwnedDecode(bytes, "target-private-known-unsigned-response-allocation-snapshot/v1") {
-            purpose(); val ready = octets(AndroidDevicePairingTargetNative.READY_MAX)
-            val allocation = octets(AndroidDevicePairingTargetNative.ALLOCATION_INTENT_MAX)
-            require(string(128) == "EXPLICIT_APPEND_ONLY_NO_MASTER_TRUST_PERMISSION_OR_OLD_SIGNATURE_RETRY")
-            TargetAllocationReadyFields(ready, allocation)
-        } } finally { bytes.fill(0) }
-    }
-    fun allocationReady(value: TargetAllocationReady): ByteArray = selfOwnedEncode("target-signed-known-unsigned-response-allocation-state/v1",
-        AndroidDevicePairingTargetNative.ALLOCATION_READY_MAX) { purpose(); octets(value.message); octets(value.signature) }
-    fun decodeAllocationReady(bytes: ByteArray): TargetAllocationReady = selfOwnedDecode(bytes, "target-signed-known-unsigned-response-allocation-state/v1") {
-        purpose(); TargetAllocationReady(octets(AndroidDevicePairingTargetNative.ALLOCATION_READY_MAX - 1024), octets(64))
-    }.also { canonical(bytes, allocationReady(it)) }
-    fun responseIntent(value: TargetResponseIntent): ByteArray = selfOwnedEncode("target-only-original-possession-signing-intent/v1", AndroidDevicePairingTargetNative.RESPONSE_INTENT_MAX) {
-        purpose(); string("ONE_POSSESSION_AND_ONE_COMPLETED_SNAPSHOT_SIGNATURE_NO_RETRY")
-        id(value.responseId); int(value.allocationIndex); string(value.allocationDigest.value); string(value.readyDigest.value)
-        int(value.osBoot); long(value.observedElapsed); octets(value.nonce); octets(value.challenge)
-    }
-    fun decodeResponseIntent(bytes: ByteArray): TargetResponseIntent = selfOwnedDecode(bytes, "target-only-original-possession-signing-intent/v1") {
-        purpose(); require(string(128) == "ONE_POSSESSION_AND_ONE_COMPLETED_SNAPSHOT_SIGNATURE_NO_RETRY")
-        TargetResponseIntent(id(), int(), PayloadDigest(string(64)), PayloadDigest(string(64)), int(), long(), octets(32),
-            octets(LocalDevicePairingProfileV1.MAXIMUM_CHALLENGE_BYTES))
-    }.also { canonical(bytes, responseIntent(it)) }
-    fun completeMessage(ready: ByteArray, allocation: ByteArray, intent: ByteArray, possession: ByteArray): ByteArray = selfOwnedEncode("target-only-original-private-possession-snapshot/v1", AndroidDevicePairingTargetNative.COMPLETE_MAX - 1024) {
-        purpose(); field(ready); field(allocation); field(intent); field(possession); string("ORIGINAL_POSSESSION_DATA_NO_ADMISSION_SESSION_MASTER_OR_REMOTE_ATTESTATION")
-    }
-    fun decodeCompleteMessage(value: SelfOwnedOctetsV1): TargetCompleteFields {
-        val bytes = value.copyBytes()
-        return try { selfOwnedDecode(bytes, "target-only-original-private-possession-snapshot/v1") {
-            purpose(); val ready = octets(AndroidDevicePairingTargetNative.READY_MAX)
-            val allocation = octets(AndroidDevicePairingTargetNative.ALLOCATION_READY_MAX)
-            val intent = octets(AndroidDevicePairingTargetNative.RESPONSE_INTENT_MAX)
-            val proof = octets(LocalDevicePairingProfileV1.MAXIMUM_POSSESSION_BYTES)
-            require(string(128) == "ORIGINAL_POSSESSION_DATA_NO_ADMISSION_SESSION_MASTER_OR_REMOTE_ATTESTATION")
-            TargetCompleteFields(ready, allocation, intent, proof)
-        } } finally { bytes.fill(0) }
-    }
-    fun complete(value: TargetComplete): ByteArray = selfOwnedEncode("target-only-signed-original-completed-state/v1", AndroidDevicePairingTargetNative.COMPLETE_MAX) {
-        purpose(); octets(value.message); octets(value.signature)
-    }
-    fun decodeComplete(bytes: ByteArray): TargetComplete = selfOwnedDecode(bytes, "target-only-signed-original-completed-state/v1") {
-        purpose(); TargetComplete(octets(AndroidDevicePairingTargetNative.COMPLETE_MAX - 1024), octets(64))
-    }.also { canonical(bytes, complete(it)) }
-    private fun SelfOwnedWireWriterV1.purpose() { string(LocalDevicePairingProfileV1.PURPOSE); string(PROFILE) }
-    private fun SelfOwnedWireReaderV1.purpose() { require(string(128) == LocalDevicePairingProfileV1.PURPOSE && string(128) == PROFILE) }
-    private fun canonical(actual: ByteArray, encoded: ByteArray) { try { require(actual.contentEquals(encoded)) } finally { encoded.fill(0) } }
-}

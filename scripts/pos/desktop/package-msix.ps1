@@ -83,6 +83,11 @@ if ($Probe) {
         if ($process.ExitCode -ne 0 -or -not $summary.probe.StartsWith("DATA pfn=$ExpectedFamilyName ")) {
             throw "Native identity probe failed: exit $($process.ExitCode) $($summary.probe)"
         }
+        # In-app Client target custody (TRAINING_2, synthetic scope): record the actual outcome.
+        $targetFile = Join-Path $diagnostics 'client-target-probe.txt'
+        $targetProcess = Start-Process -FilePath $alias -ArgumentList "--client-target-probe=$targetFile" -Wait -PassThru
+        $summary.client_target_exit = $targetProcess.ExitCode
+        $summary.client_target_probe = if (Test-Path $targetFile) { (Get-Content -Raw $targetFile).Trim() } else { 'NO_OUTPUT' }
         # Packaged-service identity is an experiment: record the actual outcome, never infer it.
         $probeDir = Join-Path $env:ProgramData 'UkkeraPOSTestProbe'
         New-Item -ItemType Directory -Force -Path $probeDir | Out-Null

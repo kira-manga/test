@@ -24,6 +24,10 @@ fun main(args: Array<String>) {
     args.firstOrNull { it.startsWith(DesktopIdentityProbe.ARGUMENT) }?.let {
         kotlin.system.exitProcess(DesktopIdentityProbe.run(java.io.File(it.removePrefix(DesktopIdentityProbe.ARGUMENT))))
     }
+    args.firstOrNull { it.startsWith(DesktopIdentityProbe.CLIENT_TARGET_ARGUMENT) }?.let {
+        kotlin.system.exitProcess(DesktopIdentityProbe.runClientTarget(
+            java.io.File(it.removePrefix(DesktopIdentityProbe.CLIENT_TARGET_ARGUMENT))))
+    }
     // Started by the Service Control Manager only; never opens a window in session 0.
     if (args.firstOrNull() == DesktopWindowsService.ARGUMENT) kotlin.system.exitProcess(DesktopWindowsService.run())
     runUkkeraDesktop(AppDependencies(platform = PlatformCapabilities(PlatformFamily.DESKTOP)), args)

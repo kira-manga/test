@@ -273,6 +273,30 @@ different retained formats; a new request must not reinterpret an old record.
 - **Central phase:** `backend`, `tools/backend` and associated archived inputs
   remain held until the owner approves after local hands-on testing.
 
+## Windows/macOS Master and Client hosting
+
+Every device installs the same POS application; setup selects Master or Client.
+Owner decisions of 12 November 2026 keep this Master/Client model unchanged.
+
+- **Master desktop:** the original requirements require an OS-supervised branch
+  process separate from the cashier window ([technology guide](original-handoff/POS_TECHNOLOGY_AND_LIBRARY_GUIDE.md),
+  Windows/macOS rows; [production proposal](original-handoff/POS_PRODUCTION_ARCHITECTURE_PROPOSAL.md)
+  desktop hosting). It is a background mode of the same application: on Windows,
+  a packaged LocalService service in the same MSIX (`UkkeraPOS.exe --service`),
+  started only when the device is configured as Master. Master keys, storage and
+  database belong to that service identity. Closing the window does not stop it.
+  The window on the Master device reaches it through authenticated OS-local IPC,
+  not loopback P2pKit RPC.
+- **Client desktop:** no background service. Client device keys stay inside the
+  main application under OS-protected secure storage (owner decision).
+- **Windows installer:** one MSIX for Master and Client, signed (test builds use a
+  locally trusted self-signed certificate); installation requires Administrator
+  rights on every Windows device because the package declares the Master service.
+- **macOS:** requires an Apple-issued Developer ID signature with Team ID (frozen
+  MAC-TRUST); unsigned builds cannot open protected storage.
+- Android (in-app runtime with foreground service) and iOS (active-app hosting)
+  are unchanged; all clients reach the Master over authenticated LAN RPC.
+
 ## Android original setup path
 
 The default Android setup entry and employee entry remain distinct. Follow

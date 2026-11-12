@@ -22,6 +22,31 @@ internal object DesktopIdentityProbe {
         return code
     }
 
+    const val CLIENT_TARGET_ARGUMENT = "--client-target-probe="
+
+    /**
+     * Test-runner check of the in-app Client target custody in the isolated TRAINING_2 slot with a
+     * synthetic scope: prepare, close, reopen existing-only and compare. Never touches LIVE.
+     */
+    fun runClientTarget(output: File): Int {
+        val (code, line) = if (!Platform.isWindows()) 2 to "UNSUPPORTED_PLATFORM" else runCatching {
+            val expected = DesktopWindowsPackageIdentity.TEST.target()
+            val slot = com.ukkera.pos.security.LocalTrainingCompositionSlot.TRAINING_2
+            val synthetic = com.ukkera.pos.types.DomainId.random()
+            val scope = com.ukkera.pos.security.BranchScope(com.ukkera.pos.types.DomainId.random(),
+                com.ukkera.pos.types.DomainId.random(), synthetic)
+            val first = com.ukkera.pos.security.DesktopClientTargetHandle.prepareNewWindows(expected, slot, scope, setOf("probe"))
+            val reference = first.original(); val descriptor = first.descriptor().copyWireBytes()
+            first.close()
+            val reopened = com.ukkera.pos.security.DesktopClientTargetHandle.openExistingWindows(expected, slot)
+            val same = reopened.original() == reference && reopened.descriptor().copyWireBytes().contentEquals(descriptor)
+            reopened.close()
+            if (same) 0 to "DATA phase=${reference.phase} reopened=true" else 1 to "MISMATCH phase=${reference.phase}"
+        }.getOrElse { failure -> 1 to "FAILED ${failure::class.simpleName}: ${failure.message?.take(200)}" }
+        output.writeText(line + "\n")
+        return code
+    }
+
     private fun windows(): Pair<Int, String> {
         val expected = DesktopWindowsPackageIdentity.TEST.target()
         return when (val result = WindowsInstalledApplicationIdentity.captureUi(expected)) {
