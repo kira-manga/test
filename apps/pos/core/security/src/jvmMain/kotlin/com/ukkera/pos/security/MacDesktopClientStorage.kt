@@ -158,9 +158,14 @@ internal object MacLoginKeychain {
             privateAttributes.constant("kSecAttrIsPermanent", "kCFBooleanTrue", core = true)
             privateAttributes.data("kSecAttrApplicationTag", tag)
             privateAttributes.constant("kSecAttrIsExtractable", "kCFBooleanFalse", core = true)
+            privateAttributes.constant("kSecAttrIsSensitive", "kCFBooleanTrue", core = true)
             Dict().use { parameters ->
                 parameters.constant("kSecAttrKeyType", "kSecAttrKeyTypeECSECPrimeRandom")
                 parameters.number("kSecAttrKeySizeInBits", 256)
+                // The file-based (login) keychain path reads key-usage flags from the top-level
+                // dictionary; kSecPrivateKeyAttrs alone left an exportable key (CI run 43315399738).
+                parameters.constant("kSecAttrIsExtractable", "kCFBooleanFalse", core = true)
+                parameters.constant("kSecAttrIsSensitive", "kCFBooleanTrue", core = true)
                 base(parameters)
                 parameters.dict("kSecPrivateKeyAttrs", privateAttributes)
                 val error = PointerByReference()
