@@ -39,7 +39,11 @@ public class LocalDevicePairingSdkIdentityV2 private constructor(canonical: Byte
     public val originalAcquisitionId: DomainId get() = value.originalAcquisitionId
     public val originalPreparationId: DomainId get() = value.originalPreparationId
     public val target: LocalDevicePairingTargetDescriptor get() = value.target
-    public val nativeApplication: SelfOwnedTargetDescriptorV1 get() = value.nativeApplication
+    /** Android original application DATA; a desktop identity has none and refuses this read. */
+    public val nativeApplication: SelfOwnedTargetDescriptorV1
+        get() = value.nativeApplication ?: throw IllegalStateException("Desktop SDK identity has no Android application")
+    /** Desktop (Windows/macOS packaged UI) installed identity DATA; null for Android originals. */
+    public val installedApplication: SelfOwnedInstalledIdentityTargetV2? get() = value.installedApplication
     public val appId: AppId get() = value.appId
     public val peerId: PeerId get() = value.peerId
     public val fingerprint: PeerFingerprint get() = value.fingerprint
@@ -82,7 +86,24 @@ public class LocalDevicePairingSdkIdentityV2 private constructor(canonical: Byte
             pairingQr: String,
         ): LocalDevicePairingSdkIdentityV2 {
             val fields = SdkIdentityFieldsV2(originalAcquisitionId, originalPreparationId, target,
-                nativeApplication, appId, peerId, fingerprint, pairingQr)
+                nativeApplication, null, appId, peerId, fingerprint, pairingQr)
+            val canonical = encodeFields(fields)
+            return try { decode(canonical) } finally { canonical.fill(0) }
+        }
+
+        /** Additive desktop Client variant; only a Windows packaged app or macOS UI identity. */
+        internal fun captureDesktop(
+            originalAcquisitionId: DomainId,
+            originalPreparationId: DomainId,
+            target: LocalDevicePairingTargetDescriptor,
+            installedApplication: SelfOwnedInstalledIdentityTargetV2,
+            appId: AppId,
+            peerId: PeerId,
+            fingerprint: PeerFingerprint,
+            pairingQr: String,
+        ): LocalDevicePairingSdkIdentityV2 {
+            val fields = SdkIdentityFieldsV2(originalAcquisitionId, originalPreparationId, target,
+                null, installedApplication, appId, peerId, fingerprint, pairingQr)
             val canonical = encodeFields(fields)
             return try { decode(canonical) } finally { canonical.fill(0) }
         }
@@ -90,12 +111,14 @@ public class LocalDevicePairingSdkIdentityV2 private constructor(canonical: Byte
 }
 
 private const val SDK_IDENTITY_DOMAIN_V2 = "original-native-device-sdk-identity-data/v2"
+private const val SDK_IDENTITY_DOMAIN_DESKTOP_V2 = "original-native-device-sdk-identity-data/v2+desktop-v2"
 
 private class SdkIdentityFieldsV2(
     val originalAcquisitionId: DomainId,
     val originalPreparationId: DomainId,
     val target: LocalDevicePairingTargetDescriptor,
-    val nativeApplication: SelfOwnedTargetDescriptorV1,
+    val nativeApplication: SelfOwnedTargetDescriptorV1?,
+    val installedApplication: SelfOwnedInstalledIdentityTargetV2?,
     val appId: AppId,
     val peerId: PeerId,
     val fingerprint: PeerFingerprint,
@@ -106,6 +129,9 @@ private class SdkIdentityFieldsV2(
         val ids = listOf(originalAcquisitionId, originalPreparationId, scope.organizationId,
             scope.companyId, scope.branchId, target.admission.deviceId, target.keyId)
         require(ids.distinct().size == ids.size)
+        require((nativeApplication == null) != (installedApplication == null))
+        require(installedApplication == null || installedApplication is SelfOwnedWindowsPackagedAppIdentityV2 ||
+            installedApplication is SelfOwnedMacUiIdentityV2)
         require(appId.value.length in 1..LocalDevicePairingProfileV2.MAXIMUM_SDK_APP_ID_BYTES)
         val encodedAppId = appId.value.encodeToByteArray()
         try { require(encodedAppId.size in 1..LocalDevicePairingProfileV2.MAXIMUM_SDK_APP_ID_BYTES) }
@@ -115,23 +141,46 @@ private class SdkIdentityFieldsV2(
 }
 
 private fun encodeFields(value: SdkIdentityFieldsV2): ByteArray = selfOwnedEncode(
-    SDK_IDENTITY_DOMAIN_V2, LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES,
+    if (value.nativeApplication != null) SDK_IDENTITY_DOMAIN_V2 else SDK_IDENTITY_DOMAIN_DESKTOP_V2,
+    LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES,
 ) {
     string(LocalDevicePairingProfileV2.PURPOSE)
     id(value.originalAcquisitionId); id(value.originalPreparationId)
     val targetBytes = value.target.copyWireBytes()
     try { field(targetBytes) } finally { targetBytes.fill(0) }
-    target(value.nativeApplication)
+    value.nativeApplication?.let { target(it) }
+    value.installedApplication?.let { installed ->
+        val encoded = SelfOwnedInstalledIdentityWireV2.encodeTarget(installed)
+        try { field(encoded) } finally { encoded.fill(0) }
+    }
     string(value.appId.value); string(value.peerId.value)
     string(value.fingerprint.value); string(value.pairingQr)
 }
 
-private fun decodeFields(bytes: ByteArray): SdkIdentityFieldsV2 = selfOwnedDecode(bytes, SDK_IDENTITY_DOMAIN_V2) {
+/** Android bytes first; otherwise the separate desktop domain. Domains never overlap. */
+private fun decodeFields(bytes: ByteArray): SdkIdentityFieldsV2 = try {
+    decodeVariant(bytes, desktop = false)
+} catch (_: IllegalArgumentException) {
+    decodeVariant(bytes, desktop = true)
+}
+
+private fun decodeVariant(bytes: ByteArray, desktop: Boolean): SdkIdentityFieldsV2 = selfOwnedDecode(bytes,
+    if (desktop) SDK_IDENTITY_DOMAIN_DESKTOP_V2 else SDK_IDENTITY_DOMAIN_V2) {
     require(string(128) == LocalDevicePairingProfileV2.PURPOSE)
     val acquisition = id(); val preparation = id()
     val targetBytes = field(ProtectedLocalTable.ADMISSION.maximumPlaintextBytes + 1024)
     val descriptor = try { LocalDevicePairingTargetDescriptor.decode(targetBytes) } finally { targetBytes.fill(0) }
-    SdkIdentityFieldsV2(acquisition, preparation, descriptor, target(),
+    val android = if (desktop) null else target()
+    val installed = if (!desktop) null else {
+        val encoded = field(SelfOwnedInstalledIdentityProfileV2.MAXIMUM_TARGET_BYTES)
+        try {
+            when (val result = SelfOwnedInstalledIdentityWireV2.decodeTarget(encoded)) {
+                is SelfOwnedInstalledIdentityResultV2.Data -> result.value
+                is SelfOwnedInstalledIdentityResultV2.Refused -> throw IllegalArgumentException("installed identity")
+            }
+        } finally { encoded.fill(0) }
+    }
+    SdkIdentityFieldsV2(acquisition, preparation, descriptor, android, installed,
         AppId(string(LocalDevicePairingProfileV2.MAXIMUM_SDK_APP_ID_BYTES)),
         PeerId(string(58)), PeerFingerprint(string(57)), string(125))
 }

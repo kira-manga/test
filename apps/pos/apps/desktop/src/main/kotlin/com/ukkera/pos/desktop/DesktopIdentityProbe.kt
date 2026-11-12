@@ -16,6 +16,7 @@ internal object DesktopIdentityProbe {
     fun run(output: File): Int {
         val (code, line) = when {
             Platform.isWindows() -> windows()
+            Platform.isMac() -> mac()
             else -> 2 to "UNSUPPORTED_PLATFORM"
         }
         output.writeText(line + "\n")
@@ -37,15 +38,28 @@ internal object DesktopIdentityProbe {
                 com.ukkera.pos.types.DomainId.random(), synthetic)
             val first = com.ukkera.pos.security.DesktopClientTargetHandle.prepareNewWindows(expected, slot, scope, setOf("probe"))
             val reference = first.original(); val descriptor = first.descriptor().copyWireBytes()
-            first.close()
+            first.closeNow()
             val reopened = com.ukkera.pos.security.DesktopClientTargetHandle.openExistingWindows(expected, slot)
             val same = reopened.original() == reference && reopened.descriptor().copyWireBytes().contentEquals(descriptor)
-            reopened.close()
+            reopened.closeNow()
             if (same) 0 to "DATA phase=${reference.phase} reopened=true" else 1 to "MISMATCH phase=${reference.phase}"
         }.getOrElse { failure -> 1 to "FAILED ${failure::class.simpleName}: ${failure.message?.take(200)}" }
         output.writeText(line + "\n")
         return code
     }
+
+    /** macOS: Apple-anchored Developer ID signature with the Team ID supplied by the signing runner. */
+    private fun mac(): Pair<Int, String> {
+        val team = System.getenv("UKKERA_EXPECTED_TEAM_ID") ?: return 2 to "NO_EXPECTED_TEAM"
+        return when (val result = com.ukkera.pos.security.MacInstalledApplicationIdentity.observeUi(MAC_SIGNING_IDENTIFIER, team)) {
+            is SelfOwnedInstalledIdentityResultV2.Data -> 0 to "DATA id=${result.value.signingIdentifier} team=${result.value.teamIdentifier} " +
+                "dr=${result.value.designatedRequirementSha256}"
+            is SelfOwnedInstalledIdentityResultV2.Refused -> 1 to "REFUSED ${result.code}"
+        }
+    }
+
+    /** Must equal the bundle ID declared in the desktop Gradle macOS distribution. */
+    const val MAC_SIGNING_IDENTIFIER = "com.ukkera.pos.local.desktop"
 
     private fun windows(): Pair<Int, String> {
         val expected = DesktopWindowsPackageIdentity.TEST.target()

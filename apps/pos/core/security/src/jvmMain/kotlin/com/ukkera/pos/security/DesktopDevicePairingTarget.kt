@@ -1,7 +1,7 @@
 package com.ukkera.pos.security
 
 import com.ukkera.pos.types.DomainId
-import com.ukkera.pos.types.Revision
+import dev.p2pkit.core.AppId
 import java.nio.file.Path
 
 /** OS key custody of one desktop Client target key (Windows CNG / macOS Keychain). */
@@ -12,7 +12,7 @@ internal interface DesktopClientTargetKey : AutoCloseable {
     fun sign(message: ByteArray): ByteArray
 }
 
-/** Native facts and key custody for the desktop Client target; every value is an actual observation. */
+/** Native facts, key custody and SDK owner for the desktop Client target; every value is observed. */
 internal interface DesktopClientTargetPlatform {
     val slot: LocalTrainingCompositionSlot?
     /** Fixed application-private parent directory (Windows package LocalState, macOS Application Support). */
@@ -20,187 +20,198 @@ internal interface DesktopClientTargetPlatform {
     fun origin(directory: Path): TargetOrigin.Desktop
     fun bootSessionId(): String
     fun elapsedMillis(): Long
+    fun keyExists(preparationId: DomainId, keyId: DomainId): Boolean
     fun createKey(preparationId: DomainId, keyId: DomainId): DesktopClientTargetKey
     fun openKey(preparationId: DomainId, keyId: DomainId, originalPoint: ByteArray): DesktopClientTargetKey
+    fun newSdkOwner(installed: SelfOwnedInstalledIdentityTargetV2): DevicePairingTargetSdkOwner
 }
 
 /**
- * Desktop (Windows/macOS) Client original pairing target. The record sequence mirrors the Android
- * target: identity is forced before the only key generation, then the key intent, then the signed
- * ready snapshot. Every record is write-once; an interrupted step is reviewable DATA and is never
- * retried or repaired. Public points and descriptors are DATA, not attestation or authority.
- *
- * Convergence note: the sequencing duplicates the Android native state machine, which cannot be
- * moved without device re-qualification; both use the shared record codecs.
+ * Desktop (Windows/macOS) native seam of the SHARED pairing ceremony [DevicePairingTargetCore]:
+ * write-once snapshot store, boot ledger, in-app OS key and JVM SDK owner. The ceremony itself is
+ * identical to Android's. Unlike Android KeyStore, CNG/Keychain do not enumerate a key namespace, so
+ * key-namespace checks require exactly the expected key rather than proving no other key exists.
  */
-internal class DesktopDevicePairingTarget private constructor(
-    private val platform: DesktopClientTargetPlatform,
-    private val store: DesktopTargetSnapshotStore,
-) : AutoCloseable {
-    private var identity: TargetIdentity? = null
-    private var keyIntent: TargetKeyIntent? = null
-    private var ready: TargetReady? = null
+internal class DesktopDevicePairingTargetNative(private val platform: DesktopClientTargetPlatform) : DevicePairingTargetNative {
+    val core = DevicePairingTargetCore(this)
+    private var store: DesktopTargetSnapshotStore? = null
+    private var openedPending: Set<String> = emptySet()
+    private val snapshots = linkedMapOf<String, ByteArray?>()
     private var key: DesktopClientTargetKey? = null
-    private var reference: LocalDevicePairingTargetReference? = null
+    private var keyIds: Pair<DomainId, DomainId>? = null
+
+    private fun store(): DesktopTargetSnapshotStore = store ?: selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
+    private fun directory(): Path =
+        platform.parentDirectory().resolve(SelfOwnedCompositionNames.devicePairingTargetDirectory(platform.slot))
+
+    override val variant: TargetWireVariant get() = TargetWireVariant.DESKTOP_V2
+    override val sdkProfile: LocalCompositionSdkProfileV1
+        get() = platform.slot?.let { LocalTrainingSdkProfileV1(it) } ?: LocalMasterSdkProfileV1
+
+    override fun open(creating: Boolean) {
+        check(store == null)
+        val opened = if (creating) DesktopTargetSnapshotStore.create(directory()) else DesktopTargetSnapshotStore.openExisting(directory())
+        store = opened
+        DesktopTargetBootLedger.observe(opened, platform.bootSessionId())
+        val names = opened.names()
+        known(names.all { it in DevicePairingTargetFiles.FILE_ROLES || it.startsWith(LEDGER_PREFIX) })
+        openedPending = opened.pendingNames()
+        known(openedPending.all { it in DevicePairingTargetFiles.FILE_ROLES })
+        for (name in (DevicePairingTargetFiles.BASE_ROLES + names.filter { it in DevicePairingTargetFiles.FILE_ROLES }).distinct()) {
+            snapshots[name] = opened.read(name, DevicePairingTargetFiles.maximum(name))
+        }
+        known(retainedBytes() <= DevicePairingTargetLimitsV1.TOTAL_SNAPSHOT_MAX)
+    }
+
+    override fun snapshot(name: String): ByteArray? = snapshots[name]
+
+    override fun pending(name: String, maximum: Int): ByteArray? = store().readPending(name, maximum)
+
+    override fun forceNew(name: String, bytes: ByteArray) {
+        assertContinuity()
+        known(name in DevicePairingTargetFiles.FILE_ROLES && snapshots[name] == null &&
+            bytes.size in 1..DevicePairingTargetFiles.maximum(name))
+        if (retainedBytes() > DevicePairingTargetLimitsV1.TOTAL_SNAPSHOT_MAX.toLong() - bytes.size) {
+            selfOwnedFail(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
+        }
+        store().forceNew(name, bytes)
+        val actual = store().read(name, DevicePairingTargetFiles.maximum(name)) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        known(actual.contentEquals(bytes))
+        snapshots[name] = actual // Only this exact known-own force/readback, never pending adoption.
+        assertContinuity()
+    }
+
+    override fun retainedBytes(): Long = snapshots.values.filterNotNull().sumOf { it.size.toLong() }
+
+    /** Same names, same bytes, no new pending write and no reboot since this custody opened. */
+    override fun assertContinuity() {
+        val opened = store()
+        val names = opened.names().filterNot { it.startsWith(LEDGER_PREFIX) }.toSet()
+        known(names == snapshots.filterValues { it != null }.keys && opened.pendingNames() == openedPending)
+        for ((name, expected) in snapshots) {
+            val actual = opened.read(name, DevicePairingTargetFiles.maximum(name))
+            try { known(if (expected == null) actual == null else actual?.contentEquals(expected) == true) }
+            finally { actual?.fill(0) }
+        }
+        boot()
+    }
+
+    override fun assertKeyNamespace(expected: Pair<DomainId, DomainId>?, keyRequired: Boolean) {
+        assertContinuity()
+        if (!keyRequired) return
+        val ids = expected ?: keyFailure()
+        loadedKey(ids.first, ids.second)
+    }
+
+    override fun keyAbsent(preparationId: DomainId, keyId: DomainId): Boolean =
+        key == null && !platform.keyExists(preparationId, keyId)
+
+    override fun generateKey(preparationId: DomainId, keyId: DomainId) {
+        known(key == null)
+        keyIds = preparationId to keyId
+        key = try { platform.createKey(preparationId, keyId) } catch (_: Exception) { keyFailure() }
+    }
+
+    /** The retained original key, opened existing-only against the retained key-intent point. */
+    private fun loadedKey(preparationId: DomainId, keyId: DomainId): DesktopClientTargetKey {
+        key?.let { if (keyIds != preparationId to keyId) keyFailure(); return it }
+        val intentBytes = snapshots[DevicePairingTargetFiles.KEY_INTENT] ?: keyFailure()
+        val point = TargetWire.decodeKeyIntent(intentBytes, variant).point.copyBytes()
+        try {
+            keyIds = preparationId to keyId
+            return (try { platform.openKey(preparationId, keyId, point) } catch (_: Exception) { keyFailure() }).also { key = it }
+        } finally { point.fill(0) }
+    }
+
+    override fun keyPoint(preparationId: DomainId, keyId: DomainId): ByteArray = loadedKey(preparationId, keyId).publicPoint()
+    override fun keySecurity(preparationId: DomainId, keyId: DomainId, retained: SelfOwnedNativeSecurityV1?): SelfOwnedNativeSecurityV1 =
+        loadedKey(preparationId, keyId).security
+    override fun sign(preparationId: DomainId, keyId: DomainId, message: ByteArray): ByteArray =
+        loadedKey(preparationId, keyId).sign(message)
+
+    override fun origin(): TargetOrigin = platform.origin(store().directory)
+    override fun originMatches(original: TargetOrigin): Boolean = original == origin()
+
+    override fun boot(): TargetBoot {
+        val current = DesktopTargetBootLedger.current(store()) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        known(current.sessionId == platform.bootSessionId())
+        return current
+    }
+
+    override fun clock(): Long = platform.elapsedMillis()
+
+    override fun newSdkOwner(): DevicePairingTargetSdkOwner =
+        platform.newSdkOwner((origin() as TargetOrigin.Desktop).installed)
+
+    override fun sdkApplicationMatches(sdk: LocalDevicePairingSdkIdentityV2, original: TargetOrigin): Boolean =
+        original is TargetOrigin.Desktop && sdk.installedApplication == original.installed
+
+    override fun releaseNative() {
+        var failure: Throwable? = null
+        try { key?.close() } catch (error: Throwable) { failure = error }
+        key = null
+        try { store?.close() } catch (error: Throwable) { failure?.addSuppressed(error) ?: run { failure = error } }
+        store = null
+        snapshots.values.forEach { it?.fill(0) }; snapshots.clear()
+        failure?.let { throw it }
+    }
+
+    private companion object {
+        const val LEDGER_PREFIX = "boot-ledger-"
+        fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
+        fun keyFailure(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
+    }
+}
+
+/**
+ * Desktop Client original pairing target: the SHARED ceremony over desktop native custody. Calls are
+ * serialized; [denyNewWork] fences new work immediately and [close] releases key and storage.
+ */
+internal class DesktopDevicePairingTarget private constructor(private val native: DesktopDevicePairingTargetNative) : AutoCloseable {
+    private val core get() = native.core
     @Volatile private var denied = false
     private var closed = false
 
-    @Synchronized fun original(): LocalDevicePairingTargetReference {
-        requireUsable()
-        return checkNotNull(reference)
+    @Synchronized private fun <T> run(body: () -> T): T {
+        if (closed || denied) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
+        core.requireReadable()
+        val value = body()
+        core.requireReadable()
+        if (denied) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+        return value
     }
 
-    @Synchronized fun descriptor(): LocalDevicePairingTargetDescriptor {
-        requireUsable()
-        val signed = ready ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
-        requireContinuity()
-        val bytes = TargetWire.decodeReadyMessage(signed.message, VARIANT).descriptor.copyBytes()
-        return try { LocalDevicePairingTargetDescriptor.decode(bytes) } finally { bytes.fill(0) }
+    fun original(): LocalDevicePairingTargetReference = run { core.original() }
+    fun descriptor(): LocalDevicePairingTargetDescriptor = run { core.descriptor() }
+    fun acquireSdkIdentity(appId: AppId, deviceName: String): LocalDevicePairingSdkIdentityV2 = run { core.acquireSdkIdentity(appId, deviceName) }
+    fun recoverSdkIdentity(): LocalDevicePairingSdkIdentityV2 = run { core.recoverSdkIdentity() }
+    fun recoverSdkOriginal(): LocalDevicePairingSdkOriginal = run { core.recoverSdkOriginal() }
+    fun respond(challenge: LocalDevicePairingChallenge): LocalDevicePairingPossession = run { core.respond(challenge) }
+    fun recoverPossession(originalPairingActionId: DomainId): LocalDevicePairingPossession = run { core.recoverPossession(originalPairingActionId) }
+    fun importApprovedMaster(certificate: ByteArray, rootAnnouncement: ByteArray): LocalDevicePairingApprovedMaster {
+        require(certificate.size in 1..DevicePairingTargetLimitsV1.APPROVAL_CERTIFICATE_MAX &&
+            rootAnnouncement.size in 1..SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES)
+        return run { core.importApprovedMaster(certificate.copyOf(), rootAnnouncement.copyOf()) }
     }
+    fun recoverApprovedMaster(originalPairingActionId: DomainId): LocalDevicePairingApprovedMaster =
+        run { core.recoverApprovedMaster(originalPairingActionId) }
+    fun beginAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =
+        run { core.beginAfterKnownUnsigned(retirement) }
+    fun recoverAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =
+        run { core.recoverAfterKnownUnsigned(retirement) }
 
-    /** Immediate denial of new work; retained records and key are unchanged. */
+    val compositionProfile: LocalCompositionSdkProfileV1 get() = native.sdkProfile
     fun denyNewWork() { denied = true }
 
     @Synchronized override fun close() {
         if (closed) return
         closed = true; denied = true
-        var failure: Throwable? = null
-        try { key?.close() } catch (error: Throwable) { failure = error }
-        try { store.close() } catch (error: Throwable) { failure?.addSuppressed(error) ?: run { failure = error } }
-        failure?.let { throw it }
+        core.closeNative()
     }
-
-    private fun requireUsable() {
-        if (closed || denied) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
-    }
-
-    private fun phase(value: LocalDevicePairingTargetPhase) {
-        val original = checkNotNull(identity)
-        reference = LocalDevicePairingTargetReference(original.preparationId, original.deviceId, original.keyId, value,
-            original.responseId)
-    }
-
-    /** Current origin, boot order and key point still match every retained record. */
-    private fun requireContinuity() {
-        val original = checkNotNull(identity)
-        known(platform.origin(store.directory) == original.origin)
-        val current = DesktopTargetBootLedger.current(store) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        known(current.sessionId == platform.bootSessionId() && original.osBoot <= current)
-        val intent = keyIntent ?: return
-        val actual = checkNotNull(key).publicPoint()
-        val retained = intent.point.copyBytes()
-        try { known(actual.contentEquals(retained)) } finally { actual.fill(0); retained.fill(0) }
-    }
-
-    private fun prepare(scope: BranchScope, capabilities: List<String>) {
-        val boot = DesktopTargetBootLedger.observe(store, platform.bootSessionId())
-        val forbidden = setOf(scope.organizationId, scope.companyId, scope.branchId)
-        val ids = List(4) { JvmP256Primitives.newId() }
-        known(ids.distinct().size == 4 && ids.none { it in forbidden })
-        val nonce = JvmP256Primitives.randomBytes(32)
-        val original = try {
-            TargetIdentity(ids[0], ids[1], ids[2], ids[3], scope, capabilities, platform.origin(store.directory), boot,
-                platform.elapsedMillis(), SelfOwnedOctetsV1(nonce, 32))
-        } finally { nonce.fill(0) }
-        val identityBytes = TargetWire.identity(original, VARIANT)
-        try { store.forceNew(IDENTITY, identityBytes) } finally { identityBytes.fill(0) }
-        identity = original; phase(LocalDevicePairingTargetPhase.KEY_GENERATION_INTENT)
-        // The forced identity precedes the only generation; an unknown outcome is never retried.
-        val created = platform.createKey(original.preparationId, original.keyId)
-        key = created
-        val point = created.publicPoint()
-        try {
-            known(DesktopTargetBootLedger.current(store)?.sameBoot(boot) == true)
-            val intent = TargetKeyIntent(sha256(read(IDENTITY, DevicePairingTargetLimitsV1.IDENTITY_MAX)), boot,
-                platform.elapsedMillis(), created.security, SelfOwnedOctetsV1(point, 65))
-            val intentBytes = TargetWire.keyIntent(intent, VARIANT)
-            try { store.forceNew(KEY_INTENT, intentBytes) } finally { intentBytes.fill(0) }
-            keyIntent = intent; phase(LocalDevicePairingTargetPhase.KEY_METADATA_SIGNING_INTENT)
-            val descriptor = expectedDescriptor(original, point).copyWireBytes()
-            val message = try {
-                TargetWire.readyMessage(read(IDENTITY, DevicePairingTargetLimitsV1.IDENTITY_MAX),
-                    read(KEY_INTENT, DevicePairingTargetLimitsV1.KEY_INTENT_MAX), descriptor, VARIANT)
-            } finally { descriptor.fill(0) }
-            try {
-                val signature = created.sign(message)
-                try {
-                    known(JvmP256Primitives.verify(point, message, signature))
-                    val signed = TargetReady(SelfOwnedOctetsV1(message, DevicePairingTargetLimitsV1.READY_MAX),
-                        SelfOwnedOctetsV1(signature, 64))
-                    val readyBytes = TargetWire.ready(signed, VARIANT)
-                    try { store.forceNew(READY, readyBytes) } finally { readyBytes.fill(0) }
-                    ready = signed
-                } finally { signature.fill(0) }
-            } finally { message.fill(0) }
-        } finally { point.fill(0) }
-        validate()
-    }
-
-    private fun openExisting() {
-        DesktopTargetBootLedger.observe(store, platform.bootSessionId())
-        if (IDENTITY in store.pendingNames()) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        val identityBytes = read(IDENTITY, DevicePairingTargetLimitsV1.IDENTITY_MAX)
-        identity = TargetWire.decodeIdentity(identityBytes, VARIANT)
-        phase(LocalDevicePairingTargetPhase.KEY_GENERATION_INTENT)
-        store.read(KEY_INTENT, DevicePairingTargetLimitsV1.KEY_INTENT_MAX)?.let { bytes ->
-            keyIntent = try { TargetWire.decodeKeyIntent(bytes, VARIANT) } finally { bytes.fill(0) }
-            val original = checkNotNull(identity)
-            val point = checkNotNull(keyIntent).point.copyBytes()
-            try { key = platform.openKey(original.preparationId, original.keyId, point) } finally { point.fill(0) }
-            phase(LocalDevicePairingTargetPhase.KEY_METADATA_SIGNING_INTENT)
-        }
-        store.read(READY, DevicePairingTargetLimitsV1.READY_MAX)?.let { bytes ->
-            known(keyIntent != null)
-            ready = try { TargetWire.decodeReady(bytes, VARIANT) } finally { bytes.fill(0) }
-        }
-        validate()
-    }
-
-    private fun validate() {
-        val original = checkNotNull(identity)
-        val identityBytes = read(IDENTITY, DevicePairingTargetLimitsV1.IDENTITY_MAX)
-        try {
-            val encoded = TargetWire.identity(original, VARIANT)
-            try { known(encoded.contentEquals(identityBytes)) } finally { encoded.fill(0) }
-            requireContinuity()
-            val intent = keyIntent ?: return
-            known(intent.identityDigest == sha256(identityBytes) && intent.osBoot.sameBoot(original.osBoot) &&
-                intent.observedElapsed >= original.observedElapsed)
-            val signed = ready ?: return
-            val point = intent.point.copyBytes()
-            val fields = TargetWire.decodeReadyMessage(signed.message, VARIANT)
-            val message = signed.message.copyBytes(); val signature = signed.signature.copyBytes()
-            val intentBytes = read(KEY_INTENT, DevicePairingTargetLimitsV1.KEY_INTENT_MAX)
-            try {
-                known(fields.identity.same(identityBytes) && fields.keyIntent.same(intentBytes))
-                val actual = fields.descriptor.copyBytes(); val wanted = expectedDescriptor(original, point).copyWireBytes()
-                try { known(actual.contentEquals(wanted)) } finally { actual.fill(0); wanted.fill(0) }
-                known(JvmP256Primitives.verify(point, message, signature))
-            } finally { point.fill(0); message.fill(0); signature.fill(0); intentBytes.fill(0) }
-            phase(LocalDevicePairingTargetPhase.KEY_READY)
-        } finally { identityBytes.fill(0) }
-    }
-
-    private fun read(name: String, maximum: Int): ByteArray =
-        store.read(name, maximum) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
 
     override fun toString(): String = "DesktopDevicePairingTarget([REDACTED])"
 
     companion object {
-        private val VARIANT = TargetWireVariant.DESKTOP_V2
-        const val IDENTITY = "identity.v2"
-        const val KEY_INTENT = "key-signing-intent.v2"
-        const val READY = "key-ready.v2"
-
-        private fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
-
-        private fun expectedDescriptor(original: TargetIdentity, point: ByteArray): LocalDevicePairingTargetDescriptor =
-            LocalDevicePairingTargetDescriptor.capture(LocalDeviceAdmission(original.scope, original.deviceId, Revision(0),
-                true, original.keyId.value, sha256(point).value, original.capabilities.toSet()), original.keyId, point)
-
-        private fun directory(platform: DesktopClientTargetPlatform): Path =
-            platform.parentDirectory().resolve(SelfOwnedCompositionNames.devicePairingTargetDirectory(platform.slot))
-
         /** Explicit FIRST preparation only; an existing target directory is never adopted. */
         fun prepareNew(platform: DesktopClientTargetPlatform, scope: BranchScope, capabilities: Set<String>): DesktopDevicePairingTarget {
             val copied = capabilities.sorted()
@@ -209,18 +220,18 @@ internal class DesktopDevicePairingTarget private constructor(
                         code.any { it !in 'a'..'z' && it !in 'A'..'Z' && it !in '0'..'9' && it !in "._-" } }) {
                 selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_INPUT)
             }
-            val target = DesktopDevicePairingTarget(platform, DesktopTargetSnapshotStore.create(directory(platform)))
-            try { target.prepare(scope, copied); return target } catch (failure: Throwable) {
-                try { target.close() } catch (close: Throwable) { failure.addSuppressed(close) }
+            val native = DesktopDevicePairingTargetNative(platform)
+            try { native.core.prepareNew(scope, copied); return DesktopDevicePairingTarget(native) } catch (failure: Throwable) {
+                try { native.core.closeNative() } catch (close: Throwable) { failure.addSuppressed(close) }
                 throw failure
             }
         }
 
         /** Existing only; never creates a missing directory, record or key. */
         fun openExisting(platform: DesktopClientTargetPlatform): DesktopDevicePairingTarget {
-            val target = DesktopDevicePairingTarget(platform, DesktopTargetSnapshotStore.openExisting(directory(platform)))
-            try { target.openExisting(); return target } catch (failure: Throwable) {
-                try { target.close() } catch (close: Throwable) { failure.addSuppressed(close) }
+            val native = DesktopDevicePairingTargetNative(platform)
+            try { native.core.openExisting(); return DesktopDevicePairingTarget(native) } catch (failure: Throwable) {
+                try { native.core.closeNative() } catch (close: Throwable) { failure.addSuppressed(close) }
                 throw failure
             }
         }

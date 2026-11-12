@@ -106,7 +106,40 @@ jobs:
           restore-keys: |
             pos-desktop-${{ runner.os }}-${{ matrix.arch }}-
 
-      - name: Build unsigned macOS DMG and collect diagnostics
+      - name: Import Developer ID signing certificate
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERTIFICATE_P12:-}" ]]; then echo "No macOS signing certificate configured"; exit 0; fi
+          KEYCHAIN="$RUNNER_TEMP/pos-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          P12="$RUNNER_TEMP/pos-signing.p12"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 --decode > "$P12"
+          security import "$P12" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security > /dev/null
+          rm -f "$P12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          LINE="$(security find-identity -v -p codesigning "$KEYCHAIN" | grep -E '"(Developer ID Application|Apple Development): ' | head -n 1 || true)"
+          if [[ -z "$LINE" ]]; then echo "::error::No Developer ID/Apple Development signing identity in the certificate"; exit 1; fi
+          KIND="$(echo "$LINE" | sed -E 's/.*"(Developer ID Application|Apple Development): .*/\1/')"
+          NAME="$(echo "$LINE" | sed -E 's/.*"(Developer ID Application|Apple Development): (.*)"$/\2/')"
+          TEAM="$(echo "$NAME" | sed -E 's/.*\(([A-Z0-9]{10})\)$/\1/')"
+          echo "::add-mask::$NAME"
+          echo "Signing certificate kind: $KIND"
+          {
+            echo "POS_MAC_SIGNING_IDENTITY=$NAME"
+            echo "POS_MAC_KEYCHAIN=$KEYCHAIN"
+            echo "UKKERA_EXPECTED_TEAM_ID=$TEAM"
+          } >> "$GITHUB_ENV"
+
+      - name: Build macOS DMG and collect diagnostics
         shell: bash
         env:
           POS_ROOT: ${{ steps.pos.outputs.root }}

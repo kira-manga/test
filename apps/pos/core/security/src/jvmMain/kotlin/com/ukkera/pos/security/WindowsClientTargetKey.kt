@@ -85,6 +85,27 @@ internal class WindowsClientTargetKey private constructor(
             return acquire(expected, slot, preparationId, keyId, originalPoint)
         }
 
+        /** Whether the exact named persisted key exists; any other CNG outcome is unexplained state. */
+        fun exists(expected: SelfOwnedWindowsPackagedAppIdentityV2, slot: LocalTrainingCompositionSlot?,
+            preparationId: DomainId, keyId: DomainId): Boolean {
+            if (!Platform.isWindows()) selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
+            requirePackagedUser(expected)
+            val providerRef = PointerByReference()
+            WindowsOriginalCng.api.NCryptOpenStorageProvider(providerRef, WString("Microsoft Software Key Storage Provider"), 0).checkCng()
+            val provider = checkNotNull(providerRef.value)
+            try {
+                val output = PointerByReference()
+                val status = WindowsOriginalCng.api.NCryptOpenKey(provider, output,
+                    WString(keyName(expected, slot, preparationId, keyId)), 0, WindowsOriginalCng.SILENT)
+                return when {
+                    status == 0 -> { WindowsOriginalCng.api.NCryptFreeObject(checkNotNull(output.value)).checkCng(); true }
+                    status == NTE_BAD_KEYSET -> false
+                    else -> selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
+                }
+            } finally { WindowsOriginalCng.api.NCryptFreeObject(provider).checkCng() }
+        }
+        private const val NTE_BAD_KEYSET = 0x80090016.toInt()
+
         internal fun keyName(expected: SelfOwnedWindowsPackagedAppIdentityV2, slot: LocalTrainingCompositionSlot?,
             preparationId: DomainId, keyId: DomainId): String {
             val target = SelfOwnedInstalledIdentityWireV2.encodeTarget(expected)

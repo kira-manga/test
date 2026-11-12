@@ -1,6 +1,8 @@
 package com.ukkera.pos.security
 
 import com.ukkera.pos.types.DomainId
+import dev.p2pkit.core.dsl.jvmSecureIdentityStore
+import dev.p2pkit.transport.lan.lan
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -45,6 +47,13 @@ internal class WindowsClientTargetPlatform private constructor(
 
     override fun elapsedMillis(): Long = boot.elapsedMillis()
 
+    override fun keyExists(preparationId: DomainId, keyId: DomainId): Boolean =
+        WindowsClientTargetKey.exists(expected, slot, preparationId, keyId)
+
+    /** Official JVM Kit with the per-user DPAPI identity store; same shared owner logic as Android. */
+    override fun newSdkOwner(installed: SelfOwnedInstalledIdentityTargetV2): DevicePairingTargetSdkOwner =
+        desktopSdkOwner(installed) { WindowsDpapiSecureIdentityStore.open() }
+
     override fun createKey(preparationId: DomainId, keyId: DomainId): DesktopClientTargetKey =
         WindowsClientTargetKey.create(expected, slot, preparationId, keyId)
 
@@ -63,15 +72,59 @@ internal class WindowsClientTargetPlatform private constructor(
     }
 }
 
+/** Shared desktop SDK owner: the same [DevicePairingKitOwner] logic with a JVM LAN Kit and OS identity store. */
+internal fun desktopSdkOwner(installed: SelfOwnedInstalledIdentityTargetV2,
+    openStore: () -> dev.p2pkit.core.security.JvmSecureIdentityStore): DevicePairingTargetSdkOwner = object : DevicePairingTargetSdkOwner {
+    private val shared = DevicePairingKitOwner(requireActive = {}, closureUnknown = {}, beforeCreate = {}, configure = {
+        jvmSecureIdentityStore(openStore())
+        transports { lan() }
+    })
+    override fun create(appId: dev.p2pkit.core.AppId, deviceName: String) = shared.create(appId, deviceName)
+    override fun capture(acquisitionId: DomainId, preparationId: DomainId, target: LocalDevicePairingTargetDescriptor) =
+        shared.captureDesktop(acquisitionId, preparationId, target, installed)
+    override fun requireMatches(original: LocalDevicePairingSdkIdentityV2, deviceName: String) =
+        shared.requireMatches(original, deviceName)
+    override fun close() = shared.close()
+}
+
 /**
- * Application-facing desktop Client target probe/handle. Exposes only DATA results; the target and
- * its key stay owned here until [close].
+ * Application-facing desktop Client target: the shared pairing ceremony over desktop custody.
+ * Results are DATA; the target and its key stay owned here until [close].
  */
-public class DesktopClientTargetHandle internal constructor(private val target: DesktopDevicePairingTarget) : AutoCloseable {
+public class DesktopClientTargetHandle internal constructor(private val target: DesktopDevicePairingTarget) :
+    LocalOriginalPairingTarget {
+    override val compositionProfile: LocalCompositionSdkProfileV1 get() = target.compositionProfile
     public fun original(): LocalDevicePairingTargetReference = target.original()
     public fun descriptor(): LocalDevicePairingTargetDescriptor = target.descriptor()
-    public fun denyNewWork(): Unit = target.denyNewWork()
-    override fun close(): Unit = target.close()
+    public fun acquireSdkIdentity(appId: dev.p2pkit.core.AppId, deviceName: String): LocalDevicePairingSdkIdentityV2 =
+        target.acquireSdkIdentity(appId, deviceName)
+    public fun recoverSdkIdentity(): LocalDevicePairingSdkIdentityV2 = target.recoverSdkIdentity()
+    public fun respond(challenge: LocalDevicePairingChallenge): LocalDevicePairingPossession = target.respond(challenge)
+    public fun recoverPossession(originalPairingActionId: DomainId): LocalDevicePairingPossession =
+        target.recoverPossession(originalPairingActionId)
+    public fun importApprovedMaster(transfer: LocalDevicePairingMasterTransfer): LocalDevicePairingApprovedMaster {
+        val certificate = transfer.copyAuthorityCertificate()
+        try {
+            val root = transfer.copyRootAnnouncement()
+            try { return target.importApprovedMaster(certificate, root) } finally { root.fill(0) }
+        } finally { certificate.fill(0) }
+    }
+    public fun beginAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =
+        target.beginAfterKnownUnsigned(retirement)
+    public fun recoverAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =
+        target.recoverAfterKnownUnsigned(retirement)
+    override suspend fun recoverSdkOriginalData(): LocalOriginalPairingTargetResult<LocalDevicePairingSdkOriginal> =
+        dataResult { target.recoverSdkOriginal() }
+    override suspend fun recoverApprovedMasterData(originalPairingActionId: DomainId):
+        LocalOriginalPairingTargetResult<LocalDevicePairingApprovedMaster> = dataResult { target.recoverApprovedMaster(originalPairingActionId) }
+    override fun denyNewWork(): Unit = target.denyNewWork()
+    override suspend fun close(): Unit = target.close()
+    public fun closeNow(): Unit = target.close()
+    override fun toString(): String = "DesktopClientTargetHandle([REDACTED])"
+
+    private inline fun <T> dataResult(body: () -> T): LocalOriginalPairingTargetResult<T> = try {
+        LocalOriginalPairingTargetResult.Value(body())
+    } catch (failure: SelfOwnedFailureV1) { LocalOriginalPairingTargetResult.Unavailable(failure.reason) }
 
     public companion object {
         /** Windows packaged app: explicit FIRST preparation in the fixed slot directory. */

@@ -126,6 +126,10 @@ class DesktopDevicePairingTargetFrozenTest {
                 "0123abcd-0000-4000-8000-00000000abcd", "00000000000000000000000000000011", "00000000000000000000000000000012"))
         override fun bootSessionId(): String = boot
         override fun elapsedMillis(): Long = clock++
+        override fun keyExists(preparationId: DomainId, keyId: DomainId): Boolean =
+            "${preparationId.value}.${keyId.value}" in stored
+        override fun newSdkOwner(installed: SelfOwnedInstalledIdentityTargetV2): DevicePairingTargetSdkOwner =
+            throw UnsupportedOperationException("SDK owner is not part of this preparation slice")
         override fun createKey(preparationId: DomainId, keyId: DomainId): DesktopClientTargetKey {
             check(!failCreate) { "native generation outcome unknown" }
             val name = "${preparationId.value}.${keyId.value}"

@@ -48,7 +48,7 @@ kotlin {
             implementation(libs.cryptography.core)
             implementation(libs.cryptography.provider.cryptokit)
         }
-        jvmMain.dependencies { implementation(libs.jna); implementation(libs.jna.platform) }
+        jvmMain.dependencies { implementation(libs.jna); implementation(libs.jna.platform); implementation(libs.p2pkit.lan) }
         jvmTest.dependencies { implementation(kotlin("test-junit")) }
     }
 }

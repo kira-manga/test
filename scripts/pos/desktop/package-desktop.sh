@@ -269,8 +269,16 @@ rm -rf "$DIST_DIR"
 echo "Building $FORMAT with :apps:desktop:$GRADLE_TASK ..."
 (
   cd "$POS_ROOT"
+  MAC_SIGNING_ARGS=()
+  if [[ "$FORMAT" == "dmg" && -n "${POS_MAC_SIGNING_IDENTITY:-}" ]]; then
+    # Developer ID signing (owner-provided certificate in a throwaway runner keychain).
+    MAC_SIGNING_ARGS=(-Pcompose.desktop.mac.sign=true
+      "-Pcompose.desktop.mac.signing.identity=$POS_MAC_SIGNING_IDENTITY"
+      "-Pcompose.desktop.mac.signing.keychain=$POS_MAC_KEYCHAIN")
+  fi
   bash ./gradlew \
     "$GRADLE_TASK" \
+    "${MAC_SIGNING_ARGS[@]}" \
     --console=plain \
     --stacktrace \
     --no-daemon \
@@ -314,6 +322,14 @@ if [[ "$FORMAT" == "dmg" ]]; then
     echo "spctl_exit=0 (accepted)" >> "$DIAG/dmg-spctl.txt"
   else
     echo "spctl_exit=$? (not accepted, expected for unsigned local package)" >> "$DIAG/dmg-spctl.txt"
+  fi
+  if [[ -n "${UKKERA_EXPECTED_TEAM_ID:-}" ]]; then
+    codesign --verify --deep --strict --verbose=2 "$APP_PATH" > "$DIAG/dmg-codesign-verify.txt" 2>&1 \
+      && echo "verify_exit=0" >> "$DIAG/dmg-codesign-verify.txt" || echo "verify_exit=$?" >> "$DIAG/dmg-codesign-verify.txt"
+    # Native identity: Apple anchor + Team ID trust and actual designated requirement (DATA only).
+    "$APP_PATH/Contents/MacOS/UkkeraPOS" "--identity-probe=$DIAG/mac-identity-probe.txt" > "$DIAG/mac-identity-probe.log" 2>&1 \
+      && echo "probe_exit=0" >> "$DIAG/mac-identity-probe.log" || echo "probe_exit=$?" >> "$DIAG/mac-identity-probe.log"
+    sed -i '' -E 's/team=[A-Z0-9]{10}/team=[TEAM]/' "$DIAG/mac-identity-probe.txt" 2>/dev/null || true
   fi
   if [[ "$SMOKE" == "1" ]]; then
     echo "Launching packaged macOS app with --smoke-exit ..."

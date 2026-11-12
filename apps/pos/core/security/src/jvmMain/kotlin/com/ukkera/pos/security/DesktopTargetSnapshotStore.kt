@@ -41,6 +41,18 @@ internal class DesktopTargetSnapshotStore private constructor(
         return bytes
     }
 
+    /** Exact bounded copy of an unfinished pending write, for review only; never adopted. */
+    @Synchronized
+    fun readPending(name: String, maximum: Int): ByteArray? {
+        requireOpen(); requireName(name)
+        val path = directory.resolve(name + PENDING)
+        if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) return null
+        if (!Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.size(path) > maximum) {
+            selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        }
+        return Files.readAllBytes(path)
+    }
+
     @Synchronized
     fun forceNew(name: String, bytes: ByteArray) {
         requireOpen(); requireName(name)

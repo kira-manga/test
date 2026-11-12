@@ -20,6 +20,18 @@ import java.security.MessageDigest
  */
 public object MacInstalledApplicationIdentity {
     public fun captureUi(expected: SelfOwnedMacUiIdentityV2):
+        SelfOwnedInstalledIdentityResultV2<SelfOwnedMacUiIdentityV2> =
+        capture(expected.signingIdentifier, expected.teamIdentifier, expected)
+
+    /**
+     * First-install observation: the same packaged-launcher, Apple-anchor and Team-ID trust checks
+     * as [captureUi], returning the ACTUAL identity (including its designated-requirement digest)
+     * so the original preparation can bind it. DATA only; never a later-session substitute.
+     */
+    public fun observeUi(signingIdentifier: String, teamIdentifier: String):
+        SelfOwnedInstalledIdentityResultV2<SelfOwnedMacUiIdentityV2> = capture(signingIdentifier, teamIdentifier, null)
+
+    private fun capture(expectedSigningIdentifier: String, expectedTeam: String, expected: SelfOwnedMacUiIdentityV2?):
         SelfOwnedInstalledIdentityResultV2<SelfOwnedMacUiIdentityV2> {
         if (!Platform.isMac() || Native.POINTER_SIZE != 8) return refused(
             SelfOwnedInstalledIdentityRefusalV2.REFUSE_PLATFORM_MISMATCH)
@@ -38,7 +50,7 @@ public object MacInstalledApplicationIdentity {
                 if (!SelfOwnedInstalledIdentityGrammarV2.signingIdentifier(signingId) ||
                     !SelfOwnedInstalledIdentityGrammarV2.teamIdentifier(team)) return refused(
                     SelfOwnedInstalledIdentityRefusalV2.REFUSE_GRAMMAR)
-                if (signingId != expected.signingIdentifier || team != expected.teamIdentifier) return refused(
+                if (signingId != expectedSigningIdentifier || team != expectedTeam) return refused(
                     SelfOwnedInstalledIdentityRefusalV2.REFUSE_IDENTITY_MISMATCH)
                 // Grammar excludes quote/backslash injection. Still read the compiled requirement
                 // back and verify its complete tokens before relying on it as an Apple-anchor check.
@@ -70,7 +82,7 @@ public object MacInstalledApplicationIdentity {
                 val digest = try { MessageDigest.getInstance("SHA-256").digest(blob)
                     .joinToString("") { "%02x".format(it.toInt() and 0xff) } } finally { blob.fill(0) }
                 val actual = SelfOwnedMacUiIdentityV2(signingId, team, digest)
-                if (!SelfOwnedInstalledIdentityV2.matches(expected, actual)) return refused(
+                if (expected != null && !SelfOwnedInstalledIdentityV2.matches(expected, actual)) return refused(
                     SelfOwnedInstalledIdentityRefusalV2.REFUSE_IDENTITY_MISMATCH)
                 SelfOwnedInstalledIdentityResultV2.Data(actual)
             }
