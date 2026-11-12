@@ -3,6 +3,12 @@ name: POS owner test packages (manual, auxiliary)
 on:
   workflow_dispatch:
     inputs:
+      platforms:
+        description: Build all packages or retry only the affected platform group
+        required: true
+        default: all
+        type: choice
+        options: [all, android, desktop]
       source_revision:
         description: Source revision recorded in SOURCE-REVISION.txt
         required: true
@@ -35,6 +41,7 @@ env:
 
 jobs:
   desktop:
+    if: inputs.platforms != 'android'
     name: ${{ matrix.name }}
     strategy:
       fail-fast: false
@@ -123,7 +130,10 @@ jobs:
           echo 'Unsigned local-test installer. Packaged startup is separate from setup, native Master/Client composition and owner acceptance.' >> "$GITHUB_STEP_SUMMARY"
 
   android:
+    if: inputs.platforms != 'desktop'
     name: Android retained-signer APK
+    env:
+      GRADLE_OPTS: -Dfile.encoding=UTF-8
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -179,6 +189,7 @@ jobs:
           set -euo pipefail
           cd apps/pos
           ./gradlew --no-daemon --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=768m -XX:ActiveProcessorCount=2 -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process \
             :apps:android:assembleLocalTesting \
             :apps:android-runtime-tests:assembleLocalTesting \
