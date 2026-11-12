@@ -1,0 +1,45 @@
+{
+  "scope": "Existing exported generator functions only; no wrapper, registry aggregation, Go formatting, compilation, API execution, database, or deployment.",
+  "results": [
+    {
+      "module": "Pos",
+      "sourceModels": 24,
+      "runtimeModels": 24,
+      "generatedGoFiles": 24,
+      "generatedOnly": [],
+      "committedOnly": [],
+      "fieldDifferenceCount": 0,
+      "fieldDiffs": []
+    },
+    {
+      "module": "Org",
+      "sourceModels": 8,
+      "runtimeModels": 8,
+      "generatedGoFiles": 8,
+      "generatedOnly": [],
+      "committedOnly": [],
+      "fieldDifferenceCount": 0,
+      "fieldDiffs": []
+    },
+    {
+      "module": "Item",
+      "sourceModels": 14,
+      "runtimeModels": 14,
+      "generatedGoFiles": 14,
+      "generatedOnly": [],
+      "committedOnly": [],
+      "fieldDifferenceCount": 0,
+      "fieldDiffs": []
+    },
+    {
+      "module": "Fin",
+      "sourceModels": 20,
+      "runtimeModels": 20,
+      "generatedGoFiles": 20,
+      "generatedOnly": [],
+      "committedOnly": [],
+      "fieldDifferenceCount": 0,
+      "fieldDiffs": []
+    }
+  ]
+}

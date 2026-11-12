@@ -23,6 +23,76 @@ internal class RoomLocalAdministrationService(
     private val slots = Semaphore(1)
     init { check(source.belongsTo(store)) }
 
+    override suspend fun employeeCreationContext(operator: LocalGatewayCredentials,
+        target: LocalEmployeeCreationTargetV1): LocalEmployeeCreationContextResultV1 =
+        bounded(LocalEmployeeCreationContextResultV1.Busy, LocalEmployeeCreationContextResultV1.Denied,
+            LocalEmployeeCreationContextResultV1.Unavailable, LocalEmployeeCreationContextResultV1.StorageUncertain) {
+            val (principal, peer) = authenticate(operator)
+            if (target.actorId == principal.actorId) return@bounded LocalEmployeeCreationContextResultV1.Denied
+            val digest = digestText("ukkera.local-employee-creation-context/v1", scope.organizationId.value,
+                scope.companyId.value, scope.branchId.value, principal.actorId.value, target.requestId.value, target.actorId.value)
+            authorizedRead(principal, peer, creationInputRequirement(target, digest)) { transaction, permitted ->
+                transaction.requireAdministrationWriteCount(0)
+                // The creator's complete catalogue also bounds any explicit onward choices.
+                // Recipient-specific entries remain named DATA, never generic target grants.
+                val choices = permitted.facts.policy.employeeCreationConfiguration?.copyProfiles().orEmpty()
+                if (choices.none { it.namedRecipientId == null || it.namedRecipientId == target.actorId })
+                    return@authorizedRead LocalEmployeeCreationContextResultV1.Refused(
+                    LocalEmployeeCreationReviewV1.Refused(LocalEmployeeCreationInputFailureV1.CONFIGURATION_DELEGATION))
+                val admissions = transaction.readAdmissions(scope)
+                transaction.ensureAuthorizationHealthy()
+                transaction.requireAdministrationWriteCount(0)
+                LocalEmployeeCreationContextResultV1.Available(LocalEmployeeCreationContextV1(scope,
+                    principal.actorId, target, permitted.facts.policy.revision,
+                    LocalEmployeeCreationConfigurationV1.capture(choices), admissions))
+            }
+        }
+
+    override suspend fun captureEmployeeCreationDefinition(operator: LocalGatewayCredentials,
+        draft: LocalEmployeeCreationDraftV1): LocalEmployeeCreationDefinitionResultV1 =
+        bounded(LocalEmployeeCreationDefinitionResultV1.Busy, LocalEmployeeCreationDefinitionResultV1.Denied,
+            LocalEmployeeCreationDefinitionResultV1.Unavailable, LocalEmployeeCreationDefinitionResultV1.StorageUncertain) {
+            val (principal, peer) = authenticate(operator)
+            if (draft.scope != scope || draft.actorId == principal.actorId)
+                return@bounded LocalEmployeeCreationDefinitionResultV1.Denied
+            val definition = draft.copyDefinition()
+            val policy = LocalEffectivePolicyCodec.encodePolicy(definition.policy)
+            try {
+                val configuration = LocalAuthenticationCodec.encodeConfiguration(LocalAuthConfiguration(scope,
+                    definition.actorId, Revision(0), definition.login, definition.tokenPolicy))
+                try {
+                    // This digest binds the requested input read. The complete original also
+                    // includes actual retained admission images and is independently reviewed
+                    // below; this provisional read binding is never a creation permit.
+                    val request = localAccountProvisioningRequestV1(scope, draft.requestId, draft.actorId,
+                        draft.credentialWasProvided, policy.copyOf(), configuration.copyOf(), definition.admittedDeviceIds)
+                    val target = LocalEmployeeCreationTargetV1(draft.requestId, draft.actorId)
+                    authorizedRead(principal, peer, creationInputRequirement(target, request.contentDigest)) { transaction, _ ->
+                        transaction.requireAdministrationWriteCount(0)
+                        val admissions = transaction.readAdmissions(scope).sortedBy { it.deviceId.value }
+                        if (admissions.filter { it.admitted }.map { it.deviceId }.toSet() != definition.admittedDeviceIds)
+                            return@authorizedRead LocalEmployeeCreationDefinitionResultV1.Refused(
+                                LocalEmployeeCreationReviewV1.Refused(LocalEmployeeCreationInputFailureV1.ADMISSIONS_CHANGED))
+                        val requested = LocalEmployeeEnrollmentDefinition.capture(draft.requestId, definition,
+                            draft.credentialWasProvided, policy, configuration, admissions)
+                        val original = LocalDelegatedEmployeeCreationV1.capture(principal.actorId, requested)
+                        when (val review = reviewLocalEmployeeCreationInputs(transaction, principal, original)) {
+                            is LocalEmployeeCreationReviewV1.InputsChecked -> LocalEmployeeCreationDefinitionResultV1.Captured(original)
+                            is LocalEmployeeCreationReviewV1.Refused -> LocalEmployeeCreationDefinitionResultV1.Refused(review)
+                            LocalEmployeeCreationReviewV1.Denied -> LocalEmployeeCreationDefinitionResultV1.Denied
+                            LocalEmployeeCreationReviewV1.Unavailable -> LocalEmployeeCreationDefinitionResultV1.Unavailable
+                            LocalEmployeeCreationReviewV1.StorageUncertain -> LocalEmployeeCreationDefinitionResultV1.StorageUncertain
+                            LocalEmployeeCreationReviewV1.Busy -> LocalEmployeeCreationDefinitionResultV1.Busy
+                        }
+                    }
+                } finally { configuration.fill(0) }
+            } finally { policy.fill(0) }
+        }
+
+    private fun creationInputRequirement(target: LocalEmployeeCreationTargetV1, digest: PayloadDigest): AuthorizationRequirement =
+        AuthorizationRequirement(Permission(SecurityAction.LOCAL_ACCOUNT_ADMINISTRATION, PermissionVerb.ADMINISTER), scope,
+            ActionBinding(target.actorId, Revision(0), digest, OperationId(target.requestId.value), "local-employee-creation-inputs"))
+
     override suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
         original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 =
         bounded(LocalEmployeeCreationReviewV1.Busy, LocalEmployeeCreationReviewV1.Denied,
@@ -33,6 +103,192 @@ internal class RoomLocalAdministrationService(
                 reviewLocalEmployeeCreationInputs(transaction, principal, original)
             }
         }
+
+    override suspend fun lookupEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationStatusV1 =
+        bounded(LocalEmployeeCreationStatusV1.Busy, LocalEmployeeCreationStatusV1.Denied,
+            LocalEmployeeCreationStatusV1.Unavailable, LocalEmployeeCreationStatusV1.StorageUncertain) {
+            val (principal, peer) = authenticate(operator)
+            if (original.scope != scope || original.operatorId != principal.actorId) return@bounded LocalEmployeeCreationStatusV1.Denied
+            authorizedRead(principal, peer, original.authorizationRequirement()) { transaction, _ ->
+                readEmployeeCreationOriginal(transaction, original) ?: LocalEmployeeCreationStatusV1.NotObserved
+            }
+        }
+
+    /** The public service exposes only the actual original-owning coordinator's completed
+     * outcome. Fresh Inserted cannot be manufactured from an Existing lookup or input review. */
+    override suspend fun executeEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1, newPassword: CharArray?): LocalEmployeeCreationExecutionV1 =
+        when (val result = executeEmployeeCreationOnOriginal(operator, original, newPassword)) {
+            is RoomLocalEmployeeCreationExecution.Inserted -> LocalEmployeeCreationExecutionV1.Inserted(result.receipt)
+            is RoomLocalEmployeeCreationExecution.Existing -> LocalEmployeeCreationExecutionV1.Existing(result.status)
+            is RoomLocalEmployeeCreationExecution.Refused -> LocalEmployeeCreationExecutionV1.Refused(result.review)
+            RoomLocalEmployeeCreationExecution.Denied -> LocalEmployeeCreationExecutionV1.Denied
+            RoomLocalEmployeeCreationExecution.Unavailable -> LocalEmployeeCreationExecutionV1.Unavailable
+            RoomLocalEmployeeCreationExecution.StorageUncertain -> LocalEmployeeCreationExecutionV1.StorageUncertain
+            RoomLocalEmployeeCreationExecution.Busy -> LocalEmployeeCreationExecutionV1.Busy
+        }
+
+    override suspend fun cancelEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationCancellationV1 =
+        when (val result = cancelEmployeeCreationOnOriginal(operator, original)) {
+            is RoomLocalEmployeeCreationCancellationExecution.Recorded -> LocalEmployeeCreationCancellationV1.Recorded(result.receipt)
+            is RoomLocalEmployeeCreationCancellationExecution.Existing -> LocalEmployeeCreationCancellationV1.Existing(result.status)
+            RoomLocalEmployeeCreationCancellationExecution.Denied -> LocalEmployeeCreationCancellationV1.Denied
+            RoomLocalEmployeeCreationCancellationExecution.Unavailable -> LocalEmployeeCreationCancellationV1.Unavailable
+            RoomLocalEmployeeCreationCancellationExecution.StorageUncertain -> LocalEmployeeCreationCancellationV1.StorageUncertain
+            RoomLocalEmployeeCreationCancellationExecution.Busy -> LocalEmployeeCreationCancellationV1.Busy
+        }
+
+    /** Same-original creation over the actual native-owned security writer. Fresh INSERTs
+     * require exact native settlement and post-return currentness before reaching the public
+     * result mapping. Complete cold scans independently replay the captured origin. */
+    internal suspend fun executeEmployeeCreationOnOriginal(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1, newPassword: CharArray?): RoomLocalEmployeeCreationExecution =
+        bounded<RoomLocalEmployeeCreationExecution>(RoomLocalEmployeeCreationExecution.Busy,
+            RoomLocalEmployeeCreationExecution.Denied, RoomLocalEmployeeCreationExecution.Unavailable,
+            RoomLocalEmployeeCreationExecution.StorageUncertain) {
+            val owner = store.database.runtimeHistoryOwner ?: return@bounded RoomLocalEmployeeCreationExecution.Unavailable
+            if (!owner.operational) return@bounded RoomLocalEmployeeCreationExecution.Unavailable
+            if (original.scope != scope ||
+                original.copyRequestedDefinition().credentialWasProvided != (newPassword != null) ||
+                newPassword != null && newPassword.size !in 4..1024) return@bounded RoomLocalEmployeeCreationExecution.Denied
+            val owned = newPassword?.copyOf()
+            try {
+                val (principal, peer) = authenticate(operator)
+                if (original.operatorId != principal.actorId || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE)
+                    return@bounded RoomLocalEmployeeCreationExecution.Denied
+                // This read is only an early refusal/lookup and expensive-hash bound. Its DATA
+                // never permits an INSERT; the writer re-observes all protected inputs below.
+                val preflight = authorizedRead<CreationPreflight>(principal, peer, original.authorizationRequirement()) { transaction, _ ->
+                    val prior = readEmployeeCreationOriginal(transaction, original)
+                    if (prior != null) CreationPreflight.Stop(RoomLocalEmployeeCreationExecution.Existing(prior))
+                    else when (val review = reviewLocalEmployeeCreationInputs(transaction, principal, original)) {
+                        is LocalEmployeeCreationReviewV1.InputsChecked -> CreationPreflight.Ready
+                        is LocalEmployeeCreationReviewV1.Refused -> CreationPreflight.Stop(RoomLocalEmployeeCreationExecution.Refused(review))
+                        else -> protectedLocalUnavailable()
+                    }
+                }
+                if (preflight is CreationPreflight.Stop) return@bounded preflight.result
+                currentCoroutineContext().ensureActive()
+                val credential = if (owned == null) null else when (val hashed = passwords.create(owned,
+                    CredentialBinding(scope, original.actorId, Revision(0)), pepper)) {
+                    is PasswordHashingResult.Created -> hashed.record
+                    is PasswordHashingResult.Unavailable -> return@bounded when (hashed.reason) {
+                        PasswordFailure.HASHER_BUSY -> RoomLocalEmployeeCreationExecution.Busy
+                        PasswordFailure.INVALID_INPUT -> RoomLocalEmployeeCreationExecution.Denied
+                        else -> RoomLocalEmployeeCreationExecution.Unavailable
+                    }
+                }
+                // No Room transaction/native child is borrowed during password hashing.
+                // The actual native owner retains COMMIT, final/child settlement and loan
+                // cleanup through the owned writer before any provisional outcome can escape.
+                localSecurityLane(store.database) {
+                    var staging: RoomLocalEmployeeCreationFrame.Staging? = null
+                    var priorRead: RoomLocalAdministrationObservationFrame? = null
+                    val settled = owner.employeeCreationWriterLoan { connection ->
+                        store.transactionAtWriter(connection) { transaction ->
+                            if (store.database.runtimeHistoryOwner !== owner || !owner.operational) protectedLocalUnavailable()
+                            val permitted = authorize(transaction, principal, peer, original.authorizationRequirement())
+                            val prior = readEmployeeCreationOriginal(transaction, original)
+                            if (prior != null) {
+                                val frame = readFrame(principal, peer, permitted)
+                                priorRead = frame
+                                transaction.attachAdministrationObservationFrame(frame)
+                                // Another invocation may have won while hashing. Preserve its
+                                // exact original and never report our unused secret as applied.
+                                RoomLocalEmployeeCreationExecution.Existing(prior)
+                            } else {
+                                val staged = RoomLocalEmployeeCreationFrame.stage(store, transaction, principal,
+                                    original, source, peer, credential)
+                                staging = staged
+                                when (staged) {
+                                    is RoomLocalEmployeeCreationFrame.Staging.Staged -> RoomLocalEmployeeCreationExecution.Inserted(
+                                        LocalEmployeeCreationReceiptV1(scope, original.requestId, original.operatorId,
+                                            original.actorId, original.contentDigest))
+                                    is RoomLocalEmployeeCreationFrame.Staging.Refused -> RoomLocalEmployeeCreationExecution.Refused(staged.review)
+                                }
+                            }
+                        }
+                    }
+                    val result = settled.valueOrThrow()
+                    val context = currentCoroutineContext()
+                    val finished = staging?.finishAfterCommit(context) ?: priorRead?.finishAfterCommit(context) ?: false
+                    if (!finished || store.database.runtimeHistoryOwner !== owner || !owner.operational) protectedLocalUnavailable()
+                    result
+                }
+            } finally { owned?.fill('\u0000') }
+        }
+
+    /** The same writer/key selects a prior outcome or records exactly one no-effect tombstone.
+     * This does not review today's target definition, undo an Applied result or mint a login. */
+    internal suspend fun cancelEmployeeCreationOnOriginal(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): RoomLocalEmployeeCreationCancellationExecution =
+        bounded<RoomLocalEmployeeCreationCancellationExecution>(RoomLocalEmployeeCreationCancellationExecution.Busy,
+            RoomLocalEmployeeCreationCancellationExecution.Denied, RoomLocalEmployeeCreationCancellationExecution.Unavailable,
+            RoomLocalEmployeeCreationCancellationExecution.StorageUncertain) {
+            val owner = store.database.runtimeHistoryOwner ?: return@bounded RoomLocalEmployeeCreationCancellationExecution.Unavailable
+            if (!owner.operational) return@bounded RoomLocalEmployeeCreationCancellationExecution.Unavailable
+            if (original.scope != scope) return@bounded RoomLocalEmployeeCreationCancellationExecution.Denied
+            val (principal, peer) = authenticate(operator)
+            if (original.operatorId != principal.actorId || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE)
+                return@bounded RoomLocalEmployeeCreationCancellationExecution.Denied
+            localSecurityLane(store.database) {
+                var finalization: RoomLocalAdministrationObservationFrame? = null
+                val settled = owner.employeeCreationCancellationWriterLoan { connection ->
+                    store.transactionAtWriter(connection) { transaction ->
+                        if (store.database.runtimeHistoryOwner !== owner || !owner.operational) protectedLocalUnavailable()
+                        val permitted = authorize(transaction, principal, peer, original.authorizationRequirement())
+                        val prior = readEmployeeCreationOriginal(transaction, original)
+                        if (prior != null) {
+                            val frame = readFrame(principal, peer, permitted)
+                            finalization = frame
+                            transaction.attachAdministrationObservationFrame(frame)
+                            return@transactionAtWriter RoomLocalEmployeeCreationCancellationExecution.Existing(prior)
+                        }
+                        val event = LocalAuthEvent(scope, original.requestId, LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED,
+                            original.actorId, original.operatorId, principal.sessionId, null,
+                            source.observeCurrent(currentCoroutineContext()).moment, original.contentDigest)
+                        val frame = RoomLocalAdministrationObservationFrame(principal, permitted.facts, permitted.authorization,
+                            source, peer, currentCoroutineContext(), event,
+                            originalObservation = permitted.observation, originalCreation = original)
+                        finalization = frame
+                        transaction.attachAdministrationObservationFrame(frame)
+                        transaction.insertAuthEvent(event)
+                        RoomLocalEmployeeCreationCancellationExecution.Recorded(LocalEmployeeCreationReceiptV1(
+                            scope, original.requestId, original.operatorId, original.actorId, original.contentDigest))
+                    }
+                }
+                val result = settled.valueOrThrow()
+                if (finalization?.finishAfterCommit(currentCoroutineContext()) != true ||
+                    store.database.runtimeHistoryOwner !== owner || !owner.operational) protectedLocalUnavailable()
+                result
+            }
+        }
+
+    /** Same immutable event association for lookup, preflight and the final writer race.
+     * Today's target/catalogue and the creator's replacement login cannot rewrite this event. */
+    private suspend fun readEmployeeCreationOriginal(transaction: RoomLocalSecurityTransaction,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationStatusV1? {
+        val event = transaction.readAuthEvent(scope, original.requestId) ?: return null
+        if (event.scope != scope || event.eventId != original.requestId || event.targetId != original.actorId ||
+            event.operatorId != original.operatorId || event.contentDigest != original.contentDigest ||
+            event.sessionId == null) return LocalEmployeeCreationStatusV1.IdentityConflict
+        val receipt = LocalEmployeeCreationReceiptV1(scope, original.requestId,
+            original.operatorId, original.actorId, original.contentDigest)
+        return when {
+            event.kind == LocalAuthEventKind.ACCOUNT_CREATED && event.accountRevision == Revision(0) ->
+                LocalEmployeeCreationStatusV1.Applied(receipt)
+            event.kind == LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED && event.accountRevision == null ->
+                LocalEmployeeCreationStatusV1.Cancelled(receipt)
+            else -> LocalEmployeeCreationStatusV1.IdentityConflict
+        }
+    }
+
+    private sealed interface CreationPreflight {
+        data object Ready: CreationPreflight
+        class Stop(val result: RoomLocalEmployeeCreationExecution): CreationPreflight
+    }
 
     override suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult =
         bounded(LocalAdministrationReadResult.Busy, LocalAdministrationReadResult.Denied,

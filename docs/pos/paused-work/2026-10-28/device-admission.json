@@ -1,0 +1,1063 @@
+{
+  "status": "NOT_BUILDABLE_INCOMPLETE_SOURCE_DEPENDENCIES",
+  "integration": "HELD; NOT_APPLIED",
+  "implementer": "/root/opening_stock_delivery",
+  "sourcePacket": "apps/pos/.workspace/device-admission-delivery-20261028/checkpoint-20261028-owner-pause-v1",
+  "sourceManifestSha256": "36a2b20c0b3aedfface65398edbe24953c252e621527e436cafcfc3bb8cc548b",
+  "sourceSealSha256": "9a8f857fe2c7481bba4650d61d723b9a84c552bc27e74b4fd934afc278464758",
+  "patchSha256": "4bce19403d63dde04be095c890ba31279ca96b7f49ebfc64d016bbe72edf5756",
+  "counts": {
+    "added": 18,
+    "added_present_postimages": 16,
+    "changed_existing_postimages": 23,
+    "existing": 27,
+    "postimages_absent": 2,
+    "postimages_present": 43,
+    "targets": 45,
+    "unchanged_baseline_postimages": 4
+  },
+  "targets": [
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 15090,
+        "present": true,
+        "sha256": "2ec80e5fdecac4cf79eb4acc7be2a7775f42faa2b10e30edf07b95fbd16b692e"
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthentication.kt",
+      "postimage": {
+        "bytes": 15347,
+        "present": true,
+        "sha256": "44fe9028747b23a1c8bea2f4408b0a4bd2c25482fe310b6a97bf0dbb3d655004"
+      },
+      "preimage": {
+        "bytes": 15090,
+        "present": true,
+        "sha256": "2ec80e5fdecac4cf79eb4acc7be2a7775f42faa2b10e30edf07b95fbd16b692e"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 14686,
+        "present": true,
+        "sha256": "bec5e150a9f251476f78eae8e79f23cc54d1312d6a7e1fe039d2690ec5e3ca73"
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyEmployeeEnrollments.kt",
+      "postimage": {
+        "bytes": 14798,
+        "present": true,
+        "sha256": "d7d2f7b7f57bfdf8e3325466c0d0bc0abb18feec2d1ae691d8ecb86ae29da7be"
+      },
+      "preimage": {
+        "bytes": 14686,
+        "present": true,
+        "sha256": "bec5e150a9f251476f78eae8e79f23cc54d1312d6a7e1fe039d2690ec5e3ca73"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 20515,
+        "present": true,
+        "sha256": "c93018ba8d647816b1d6aaa1c28269154c627a77deef48d315d00fdc7de58aaa"
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryCustody.kt",
+      "postimage": {
+        "bytes": 28856,
+        "present": true,
+        "sha256": "6c5ab61a19874678cf2291e69c32e3559379d28d5c292214a1ed91dce41e25b9"
+      },
+      "preimage": {
+        "bytes": 20515,
+        "present": true,
+        "sha256": "c93018ba8d647816b1d6aaa1c28269154c627a77deef48d315d00fdc7de58aaa"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 97275,
+        "present": true,
+        "sha256": "a80dbaa3f596b191219af4bf299557ff46081aa12c843654966847613259862f"
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryWireV2.kt",
+      "postimage": {
+        "bytes": 97463,
+        "present": true,
+        "sha256": "a673865c79564e6669d98decf9876fce4cd516bfdebb4b93f58f3daa1ca81a83"
+      },
+      "preimage": {
+        "bytes": 97275,
+        "present": true,
+        "sha256": "a80dbaa3f596b191219af4bf299557ff46081aa12c843654966847613259862f"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 72849,
+        "present": true,
+        "sha256": "e22cd9a8ae942a1a64b215e7b6e55d2a70f6a02cb89f018e673b41d00f809bd4"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationOwner.kt",
+      "postimage": {
+        "bytes": 90280,
+        "present": true,
+        "sha256": "9067d318acc304c82e0b0073bf32658b8d05d70a64dd48f1a5e845d8ae3eba33"
+      },
+      "preimage": {
+        "bytes": 72849,
+        "present": true,
+        "sha256": "e22cd9a8ae942a1a64b215e7b6e55d2a70f6a02cb89f018e673b41d00f809bd4"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 79732,
+        "present": true,
+        "sha256": "e95f591fa80daa5d772e6b782531a1cd9b2d1a431404a28458c09602cc0e1009"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidDevicePairingTarget.kt",
+      "postimage": {
+        "bytes": 103233,
+        "present": true,
+        "sha256": "8aa46238440176ab8a18d371c9931d5a360517a2baac04fd71fb012d6557da26"
+      },
+      "preimage": {
+        "bytes": 79732,
+        "present": true,
+        "sha256": "e95f591fa80daa5d772e6b782531a1cd9b2d1a431404a28458c09602cc0e1009"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 67340,
+        "present": true,
+        "sha256": "02e1de2002942642fd2e6318507d8e2ae90c00906379b2babdf1bbd2904014e8"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerRegistry.kt",
+      "postimage": {
+        "bytes": 72780,
+        "present": true,
+        "sha256": "c7ba99e140702a18494b3cb4f66d67b71bbd141c42ef574a585b51bb266c7869"
+      },
+      "preimage": {
+        "bytes": 67340,
+        "present": true,
+        "sha256": "02e1de2002942642fd2e6318507d8e2ae90c00906379b2babdf1bbd2904014e8"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 55884,
+        "present": true,
+        "sha256": "d690537edf199f0bcd5a039953d06976d4103bc7b2aa6729743bd20736187a51"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerKeys.kt",
+      "postimage": {
+        "bytes": 59717,
+        "present": true,
+        "sha256": "128ade1d4e3f8c5d21cd7b492d0c1f53e12c8cd5e0feaa9fad9e1da76905f9b1"
+      },
+      "preimage": {
+        "bytes": 55884,
+        "present": true,
+        "sha256": "d690537edf199f0bcd5a039953d06976d4103bc7b2aa6729743bd20736187a51"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 49709,
+        "present": true,
+        "sha256": "f471f6caa8348d547c7c796755ababa00576dbd25e39bb9f801637789321e213"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalInstallerAuthentication.kt",
+      "postimage": {
+        "bytes": 56217,
+        "present": true,
+        "sha256": "c8aee379040ebb5624cd56286e2638b50822a6f21f4ec05dec7e924985b5eb62"
+      },
+      "preimage": {
+        "bytes": 49709,
+        "present": true,
+        "sha256": "f471f6caa8348d547c7c796755ababa00576dbd25e39bb9f801637789321e213"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 60147,
+        "present": true,
+        "sha256": "9f174c6ee1cca5d044378b95cfdd516c0ed8fc9fc7a840fc06a595d50c7524ed"
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryReadStorage.kt",
+      "postimage": {
+        "bytes": 63572,
+        "present": true,
+        "sha256": "ee1d4ac19c86078de1a8d80c27170bd0e2fec83f8d036b291adb86971b937482"
+      },
+      "preimage": {
+        "bytes": 60147,
+        "present": true,
+        "sha256": "9f174c6ee1cca5d044378b95cfdd516c0ed8fc9fc7a840fc06a595d50c7524ed"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 56306,
+        "present": true,
+        "sha256": "30387914d9cef2759eef3e10d7a5e47486eb3247cfb29c3b026d060d1d6e0ab8"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterEndpoint.kt",
+      "postimage": {
+        "bytes": 59345,
+        "present": true,
+        "sha256": "c4056c6faec74dc7d009c4e3d69ac1a73604dd7879a841c7c5e27f0a5a670db9"
+      },
+      "preimage": {
+        "bytes": 56306,
+        "present": true,
+        "sha256": "30387914d9cef2759eef3e10d7a5e47486eb3247cfb29c3b026d060d1d6e0ab8"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 38297,
+        "present": true,
+        "sha256": "6e2f31cf0be2ecb9bef1e337fcb1d2aabb2b59717efbf81cab119929b9c8069b"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalCredentialAdministration.kt",
+      "postimage": {
+        "bytes": 39376,
+        "present": true,
+        "sha256": "20aa2ef4dec9c6a6b1289279c82e312a2574ffabed4708eecf6cbbb95219b307"
+      },
+      "preimage": {
+        "bytes": 38297,
+        "present": true,
+        "sha256": "6e2f31cf0be2ecb9bef1e337fcb1d2aabb2b59717efbf81cab119929b9c8069b"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 27095,
+        "present": true,
+        "sha256": "5555e6b1e4377cdebfbe71fe47836b2736747c847ed77e41b7d6b8de6e54229a"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalProvisioningFrame.kt",
+      "postimage": {
+        "bytes": 28526,
+        "present": true,
+        "sha256": "2cdbd257e8c13e29b1487fa84939287507aa528bdfcd7649e6e2ff469204a7a6"
+      },
+      "preimage": {
+        "bytes": 27095,
+        "present": true,
+        "sha256": "5555e6b1e4377cdebfbe71fe47836b2736747c847ed77e41b7d6b8de6e54229a"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 74348,
+        "present": true,
+        "sha256": "c4eef6dbc4db5f2fef4c8eaf537db4eb27314647548170030d12b5fd7cb925ef"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalSecurityStore.kt",
+      "postimage": {
+        "bytes": 75167,
+        "present": true,
+        "sha256": "95112f65b8f62393668058783708222c485513885c461952f5bbcac5e1e75fac"
+      },
+      "preimage": {
+        "bytes": 74348,
+        "present": true,
+        "sha256": "c4eef6dbc4db5f2fef4c8eaf537db4eb27314647548170030d12b5fd7cb925ef"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 16776,
+        "present": true,
+        "sha256": "d477f93f8f538d19e29e568ccd8c18498d1b0674ae88922958a639da398b0ce0"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryOwner.kt",
+      "postimage": {
+        "bytes": 17088,
+        "present": true,
+        "sha256": "eb341c4b032b5cf58d687ee4b35fb719809f24a0278cfc8fd588fe8e2150e8aa"
+      },
+      "preimage": {
+        "bytes": 16776,
+        "present": true,
+        "sha256": "d477f93f8f538d19e29e568ccd8c18498d1b0674ae88922958a639da398b0ce0"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 67119,
+        "present": true,
+        "sha256": "710e5db58b1ef7de06fefb19ec40b492b4b418b33bb63cf87fa518299b2ea515"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt",
+      "postimage": {
+        "bytes": 73238,
+        "present": true,
+        "sha256": "d834df8b90dcf4cbc5a9550320f2631fce22bfe3e28df0c67e69302827be88fa"
+      },
+      "preimage": {
+        "bytes": 67119,
+        "present": true,
+        "sha256": "710e5db58b1ef7de06fefb19ec40b492b4b418b33bb63cf87fa518299b2ea515"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 3394,
+        "present": true,
+        "sha256": "54738bfd793b0456759146b36d5c7bdcb52afda284038505612950631a6d2eeb"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedMasterComposition.kt",
+      "postimage": {
+        "bytes": 4147,
+        "present": true,
+        "sha256": "89dfd78e6a028d9319715152d3a1e26ee5c0f65282e10a297cb9582d2fc83638"
+      },
+      "preimage": {
+        "bytes": 3394,
+        "present": true,
+        "sha256": "54738bfd793b0456759146b36d5c7bdcb52afda284038505612950631a6d2eeb"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "UNCHANGED_BASELINE_SOURCE",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 163492,
+        "present": true,
+        "sha256": "5e686fd438b2bb9915b4c1cb6f202cc102e00510b39b098b0f90fbbe57086568"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryScanner.kt",
+      "postimage": {
+        "bytes": 163492,
+        "present": true,
+        "sha256": "5e686fd438b2bb9915b4c1cb6f202cc102e00510b39b098b0f90fbbe57086568"
+      },
+      "preimage": {
+        "bytes": 163492,
+        "present": true,
+        "sha256": "5e686fd438b2bb9915b4c1cb6f202cc102e00510b39b098b0f90fbbe57086568"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "UNCHANGED_BASELINE_SOURCE",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 42082,
+        "present": true,
+        "sha256": "fdef849a9216e09a70775a207fa640d149806f41325d0080d4155e9b6f80346c"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeEnrollmentHistoryJoin.kt",
+      "postimage": {
+        "bytes": 42082,
+        "present": true,
+        "sha256": "fdef849a9216e09a70775a207fa640d149806f41325d0080d4155e9b6f80346c"
+      },
+      "preimage": {
+        "bytes": 42082,
+        "present": true,
+        "sha256": "fdef849a9216e09a70775a207fa640d149806f41325d0080d4155e9b6f80346c"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "UNCHANGED_BASELINE_SOURCE",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 40834,
+        "present": true,
+        "sha256": "aaa4b0ca42b5ebcc487c2d25e2cb5b93356e83f63775f55c295c4cf8e4213900"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeAuthenticationReplay.kt",
+      "postimage": {
+        "bytes": 40834,
+        "present": true,
+        "sha256": "aaa4b0ca42b5ebcc487c2d25e2cb5b93356e83f63775f55c295c4cf8e4213900"
+      },
+      "preimage": {
+        "bytes": 40834,
+        "present": true,
+        "sha256": "aaa4b0ca42b5ebcc487c2d25e2cb5b93356e83f63775f55c295c4cf8e4213900"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "UNCHANGED_BASELINE_SOURCE",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 42490,
+        "present": true,
+        "sha256": "81d0d129ab338e8b918647bd68d46a34ea499171975bbab13f65064f60528356"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeOriginalAuthenticationReplay.kt",
+      "postimage": {
+        "bytes": 42490,
+        "present": true,
+        "sha256": "81d0d129ab338e8b918647bd68d46a34ea499171975bbab13f65064f60528356"
+      },
+      "preimage": {
+        "bytes": 42490,
+        "present": true,
+        "sha256": "81d0d129ab338e8b918647bd68d46a34ea499171975bbab13f65064f60528356"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyDeviceAdmissions.kt",
+      "postimage": {
+        "bytes": 22223,
+        "present": true,
+        "sha256": "fe6e253f06c01b832e7d37142a51088c824f1e5c0ab2a75d70babf748bee177b"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceAdmissionWireV1.kt",
+      "postimage": {
+        "bytes": 58993,
+        "present": true,
+        "sha256": "b75531d60678095272f7fb2d2d7aefdae3dd638e66f6110b810675d17c9d7ac7"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceAdmissionHistory.kt",
+      "postimage": {
+        "bytes": 9491,
+        "present": true,
+        "sha256": "4e11865f456b925753cd072c117f2d5ae6f3a27f16b4b0e0c2ffefb7b99bdb0a"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceProvisioningFrame.kt",
+      "postimage": {
+        "bytes": 2776,
+        "present": true,
+        "sha256": "ffda1af817401d12e36f7168ce77e21df4164e09ce16e64164f28d1b58d99b65"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDeviceAdmissions.kt",
+      "postimage": {
+        "bytes": 46731,
+        "present": true,
+        "sha256": "76af9105f857db424d9f12803dad524ffa7e41cea582cf2432fdbd8600cea19f"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedDeviceAdmissions.kt",
+      "postimage": {
+        "bytes": 6226,
+        "present": true,
+        "sha256": "7dc94c7e08ab56cb8c63881b0aa92a9c8d223a63d208f7b6cc22163a2b00c468"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDeviceProvisioningCapture.kt",
+      "postimage": {
+        "bytes": 6005,
+        "present": true,
+        "sha256": "f40b786c31a0afb3ecca6dc51e6aac6c5e052f1d51da29b8852a86a8a86c0491"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ABSENT_UNFINISHED_ADDED_TARGET",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDeviceAdmissionHistoryJoin.kt",
+      "postimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 68573,
+        "present": true,
+        "sha256": "5a9189ee48fa3a7900bf09f0bd1e291b6fe2f751c5dfbf88fdbdd3eb65e90199"
+      },
+      "path": "core/database/src/androidMain/kotlin/com/ukkera/pos/database/AndroidSelfOwnedMasterService.kt",
+      "postimage": {
+        "bytes": 83554,
+        "present": true,
+        "sha256": "f7fcd2f5f7f23b91258fe533fcd468fbf1215634a6d4ccab4d6f2791b5e11f9a"
+      },
+      "preimage": {
+        "bytes": 68573,
+        "present": true,
+        "sha256": "5a9189ee48fa3a7900bf09f0bd1e291b6fe2f751c5dfbf88fdbdd3eb65e90199"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 4591,
+        "present": true,
+        "sha256": "62621ed3ae0a83b55d73287c46f063b27e0a57e3b5e0ad6644390f4814f75ce1"
+      },
+      "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalBinding.kt",
+      "postimage": {
+        "bytes": 6938,
+        "present": true,
+        "sha256": "c4419da300e66004825f1c64326abd433cf3c8983de56e70efaeeeb7a86ed706"
+      },
+      "preimage": {
+        "bytes": 4591,
+        "present": true,
+        "sha256": "62621ed3ae0a83b55d73287c46f063b27e0a57e3b5e0ad6644390f4814f75ce1"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 86147,
+        "present": true,
+        "sha256": "f709ea1a2799014ef6b9a1252b560087888b5c805578e4727e8478e91253225f"
+      },
+      "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalClientJournalOwner.kt",
+      "postimage": {
+        "bytes": 88050,
+        "present": true,
+        "sha256": "eb23f6b5cb0f15a40637deb38c757f8d2502eba69196e379a50f14de6b2dc7da"
+      },
+      "preimage": {
+        "bytes": 86147,
+        "present": true,
+        "sha256": "f709ea1a2799014ef6b9a1252b560087888b5c805578e4727e8478e91253225f"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetClientVaultCustody.kt",
+      "postimage": {
+        "bytes": 41246,
+        "present": true,
+        "sha256": "3fec32659c751074b7743bc47b99acab4b45b2111bee1414d675a9be23c20473"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidTargetLocalClientVault.kt",
+      "postimage": {
+        "bytes": 8306,
+        "present": true,
+        "sha256": "fa50f1a88e043be861afdb8815dfd6519e8546280645967ae7fa3efd81aa15d6"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 8980,
+        "present": true,
+        "sha256": "7b2da7519718d90054a954fb7ded5e1cc6f789743fe737d908701e4b07a07638"
+      },
+      "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalKeys.kt",
+      "postimage": {
+        "bytes": 5462,
+        "present": true,
+        "sha256": "96a765c79ba3aaf283cf6463614e252ae1e3c7ae3dba9575a23eca7440e95923"
+      },
+      "preimage": {
+        "bytes": 8980,
+        "present": true,
+        "sha256": "7b2da7519718d90054a954fb7ded5e1cc6f789743fe737d908701e4b07a07638"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidTargetClientVaultNativeSource.kt",
+      "postimage": {
+        "bytes": 54457,
+        "present": true,
+        "sha256": "4733e337749ed107a46b9017ef1808af6ef005ede05c330966a4b90fda8eee0e"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidClientJournalNativeKeys.kt",
+      "postimage": {
+        "bytes": 9794,
+        "present": true,
+        "sha256": "44654dff4bbc3eca4e802e9766fa75b4acf2ab5e2d1f629d5f79729ea48ec05d"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidOriginalSdkRpcChallenges.kt",
+      "postimage": {
+        "bytes": 11989,
+        "present": true,
+        "sha256": "b63d0ca4bfa246326a4cc5999fa611f47740312af1b4c0dbdd6aff87226aefa4"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ABSENT_UNFINISHED_ADDED_TARGET",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/OriginalLocalSdkRpcSource.kt",
+      "postimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetClientJournalProtocol.kt",
+      "postimage": {
+        "bytes": 15908,
+        "present": true,
+        "sha256": "b8a45744c00ff9830c387244fc5fcab12c7a1ed50ef6b82b10dc3eb7f104b2a8"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetSdkRpcCut.kt",
+      "postimage": {
+        "bytes": 5892,
+        "present": true,
+        "sha256": "76326cb6a7ee1e894b8a63ce3e328bb8186a592885fdd5de9e4f25d3827104c9"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 6546,
+        "present": true,
+        "sha256": "46ed2f166414466f4b206ad7a381779ac8a1e4ece788dd87020f7d997d12d388"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalEffectivePolicyCodec.kt",
+      "postimage": {
+        "bytes": 715,
+        "present": true,
+        "sha256": "58367a1401942dd4793cb383215c848cf8f79c6efc10f67150c33fc28d26ab0f"
+      },
+      "preimage": {
+        "bytes": 6546,
+        "present": true,
+        "sha256": "46ed2f166414466f4b206ad7a381779ac8a1e4ece788dd87020f7d997d12d388"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "CHANGED_UNVERIFIED_DRAFT",
+      "kind": "modified-existing",
+      "observed_live_source": {
+        "bytes": 22986,
+        "present": true,
+        "sha256": "8ae38c9fc02b2015168806172ef1d873b1bb69c9a15d124134aac7a63b1faa15"
+      },
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/ProtectedLocalSecurityCodec.kt",
+      "postimage": {
+        "bytes": 16902,
+        "present": true,
+        "sha256": "285f2f784a67e0eb7c34d0f5d372e1179877e85ee2cb5bab211d3d970eec2145"
+      },
+      "preimage": {
+        "bytes": 22986,
+        "present": true,
+        "sha256": "8ae38c9fc02b2015168806172ef1d873b1bb69c9a15d124134aac7a63b1faa15"
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalPolicyCodec.kt",
+      "postimage": {
+        "bytes": 15401,
+        "present": true,
+        "sha256": "bbfcbf6d5214f66e48f2dd9884e25fae6c0c1928fdf749c05c672988690ef761"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    },
+    {
+      "change": "ADDED_UNVERIFIED_DRAFT",
+      "kind": "added-source",
+      "observed_live_source": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeOriginalSdkRpcChallenges.kt",
+      "postimage": {
+        "bytes": 19265,
+        "present": true,
+        "sha256": "df6df460747b6df203cef9ccee4e3d402cb8626491d2f9e193bc63b4dacb16fc"
+      },
+      "preimage": {
+        "bytes": 0,
+        "present": false,
+        "sha256": null
+      },
+      "preimage_matches_declared_baseline": true,
+      "runtime_verification": "NOT_RUN",
+      "whole_packet_integration": "HELD"
+    }
+  ],
+  "absentUnfinishedTargets": [
+    "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDeviceAdmissionHistoryJoin.kt",
+    "core/database/src/commonMain/kotlin/com/ukkera/pos/database/OriginalLocalSdkRpcSource.kt"
+  ],
+  "sourceIntegrity": "Pre/post/absence and live baseline hashes checked by lead; NOT compilation/behavior",
+  "verification": "NOT_RUN; no independent acceptance",
+  "dependenciesFile": "device-admission-dependencies.json"
+}

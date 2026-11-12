@@ -306,6 +306,12 @@ private fun encodeCredentials(state: StoredClientCredentials, owner: LocalClient
             buffer.putInt(state.administrations.size)
             for (entry in state.administrations) buffer.text(journalJson.encodeToString(StoredClientAdministrationV1.serializer(), entry))
         }
+        if (state.formatVersion >= 4) {
+            buffer.putInt(state.employeeCreations.size)
+            for (entry in state.employeeCreations) entry.copyWireBytes().useWiped { bytes ->
+                buffer.putInt(bytes.size); buffer.put(bytes)
+            }
+        }
         return buffer.array().copyOf(buffer.position())
     } finally { buffer.array().fill(0) }
 }
@@ -315,7 +321,7 @@ private fun decodeCredentials(bytes: ByteArray, owner: LocalClientDeviceIdentity
     try {
         val buffer = ByteBuffer.wrap(bytes)
         val version = buffer.int
-        check(version in 1..3)
+        check(version in 1..4)
         val revision = buffer.long
         check(buffer.identity() == owner && buffer.id() == journalId && buffer.id() == keyId)
         val attempts = List(buffer.count(MAX_CLIENT_AUTH_RECORDS)) {
@@ -344,8 +350,13 @@ private fun decodeCredentials(bytes: ByteArray, owner: LocalClientDeviceIdentity
         val administrations = if (version == 1) emptyList() else List(buffer.count(MAX_CLIENT_ADMINISTRATIONS)) {
             journalJson.decodeFromString(StoredClientAdministrationV1.serializer(), buffer.text(MAX_CLIENT_ADMINISTRATION_BYTES))
         }
+        val employeeCreations = if (version < 4) emptyList() else List(buffer.count(MAX_CLIENT_EMPLOYEE_CREATIONS)) {
+            val size = buffer.int
+            check(size in 1..MAX_CLIENT_EMPLOYEE_CREATION_BYTES && size <= buffer.remaining())
+            ByteArray(size).also(buffer::get).useWiped { StoredClientEmployeeCreationV1.decode(it, owner) }
+        }
         check(!buffer.hasRemaining())
-        return StoredClientCredentials(revision, attempts, sessions, enrollments, administrations, version).also {
+        return StoredClientCredentials(revision, attempts, sessions, enrollments, administrations, version, employeeCreations).also {
             it.validate(owner)
             if (version >= 2) encodeCredentials(it, owner, journalId, keyId).useWiped { canonical -> check(canonical.contentEquals(bytes)) }
         }
@@ -361,7 +372,7 @@ private fun ByteBuffer.text(maximum: Int): String {
 private fun ByteBuffer.id(value: DomainId) { text(value.value) }
 private fun ByteBuffer.id(): DomainId = DomainId(text(64))
 private fun ByteBuffer.binding(value: LocalClientAuthenticationBinding, version: Int) {
-    if (version == 3) {
+    if (version >= 3) {
         put(value.credentialTagV3())
         id(value.credentialIdV3())
     } else {
@@ -370,7 +381,7 @@ private fun ByteBuffer.binding(value: LocalClientAuthenticationBinding, version:
     }
 }
 private fun ByteBuffer.binding(version: Int): LocalClientAuthenticationBinding =
-    if (version == 3) credentialBindingV3(get(), id())
+    if (version >= 3) credentialBindingV3(get(), id())
     else {
         check(version in 1..2)
         LocalClientAuthenticationBinding.MasterServiceIncarnation(id())

@@ -25,6 +25,7 @@ import com.ukkera.pos.app.*
 import com.ukkera.pos.catalog.store.*
 import com.ukkera.pos.inventory.store.LocalStockRelationalProfileV2
 import com.ukkera.pos.security.sha256
+import com.ukkera.pos.security.LocalAuthenticationService
 import com.ukkera.pos.app.LocalWorkflowQuery
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.DeferredReason
@@ -85,7 +86,7 @@ public class LocalWorkflowCredentialLease internal constructor(
     /** Denial or conflicting session metadata ends only the original installed attachment.
      * This negative signal precedes caller cancellation checks. Scoped operation refusals and
      * policy-only changes never substitute for a session denial. */
-    internal suspend fun observeSession(endpoint: LocalMasterClient): LocalSessionViewResult {
+    internal suspend fun observeSession(endpoint: LocalAuthenticationService): LocalSessionViewResult {
         val observation = endpoint.current(credentials)
         val conflictingSession = observation is LocalSessionViewResult.Current &&
             originalSession?.matches(observation.view) == false

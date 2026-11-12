@@ -127,8 +127,9 @@ internal class StoredClientCredentials(
     val sessions: List<StoredClientSessionV1> = emptyList(),
     val enrollments: List<StoredClientEnrollmentV1> = emptyList(),
     val administrations: List<StoredClientAdministrationV1> = emptyList(),
-    /** V1/v2 stay byte-exact. Remote attachment bindings explicitly select tagged profile v3. */
+    /** V1-v3 stay byte-exact. Creation originals select additive v4 with the same tagged bindings. */
     val formatVersion: Int = 1,
+    val employeeCreations: List<StoredClientEmployeeCreationV1> = emptyList(),
 ) {
     fun validate(owner: LocalClientDeviceIdentity) {
         require(revision >= 0 && attempts.size + sessions.size <= MAX_CLIENT_AUTH_RECORDS && enrollments.size <= MAX_CLIENT_ENROLLMENTS)
@@ -138,14 +139,21 @@ internal class StoredClientCredentials(
         require(enrollments.map { it.requestId }.distinct().size == enrollments.size)
         require(enrollments.count { it.outcome == StoredEnrollmentOutcomeV1.PENDING } <= 1)
         enrollments.forEach { it.validate(owner) }
-        require(formatVersion in 1..3 && (formatVersion >= 2 || administrations.isEmpty()))
-        require(formatVersion == 3 || attempts.all { it.binding is LocalClientAuthenticationBinding.MasterServiceIncarnation } &&
+        require(formatVersion in 1..4 && (formatVersion >= 2 || administrations.isEmpty()) &&
+            (formatVersion >= 4 || employeeCreations.isEmpty()))
+        require(formatVersion >= 3 || attempts.all { it.binding is LocalClientAuthenticationBinding.MasterServiceIncarnation } &&
             sessions.all { it.binding is LocalClientAuthenticationBinding.MasterServiceIncarnation })
         require(administrations.size <= MAX_CLIENT_ADMINISTRATIONS)
         require(administrations.map { it.command.requestId }.distinct().size == administrations.size)
         require(administrations.map { it.owner.actorId }.distinct().size == administrations.size)
         require(administrations.none { admin -> enrollments.any { it.requestId == admin.command.requestId } })
         administrations.forEach { it.validate(owner) }
+        require(employeeCreations.size <= MAX_CLIENT_EMPLOYEE_CREATIONS)
+        require(employeeCreations.map { it.owner.actorId }.distinct().size == employeeCreations.size)
+        require(employeeCreations.map { it.original.requestId }.distinct().size == employeeCreations.size)
+        require(employeeCreations.none { creation -> enrollments.any { it.requestId == creation.original.requestId } ||
+            administrations.any { it.command.requestId == creation.original.requestId } })
+        employeeCreations.forEach { it.validate(owner) }
     }
 
     /** Secret references are shared, not copied; the caller must destroy the original snapshot. */
@@ -154,15 +162,17 @@ internal class StoredClientCredentials(
         sessions: List<StoredClientSessionV1> = this.sessions,
         enrollments: List<StoredClientEnrollmentV1> = this.enrollments,
         administrations: List<StoredClientAdministrationV1> = this.administrations,
+        employeeCreations: List<StoredClientEmployeeCreationV1> = this.employeeCreations,
     ): StoredClientCredentials {
         check(revision < Long.MAX_VALUE)
         return StoredClientCredentials(revision + 1, attempts, sessions, enrollments, administrations,
             when {
+                formatVersion == 4 || employeeCreations.isNotEmpty() -> 4
                 formatVersion == 3 || attempts.any { it.binding is LocalClientAuthenticationBinding.RemoteOriginalAttachment } ||
                     sessions.any { it.binding is LocalClientAuthenticationBinding.RemoteOriginalAttachment } -> 3
                 formatVersion == 2 || administrations.isNotEmpty() -> 2
                 else -> 1
-            })
+            }, employeeCreations)
     }
 
     fun destroy() { sessions.forEach { it.destroy() } }

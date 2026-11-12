@@ -1,0 +1,293 @@
+{
+  "cross_packet_seal_policy": "Pins observed source-file hashes rather than circular final seal dependencies.",
+  "dependencies": [
+    {
+      "observed_source": {
+        "bytes": 1677,
+        "present": true,
+        "sha256": "9dcab751e4df15fc512c211f51716448f803a58a5b282f17ededaacff5b99a1f"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalMasterScopedRpcConnections.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalMasterScopedRpcConnections.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 48550,
+        "present": true,
+        "sha256": "5d1299b91a6d0b68e0273d20c861bef642f6ab84526968ce0c44461850dad658"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 10058,
+        "present": true,
+        "sha256": "58c05b44b3fa8a11d75caa07836d471d800566b49fdad5ab3980983245be2dc1"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpc.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpc.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 13886,
+        "present": true,
+        "sha256": "05ff7cf0330ef2e527d934d3a02151375171c4cc03672d8d8548dcd405660af0"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpcConnectionOwner.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpcConnectionOwner.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 7579,
+        "present": true,
+        "sha256": "860473966840b6746cd89f3ef67a1bff1feba0d068826e457206420c4bf65663"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterTargetRpcSource.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterTargetRpcSource.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 28049,
+        "present": true,
+        "sha256": "b393fd2ebfc1307418f2ddc0f9f4f4dacc174e4425d5e283152949af03eaa59e"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRpcReplyCodecV1.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRpcReplyCodecV1.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 5340,
+        "present": true,
+        "sha256": "db16cb6696e0ad23a8988556fefca300383a67c976fec4ab5d56b1f272d1e9ae"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkLanOwner.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkLanOwner.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 1413,
+        "present": true,
+        "sha256": "deccf2405b284b13c4f20c53fc563145950978fda4600d23dd7a9376eb8bcadf"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoiseIdentity.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoiseIdentity.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 8757,
+        "present": true,
+        "sha256": "c89ec184c7d0a5163de9203f032c491a89c8bcac382bdc63e7aba89be4162191"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoisePeer.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoisePeer.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 24133,
+        "present": true,
+        "sha256": "d8c90ed7af7b3c01d0dd5740808688d97701e20913f607e0104fbf0e35ee9fad"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkLanOwner.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkLanOwner.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 24215,
+        "present": true,
+        "sha256": "cab52b2d3f1bb42e5eb0f02d1ea594c6090d0b363b87ceb0f7b0dfa86785c0a6"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNativePrelude.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNativePrelude.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 6923,
+        "present": true,
+        "sha256": "c721f9448313f757c19297d628bf21dc08181a06064cf34ae32ae40e734daf74"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseAssociation.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseAssociation.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 1520,
+        "present": true,
+        "sha256": "7d39855b3a4e0371cc536030e3ac3a4f84afccc04041d379c4ef9da886a32918"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseIdentity.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseIdentity.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 5228,
+        "present": true,
+        "sha256": "914d873d21589e5fe311d5285791e33497d18468cb9a1718ad5f95678c6ffe55"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoisePeer.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoisePeer.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 34486,
+        "present": true,
+        "sha256": "cadc470257406f372de50a51970bb237f0a51038ec698b0f80e5416662fd972f"
+      },
+      "origin": "sdk_rpc_continuation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkScopedRpc.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/.workspace/sdk-runtime-delivery-20261028-v1/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkScopedRpc.kt",
+      "status": "SOURCE_ONLY_OBSERVED_FROZEN_AS_REPORTED_BY_PROVIDER_NOT_INTEGRATED_OR_VERIFIED"
+    },
+    {
+      "observed_source": {
+        "bytes": 1435,
+        "present": true,
+        "sha256": "cbb8c3b87850d07d9276252f6782fb8f07dfe98aa24d2502520e70ec844f1438"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterLifecycleMode.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterLifecycleMode.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 8997,
+        "present": true,
+        "sha256": "2e45e3d8494efb51f8a1e16cb221ca3fea79bed9b0f4b4415a34ca01e634e23d"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterSecurity.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterSecurity.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 14867,
+        "present": true,
+        "sha256": "a64efbdb196554f1af1426dc1818c3081aa435530cde295400e368a4b1d1e433"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomCurrentLocalAuthorizationSource.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomCurrentLocalAuthorizationSource.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 8185,
+        "present": true,
+        "sha256": "ec8f5422af37bf5b59be7beb7390d3136cce7b1b3de85c0328e6fd636a4fd4a8"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationCodec.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationCodec.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 3425,
+        "present": true,
+        "sha256": "3ad053fa367c88406024d3967732dfbca43aa9031a8cf73ded7b4fe7fc4f792f"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationTokens.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationTokens.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 10765,
+        "present": true,
+        "sha256": "41c8dcd4ec018a080316cc340464f3389b5f6b3ef10e83b943eaa841cb147160"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAccessPrincipalVerifier.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAccessPrincipalVerifier.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 16513,
+        "present": true,
+        "sha256": "ee43405418f4aea93a4610b234e4af557ec2d3d32c956c1b14b3b3eb9525fa6a"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedInstallationWireV1.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedInstallationWireV1.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 8952,
+        "present": true,
+        "sha256": "c0d647951ecc52a080814e18db07691a24ab3d2c5f126a40a95f103a6e1ab45e"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthenticationRecords.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthenticationRecords.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 9164,
+        "present": true,
+        "sha256": "d5a27871190316b1c60b5fb3c8f9b425e01758f3fc345595991ed90022914983"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAccessIssuance.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAccessIssuance.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 18819,
+        "present": true,
+        "sha256": "6e5b14a88ac269d0e450d3ebd5ce3bd426083f0ba090843a74850ca9468666de"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalStorage.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalStorage.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    },
+    {
+      "observed_source": {
+        "bytes": 13527,
+        "present": true,
+        "sha256": "74070c27347ce90e2da0870ccd9bc558adcf57ae974c02bfd44080b52237835c"
+      },
+      "origin": "live-production-source-read-only-observation",
+      "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Session.kt",
+      "source": "/root/projects/ukkera/kmp-apps-pos/apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/Session.kt",
+      "status": "READ_ONLY_SOURCE_DEPENDENCY_NOT_RUNTIME_VERIFICATION"
+    }
+  ],
+  "format": "source-only-owner-pause-dependencies/v1",
+  "observed_at_utc": "2026-10-28T18:39:41+00:00"
+}

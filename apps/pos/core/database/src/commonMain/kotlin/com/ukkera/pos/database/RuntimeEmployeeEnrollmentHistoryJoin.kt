@@ -121,6 +121,8 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         private set
     var administrationCancellationMutations = 0L
         private set
+    var employeeCreationCancellationMutations = 0L
+        private set
     var deviceRevocationMutations = 0L
         private set
     var policyActivationMutations = 0L
@@ -128,7 +130,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     var serialPublicationRequestMutations = 0L
         private set
     val mutationCount: Long get() = enrollmentMutations + creationMutations + throttleMutations + authenticationMutations + sessionRevocationMutations +
-        administrationCancellationMutations + deviceRevocationMutations + policyActivationMutations + serialPublicationRequestMutations
+        administrationCancellationMutations + employeeCreationCancellationMutations + deviceRevocationMutations + policyActivationMutations + serialPublicationRequestMutations
     val tipCount: Long get() = entries.sumOf { it.replay?.tipCount ?: 0L }
     val sessionCount: Long get() = entries.sumOf { it.replay?.sessionCount ?: 0L }
     val commandCount: Long get() = entries.sumOf { it.replay?.commandCount ?: 0L }
@@ -464,9 +466,9 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         return checkNotNull(entry.replay).approvalActor(session, header)
     }
     /** Build a distinct chronological reducer only from this event's complete original,
-     * creator, native-final and historical INSERT comparison. The scanner still holds the
-     * entire creation family while its guarded writer/original recovery and full closure
-     * qualification remain unfinished. This return value grants no employee authority. */
+     * creator, native-final and historical INSERT comparison. This return value grants no
+     * employee authority: independent lineage/current/relationships/count and actual closed
+     * native-read admission remain mandatory for the whole history. */
     internal fun creationSeed(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
         previous: RuntimeHistoryEventHeaderV2, previousDigest: PayloadDigest,
         evidence: RuntimeDelegatedEmployeeCreationEvidenceV1,
@@ -617,6 +619,23 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         if (!checkNotNull(operator.replay).administrationCancellation(value, final)) return false
         eventCount = add(eventCount,1L)
         administrationCancellationMutations = add(administrationCancellationMutations,value.images.size.toLong())
+        return true
+    }
+
+    /** Only the already joined creator prefix may supply authority for an original-bound
+     * creation cancellation. The intended recipient supplies neither a seed nor a grant. */
+    fun employeeCreationCancellation(value: RuntimeEmployeeCreationCancellationEvidenceV1,
+        final: NativeHistoryProtectedFinalDecision, founding: RuntimeOriginalAuthenticationReplay?): Boolean {
+        if (!enabled) return false
+        value.validateStructure()
+        if (value.authorization.actorId == coordinates.firstActorId)
+            return founding?.employeeCreationCancellation(value, final) == true
+        val operator = active(value.authorization.actorId) ?: return false
+        historyShapeV2(prepassEnded && operator.eventJoined && operator.source.child.historySequence < final.child.historySequence &&
+            operator.source.child.commandEpoch == final.child.commandEpoch)
+        if (!checkNotNull(operator.replay).employeeCreationCancellation(value, final)) return false
+        eventCount = add(eventCount, 1L)
+        employeeCreationCancellationMutations = add(employeeCreationCancellationMutations, value.images.size.toLong())
         return true
     }
 
@@ -1304,6 +1323,13 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     /** Lineage audit ownership is the original OPERATOR, not the inert cancellation target.
      * This predicate is only a counter join; event-cut/operator/native-final proof is separate. */
     fun matchesAdministrationCancellation(value: RuntimeAdministrationCancellationEvidenceV1): Boolean {
+        val source = byActor[value.authorization.actorId]?.source ?: return false
+        return value.authorization.scope == scope && value.authorization.actorId == source.actorId &&
+            value.authorization.deviceId == source.originalCohostDeviceId
+    }
+    /** Image ownership only. The distinct event reducer proves chronological creator
+     * authority; this association never enrolls the intended recipient. */
+    fun matchesEmployeeCreationCancellation(value: RuntimeEmployeeCreationCancellationEvidenceV1): Boolean {
         val source = byActor[value.authorization.actorId]?.source ?: return false
         return value.authorization.scope == scope && value.authorization.actorId == source.actorId &&
             value.authorization.deviceId == source.originalCohostDeviceId

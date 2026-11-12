@@ -1,0 +1,2351 @@
+{
+  "recordType": "GITHUB_PLANNING_BOOTSTRAP_SNAPSHOT_NOT_APP_VERIFICATION",
+  "recordedAt": "2026-10-28T19:55:01.376185+00:00",
+  "repository": "ukkera/kmp-apps",
+  "authorizedBranch": "implement/ukkera-pos-local",
+  "applicationBaselineRevision": "b79ec4938da699e4c5de7aef13da56eef487c85f",
+  "trackerUrl": "https://github.com/ukkera/kmp-apps/issues/2",
+  "developmentState": "PAUSED",
+  "centralState": "HELD_PENDING_OWNER_TEST_AND_EXPLICIT_APPROVAL",
+  "progressRule": "Open/closed tracks accepted issue outcomes, never percent code written; current state is on GitHub, this is the planning bootstrap snapshot.",
+  "issues": [
+    {
+      "key": "core",
+      "number": 12,
+      "id": "I_kwDOT1psyM8AAAABasTp5g",
+      "url": "https://github.com/ukkera/kmp-apps/issues/12",
+      "title": "Authoritative runtime, atomic commands and shared contracts",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "foundation",
+      "parentNumber": 3,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "device-lan",
+        "history",
+        "native",
+        "independent"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CORE-01",
+        "LF-CORE-02",
+        "LF-CORE-04",
+        "LF-CORE-07"
+      ],
+      "sourceEvidence": [
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterEndpoint.kt",
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/AtomicMasterStore.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/paused-work/2026-10-28/README.md"
+      ],
+      "bodySha256": "d3cc0cb86d635142d8378218b5b126b615a53a97966425684459f6a274093f71"
+    },
+    {
+      "key": "identity",
+      "number": 13,
+      "id": "I_kwDOT1psyM8AAAABasTshA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/13",
+      "title": "Employee lifecycle, granular grants and inline approvals",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "foundation",
+      "parentNumber": 3,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "sessions",
+        "device-lan",
+        "setup"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-AUTH-01",
+        "LF-AUTH-03",
+        "LF-AUTH-06",
+        "LF-AUTH-07",
+        "LF-AUTH-08"
+      ],
+      "sourceEvidence": [
+        "docs/pos/LOCAL-ADMINISTRATION.md",
+        "docs/pos/ARCHITECTURE.md",
+        "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalPasswordHasher.kt",
+        "qa/pos/traceability/shared-password-kmp-20261028/README.md"
+      ],
+      "bodySha256": "abc464df515d82ad5f7b3a5e710f365c89c3784357eb7801bc7aa9a2a01ac70e"
+    },
+    {
+      "key": "sessions",
+      "number": 14,
+      "id": "I_kwDOT1psyM8AAAABasTvEg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/14",
+      "title": "Offline authentication, session continuity and private state",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "foundation",
+      "parentNumber": 3,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "identity",
+        "device-lan",
+        "shared-ux"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-AUTH-04",
+        "LF-AUTH-05",
+        "LF-AUTH-10"
+      ],
+      "sourceEvidence": [
+        "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalPasswordHasher.kt",
+        "docs/pos/RUNTIME-AUTHENTICATION-RECOVERY.md",
+        "docs/pos/paused-work/2026-10-28/session-source-review.md",
+        "qa/pos/traceability/shared-password-kmp-20261028/README.md"
+      ],
+      "bodySha256": "b0eefa4c2bcc12c64110810dd793d495ce74023993047e0806d003e65d18b9df"
+    },
+    {
+      "key": "setup",
+      "number": 15,
+      "id": "I_kwDOT1psyM8AAAABasTxjw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/15",
+      "title": "Resumable setup, native administration and isolated training",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "foundation",
+      "parentNumber": 3,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "identity",
+        "catalog",
+        "opening",
+        "replication",
+        "native"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-SETUP-01",
+        "LF-SETUP-04",
+        "LF-SETUP-05"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupCoordinator.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientPublication.kt",
+        "docs/pos/ARCHITECTURE.md",
+        "qa/pos/traceability/shared-setup-kmp-20261028/README.md"
+      ],
+      "bodySha256": "8422797db4d0c9e23efcb3ad304838db7068e6ea0870295a11e6259feedf7f07"
+    },
+    {
+      "key": "device-lan",
+      "number": 16,
+      "id": "I_kwDOT1psyM8AAAABasTz9w",
+      "url": "https://github.com/ukkera/kmp-apps/issues/16",
+      "title": "Trusted device enrollment and actual scoped local RPC",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "foundation",
+      "parentNumber": 3,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "core",
+        "sessions",
+        "native",
+        "independent"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-AUTH-02",
+        "LF-CORE-08",
+        "LF-RES-02"
+      ],
+      "sourceEvidence": [
+        "docs/pos/LOCAL-ADMINISTRATION.md",
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "docs/pos/paused-work/2026-10-28/device-admission.json",
+        "docs/pos/paused-work/2026-10-28/sdk-source-review.md",
+        "apps/pos/tools/p2pkit_compile_binding.py"
+      ],
+      "bodySha256": "5d22c2d3693f585642e8c0fc903adb7ea695209259e416ac5466e3c8e4dc09ce"
+    },
+    {
+      "key": "catalog",
+      "number": 17,
+      "id": "I_kwDOT1psyM8AAAABasT2cg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/17",
+      "title": "Catalog, variants, units, barcodes and validated import",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "replication",
+        "pricing",
+        "stock",
+        "setup"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CAT-01",
+        "LF-CAT-02",
+        "LF-CAT-03",
+        "LF-CAT-04",
+        "LF-CAT-05",
+        "LF-CAT-06",
+        "LF-CAT-10",
+        "LF-SETUP-02"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointCompanyCatalogGateway.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalCatalogSalesQuoteSource.kt",
+        "docs/pos/INVENTORY.md",
+        "docs/pos/ARCHITECTURE.md",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalStockRelationalAuthority.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt"
+      ],
+      "bodySha256": "27194f55cdcb26eb328c68ac0ffd37a931ce37422e86937779a6da2a956f0d9c"
+    },
+    {
+      "key": "opening",
+      "number": 18,
+      "id": "I_kwDOT1psyM8AAAABasT5bw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/18",
+      "title": "Opening stock, value, supplier obligations and cash",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "stock",
+        "suppliers",
+        "drawers",
+        "reports",
+        "independent"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-SETUP-03"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalOpeningStockWorkflow.kt",
+        "docs/pos/INVENTORY.md",
+        "qa/pos/freezes/opening-inventory-v1/FREEZE.json",
+        "qa/pos/traceability/opening-administration-sdk-20261028/opening-execution/README.md"
+      ],
+      "bodySha256": "0c6149c19dcedf75cdd4a68726eab00d05d57d9201d6fae02c18eae0d8202a23"
+    },
+    {
+      "key": "stock",
+      "number": 19,
+      "id": "I_kwDOT1psyM8AAAABasT7tw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/19",
+      "title": "Stock availability, reservations, counts and transfers",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "opening",
+        "valuation",
+        "payments",
+        "kitchen"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-STOCK-01",
+        "LF-STOCK-02",
+        "LF-STOCK-03"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStockAdministrationWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStockWorkflow.kt",
+        "apps/pos/adapters/inventory-store/src/commonMain/kotlin/com/ukkera/pos/inventory/store/LocalStockRelationalTransfers.kt",
+        "docs/pos/INVENTORY.md"
+      ],
+      "bodySha256": "7fb6aaa9da6533f3b27cb2a99a6396eac67dd836f02369aadcfde847baba2bc1"
+    },
+    {
+      "key": "valuation",
+      "number": 20,
+      "id": "I_kwDOT1psyM8AAAABasT-QA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/20",
+      "title": "Moving-average valuation, landed cost and corrections",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "stock",
+        "purchasing",
+        "suppliers",
+        "reports"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-STOCK-04",
+        "LF-PUR-08"
+      ],
+      "sourceEvidence": [
+        "apps/pos/domain/inventory/src/commonMain/kotlin/com/ukkera/pos/inventory/InventoryValuationProjection.kt",
+        "apps/pos/domain/inventory/src/commonMain/kotlin/com/ukkera/pos/inventory/OwnedTransferValue.kt",
+        "apps/pos/domain/inventory/src/commonMain/kotlin/com/ukkera/pos/inventory/StoredValuationValidation.kt",
+        "docs/pos/plan-review/OPEN-QUESTIONS.md"
+      ],
+      "bodySha256": "708de62bc945a9738cdd6d16b00fc2729d1f5b2723ff8c61ae9d79428893568e"
+    },
+    {
+      "key": "purchasing",
+      "number": 21,
+      "id": "I_kwDOT1psyM8AAAABasUAjg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/21",
+      "title": "Purchase planning, receiving, inspection and invoice matching",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "stock",
+        "suppliers",
+        "replication"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-PUR-01",
+        "LF-PUR-02",
+        "LF-PUR-03",
+        "LF-PUR-04",
+        "LF-PUR-05"
+      ],
+      "sourceEvidence": [
+        "docs/pos/PURCHASING.md",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalUnpricedArrivalWorkflow.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalUnpricedArrivalAuthority.kt",
+        "apps/pos/adapters/inventory-store/src/commonMain/kotlin/com/ukkera/pos/inventory/store/LocalUnpricedArrivalCommands.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt"
+      ],
+      "bodySha256": "ef6e1e8f2580f9628d04c634481824756c927f226553112d6e629d80d3b583e9"
+    },
+    {
+      "key": "suppliers",
+      "number": 22,
+      "id": "I_kwDOT1psyM8AAAABasUC-A",
+      "url": "https://github.com/ukkera/kmp-apps/issues/22",
+      "title": "Supplier settlements, returns, claims and recovery",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "inventory",
+      "parentNumber": 4,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "purchasing",
+        "drawers",
+        "payments",
+        "valuation",
+        "history"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-PUR-06",
+        "LF-PUR-07",
+        "LF-PUR-09"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalSupplierCashHandler.kt",
+        "apps/pos/domain/sales/src/commonMain/kotlin/com/ukkera/pos/sales/SupplierCashSettlements.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "docs/pos/PURCHASING.md",
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalRetailPhysicalGateway.kt"
+      ],
+      "bodySha256": "fca671c9de95ed9e20741bc13f00327326db55dd624aeaaf859d327f9faaa8f1"
+    },
+    {
+      "key": "pricing",
+      "number": 23,
+      "id": "I_kwDOT1psyM8AAAABasUGDA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/23",
+      "title": "Exact pricing, promotions, taxes, charges and tips",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "commerce",
+      "parentNumber": 5,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "replication",
+        "retail",
+        "returns",
+        "fiscal"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CORE-03",
+        "LF-PRICE-01",
+        "LF-PRICE-02",
+        "LF-PRICE-03",
+        "LF-PRICE-04",
+        "LF-PRICE-05",
+        "LF-PRICE-06"
+      ],
+      "sourceEvidence": [
+        "apps/pos/domain/pricing/src/commonMain/kotlin/com/ukkera/pos/pricing/PromotionSelector.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalCatalogSalesQuoteSource.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalCatalogFoodSource.kt",
+        "docs/pos/plan-review/FINAL-PLAN.md"
+      ],
+      "bodySha256": "29aacb6d1acfaf268a17d10f659b7a9bc2ec4025f409c8557a079d6928c3832e"
+    },
+    {
+      "key": "drawers",
+      "number": 24,
+      "id": "I_kwDOT1psyM8AAAABasUJAQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/24",
+      "title": "Cash drawers, custody, safe transfer and counted closing",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "commerce",
+      "parentNumber": 5,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "payments",
+        "suppliers",
+        "opening",
+        "reports"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CASH-01",
+        "LF-CASH-02",
+        "LF-CASH-03",
+        "LF-CASH-04"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashClosingWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashCloseNotesWorkflow.kt",
+        "apps/pos/domain/sales/src/commonMain/kotlin/com/ukkera/pos/sales/CashCountedClosing.kt",
+        "docs/pos/CASH-CLOSING.md"
+      ],
+      "bodySha256": "b9821ead04b6a8952c24c244744e29d4dff84e8a904b392ea391061e0a8e1c17"
+    },
+    {
+      "key": "retail",
+      "number": 25,
+      "id": "I_kwDOT1psyM8AAAABasULng",
+      "url": "https://github.com/ukkera/kmp-apps/issues/25",
+      "title": "Activity-specific carts, order ownership and retail completion",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "commerce",
+      "parentNumber": 5,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "pricing",
+        "stock",
+        "drawers",
+        "payments",
+        "receipts"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-ORDER-01",
+        "LF-ORDER-02",
+        "LF-ORDER-04"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalWorkflowMapping.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCollectionWorkflow.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalCatalogSalesQuoteSource.kt",
+        "docs/pos/ARCHITECTURE.md"
+      ],
+      "bodySha256": "c243ce31dae6430ae1f9fe933cafa77d5148ff79f078b5b38a388846d5ed3f7d"
+    },
+    {
+      "key": "payments",
+      "number": 26,
+      "id": "I_kwDOT1psyM8AAAABasUOAQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/26",
+      "title": "Payment/refund evidence, unknown outcomes and correction",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "commerce",
+      "parentNumber": 5,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "drawers",
+        "retail",
+        "returns",
+        "suppliers",
+        "history"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-PAY-01",
+        "LF-PAY-02",
+        "LF-PAY-03",
+        "LF-PAY-04"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalJournalFinancialHandlers.kt",
+        "docs/pos/FOOD-FINANCIAL.md",
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalRetailPhysicalGateway.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodPhysicalMapping.kt"
+      ],
+      "bodySha256": "7f7a0acc12e041d1434c3288b882dc81d103afdda4e8d81ef9ecdfdd0ca63d83"
+    },
+    {
+      "key": "returns",
+      "number": 27,
+      "id": "I_kwDOT1psyM8AAAABasUQTg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/27",
+      "title": "Customer claims, return entitlement, exchanges and deposits",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "commerce",
+      "parentNumber": 5,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "pricing",
+        "payments",
+        "stock",
+        "receipts",
+        "fiscal"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RETURN-01",
+        "LF-RETURN-02",
+        "LF-RETURN-03",
+        "LF-RETURN-04",
+        "LF-CAT-11"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalReturnCaseHandler.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalReturnCaseProduction.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnReceiptWorkflow.kt",
+        "docs/pos/RETURN-CASES.md"
+      ],
+      "bodySha256": "65b7dd042947cffc865ae54f1713e56a477cd4321aa6e3d5ca59bc9a2baa7f85"
+    },
+    {
+      "key": "recipes",
+      "number": 28,
+      "id": "I_kwDOT1psyM8AAAABasUSoQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/28",
+      "title": "Recipes, choices, finished production and configurable kits",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "food",
+      "parentNumber": 6,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "catalog",
+        "stock",
+        "valuation",
+        "kitchen"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CAT-07",
+        "LF-CAT-08",
+        "LF-CAT-09"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/NativeCompanyFoodRecipePublication.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalCatalogFoodSource.kt",
+        "apps/pos/domain/sales/src/commonMain/kotlin/com/ukkera/pos/sales/FoodPreparation.kt",
+        "docs/pos/FOOD-FINANCIAL.md"
+      ],
+      "bodySha256": "4a2d9c319b2a461aed38634434f331af89e8c7b79cbfe5cea3bb964dc81446dc"
+    },
+    {
+      "key": "tables",
+      "number": 29,
+      "id": "I_kwDOT1psyM8AAAABasUVGA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/29",
+      "title": "Restaurant floor, tables, seats and split/merge",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "food",
+      "parentNumber": 6,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "retail",
+        "kitchen",
+        "pricing",
+        "payments"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FLOOR-WORKFLOW EXTENT UNVERIFIED",
+      "requirements": [
+        "LF-ORDER-03"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflowIntent.kt",
+        "docs/pos/original-handoff/POS_AGENT_TASKS.md"
+      ],
+      "bodySha256": "ed570c872eae585e1cf8ab43b5d7dc3d85555c52bf1cf3fa08d4030a90eccce5"
+    },
+    {
+      "key": "kitchen",
+      "number": 30,
+      "id": "I_kwDOT1psyM8AAAABasUXoQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/30",
+      "title": "Kitchen send, reservations, station tasks, cancellation and remakes",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "food",
+      "parentNumber": 6,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "recipes",
+        "stock",
+        "payments",
+        "tables",
+        "peripherals",
+        "history"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-KITCHEN-01",
+        "LF-KITCHEN-02",
+        "LF-KITCHEN-03",
+        "LF-KITCHEN-04",
+        "LF-KITCHEN-05"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalWorkflowMapping.kt",
+        "apps/pos/domain/sales/src/commonMain/kotlin/com/ukkera/pos/sales/FoodPreparation.kt",
+        "docs/pos/FOOD-FINANCIAL.md",
+        "docs/pos/paused-work/2026-10-28/README.md"
+      ],
+      "bodySha256": "f7098e86b2a1085e84bdaa87a8e73474d14d7b626c002ce340f57f0da0e5d620"
+    },
+    {
+      "key": "fulfillment",
+      "number": 31,
+      "id": "I_kwDOT1psyM8AAAABasUaMg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/31",
+      "title": "Retail/food fulfillment, COD and supplied-unpaid incidents",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "food",
+      "parentNumber": 6,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "kitchen",
+        "retail",
+        "payments",
+        "drawers",
+        "fiscal",
+        "reports"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-FULFIL-01",
+        "LF-FULFIL-02",
+        "LF-FULFIL-03",
+        "LF-FULFIL-04"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodFinancialWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflow.kt",
+        "docs/pos/FOOD-FINANCIAL.md",
+        "docs/pos/original-handoff/POS_ACCEPTANCE_SCENARIOS.md"
+      ],
+      "bodySha256": "6f75252488da11241804c2a8ce3258de5e1ad9cfb1e9b98429de6157582230f9"
+    },
+    {
+      "key": "reports",
+      "number": 32,
+      "id": "I_kwDOT1psyM8AAAABasUcsQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/32",
+      "title": "Local reports, alerts, scoped export and honest freshness",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "reporting",
+      "parentNumber": 7,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "drawers",
+        "payments",
+        "stock",
+        "suppliers",
+        "fulfillment",
+        "replication",
+        "runtime-continuity"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-REPORT-01",
+        "LF-REPORT-02",
+        "LF-REPORT-03",
+        "LF-REPORT-04",
+        "LF-REPORT-05"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalBranchReportReads.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalBranchReportExportHandlers.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalBranchReportWorkflow.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalBranchReportExportWorkflow.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalBranchReportCsv.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalSalesServices.kt",
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeBusinessHistoryJoin.kt"
+      ],
+      "bodySha256": "ed15e3cd662616e0dd014b3cf028e3fe0abf26f75dc2b45c52fc7f99fab17628"
+    },
+    {
+      "key": "receipts",
+      "number": 33,
+      "id": "I_kwDOT1psyM8AAAABasUfXQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/33",
+      "title": "Immutable receipts, document identity and marked reprints",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "reporting",
+      "parentNumber": 7,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "retail",
+        "pricing",
+        "payments",
+        "history",
+        "peripherals",
+        "fiscal"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SNAPSHOT SOURCE / DOCUMENT-DELIVERY EXTENT UNVERIFIED",
+      "requirements": [
+        "LF-UI-05"
+      ],
+      "sourceEvidence": [
+        "apps/pos/domain/sales/src/commonMain/kotlin/com/ukkera/pos/sales/StoredReceiptSnapshots.kt",
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnReceiptWorkflow.kt",
+        "docs/pos/original-handoff/POS_OPERATIONAL_SPECIFICATION.md"
+      ],
+      "bodySha256": "9bb687413404d0f60030387ca8307217f41400084bbb62c5e3babda8a2f44787"
+    },
+    {
+      "key": "fiscal",
+      "number": 34,
+      "id": "I_kwDOT1psyM8AAAABasUiMw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/34",
+      "title": "Local fiscal documents and traceable accounting export",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "reporting",
+      "parentNumber": 7,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "pricing",
+        "returns",
+        "fulfillment",
+        "suppliers",
+        "receipts",
+        "replication"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "REQUIREMENTS PRESERVED / COMPLETE LOCAL IMPLEMENTATION UNESTABLISHED",
+      "requirements": [
+        "LF-FISCAL-01",
+        "LF-FISCAL-02"
+      ],
+      "sourceEvidence": [
+        "docs/pos/plan-review/OPEN-QUESTIONS.md",
+        "docs/pos/original-handoff/POS_IMPLEMENTATION_PLAN.md",
+        "apps/pos/backend/README.md"
+      ],
+      "bodySha256": "966d14a65ee5f7a746a60ea8e2661e134d4905f0ff0c95691174d2af39bd1939"
+    },
+    {
+      "key": "replication",
+      "number": 35,
+      "id": "I_kwDOT1psyM8AAAABasUkrw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/35",
+      "title": "Durable outboxes and atomic catalog/policy activation",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "resilience",
+      "parentNumber": 8,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "core",
+        "identity",
+        "catalog",
+        "pricing",
+        "history"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RES-04",
+        "LF-RES-05"
+      ],
+      "sourceEvidence": [
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/AtomicMasterStore.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/NativeCompanyFoodRecipePublication.kt",
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/original-handoff/POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md"
+      ],
+      "bodySha256": "ec5e3746034300696e70bd76909c2b6fb4505878c89380002a03e6a46003625a"
+    },
+    {
+      "key": "backup",
+      "number": 36,
+      "id": "I_kwDOT1psyM8AAAABasUnWA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/36",
+      "title": "Consistent encrypted backup, restore and optional standby",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "resilience",
+      "parentNumber": 8,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "history",
+        "recovery",
+        "replication",
+        "suppliers",
+        "returns",
+        "kitchen",
+        "native"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RES-06"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupPolicy.kt",
+        "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupSnapshotPolicy.kt",
+        "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/JvmLocalBackupStore.kt",
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/paused-work/2026-10-28/CHECKPOINT.json"
+      ],
+      "bodySha256": "4d1eb99011a8469e47b8d8f3e1769e5d8d4b9e76b1db43a65f32fdcf269a5a6f"
+    },
+    {
+      "key": "recovery",
+      "number": 37,
+      "id": "I_kwDOT1psyM8AAAABasUqEw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/37",
+      "title": "Named recovery, planned handover and exclusive writer fencing",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "resilience",
+      "parentNumber": 8,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "backup",
+        "history",
+        "device-lan",
+        "identity"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-AUTH-09",
+        "LF-RES-07",
+        "LF-RES-08"
+      ],
+      "sourceEvidence": [
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/RUNTIME-AUTHENTICATION-RECOVERY.md",
+        "docs/pos/plan-review/OPEN-QUESTIONS.md",
+        "docs/pos/paused-work/2026-10-28/README.md"
+      ],
+      "bodySha256": "5af6e98042e7595d4d758c4e803bc600c200bc03acc6cfa4386828f2da4eaf89"
+    },
+    {
+      "key": "history",
+      "number": 38,
+      "id": "I_kwDOT1psyM8AAAABasUsuA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/38",
+      "title": "Audit, time, retention, storage integrity and compatible upgrades",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "resilience",
+      "parentNumber": 8,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "core",
+        "backup",
+        "recovery",
+        "independent"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-CORE-05",
+        "LF-CORE-06",
+        "LF-RES-09",
+        "LF-RES-10"
+      ],
+      "sourceEvidence": [
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/MasterRoomDatabase.kt",
+        "docs/pos/RUNTIME-AUTHENTICATION-RECOVERY.md",
+        "docs/pos/ARCHITECTURE.md",
+        "qa/pos/traceability/administration-cancellation-sdk-20261028/SOURCE-AND-OWNERSHIP.json"
+      ],
+      "bodySha256": "b92a9d3eaa4bcf33df40d50c25e4913f0c4df7d834f9a0f32435543597b4b89d"
+    },
+    {
+      "key": "native",
+      "number": 39,
+      "id": "I_kwDOT1psyM8AAAABasUvSQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/39",
+      "title": "Five native master/client platforms and hosting lifecycle",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "platforms",
+      "parentNumber": 9,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "device-lan",
+        "sessions",
+        "setup",
+        "backup",
+        "shared-ux"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RES-01",
+        "LF-RES-03"
+      ],
+      "sourceEvidence": [
+        "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/Main.kt",
+        "apps/pos/settings.gradle.kts",
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "apps/pos/ui/app/src/iosMain/kotlin/com/ukkera/pos/app/IosAppHost.kt",
+        "apps/pos/apps/ios/UkkeraPosApp.swift"
+      ],
+      "bodySha256": "dca69a18e67665b6a64344ca1b6efb162e24c99532910cfed89217b74eebe1be"
+    },
+    {
+      "key": "shared-ux",
+      "number": 40,
+      "id": "I_kwDOT1psyM8AAAABasUxjA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/40",
+      "title": "Typed navigation, lifecycle ownership, media and Arabic accessibility",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "platforms",
+      "parentNumber": 9,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "sessions",
+        "native",
+        "retail",
+        "kitchen",
+        "fulfillment",
+        "receipts"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-UI-01",
+        "LF-UI-02",
+        "LF-UI-03",
+        "LF-UI-04"
+      ],
+      "sourceEvidence": [
+        "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalWorkflowMapping.kt",
+        "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt",
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/paused-work/2026-10-28/session-source-review.md"
+      ],
+      "bodySha256": "4aa968b7462d5a607bf34adef934a13eb1c9ce84ed2a7ca5b2b7415ddad4d0a7"
+    },
+    {
+      "key": "peripherals",
+      "number": 41,
+      "id": "I_kwDOT1psyM8AAAABasU0Mg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/41",
+      "title": "Printer/KDS, scanner, scale, drawer and terminal adapters",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "platforms",
+      "parentNumber": 9,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "native",
+        "receipts",
+        "kitchen",
+        "payments"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "REQUIRED / COMPLETE ADAPTER AND HARDWARE EVIDENCE UNESTABLISHED",
+      "requirements": [
+        "LF-PER-01",
+        "LF-PER-02",
+        "LF-PER-03"
+      ],
+      "sourceEvidence": [
+        "docs/pos/original-handoff/POS_AGENT_TASKS.md",
+        "docs/pos/original-handoff/POS_TEST_AND_QUALITY_PLAN.md",
+        "docs/pos/plan-review/OPEN-QUESTIONS.md"
+      ],
+      "bodySha256": "7aed9670ed53ab146b2af62ad7304ce911e1f9e5018ee18a2fa9439140a66595"
+    },
+    {
+      "key": "independent",
+      "number": 42,
+      "id": "I_kwDOT1psyM8AAAABasU3Gw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/42",
+      "title": "Independent business acceptance and production integration evidence",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "acceptance",
+      "parentNumber": 10,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "core",
+        "device-lan",
+        "history",
+        "native"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RELEASE-02"
+      ],
+      "sourceEvidence": [
+        "qa/pos/freezes/scope-v1/feature-register.json",
+        "qa/pos/freezes/scope-v1/traceability.json",
+        "qa/pos/traceability/shared-password-kmp-20261028/REQUIREMENT-STATUS.csv",
+        "qa/pos/traceability/opening-administration-sdk-20261028/opening-execution/README.md",
+        "docs/pos/paused-work/2026-10-28/CHECKPOINT.json"
+      ],
+      "bodySha256": "3d7c64f4052d7e2315ec87114c5cf6cf004ef1d7c894fd45653a4a7228a5cddf"
+    },
+    {
+      "key": "delivery",
+      "number": 43,
+      "id": "I_kwDOT1psyM8AAAABasU50g",
+      "url": "https://github.com/ukkera/kmp-apps/issues/43",
+      "title": "Exact runnable candidates, sample setup and owner-testing handoff",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "acceptance",
+      "parentNumber": 10,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "independent",
+        "native",
+        "shared-ux",
+        "backup",
+        "peripherals"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P0",
+        "pos:local",
+        "pos:partial",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL SOURCE / FULL ACCEPTANCE NOT_RUN",
+      "requirements": [
+        "LF-RELEASE-01"
+      ],
+      "sourceEvidence": [
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "docs/pos/CURRENT-STATUS.md",
+        "docs/pos/original-handoff/POS_TEST_AND_QUALITY_PLAN.md"
+      ],
+      "bodySha256": "c49f1ef1d2ace990726874c8da05358e462ba59c91df6574206231c111be3636"
+    },
+    {
+      "key": "central-runtime",
+      "number": 44,
+      "id": "I_kwDOT1psyM8AAAABasU8kg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/44",
+      "title": "Held: protected central runtime, identity and domain/native mapping",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "central",
+      "parentNumber": 11,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "central-admin",
+        "central-ingestion",
+        "central-reporting",
+        "owner-approval"
+      ],
+      "priority": "P2",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P2",
+        "pos:central-held"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "HELD / BOUNDED HISTORICAL SOURCE ONLY",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/backend/README.md",
+        "apps/pos/backend/spec/BranchPos.yaml",
+        "docs/pos/plan-review/OPEN-QUESTIONS.md"
+      ],
+      "bodySha256": "2813da7b52d81666f2dcbc5d74abdbb7a0143d841c32e68b97f1d9b13069bafb"
+    },
+    {
+      "key": "central-admin",
+      "number": 45,
+      "id": "I_kwDOT1psyM8AAAABasU__g",
+      "url": "https://github.com/ukkera/kmp-apps/issues/45",
+      "title": "Held: company administration, catalog/policy and procurement distribution",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "central",
+      "parentNumber": 11,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "central-runtime",
+        "central-ingestion",
+        "central-reporting",
+        "owner-approval"
+      ],
+      "priority": "P2",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P2",
+        "pos:central-held"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "HELD / FULL IMPLEMENTATION UNESTABLISHED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/original-handoff/POS_AGENT_TASKS.md",
+        "docs/pos/plan-review/FINAL-PLAN.md",
+        "apps/pos/backend/README.md"
+      ],
+      "bodySha256": "5dc3470e638a2476754859dba3787d520ba0c0da0a2d086e11eee3cde035fc05"
+    },
+    {
+      "key": "central-ingestion",
+      "number": 46,
+      "id": "I_kwDOT1psyM8AAAABasVDOQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/46",
+      "title": "Held: durable ingestion, asynchronous jobs and recovery counterparts",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "central",
+      "parentNumber": 11,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "central-runtime",
+        "central-admin",
+        "central-reporting",
+        "owner-approval"
+      ],
+      "priority": "P2",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P2",
+        "pos:central-held"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "HELD / BOUNDED HISTORICAL CORE NOT PRODUCTION",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/backend/README.md",
+        "apps/pos/backend/contracts/evidence-v1.schema.json",
+        "docs/pos/original-handoff/POS_TEST_AND_QUALITY_PLAN.md"
+      ],
+      "bodySha256": "3d1cdc5088344698a05a5a7488deadd837a4336d0c42f082edb676138a15e766"
+    },
+    {
+      "key": "central-reporting",
+      "number": 47,
+      "id": "I_kwDOT1psyM8AAAABasVFvQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/47",
+      "title": "Held: consolidated reports, fiscal/accounting and named connectors",
+      "kind": "feature",
+      "issueType": "Feature",
+      "parentKey": "central",
+      "parentNumber": 11,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "central-runtime",
+        "central-ingestion",
+        "central-admin",
+        "owner-approval"
+      ],
+      "priority": "P2",
+      "labels": [
+        "pos",
+        "pos:feature",
+        "pos:P2",
+        "pos:central-held"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "HELD / COMPLETE SERVICE ACCEPTANCE UNESTABLISHED",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/backend/README.md",
+        "docs/pos/plan-review/OPEN-QUESTIONS.md",
+        "docs/pos/original-handoff/POS_OPERATIONAL_SPECIFICATION.md"
+      ],
+      "bodySha256": "a7f43e5afe0938dd9fc050398bc903c425d359d12efe3f2a5a48c7afb3f967a8"
+    },
+    {
+      "key": "sdk-producer",
+      "number": 48,
+      "id": "I_kwDOT1psyM8AAAABasVIMA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/48",
+      "title": "Resolve consumed SDK delivery and qualify a fresh source-bound RPC build",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "device-lan",
+      "parentNumber": 16,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "admission-integration",
+        "native"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:blocked",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "BLOCKED / FAILED PRODUCER; NO RETRY PERFORMED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/paused-work/2026-10-28/CHECKPOINT.json",
+        "apps/pos/tools/p2pkit_compile_binding.py",
+        "docs/pos/ARCHITECTURE.md"
+      ],
+      "bodySha256": "849397db938962d30a35decda75c061d8186d73ef288c9c3542c5432c500a505"
+    },
+    {
+      "key": "admission-integration",
+      "number": 49,
+      "id": "I_kwDOT1psyM8AAAABasVLxQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/49",
+      "title": "Finish and reconcile native admission with original SDK serving",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "device-lan",
+      "parentNumber": 16,
+      "blockedByKeys": [
+        "sdk-producer"
+      ],
+      "blockedByNumbers": [
+        48
+      ],
+      "integrationRelatedKeys": [
+        "runtime-continuity",
+        "session-integration"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:unapplied",
+        "pos:blocked"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "UNAPPLIED / NOT BUILDABLE",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/paused-work/2026-10-28/device-admission.json",
+        "docs/pos/paused-work/2026-10-28/device-admission-dependencies.json",
+        "docs/pos/paused-work/2026-10-28/sdk-source-review.md"
+      ],
+      "bodySha256": "e2a55c67749d24be23d4ba03d65cd4b03baf648458f2ca56b02836d7cd2818ba"
+    },
+    {
+      "key": "session-integration",
+      "number": 50,
+      "id": "I_kwDOT1psyM8AAAABasVPyQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/50",
+      "title": "Complete shared session attachment, refresh and confirmed-close cleanup",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "sessions",
+      "parentNumber": 14,
+      "blockedByKeys": [
+        "admission-integration"
+      ],
+      "blockedByNumbers": [
+        49
+      ],
+      "integrationRelatedKeys": [
+        "shared-ux",
+        "android-composition"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:unapplied",
+        "pos:blocked"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "UNAPPLIED / UNCOMPILED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/paused-work/2026-10-28/session-source-review.md",
+        "docs/pos/paused-work/2026-10-28/session-attachment.json",
+        "docs/pos/paused-work/2026-10-28/sdk-source-review.md"
+      ],
+      "bodySha256": "42661884c42c5689060b121c51aa5a5c2856c05e833cc776003bff56d5d12142"
+    },
+    {
+      "key": "runtime-continuity",
+      "number": 51,
+      "id": "I_kwDOT1psyM8AAAABasVTXg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/51",
+      "title": "Close native restart/history/resource joins across installed business commands",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "core",
+      "parentNumber": 12,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "history",
+        "payments",
+        "suppliers",
+        "kitchen",
+        "reports"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL / NATIVE RESTART CLOSURE UNVERIFIED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/RUNTIME-AUTHENTICATION-RECOVERY.md",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalSalesServices.kt",
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeBusinessHistoryJoin.kt",
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryScanner.kt",
+        "docs/pos/paused-work/2026-10-28/README.md"
+      ],
+      "bodySha256": "3136593c8d3392a3cf7c8f628ce15aed0768bb5081ec33c77a17b1a235784571"
+    },
+    {
+      "key": "unpriced-authority",
+      "number": 52,
+      "id": "I_kwDOT1psyM8AAAABasVWDA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/52",
+      "title": "Provide genuine policy/evidence authority for unpriced arrivals",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "purchasing",
+      "parentNumber": 21,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "stock",
+        "valuation"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:blocked",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "BLOCKED / POSITIVE COMMAND AUTHORITY MISSING",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalUnpricedArrivalAuthority.kt",
+        "apps/pos/adapters/inventory-store/src/commonMain/kotlin/com/ukkera/pos/inventory/store/LocalUnpricedArrivalCommands.kt",
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "docs/pos/PURCHASING.md"
+      ],
+      "bodySha256": "a7ea9bbb5d48dd65371b05c262da369dd38a35acdcb91821505a3c1aeafcf451"
+    },
+    {
+      "key": "claim-authority",
+      "number": 53,
+      "id": "I_kwDOT1psyM8AAAABasVYVg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/53",
+      "title": "Provide original-sale evidence for return qualification and acceptance",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "returns",
+      "parentNumber": 27,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "payments",
+        "receipts",
+        "pricing"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:blocked",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "BLOCKED / QUALIFICATION SOURCE MISSING",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/adapters/catalog-store/src/commonMain/kotlin/com/ukkera/pos/catalog/store/LocalBranchCommerceRegistry.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalReturnCaseHandler.kt",
+        "apps/pos/adapters/sales-store/src/commonMain/kotlin/com/ukkera/pos/sales/store/LocalReturnCaseProduction.kt",
+        "docs/pos/RETURN-CASES.md"
+      ],
+      "bodySha256": "5330b098ca2e86e5232f941016b5f593729257d718225dfb17ecfb4905602b94"
+    },
+    {
+      "key": "backup-schema",
+      "number": 54,
+      "id": "I_kwDOT1psyM8AAAABasVatQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/54",
+      "title": "Join schema 7 and native platform storage to shared backup policy",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "backup",
+      "parentNumber": 36,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "native",
+        "recovery",
+        "runtime-continuity"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL / CURRENT-SCHEMA NATIVE INTEGRATION OPEN",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupPolicy.kt",
+        "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupSnapshotPolicy.kt",
+        "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/JvmLocalBackupStore.kt",
+        "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/MasterRoomDatabase.kt",
+        "docs/pos/paused-work/2026-10-28/CHECKPOINT.json"
+      ],
+      "bodySha256": "6ac6ab0f32882910a84710b645d6232a4db4b833ac6c6b8075017661f3897b6d"
+    },
+    {
+      "key": "android-composition",
+      "number": 55,
+      "id": "I_kwDOT1psyM8AAAABasVdmg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/55",
+      "title": "Complete actual Android local runtime composition and restart path",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "native",
+      "parentNumber": 39,
+      "blockedByKeys": [
+        "admission-integration",
+        "session-integration"
+      ],
+      "blockedByNumbers": [
+        49,
+        50
+      ],
+      "integrationRelatedKeys": [
+        "runtime-continuity",
+        "delivery"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL / INSTALLED CURRENT BUILD UNVERIFIED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/ARCHITECTURE.md",
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "apps/pos/apps/android/src/main/AndroidManifest.xml"
+      ],
+      "bodySha256": "dd2653ba1f8583e2f967d389adbdeec323678e9534f37a68c0de76a6460b70f7"
+    },
+    {
+      "key": "desktop-composition",
+      "number": 56,
+      "id": "I_kwDOT1psyM8AAAABasVf-w",
+      "url": "https://github.com/ukkera/kmp-apps/issues/56",
+      "title": "Wire Windows/macOS launchers to genuine local host and client services",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "native",
+      "parentNumber": 39,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "device-lan",
+        "sessions",
+        "backup",
+        "delivery"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL LIBRARIES / APP COMPOSITION UNFINISHED",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/Main.kt",
+        "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt",
+        "docs/pos/ARCHITECTURE.md"
+      ],
+      "bodySha256": "1d4c114134382197814b01b24c7ccf9edb97b57fada4669f8aa22616761a1409"
+    },
+    {
+      "key": "apple-composition",
+      "number": 57,
+      "id": "I_kwDOT1psyM8AAAABasVjYQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/57",
+      "title": "Wire iPhone/iPad apps, Keychain, Room and real LAN master/client",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "native",
+      "parentNumber": 39,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "device-lan",
+        "sessions",
+        "backup",
+        "shared-ux",
+        "delivery"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "PARTIAL HOST/ADAPTERS / NATIVE COMPOSITION UNVERIFIED",
+      "requirements": [],
+      "sourceEvidence": [
+        "apps/pos/apps/ios/README.md",
+        "apps/pos/apps/ios/UkkeraPosApp.swift",
+        "apps/pos/settings.gradle.kts",
+        "docs/pos/ARCHITECTURE.md",
+        "apps/pos/ui/app/src/iosMain/kotlin/com/ukkera/pos/app/IosAppHost.kt"
+      ],
+      "bodySha256": "5f8d24c4df076c3051290cd31337e8591a1660b3892cb704819292499c709912"
+    },
+    {
+      "key": "verification-repair",
+      "number": 58,
+      "id": "I_kwDOT1psyM8AAAABasVlkg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/58",
+      "title": "Reconcile independent evidence/ownership and restore truthful regression execution",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "independent",
+      "parentNumber": 42,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "history",
+        "identity",
+        "genuine-fixtures"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:blocked",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "KNOWN HISTORICAL FAILURES / CURRENT INVENTORY INCOMPLETE",
+      "requirements": [],
+      "sourceEvidence": [
+        "qa/pos/README.md",
+        "qa/pos/traceability/administration-cancellation-sdk-20261028/SOURCE-AND-OWNERSHIP.json",
+        "qa/pos/traceability/shared-password-kmp-20261028/README.md",
+        "docs/pos/paused-work/2026-10-28/README.md"
+      ],
+      "bodySha256": "c68b3497f88a7bd9965ea90cdeaf6314b8d11c1b06318c29d23e170cb2fd2c4b"
+    },
+    {
+      "key": "genuine-fixtures",
+      "number": 59,
+      "id": "I_kwDOT1psyM8AAAABasVoEg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/59",
+      "title": "Wire frozen acceptance to genuine production persistence and admitted RPC",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "independent",
+      "parentNumber": 42,
+      "blockedByKeys": [
+        "admission-integration",
+        "runtime-continuity"
+      ],
+      "blockedByNumbers": [
+        49,
+        51
+      ],
+      "integrationRelatedKeys": [
+        "verification-repair",
+        "opening",
+        "native"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:blocked",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "BLOCKED / NO COMPLIANT OPENING EXECUTION FIXTURE",
+      "requirements": [],
+      "sourceEvidence": [
+        "qa/pos/freezes/opening-inventory-v1/FREEZE.json",
+        "qa/pos/traceability/opening-administration-sdk-20261028/opening-execution/README.md",
+        "qa/pos/freezes/scope-v1/traceability.json"
+      ],
+      "bodySha256": "2efb4a2c80690bb1e11316e946fdb3dfeb4310d90915b09e4a322b5d74404977"
+    },
+    {
+      "key": "owner-facts",
+      "number": 60,
+      "id": "I_kwDOT1psyM8AAAABasVqtg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/60",
+      "title": "Record actual deployment, recovery, retention and fiscal launch facts",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "delivery",
+      "parentNumber": 43,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [
+        "recovery",
+        "fiscal",
+        "native",
+        "history",
+        "delivery"
+      ],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified",
+        "pos:owner-input"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OWNER INPUT NOT RECORDED",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/plan-review/OPEN-QUESTIONS.md"
+      ],
+      "bodySha256": "a2bb0c33e443acf0e386891694201606116103d8c957ca02a76a1e34bfc534a9"
+    },
+    {
+      "key": "owner-approval",
+      "number": 61,
+      "id": "I_kwDOT1psyM8AAAABasVs7w",
+      "url": "https://github.com/ukkera/kmp-apps/issues/61",
+      "title": "Owner hands-on local testing and explicit central-phase approval",
+      "kind": "task",
+      "issueType": "Task",
+      "parentKey": "acceptance",
+      "parentNumber": 10,
+      "blockedByKeys": [
+        "independent",
+        "delivery"
+      ],
+      "blockedByNumbers": [
+        42,
+        43
+      ],
+      "integrationRelatedKeys": [
+        "central-runtime",
+        "central-admin",
+        "central-ingestion",
+        "central-reporting"
+      ],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:task",
+        "pos:P0",
+        "pos:local",
+        "pos:unverified",
+        "pos:owner-input"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "HELD / OWNER TEST AND APPROVAL NOT YET GIVEN",
+      "requirements": [],
+      "sourceEvidence": [
+        "docs/pos/paused-work/2026-10-28/README.md",
+        "AGENTS.md"
+      ],
+      "bodySha256": "2fe9d93d0befc99c5d1babd2e11f47ddca732ac060f0c8b76ea7537196e915ae"
+    },
+    {
+      "key": "foundation",
+      "number": 3,
+      "id": "I_kwDOT1psyM8AAAABasTXcA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/3",
+      "title": "[Epic] Local foundation, setup, identity and real LAN",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P0",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "bec0a190cc517baa1fa75af11cbe047cf11c29f019b3b35381febb51e848f025"
+    },
+    {
+      "key": "inventory",
+      "number": 4,
+      "id": "I_kwDOT1psyM8AAAABasTZlg",
+      "url": "https://github.com/ukkera/kmp-apps/issues/4",
+      "title": "[Epic] Catalog, inventory and purchasing",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "abfddbfe7bac84e182cb7473b4d52eea7fa21ab14cbc19cf3f5a224c77c65f36"
+    },
+    {
+      "key": "commerce",
+      "number": 5,
+      "id": "I_kwDOT1psyM8AAAABasTbdA",
+      "url": "https://github.com/ukkera/kmp-apps/issues/5",
+      "title": "[Epic] Sales, pricing, cash and customer remedies",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "77da4750be85f9892fe41545eb9f27f293fb6dc4da2a2c6421ecaf92f991fcac"
+    },
+    {
+      "key": "food",
+      "number": 6,
+      "id": "I_kwDOT1psyM8AAAABasTd8w",
+      "url": "https://github.com/ukkera/kmp-apps/issues/6",
+      "title": "[Epic] Restaurant/café production and cross-activity fulfillment",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "3d18f5ffc54c7f56d9748b8b7262100788898fcc4c90f618618f0078b6ee56a1"
+    },
+    {
+      "key": "reporting",
+      "number": 7,
+      "id": "I_kwDOT1psyM8AAAABasTgEw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/7",
+      "title": "[Epic] Reports, receipts and fiscal/accounting",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "bbf1643f35b74009c4bcf8682d26ddcc5c6f5ff5da735f4d2638e4e51e672247"
+    },
+    {
+      "key": "resilience",
+      "number": 8,
+      "id": "I_kwDOT1psyM8AAAABasTiGw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/8",
+      "title": "[Epic] Resilience, backup and upgrade safety",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "de82dcf76cb5383c7e751fb1bf87bf3485c7cbbb0d60e2cda702a53c6092c306"
+    },
+    {
+      "key": "platforms",
+      "number": 9,
+      "id": "I_kwDOT1psyM8AAAABasTkDQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/9",
+      "title": "[Epic] Native platforms, shared UX and peripherals",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P1",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P1",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "57ba172b8dd4d7078ce7e2d7c213bf78950e63dd33bcc239e4e9d8609f872976"
+    },
+    {
+      "key": "acceptance",
+      "number": 10,
+      "id": "I_kwDOT1psyM8AAAABasTmDw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/10",
+      "title": "[Epic] Independent acceptance and owner-testing handoff",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P0",
+        "pos:local",
+        "pos:unverified"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "6cf614c2fd0be5e2456f566b6bae6a82be859966fffe37b78de25a82ae3d7638"
+    },
+    {
+      "key": "central",
+      "number": 11,
+      "id": "I_kwDOT1psyM8AAAABasToDQ",
+      "url": "https://github.com/ukkera/kmp-apps/issues/11",
+      "title": "[Epic] Central services — held until owner local approval",
+      "kind": "epic",
+      "issueType": "Feature",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [
+        "owner-approval"
+      ],
+      "blockedByNumbers": [
+        61
+      ],
+      "integrationRelatedKeys": [],
+      "priority": "P2",
+      "labels": [
+        "pos",
+        "pos:epic",
+        "pos:P2",
+        "pos:central-held"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "ef7f6e8d7da0fb3eea484c4be5deb87b6f3e5606fcde8acd7b3e178f03d2fd1c"
+    },
+    {
+      "key": "tracker",
+      "number": 2,
+      "id": "I_kwDOT1psyM8AAAABasTVnw",
+      "url": "https://github.com/ukkera/kmp-apps/issues/2",
+      "title": "Ukkera POS — scope, progress, blockers and evidence",
+      "kind": "tracker",
+      "issueType": "Task",
+      "parentKey": null,
+      "parentNumber": null,
+      "blockedByKeys": [],
+      "blockedByNumbers": [],
+      "integrationRelatedKeys": [],
+      "priority": "P0",
+      "labels": [
+        "pos",
+        "pos:tracker",
+        "pos:P0"
+      ],
+      "baselineState": "OPEN",
+      "recordedImplementationState": "OPEN_AGGREGATION_NOT_ACCEPTED",
+      "requirements": [],
+      "sourceEvidence": [],
+      "bodySha256": "b7304e3b0fc33ba67cffcc26d74cf5a3e7b0c8bb26e87992e74ac23b60d8ceb2"
+    }
+  ]
+}

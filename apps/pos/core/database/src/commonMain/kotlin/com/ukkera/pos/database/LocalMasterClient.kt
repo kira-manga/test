@@ -3,6 +3,7 @@ package com.ukkera.pos.database
 import com.ukkera.pos.recovery.OperationIdentity
 import com.ukkera.pos.security.LocalAccountProvisioning
 import com.ukkera.pos.security.LocalAdministrationService
+import com.ukkera.pos.security.LocalEmployeeCreationServiceV1
 import com.ukkera.pos.security.LocalAuthenticationService
 import com.ukkera.pos.security.LocalCredentialAdministrationResult
 import com.ukkera.pos.security.LocalGatewayCredentials
@@ -59,7 +60,13 @@ public interface LocalMasterClientResultAcceptance : LocalMasterClient {
  * or cast is not a grant: the service reauthenticates every directory/receipt/mutation request.
  * No company grant publication, additional-device pairing or recovery activation is implied.
  */
-public interface LocalMasterAdministrationClient : LocalAdministrationService
+public interface LocalMasterAdministrationClient : LocalAdministrationService, LocalMasterEmployeeCreationClient
+
+/** Separate management capability of the actual retained Master/peer lifetime. Neither this
+ * type nor implementing it installs a local native peer, generic administration or a business
+ * gateway. Remote roots must explicitly bind their actual creation service and authentication
+ * connection; every service call still reauthenticates the current creator/exact target. */
+public interface LocalMasterEmployeeCreationClient : LocalEmployeeCreationServiceV1
 
 /**
  * Separately installed account-enrollment capability. These definitions are requested data; the

@@ -129,6 +129,9 @@ public class LocalEndpointEnrollmentGateway private constructor(
                     if (existing.login != login.value) return@snapshot LocalEnrollmentResult.Unresolved
                     return@snapshot lookupOwned(before, existing) // NEVER resend a retained password operation
                 }
+                if (before.administrations.any { it.command.requestId == requestId } ||
+                    before.employeeCreations.any { it.original.requestId == requestId })
+                    return@snapshot LocalEnrollmentResult.Unresolved
                 if (before.enrollments.any { it.outcome == StoredEnrollmentOutcomeV1.PENDING }) return@snapshot LocalEnrollmentResult.Unresolved
                 if (before.enrollments.size >= MAX_CLIENT_ENROLLMENTS)
                     return@snapshot LocalEnrollmentResult.Rejected(LocalServiceProblem.RETRY_LATER)

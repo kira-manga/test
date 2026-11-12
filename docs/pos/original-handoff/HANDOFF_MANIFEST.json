@@ -1,0 +1,114 @@
+{
+  "package": "ukkera-pos-agent-handoff-2026-10-21",
+  "prepared_date": "2026-10-21",
+  "language": "English",
+  "working_repository": "ukkera-pos",
+  "yaml_namespace": "BranchPos",
+  "company_administration": "Compose Multiplatform native app",
+  "implementation_status": "NOT IMPLEMENTED BY THIS HANDOFF",
+  "business_scenario_count": 141,
+  "engineering_gate_count": 79,
+  "implementation_task_count": 40,
+  "test_execution_status": "NOT RUN",
+  "document_checks": {
+    "links": "PASS",
+    "portable_links": "PASS",
+    "markdown_structure": "PASS",
+    "scenario_csv_exact_mapping": "PASS",
+    "task_graph_acyclic": "PASS",
+    "independent_example_arithmetic": "PASS",
+    "independent_document_review": "PASS"
+  },
+  "files": [
+    {
+      "path": "BACKEND_ARCHITECTURE_REVIEW.md",
+      "bytes": 34084,
+      "sha256": "5e4d145986b0d43ffaf7bfabd222f1b1f8416068b91950ddd705bc8f78dba2ec"
+    },
+    {
+      "path": "POS_ACCEPTANCE_SCENARIOS.md",
+      "bytes": 28478,
+      "sha256": "7200e4c06b0b1e045dd06deb0db99cc88383a05d9413fe10f415c98cfea1023b"
+    },
+    {
+      "path": "POS_AGENT_START_PROMPT.md",
+      "bytes": 8288,
+      "sha256": "2adea38479806f3e423c5d76ec3b5fbade02920f4dd068a040d72ce35faa9af0"
+    },
+    {
+      "path": "POS_AGENT_TASKS.md",
+      "bytes": 37013,
+      "sha256": "3d8455880262eb0653e87c5e46872336f9ac637b52691c52868e0d30ab9cc57c"
+    },
+    {
+      "path": "POS_COMPANY_POLICIES_AND_CATALOG.md",
+      "bytes": 27227,
+      "sha256": "439aa019060d9c3d9a987732b077e74917c3fb9e87462547decd2c52f76adb60"
+    },
+    {
+      "path": "POS_DOMAIN_AND_CONTRACT_BLUEPRINT.md",
+      "bytes": 74709,
+      "sha256": "0c847fab4cb9f84bf6b247e25ec56282f35a8ca19d4ea88981b210fe2b931b61"
+    },
+    {
+      "path": "POS_HANDOFF_README.md",
+      "bytes": 2869,
+      "sha256": "38bc060aac169a851257cfe2bd591e0d88c30fd2297d81d204014e848b009f61"
+    },
+    {
+      "path": "POS_HANDOFF_REVIEW.md",
+      "bytes": 3744,
+      "sha256": "fc7285b3f940d3fffbe2ac514dedfca69ee80530b93a6bbb408ecf0d963b5ff5"
+    },
+    {
+      "path": "POS_IMPLEMENTATION_PLAN.md",
+      "bytes": 26965,
+      "sha256": "d7dbebeb496e9489927d360ab483e8a684e5e325a3bf76fc20b4dcb59ab7fcfb"
+    },
+    {
+      "path": "POS_OPEN_DECISIONS_REVIEW.md",
+      "bytes": 14941,
+      "sha256": "504b450c9c4f24fe3fba1fee0441b69a734a915d95a1ea29aab2de21bafce0a4"
+    },
+    {
+      "path": "POS_OPERATIONAL_SPECIFICATION.md",
+      "bytes": 47570,
+      "sha256": "51b27996aea30fd61514e2fb58bc568e489d45c30541c166d0015d4d93412530"
+    },
+    {
+      "path": "POS_PRODUCTION_ARCHITECTURE_PROPOSAL.md",
+      "bytes": 87355,
+      "sha256": "3ebcb32ffa8a7bd2f50911471efe44067293193c6350ef53744ef6c00768744d"
+    },
+    {
+      "path": "POS_PURCHASING_AND_RECEIVING_DESIGN.md",
+      "bytes": 20582,
+      "sha256": "bd6b6d591cdff89cc3b36bfe88b3ab8bc4b714fecfd6dc106ac9fc16bac7b4d7"
+    },
+    {
+      "path": "POS_TECHNOLOGY_AND_LIBRARY_GUIDE.md",
+      "bytes": 46953,
+      "sha256": "a93c23e7a3c152e7ab16d3a00c5a337aa9af1c7dd5256f893610e7040e9ef6ba"
+    },
+    {
+      "path": "POS_TEST_AND_QUALITY_PLAN.md",
+      "bytes": 52836,
+      "sha256": "5a5b945435ef939ecc33c4e18c92bf1b92b8f67536807df9ccf25768527458ee"
+    },
+    {
+      "path": "POS_TEST_TRACEABILITY.csv",
+      "bytes": 88119,
+      "sha256": "1b3c1f2d5e35b4968e8a0e6153af6d082f316775609f5c18331c68c2f8e89532"
+    },
+    {
+      "path": "README.md",
+      "bytes": 2869,
+      "sha256": "38bc060aac169a851257cfe2bd591e0d88c30fd2297d81d204014e848b009f61"
+    },
+    {
+      "path": "backend-review/generator-verification.json",
+      "bytes": 1095,
+      "sha256": "5ec1470f97008f37d0494fd13db877491dec5656bdc69b425de94cea447948da"
+    }
+  ]
+}

@@ -11,6 +11,13 @@ import com.ukkera.pos.security.LocalAuthenticationResult
 import com.ukkera.pos.security.LocalAdministrationCommand
 import com.ukkera.pos.security.LocalDelegatedEmployeeCreationV1
 import com.ukkera.pos.security.LocalEmployeeCreationReviewV1
+import com.ukkera.pos.security.LocalEmployeeCreationExecutionV1
+import com.ukkera.pos.security.LocalEmployeeCreationCancellationV1
+import com.ukkera.pos.security.LocalEmployeeCreationTargetV1
+import com.ukkera.pos.security.LocalEmployeeCreationDraftV1
+import com.ukkera.pos.security.LocalEmployeeCreationContextResultV1
+import com.ukkera.pos.security.LocalEmployeeCreationDefinitionResultV1
+import com.ukkera.pos.security.LocalEmployeeCreationStatusV1
 import com.ukkera.pos.security.LocalAdministrationQuery
 import com.ukkera.pos.security.LocalAdministrationReadResult
 import com.ukkera.pos.security.LocalAdministrationService
@@ -505,9 +512,46 @@ public class LocalMasterEndpoint internal constructor(
     ): LocalCredentialAdministrationResult =
         submit(DisableAccountWork(operator.copyOwned(), actorId, expectedRevision))
 
+    override public suspend fun employeeCreationContext(operator: LocalGatewayCredentials,
+        target: LocalEmployeeCreationTargetV1): LocalEmployeeCreationContextResultV1 =
+        submit(EmployeeCreationContextWork(operator.copyOwned(), target))
+
+    override public suspend fun captureEmployeeCreationDefinition(operator: LocalGatewayCredentials,
+        draft: LocalEmployeeCreationDraftV1): LocalEmployeeCreationDefinitionResultV1 =
+        submit(EmployeeCreationDefinitionWork(operator.copyOwned(), draft))
+
+    /** Queue only this exact original. The actual service still owns protected writer/native
+     * admission; a missing/incomplete provider retains the interface's unavailable default. */
+    override public suspend fun executeEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1, newPassword: CharArray?): LocalEmployeeCreationExecutionV1 {
+        currentCoroutineContext().ensureActive()
+        if (original.copyRequestedDefinition().credentialWasProvided != (newPassword != null) ||
+            newPassword != null && newPassword.size !in 4..1024) return LocalEmployeeCreationExecutionV1.Denied
+        val owned = operator.copyOwned()
+        var password: CharArray? = null
+        var submitted = false
+        try {
+            password = newPassword?.copyOf()
+            val request = EmployeeCreationExecutionWork(owned, original, password)
+            submitted = true // submit disposes inputs on rejection as well as actual completion.
+            return submit(request)
+        } finally { if (!submitted) { owned.bearer.destroy(); password?.fill('\u0000') } }
+    }
+
+    override public suspend fun cancelEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationCancellationV1 =
+        submit(EmployeeCreationCancellationWork(operator.copyOwned(), original))
+
     override public suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
         original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 =
         submit(EmployeeCreationReviewWork(operator.copyOwned(), original))
+
+    /** Queue the exact original read through the operational service owner. The service
+     * still authenticates the original creator and current target-bound authority; no
+     * lookup result can dispatch creation or settle a pending native child. */
+    override public suspend fun lookupEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationStatusV1 =
+        submit(EmployeeCreationLookupWork(operator.copyOwned(), original))
 
     override public suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult =
         submit(AdministrationReadWork(operator.copyOwned(), query))
@@ -1152,6 +1196,50 @@ public class LocalMasterEndpoint internal constructor(
         override fun clearInput() { operator.bearer.destroy(); password?.fill('\u0000') }
     }
 
+    private inner class EmployeeCreationExecutionWork(val operator: LocalGatewayCredentials,
+        val original: LocalDelegatedEmployeeCreationV1, val password: CharArray?) : Work<LocalEmployeeCreationExecutionV1>() {
+        override fun unavailable(): LocalEmployeeCreationExecutionV1 = LocalEmployeeCreationExecutionV1.Unavailable
+        override fun busy(): LocalEmployeeCreationExecutionV1 = LocalEmployeeCreationExecutionV1.Busy
+        override fun denied(): LocalEmployeeCreationExecutionV1 = LocalEmployeeCreationExecutionV1.Denied
+        override fun uncertain(value: LocalEmployeeCreationExecutionV1): Boolean = value is LocalEmployeeCreationExecutionV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationExecutionV1 =
+            administration?.executeEmployeeCreation(operator, original, password) ?: LocalEmployeeCreationExecutionV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy(); password?.fill('\u0000') }
+    }
+
+    private inner class EmployeeCreationCancellationWork(val operator: LocalGatewayCredentials,
+        val original: LocalDelegatedEmployeeCreationV1) : Work<LocalEmployeeCreationCancellationV1>() {
+        override fun unavailable(): LocalEmployeeCreationCancellationV1 = LocalEmployeeCreationCancellationV1.Unavailable
+        override fun busy(): LocalEmployeeCreationCancellationV1 = LocalEmployeeCreationCancellationV1.Busy
+        override fun denied(): LocalEmployeeCreationCancellationV1 = LocalEmployeeCreationCancellationV1.Denied
+        override fun uncertain(value: LocalEmployeeCreationCancellationV1): Boolean = value is LocalEmployeeCreationCancellationV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationCancellationV1 =
+            administration?.cancelEmployeeCreation(operator, original) ?: LocalEmployeeCreationCancellationV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy() }
+    }
+
+    private inner class EmployeeCreationContextWork(val operator: LocalGatewayCredentials,
+        val target: LocalEmployeeCreationTargetV1) : Work<LocalEmployeeCreationContextResultV1>() {
+        override fun unavailable(): LocalEmployeeCreationContextResultV1 = LocalEmployeeCreationContextResultV1.Unavailable
+        override fun busy(): LocalEmployeeCreationContextResultV1 = LocalEmployeeCreationContextResultV1.Busy
+        override fun denied(): LocalEmployeeCreationContextResultV1 = LocalEmployeeCreationContextResultV1.Denied
+        override fun uncertain(value: LocalEmployeeCreationContextResultV1): Boolean = value is LocalEmployeeCreationContextResultV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationContextResultV1 =
+            administration?.employeeCreationContext(operator, target) ?: LocalEmployeeCreationContextResultV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy() }
+    }
+
+    private inner class EmployeeCreationDefinitionWork(val operator: LocalGatewayCredentials,
+        val draft: LocalEmployeeCreationDraftV1) : Work<LocalEmployeeCreationDefinitionResultV1>() {
+        override fun unavailable(): LocalEmployeeCreationDefinitionResultV1 = LocalEmployeeCreationDefinitionResultV1.Unavailable
+        override fun busy(): LocalEmployeeCreationDefinitionResultV1 = LocalEmployeeCreationDefinitionResultV1.Busy
+        override fun denied(): LocalEmployeeCreationDefinitionResultV1 = LocalEmployeeCreationDefinitionResultV1.Denied
+        override fun uncertain(value: LocalEmployeeCreationDefinitionResultV1): Boolean = value is LocalEmployeeCreationDefinitionResultV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationDefinitionResultV1 =
+            administration?.captureEmployeeCreationDefinition(operator, draft) ?: LocalEmployeeCreationDefinitionResultV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy() }
+    }
+
     private inner class EmployeeCreationReviewWork(val operator: LocalGatewayCredentials,
         val original: LocalDelegatedEmployeeCreationV1) : Work<LocalEmployeeCreationReviewV1>() {
         override fun unavailable(): LocalEmployeeCreationReviewV1 = LocalEmployeeCreationReviewV1.Unavailable
@@ -1159,6 +1247,16 @@ public class LocalMasterEndpoint internal constructor(
         override fun uncertain(value: LocalEmployeeCreationReviewV1): Boolean = value is LocalEmployeeCreationReviewV1.StorageUncertain
         override suspend fun perform(): LocalEmployeeCreationReviewV1 =
             administration?.reviewEmployeeCreation(operator, original) ?: LocalEmployeeCreationReviewV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy() }
+    }
+
+    private inner class EmployeeCreationLookupWork(val operator: LocalGatewayCredentials,
+        val original: LocalDelegatedEmployeeCreationV1) : Work<LocalEmployeeCreationStatusV1>() {
+        override fun unavailable(): LocalEmployeeCreationStatusV1 = LocalEmployeeCreationStatusV1.Unavailable
+        override fun busy(): LocalEmployeeCreationStatusV1 = LocalEmployeeCreationStatusV1.Busy
+        override fun uncertain(value: LocalEmployeeCreationStatusV1): Boolean = value is LocalEmployeeCreationStatusV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationStatusV1 =
+            administration?.lookupEmployeeCreation(operator, original) ?: LocalEmployeeCreationStatusV1.Unavailable
         override fun clearInput() { operator.bearer.destroy() }
     }
 

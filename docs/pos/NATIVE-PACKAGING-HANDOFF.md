@@ -1,4 +1,4 @@
-# Native packaging and handoff — macOS, Windows, iPhone/iPad
+# Native packaging and handoff — macOS, Windows, Android and iPhone/iPad
 
 ## Combined owner test packages — 12 November 2026
 
@@ -21,11 +21,22 @@ private signing material is never placed in the snapshot or uploaded.
 
 ```sh
 gh workflow run pos-owner-test-packages.yml --repo kira-manga/test --ref main \
+  -f platforms=all \
   -f source_revision=<snapshot-source-sha> \
   -f android_source_revision=<retained-apk-source-sha> \
   -f android_signer_sha256=<retained-certificate-sha256> \
   -f desktop_smoke=true
 ```
+
+Use `platforms=android` or `platforms=desktop` for a bounded platform retry.
+The Android source build uses an explicit 4-GiB heap and two workers; this does
+not change application source or the retained signed APKs. A failed input/source,
+build/lint or public-safe staging check prevents signed APK publication.
+
+The 12 November campaign produced verified downloads for both macOS architectures,
+Windows and Android. [Exact artifacts, retries, source bindings and readiness](../../qa/pos/traceability/owner-test-packages-20261112/README.md).
+Desktop packaged startup is bounded process evidence; Android was not installed
+or launched. The auxiliary repository remains **PUBLIC** per owner instruction.
 
 The snapshot source SHA and Android source SHA may differ when only packaging or
 documentation changed. The complete `apps/pos` inventory must still match exactly.

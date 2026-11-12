@@ -1,0 +1,131 @@
+{
+  "recordType": "GITHUB_PLANNING_READBACK_NOT_APPLICATION_VERIFICATION",
+  "checkedAt": "2026-10-28T19:52:02.377194+00:00",
+  "repository": "ukkera/kmp-apps",
+  "sourceRevision": "b79ec4938da699e4c5de7aef13da56eef487c85f",
+  "counts": {
+    "issues": 60,
+    "epics": 9,
+    "localFeatures": 32,
+    "heldCentralFeatures": 4,
+    "tasks": 14,
+    "nativeParentEdges": 50,
+    "nativeBlockingEdges": 9,
+    "requirementRows": 325,
+    "localApplicable": 318,
+    "centralApplicable": 69,
+    "originalTaskPackages": 40,
+    "reviewFindings": 36
+  },
+  "checks": [
+    "all issue bodies/titles/labels exact readback",
+    "all states open; no acceptance fabricated",
+    "native issue types match",
+    "native parents/sub-issues exactly match planned hierarchy",
+    "native blockedBy edges match and planned graph acyclic",
+    "main tracker pinned",
+    "all 105 LF requirements exactly one local grouped owner",
+    "all 141 original scenarios retain local domain anchors",
+    "all 79 gates mapped; Q-BE-10 planned local owner exception retained",
+    "all mixed obligations have both local and central owners",
+    "all 40 original package dependencies retained",
+    "all 36 review findings mapped"
+  ],
+  "trackerUrl": "https://github.com/ukkera/kmp-apps/issues/2",
+  "applicationTestsExecuted": false,
+  "projectsLimitation": "INSUFFICIENT_SCOPES for project metadata; aggregate org count 9 observed but identities/association unknown; no Project writes",
+  "sourceAndCheckpointPreservation": {
+    "checkedAt": "2026-10-28T19:50:13.607397+00:00",
+    "applicationSourceBefore": "d471a965d8958ab4da61f69b02ee7735cad3e8516b060930f935882b7af88071",
+    "applicationSourceAfter": "d471a965d8958ab4da61f69b02ee7735cad3e8516b060930f935882b7af88071",
+    "localInputCount": 1005,
+    "applicationInputsUnchanged": true,
+    "protectedTrackedScopesUnchanged": [
+      "apps/pos",
+      "qa/pos",
+      "docs/pos/original-handoff",
+      "docs/pos/plan-review",
+      "docs/pos/paused-work"
+    ],
+    "sealedArchivePins": [
+      {
+        "file": "docs/pos/paused-work/2026-10-28/README.md",
+        "sha256": "623654d348249b153b3f823664729ffafd3ca59cf093999cb3633fb2f57996f5"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/device-admission-dependencies.json",
+        "sha256": "1a64e014185e83cbffbbff8bb30871bda8c603cd15cf54a41aaa17ee9b6e1720"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/device-admission.json",
+        "sha256": "2a1e0bca1e8bf7c96a23b59bf270b759dd18fa09c7500a387abe89d6b97e54f5"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/device-admission.patch",
+        "sha256": "4bce19403d63dde04be095c890ba31279ca96b7f49ebfc64d016bbe72edf5756"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/sdk-dependencies.json",
+        "sha256": "9ccc9a0cf120b632cb0a41ffd3d03efcfdf298e782553986a29006acc17127b7"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/sdk-runtime.json",
+        "sha256": "dc8c8ee9206de892e2b6c33a5775dc7930ccbb7d546e663abc551b5f50c891d7"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/sdk-runtime.patch",
+        "sha256": "1edb85b38594d30aa2250282b27d639824a742409e400cce45c05430b100e445"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/sdk-source-review.md",
+        "sha256": "2bd5eb2c60cc89abb7be984984082fd245a94da477f3c3dff8284d66c4945e00"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/session-attachment.json",
+        "sha256": "f50ccfe9e681936920232cc05322e15408b1ff651399395e879ea5f6fac0f1e2"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/session-attachment.patch",
+        "sha256": "279c6752219807610c1d93698ce54d44681ecc52a250f1effbdedfc2c07b1b55"
+      },
+      {
+        "file": "docs/pos/paused-work/2026-10-28/session-source-review.md",
+        "sha256": "d5c799ef521a14fed36763934ccd3b0998e0fdd01c4dacbbe23fe888c987a6a5"
+      }
+    ],
+    "checkpointVerificationJsonHashesMatched": true,
+    "backupActiveSourcePinsMatch": true,
+    "noApplicationTestsOrBuildsRun": true,
+    "scopeLimit": "Fingerprint excludes mutable task files/build outputs/held central and does not comprehensively capture external dependencies; tracked diff separately checked all protected repository scopes. Protected untracked designs/freeze copies were not opened or staged."
+  },
+  "localPlanningArtifactChecks": {
+    "checkedAt": "2026-10-28T19:55:01.626681+00:00",
+    "result": "PASS",
+    "requirements": 325,
+    "verbatimDefinitionFieldsAndClassificationPreserved": true,
+    "originalScenarioOwnershipFamiliesAndScopeRetained": true,
+    "allOriginalTaskDependenciesAndFamiliesPreserved": true,
+    "original40PackageGraphAcyclic": true,
+    "all36FindingSeverityAndCorrectionFieldsPreserved": true,
+    "all60PublishedBodyHashesMatchRegistry": true,
+    "allPlanningMarkdownLocalLinksResolve": true,
+    "noPendingCrossLinkPlaceholders": true,
+    "historicalCasesReferencedNotDuplicatedOrRedesigned": true
+  },
+  "additionalReadOnlyRequirementsReview": {
+    "reviewer": "/root/planning_requirements_audit",
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": "max",
+    "result": "NO_BLOCKER_IN_CAPTURED_ORGANIZATIONAL_ARTIFACTS",
+    "scope": [
+      "all325 key/classification/obligation/frozen-pointer preservation",
+      "318 local and69 held-central ownership",
+      "105LF to32 local grouped Features",
+      "non-RELEASE02 anchor sets and explicit Q-BE10 override",
+      "40 original package rows/dependencies and acyclic nine-blocker graph",
+      "36 review corrections",
+      "false complete-pass values and explicit pause/central-approval gate"
+    ],
+    "limitation": "Semantic planning-artifact review; not application source/test acceptance. CSV row endings normalized to repository LF afterwards without changing fields."
+  }
+}

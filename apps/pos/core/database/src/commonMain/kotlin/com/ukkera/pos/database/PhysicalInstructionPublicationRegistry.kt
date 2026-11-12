@@ -344,6 +344,11 @@ internal class PhysicalInstructionPublicationRegistry(
                         // and any observed physical evidence remain owned by their original keys.
                         resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.targetId)
                     }
+                    LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED -> {
+                        // Only this original request is fenced. No target account exists by
+                        // implication, and the creator's existing session is not revoked.
+                        resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.eventId)
+                    }
                     LocalAuthEventKind.ACCOUNT_CREATED -> {
                         // The event records the creator's EXISTING session; it neither issues
                         // nor revokes it. Target account/policy INSERTs fence the new actor

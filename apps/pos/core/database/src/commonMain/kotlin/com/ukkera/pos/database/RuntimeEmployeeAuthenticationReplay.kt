@@ -1052,6 +1052,27 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         return true
     }
 
+    /** The exact creator's historical authority and native-final cut precede the one
+     * immutable cancellation audit. The intended recipient is inert original DATA;
+     * no target account, credential, session or enrollment seed is constructed here. */
+    internal fun employeeCreationCancellation(value: RuntimeEmployeeCreationCancellationEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        historyShapeV2(enabled)
+        value.validateStructure()
+        val original = value.original()
+        val requirement = RuntimeCommandRequirementV1.capture(original.authorizationRequirement())
+        if (account.credential == null || original.operatorId != actor ||
+            !accountAdministrationAuthority(value.authorization, requirement,
+                value.protectedFinalDeclaration(), finalDecision)) return false
+        val images = listOf(image(ProtectedLocalRecordKey.AuthEvent(scope, original.requestId), Revision(0),
+            LocalAuthenticationCodec.encodeEvent(LocalAuthEvent(scope, original.requestId,
+                LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED, original.actorId, actor,
+                value.authorization.sessionId, null, value.at, original.contentDigest))))
+        historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
     /** Same original enrolled-operator authority helper, at BOTH event and native-final
      * observations, before the coordinator advances any account or admission prediction. */
     internal fun deviceRevocationAuthority(value: RuntimeDeviceRevocationEvidenceV1,

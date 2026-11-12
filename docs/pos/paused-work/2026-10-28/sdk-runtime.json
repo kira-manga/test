@@ -1,0 +1,271 @@
+{
+  "status": "UNFINISHED_SOURCE_ONLY_NOT_COMPILED_NOT_OPERATIONAL_NOT_QUALIFIED",
+  "integration": "HELD; NOT_APPLIED",
+  "implementer": "/root/sdk_rpc_continuation",
+  "sourcePacket": "apps/pos/.workspace/sdk-runtime-delivery-20261028-v1",
+  "sourceManifestSha256": "ea883aaa14af8c141ca437ad7dfbc862fc674b4d46901b0b760b032517bd2b83",
+  "sourceSealSha256": "589d3ce4313c6e83b0f440a7c0cb8c3d84659aad7f6638ae6915e1b64c099ccf",
+  "patchSha256": "1edb85b38594d30aa2250282b27d639824a742409e400cce45c05430b100e445",
+  "targets": [
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "4a692e383a1f1a6daf04d022c275631e354952fc2824db6afb6cbf09a25f937f",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalMasterScopedRpcConnections.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 1677,
+      "postimage_path": "postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalMasterScopedRpcConnections.kt",
+      "postimage_sha256": "9dcab751e4df15fc512c211f51716448f803a58a5b282f17ededaacff5b99a1f",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalMasterScopedRpcConnections.kt"
+    },
+    {
+      "absence_proof": null,
+      "action": "modify",
+      "postimage_bytes": 48550,
+      "postimage_path": "postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
+      "postimage_sha256": "5d1299b91a6d0b68e0273d20c861bef642f6ab84526968ce0c44461850dad658",
+      "preimage_path": "preimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
+      "preimage_sha256": "4ec7010bb3cd86447607f5281fb20a554e11cb1d1e42d06374e7401bb7e5b3ef",
+      "preimage_state": "present",
+      "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "a982a6cfa2cda21b64d6e54ad5c21a7cd6b57c0d9437b58ab5cf2d4d06de50dc",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpc.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 10058,
+      "postimage_path": "postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpc.kt",
+      "postimage_sha256": "58c05b44b3fa8a11d75caa07836d471d800566b49fdad5ab3980983245be2dc1",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpc.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "e098117b0d2e625b9ff73a08ed30d3f7623d6ca3186465b5b3fb25b277221641",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpcConnectionOwner.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 13886,
+      "postimage_path": "postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpcConnectionOwner.kt",
+      "postimage_sha256": "05ff7cf0330ef2e527d934d3a02151375171c4cc03672d8d8548dcd405660af0",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterScopedRpcConnectionOwner.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "7c17ab0376dbf292b835670c623795d58443304c4656b6650ada8635cb79fae5",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterTargetRpcSource.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 7579,
+      "postimage_path": "postimages/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterTargetRpcSource.kt",
+      "postimage_sha256": "860473966840b6746cd89f3ef67a1bff1feba0d068826e457206420c4bf65663",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalMasterTargetRpcSource.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "ca5b3058d2f6f24bc5c88656bee36d3b3a5dc0e5bad2d014246aa5d242c52ea4",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRpcReplyCodecV1.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 28049,
+      "postimage_path": "postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRpcReplyCodecV1.kt",
+      "postimage_sha256": "b393fd2ebfc1307418f2ddc0f9f4f4dacc174e4425d5e283152949af03eaa59e",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRpcReplyCodecV1.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "6d243758cccf0f5aae30863ba94a327591434b4427615f724ee9e654a6eeb6ad",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkLanOwner.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 5340,
+      "postimage_path": "postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkLanOwner.kt",
+      "postimage_sha256": "db16cb6696e0ad23a8988556fefca300383a67c976fec4ab5d56b1f272d1e9ae",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkLanOwner.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "2a3e8cb21584e5395bc52639758c0f192bbd9fe9bcf714d1f32791aae3b243a6",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoiseIdentity.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 1413,
+      "postimage_path": "postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoiseIdentity.kt",
+      "postimage_sha256": "deccf2405b284b13c4f20c53fc563145950978fda4600d23dd7a9376eb8bcadf",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoiseIdentity.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "b5f8f15723b7421c5c1c6629fa1ce2b843cbd481aad860de6f805319d5673ea7",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoisePeer.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 8757,
+      "postimage_path": "postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoisePeer.kt",
+      "postimage_sha256": "c89ec184c7d0a5163de9203f032c491a89c8bcac382bdc63e7aba89be4162191",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSdkNoisePeer.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "cf52a46337009abcd242344cc2ec3bb7e702988345d7b2cdad3a1fd1920efc50",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkLanOwner.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 24133,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkLanOwner.kt",
+      "postimage_sha256": "d8c90ed7af7b3c01d0dd5740808688d97701e20913f607e0104fbf0e35ee9fad",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkLanOwner.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "71b6b2d8a0cf74fde25eb7c6d1cf320109d60a694ae7cdb798dae59810fd1688",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNativePrelude.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 24215,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNativePrelude.kt",
+      "postimage_sha256": "cab52b2d3f1bb42e5eb0f02d1ea594c6090d0b363b87ceb0f7b0dfa86785c0a6",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNativePrelude.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "91446094680ec5c210faa45b6202b97ae049a5ff7b2f3c1d88b0d899cdd755b9",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseAssociation.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 6923,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseAssociation.kt",
+      "postimage_sha256": "c721f9448313f757c19297d628bf21dc08181a06064cf34ae32ae40e734daf74",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseAssociation.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "0d16e587a7d307614549d0a1c4e909b1581193658dba20b8e42300f97031ed65",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseIdentity.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 1520,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseIdentity.kt",
+      "postimage_sha256": "7d39855b3a4e0371cc536030e3ac3a4f84afccc04041d379c4ef9da886a32918",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoiseIdentity.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "ec4ca7ee97374e7a78d61990575d3fa2a74bfff4bde11d69a1a76af396b5f717",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoisePeer.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 5228,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoisePeer.kt",
+      "postimage_sha256": "914d873d21589e5fe311d5285791e33497d18468cb9a1718ad5f95678c6ffe55",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkNoisePeer.kt"
+    },
+    {
+      "absence_proof": {
+        "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+        "proof_sha256": "9dfeb91e3e84438d8524f5627134b5f60c403fc71fbaf9565f6eb77f396ce547",
+        "scope": "live app filesystem path only; not native/journal/authenticated absence",
+        "state": "absent",
+        "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkScopedRpc.kt"
+      },
+      "action": "add",
+      "postimage_bytes": 34486,
+      "postimage_path": "postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkScopedRpc.kt",
+      "postimage_sha256": "cadc470257406f372de50a51970bb237f0a51038ec698b0f80e5416662fd972f",
+      "preimage_path": null,
+      "preimage_sha256": null,
+      "preimage_state": "absent",
+      "target": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSdkScopedRpc.kt"
+    }
+  ],
+  "requiredMissingRoutes": [
+    "genuine final original scoped RPC source and dispatch",
+    "exact per-target explicit prelude/scoped serving owner plus Android original entry",
+    "original-master enrollment/admission DATA delivery",
+    "target exact original challenge DATA readback delivery",
+    "app root/UI and genuine hardware/platform execution"
+  ],
+  "sourceIntegrity": "Pre/post/absence and live baseline hashes checked by lead; NOT compilation/behavior",
+  "verification": "NOT_RUN; no independent acceptance",
+  "dependenciesFile": "sdk-dependencies.json",
+  "dependencyCaveat": "SDK packet observed ORIGINAL UI packet, not corrected UI patch. Reconcile changed dependency bytes before any integration."
+}

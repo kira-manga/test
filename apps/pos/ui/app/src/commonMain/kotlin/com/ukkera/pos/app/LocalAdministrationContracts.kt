@@ -34,6 +34,8 @@ sealed interface LocalAdministrationPendingResult {
 /** UI port; no passwords in commands, drafts, pending records, receipts or diagnostics. */
 interface LocalAdministrationUiGateway {
     val configured: Boolean
+    /** Separate original-owned creation lane; unavailable unless actually composed. */
+    val employeeCreation: LocalEmployeeCreationUiGateway get() = UnavailableLocalEmployeeCreation
     suspend fun read(query: LocalAdministrationQuery): LocalAdministrationReadResult
     suspend fun pending(): LocalAdministrationPendingResult
     /** Durably prepare the exact data before the user confirms execution. Never executes it. */

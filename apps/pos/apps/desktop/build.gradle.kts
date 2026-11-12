@@ -23,6 +23,12 @@ dependencies {
     implementation(project(":ui:app"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
+    implementation(libs.jna)
+    testImplementation(kotlin("test-junit"))
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty("ukkera.desktop.packaging.dir", layout.projectDirectory.dir("packaging").asFile.absolutePath)
 }
 
 compose.desktop {

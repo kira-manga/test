@@ -19,7 +19,13 @@ import com.ukkera.pos.app.ui.AppLanguage
 import kotlinx.coroutines.delay
 
 /** Default remains explicitly unconfigured until trusted local composition supplies dependencies. */
-fun main(args: Array<String>) = runUkkeraDesktop(AppDependencies(platform = PlatformCapabilities(PlatformFamily.DESKTOP)), args)
+fun main(args: Array<String>) {
+    // Bounded packaging diagnostic; runs before any window, storage or service is opened.
+    args.firstOrNull { it.startsWith(DesktopIdentityProbe.ARGUMENT) }?.let {
+        kotlin.system.exitProcess(DesktopIdentityProbe.run(java.io.File(it.removePrefix(DesktopIdentityProbe.ARGUMENT))))
+    }
+    runUkkeraDesktop(AppDependencies(platform = PlatformCapabilities(PlatformFamily.DESKTOP)), args)
+}
 
 /**
  * Typed launcher for the actual root-composed client. Never opens/stops a master or invents a

@@ -147,6 +147,8 @@ public enum class LocalAuthEventKind {
     ACCOUNT_ACTIVATED,
     /** Separate delegated creation audit; sessionId identifies the creator, not a new login. */
     ACCOUNT_CREATED,
+    /** Same-original delegated creation tombstone, with no target/account/session effect. */
+    ACCOUNT_CREATION_CANCELLED,
 }
 
 /** Private durable authentication audit. No password, verifier, secret or bearer is retained. */
@@ -172,6 +174,9 @@ public class LocalAuthEvent(
         if (kind == LocalAuthEventKind.ACCOUNT_CREATED)
             require(operatorId != null && operatorId != targetId && sessionId != null &&
                 accountRevision == Revision(0) && contentDigest != null)
+        if (kind == LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED)
+            require(operatorId != null && operatorId != targetId && sessionId != null &&
+                accountRevision == null && contentDigest != null)
         if (kind == LocalAuthEventKind.ADMINISTRATION_CANCELLED)
             require(operatorId != null && contentDigest != null && accountRevision == null)
         if (kind == LocalAuthEventKind.ACTION_APPROVAL_RETIRED)

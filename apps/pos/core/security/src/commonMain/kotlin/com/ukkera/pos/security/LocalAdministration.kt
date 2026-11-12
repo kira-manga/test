@@ -156,11 +156,39 @@ public sealed interface LocalAdministrationStatus {
  * Same original actor may recover after re-login; another actor is not relabelled as it.
  * Input credentials/passwords remain caller-owned. Missing runtime/custody never yields a pass.
  */
-public interface LocalAdministrationService {
+public interface LocalAdministrationService : LocalEmployeeCreationServiceV1 {
+    /** Current target-scoped input DATA only. Returns no password, permit, safe absence or
+     * first-dispatch handoff. Missing providers remain unavailable. */
+    override public suspend fun employeeCreationContext(operator: LocalGatewayCredentials,
+        target: LocalEmployeeCreationTargetV1): LocalEmployeeCreationContextResultV1 = LocalEmployeeCreationContextResultV1.Unavailable
+    /** Assemble the complete original with actual production codecs and retained admissions
+     * under a confirmed no-write protected read. This does not prepare or submit it. */
+    override public suspend fun captureEmployeeCreationDefinition(operator: LocalGatewayCredentials,
+        draft: LocalEmployeeCreationDraftV1): LocalEmployeeCreationDefinitionResultV1 = LocalEmployeeCreationDefinitionResultV1.Unavailable
+    /** First submission of the complete retained original. Caller owns credentials/password;
+     * an asynchronous adapter must copy them before handing them to its work queue. Providers
+     * must reauthorize the original creator/target at the writer and confirm native settlement.
+     * Reopening or looking up the original cannot reconstruct permission to submit it again.
+     * Unimplemented or incomplete native/history composition stays unavailable. */
+    override public suspend fun executeEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1, newPassword: CharArray?): LocalEmployeeCreationExecutionV1 =
+        LocalEmployeeCreationExecutionV1.Unavailable
+    /** Competes with creation on the same immutable original key. A fresh tombstone requires
+     * the real protected writer and native settlement. A prior Applied result wins unchanged;
+     * no new password, account replacement, login or implicit retry is introduced. */
+    override public suspend fun cancelEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationCancellationV1 =
+        LocalEmployeeCreationCancellationV1.Unavailable
     /** Protected, no-effect input review only. A checked result cannot dispatch or recover a
      * creation. Missing providers remain unavailable; native creation is a separate operation. */
-    public suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
+    override public suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
         original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 = LocalEmployeeCreationReviewV1.Unavailable
+    /** Read the exact retained creation original under the original creator's current
+     * target-bound ADMINISTER grant, including after re-login. A missing provider refuses.
+     * Current account contents never substitute for an original result; this does not create
+     * an account or resolve native close/commit uncertainty. */
+    override public suspend fun lookupEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationStatusV1 = LocalEmployeeCreationStatusV1.Unavailable
     public suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult
     public suspend fun administer(operator: LocalGatewayCredentials, command: LocalAdministrationCommand,
         newPassword: CharArray? = null): LocalCredentialAdministrationResult

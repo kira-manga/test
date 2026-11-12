@@ -168,6 +168,7 @@ internal class RoomLocalSecurityTransaction internal constructor(
     private var actionApprovalFrame: RoomLocalActionApprovalFrame? = null
     private var deviceRevocationFrame: RoomLocalDeviceRevocationFrame? = null
     private var accountAdministrationFrame: RoomLocalAccountAdministrationFrame? = null
+    private var employeeCreationFrame: RoomLocalEmployeeCreationFrame? = null
     private var administrationObservationFrame: RoomLocalAdministrationObservationFrame? = null
     private var provisioningFrame: RoomLocalProvisioningFrame? = null
     private var authenticationFrame: RoomLocalAuthenticationFrame? = null
@@ -250,6 +251,29 @@ internal class RoomLocalSecurityTransaction internal constructor(
         if (hasFinalizationFrame()) refuse()
         accountAdministrationFrame = frame
         frame.initialize(this)
+    }
+
+    internal suspend fun attachEmployeeCreationFrame(frame: RoomLocalEmployeeCreationFrame,
+        inputs: RoomLocalEmployeeCreationInputs) {
+        ensureCurrent()
+        if (hasFinalizationFrame()) refuse()
+        employeeCreationFrame = frame
+        frame.initialize(this, inputs)
+    }
+
+    internal suspend fun requireEmployeeCreationWriteCount(frame: RoomLocalEmployeeCreationFrame, expected: Int) {
+        ensureCurrent()
+        if (employeeCreationFrame !== frame || expected !in 0..RuntimeHistoryProfileV2.MAX_CHANGES || writes != expected) refuse()
+    }
+
+    internal fun beginHistoryEmployeeCreation(frame: RoomLocalEmployeeCreationFrame, capture: RuntimeDelegatedEmployeeCreationCapture) {
+        if (employeeCreationFrame !== frame) refuse()
+        checkNotNull(database.runtimeHistoryOwner).frameFor(connection).beginEmployeeCreation(capture)
+    }
+
+    internal fun completeHistoryEmployeeCreation(frame: RoomLocalEmployeeCreationFrame, capture: RuntimeDelegatedEmployeeCreationCapture) {
+        if (employeeCreationFrame !== frame) refuse()
+        checkNotNull(database.runtimeHistoryOwner).frameFor(connection).completeEmployeeCreation(capture)
     }
 
     internal suspend fun attachAdministrationObservationFrame(frame: RoomLocalAdministrationObservationFrame) {
@@ -446,6 +470,12 @@ internal class RoomLocalSecurityTransaction internal constructor(
     internal fun completeHistorySessionRevocation(capture: RuntimeSessionRevocationHistoryCapture) {
         database.runtimeHistoryOwner?.frameFor(connection)?.completeSessionRevocation(capture)
     }
+    internal fun beginHistoryEmployeeCreationCancellation(capture: RuntimeEmployeeCreationCancellationCapture) {
+        checkNotNull(database.runtimeHistoryOwner).frameFor(connection).beginEmployeeCreationCancellation(capture)
+    }
+    internal fun completeHistoryEmployeeCreationCancellation(capture: RuntimeEmployeeCreationCancellationCapture) {
+        checkNotNull(database.runtimeHistoryOwner).frameFor(connection).completeEmployeeCreationCancellation(capture)
+    }
     internal fun beginHistoryAdministrationCancellation(capture: RuntimeAdministrationCancellationCapture) {
         database.runtimeHistoryOwner?.frameFor(connection)?.beginAdministrationCancellation(capture)
     }
@@ -474,13 +504,14 @@ internal class RoomLocalSecurityTransaction internal constructor(
         checkNotNull(database.runtimeHistoryOwner).frameFor(connection).completeAdditionalDeviceRevocation(capture)
     }
     private fun hasFinalizationFrame(): Boolean = originalInstallationFrame != null || authenticationFrame != null || actionApprovalFrame != null || deviceRevocationFrame != null ||
-        accountAdministrationFrame != null || administrationObservationFrame != null || provisioningFrame != null || branchInstallationFrame != null || serialPublicationFrame != null
+        accountAdministrationFrame != null || employeeCreationFrame != null || administrationObservationFrame != null || provisioningFrame != null || branchInstallationFrame != null || serialPublicationFrame != null
 
     internal suspend fun finishNormalReturn() {
         ensureCommittable()
         actionApprovalFrame?.prepareNormalReturn(this)
         deviceRevocationFrame?.prepareNormalReturn(this)
         accountAdministrationFrame?.prepareNormalReturn(this)
+        employeeCreationFrame?.prepareNormalReturn(this)
         administrationObservationFrame?.prepareNormalReturn(this)
         provisioningFrame?.prepareNormalReturn(this)
         branchInstallationFrame?.prepareNormalReturn(this)
@@ -493,6 +524,7 @@ internal class RoomLocalSecurityTransaction internal constructor(
         actionApprovalFrame?.finishNow()
         deviceRevocationFrame?.finishNow()
         accountAdministrationFrame?.finishNow()
+        employeeCreationFrame?.finishNow()
         administrationObservationFrame?.finishNow()
         provisioningFrame?.finishNow()
         branchInstallationFrame?.finishNow()
@@ -511,6 +543,7 @@ internal class RoomLocalSecurityTransaction internal constructor(
         } finally {
             deviceRevocationFrame?.close()
             accountAdministrationFrame?.close()
+            employeeCreationFrame?.close()
             administrationObservationFrame?.close()
             provisioningFrame?.close()
             branchInstallationFrame?.close()

@@ -70,10 +70,16 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     private var sessionRevocationEvidence: RuntimeSessionRevocationHistoryEvidence? = null
     private var administrationCancellationCapture: RuntimeAdministrationCancellationCapture? = null
     private var administrationCancellationEvidence: RuntimeAdministrationCancellationEvidenceV1? = null
+    private var employeeCreationCancellationCapture: RuntimeEmployeeCreationCancellationCapture? = null
+    private var employeeCreationCancellationEvidence: RuntimeEmployeeCreationCancellationEvidenceV1? = null
+    private var employeeCreationCancellationPreparedIntentDigest: PayloadDigest? = null
     private var deviceRevocationCapture: RuntimeDeviceRevocationCapture? = null
     private var deviceRevocationEvidence: RuntimeDeviceRevocationEvidenceV1? = null
     private var additionalDeviceRevocationCapture: RuntimeDeviceRevocationCaptureV2? = null
     private var additionalDeviceRevocationEvidence: RuntimeDeviceRevocationEvidenceV2? = null
+    private var employeeCreationCapture: RuntimeDelegatedEmployeeCreationCapture? = null
+    private var employeeCreationEvidence: RuntimeDelegatedEmployeeCreationEvidenceV1? = null
+    private var employeeCreationPreparedIntentDigest: PayloadDigest? = null
     private var employeeProvisioningCapture: RuntimeEmployeeProvisioningCapture? = null
     private var employeeProvisioningEvidence: LocalEmployeeEnrollmentEffectEvidence? = null
     private var employeeProvisioningNative: NativeEmployeeProvisioningFrame? = null
@@ -115,7 +121,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     }
     internal fun bindView(value: TransactionView, context: CoroutineContext, principal: LocalEmployeePrincipal) {
         body(); check(view == null || view === value); check(context == coroutineContext)
-        check(employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+        check(employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null)
         check(principal.scope==coordinates.scope && (writerActor==null || writerActor==principal.actorId))
@@ -138,9 +144,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         body(); requireNoApprovalRetirement(); check(principal.scope == coordinates.scope && writerActor == principal.actorId &&
             originalInvocation == null && commandAuthorizationCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
-            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         check(applied || mustCommitBefore == null)
         check(!foodCheckScalarRefusal || !applied && request.command == StockStreamingCommandsV2.FOOD)
         check(applied || request.command != StockStreamingCommandsV2.FOOD || foodCheckScalarRefusal)
@@ -171,9 +177,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         contentDigest: PayloadDigest? = null) {
         body(); requireNoApprovalRetirement()
         check(sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
-            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         check(authenticationCapture == null && (authenticationEvidence == null ||
             value == purpose && actor == actorId && request == requestId && contentDigest == null))
         if (throttleEvidence != null && value != purpose) {
@@ -184,8 +190,8 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         contentDigest?.let { requestDigest = it }
     }
     internal fun captureThrottle(evidence: RuntimeThrottleEvidenceV1) {
-        body(); requireNoApprovalRetirement(); check(throttleEvidence == null && evidence.scope == coordinates.scope && operationId == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+        body(); requireNoApprovalRetirement(); check(throttleEvidence == null && evidence.scope == coordinates.scope && operationId == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null)
         evidence.validate()
@@ -208,10 +214,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             approvalIssuanceEvidence == null && approvalUseCapture == null && operationId == null &&
             authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && originalInvocation == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && originalInvocation == null &&
             capture.requestor.scope == coordinates.scope && capture.images.isEmpty())
         val throttle = checkNotNull(throttleEvidence)
         check(throttle.actorId == capture.approver.actorId && throttle.deviceId == capture.approver.deviceId &&
@@ -344,10 +350,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             authenticationCapture == null && authenticationEvidence == null && throttleEvidence == null &&
             approvalUseCapture == null && !approvalAttemptCompletion && approvalIssuanceCapture == null && approvalIssuanceEvidence == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null &&
             employeePolicyActivationCapture == null && employeePolicyActivationEvidence == null && employeePolicyActivationNative == null &&
             deviceAdmissionCapture == null && deviceAdmissionEvidence == null && deviceAdmissionNative == null &&
             nativeOriginalCapture == null && installationReceipt == null && definitionBytes == null && factBytes == null &&
@@ -529,10 +535,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             capture.images.isEmpty() && operationId == null && resources.isEmpty() &&
             !approvalAttemptCompletion && approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null &&
             throttleEvidence == null && authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
-            sessionRevocationCapture == null && sessionRevocationEvidence == null && administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            sessionRevocationCapture == null && sessionRevocationEvidence == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null && employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null && employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginalCapture == null && installationReceipt == null && finalDeadline == null && !finalDeadlineCaptured &&
             definitionBytes == null && factBytes == null)
         val event = capture.event()
@@ -561,10 +567,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             capture.images.isEmpty() && operationId == null && resources.isEmpty() &&
             !approvalAttemptCompletion && approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null &&
             throttleEvidence == null && authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
-            sessionRevocationCapture == null && sessionRevocationEvidence == null && administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            sessionRevocationCapture == null && sessionRevocationEvidence == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null && employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null && employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginalCapture == null && installationReceipt == null && finalDeadline == null && !finalDeadlineCaptured &&
             definitionBytes == null && factBytes == null)
         serialPublicationCapture = capture
@@ -608,11 +614,11 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             operationId == null && resources.isEmpty() && definitionBytes == null && factBytes == null &&
             authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
             employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null &&
             employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             approvalIssuanceCapture == null && approvalIssuanceEvidence == null &&
@@ -730,10 +736,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             approvalIssuanceCapture == null && approvalIssuanceEvidence == null && throttleEvidence == null &&
             authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && originalInvocation == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && originalInvocation == null &&
             capture.images.isEmpty() && capture.consumed == null)
         approvalUseCapture = capture
     }
@@ -741,9 +747,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         body(); requireNoApprovalRetirement(); check(authenticationCapture == null && authenticationEvidence == null && operationId == null &&
             capture.scope == coordinates.scope && originalInvocation == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
-            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         if (capture.action == RuntimeAuthenticationActionV1.SIGN_IN) {
             val throttle = checkNotNull(throttleEvidence)
             check(throttle.outcome == CredentialAttemptOutcome.MATCH && throttle.denial == null &&
@@ -758,16 +764,18 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         val authentication = authenticationCapture
         val revocation = sessionRevocationCapture
         val employee = employeeProvisioningCapture
+        val creation = employeeCreationCapture
         val policy = employeePolicyActivationCapture
         val admission = deviceAdmissionCapture
         val cancellation = administrationCancellationCapture
+        val creationCancellation = employeeCreationCancellationCapture
         val device = deviceRevocationCapture
         val additionalDevice = additionalDeviceRevocationCapture
         val approvalIssue = approvalIssuanceCapture
         val approvalRetirement = approvalRetirementCapture
         val serialPublication = serialPublicationCapture
         val approvalUse = approvalUseCapture
-        check(listOfNotNull(authentication, revocation, employee, policy, admission, cancellation, device, additionalDevice,
+        check(listOfNotNull(authentication, revocation, employee, creation, policy, admission, cancellation, creationCancellation, device, additionalDevice,
             approvalIssue, approvalRetirement, approvalUse, serialPublication).size <= 1)
         if (authentication != null) {
             check(binding.key.scope == authentication.scope && authentication.images.size < RuntimeAuthenticationEvidenceV1.MAX_IMAGES)
@@ -779,11 +787,17 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             check(binding.key == ProtectedLocalRecordKey.AuthEvent(cancellation.scope, cancellation.requestId) &&
                 binding.revision == Revision(0) && cancellation.images.size < RuntimeAdministrationCancellationEvidenceV1.MAX_IMAGES)
             cancellation.images += RuntimeAuthenticationImageV1.capture(binding, sha256(plaintext))
+        } else if (creationCancellation != null) {
+            check(binding.key == ProtectedLocalRecordKey.AuthEvent(creationCancellation.scope, creationCancellation.requestId) &&
+                binding.revision == Revision(0) && creationCancellation.images.size < RuntimeEmployeeCreationCancellationEvidenceV1.MAX_IMAGES)
+            creationCancellation.images += RuntimeAuthenticationImageV1.capture(binding, sha256(plaintext))
         } else if (device != null) {
             check(binding.key.scope == device.scope && device.images.size < RuntimeDeviceRevocationEvidenceV1.MAX_IMAGES)
             device.images += RuntimeDeviceRevocationImageV1.capture(binding, sha256(plaintext))
         } else if (additionalDevice != null) {
             additionalDevice.captureImage(binding, sha256(plaintext))
+        } else if (creation != null) {
+            creation.captureImage(binding, sha256(plaintext))
         } else if (employee != null) {
             employee.captureImage(binding, sha256(plaintext))
         } else if (policy != null) {
@@ -813,9 +827,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
             operationId == null && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && capture.images.isEmpty() &&
@@ -833,14 +847,45 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         // observations only declare a window; native's final observation is separate.
         sessionRevocationEvidence = evidence; sessionRevocationCapture = null; capture.images.clear()
     }
+    internal fun beginEmployeeCreationCancellation(capture: RuntimeEmployeeCreationCancellationCapture) {
+        body(); requireNoApprovalRetirement()
+        check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
+            operationId == null && authenticationCapture == null && authenticationEvidence == null &&
+            commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
+            employeePolicyActivationCapture == null && employeePolicyActivationEvidence == null &&
+            deviceAdmissionCapture == null && deviceAdmissionEvidence == null &&
+            approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null &&
+            masterLifecycleEvidence == null &&
+            throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
+            deviceRevocationCapture == null && deviceRevocationEvidence == null &&
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
+            definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && capture.images.isEmpty() &&
+            capture.scope == coordinates.scope && purpose == capture.purpose && actorId == capture.actorId &&
+            requestId == capture.requestId && requestDigest == capture.semanticDigest && resources.isEmpty())
+        employeeCreationCancellationCapture = capture
+    }
+    internal fun completeEmployeeCreationCancellation(capture: RuntimeEmployeeCreationCancellationCapture) {
+        body()
+        check(employeeCreationCancellationCapture === capture && employeeCreationCancellationEvidence == null &&
+            administrationCancellationCapture == null && administrationCancellationEvidence == null)
+        val evidence = capture.evidence()
+        val original = evidence.original()
+        check(evidence.purpose == purpose && evidence.authorization.actorId == actorId &&
+            original.requestId == requestId && original.contentDigest == requestDigest)
+        employeeCreationCancellationEvidence = evidence
+        employeeCreationCancellationCapture = null
+        capture.images.clear()
+    }
     internal fun beginAdministrationCancellation(capture: RuntimeAdministrationCancellationCapture) {
         body(); requireNoApprovalRetirement()
         check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
             operationId == null && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && capture.images.isEmpty() &&
@@ -850,7 +895,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     }
     internal fun completeAdministrationCancellation(capture: RuntimeAdministrationCancellationCapture) {
         body()
-        check(administrationCancellationCapture === capture && administrationCancellationEvidence == null)
+        check(administrationCancellationCapture === capture && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null)
         val evidence = capture.evidence()
         check(evidence.purpose == purpose && evidence.authorization.actorId == actorId &&
             evidence.command.requestId == requestId && evidence.semanticDigest == requestDigest)
@@ -899,9 +944,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
             operationId == null && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && employeeProvisioningCapture == null && employeeProvisioningEvidence == null &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && capture.images.isEmpty() &&
@@ -924,11 +969,11 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
             operationId == null && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null &&
             employeePolicyActivationCapture == null && employeePolicyActivationEvidence == null && employeePolicyActivationNative == null &&
             deviceAdmissionCapture == null && deviceAdmissionEvidence == null && deviceAdmissionNative == null &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null && !approvalAttemptCompletion &&
@@ -952,6 +997,39 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             matchesOriginalCohostAdmissionBefore(evidence.authorization.deviceId, evidence.authorization.dependencies.admission))
         additionalDeviceRevocationEvidence = evidence; additionalDeviceRevocationCapture = null; capture.images.clear()
     }
+    internal fun beginEmployeeCreation(capture: RuntimeDelegatedEmployeeCreationCapture) {
+        body(); requireNoApprovalRetirement()
+        check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
+            operationId == null && purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION &&
+            capture.scope == coordinates.scope && actorId == capture.actorId && requestId == capture.requestId &&
+            requestDigest == capture.semanticDigest && employeeCreationCapture == null && employeeCreationEvidence == null &&
+            authenticationCapture == null && authenticationEvidence == null && commandAuthorizationCapture == null &&
+            nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured && throttleEvidence == null &&
+            installationReceipt == null && masterLifecycleEvidence == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
+            deviceRevocationCapture == null && deviceRevocationEvidence == null &&
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null &&
+            employeePolicyActivationCapture == null && employeePolicyActivationEvidence == null && employeePolicyActivationNative == null &&
+            deviceAdmissionCapture == null && deviceAdmissionEvidence == null && deviceAdmissionNative == null &&
+            approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null &&
+            serialPublicationCapture == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
+            definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty())
+        capture.requireReadyForSealing()
+        employeeCreationCapture = capture
+    }
+
+    internal fun completeEmployeeCreation(capture: RuntimeDelegatedEmployeeCreationCapture) {
+        body()
+        check(employeeCreationCapture === capture && employeeCreationEvidence == null)
+        val evidence = capture.evidence()
+        val original = evidence.original()
+        check(purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION && operationId == null &&
+            actorId == original.operatorId && requestId == original.requestId && requestDigest == original.contentDigest)
+        employeeCreationEvidence = evidence
+        employeeCreationCapture = null
+    }
+
     internal fun beginEmployeeProvisioning(capture: RuntimeEmployeeProvisioningCapture) {
         body(); requireNoApprovalRetirement()
         check(securityTransaction != null && view == null && writerActor == null && originalInvocation == null &&
@@ -959,10 +1037,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             purpose == RuntimeWritePurposeV2.PROVISIONING && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() && capture.images.isEmpty() &&
             capture.scope == coordinates.scope && capture.native.frameId == native.frameId &&
             capture.request.action == LocalProvisioningAction.PROVISION_ACCOUNT && capture.request.targetId != coordinates.firstActorId)
@@ -988,10 +1066,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             purpose == RuntimeWritePurposeV2.PROVISIONING && authenticationCapture == null && authenticationEvidence == null &&
             commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null && !finalDeadlineCaptured &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null &&
             employeePolicyActivationCapture == null && deviceAdmissionCapture == null && employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() && capture.images.isEmpty() &&
             capture.scope == coordinates.scope && capture.native.frameId == native.frameId &&
@@ -1019,10 +1097,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             approvalIssuanceCapture == null && approvalIssuanceEvidence == null && approvalUseCapture == null && !approvalAttemptCompletion &&
             serialPublicationCapture == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
             throttleEvidence == null && installationReceipt == null && sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
-            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeProvisioningNative == null &&
+            employeeProvisioningCapture == null && employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null &&
             employeePolicyActivationCapture == null && employeePolicyActivationEvidence == null && employeePolicyActivationNative == null &&
             deviceAdmissionCapture == null && deviceAdmissionEvidence == null && deviceAdmissionNative == null &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() && capture.images.isEmpty() &&
@@ -1059,7 +1137,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         authenticationEvidence = evidence; authenticationCapture = null; capture.images.clear()
     }
     internal fun recordDependency(fields: List<String>) {
-        body(); check(employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+        body(); check(employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null)
         val encoded = frame(fields.map(String::encodeToByteArray))
@@ -1073,7 +1151,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         body()
         context.ensureActive()
         check(context == coroutineContext && view === caller && writerActor != null && originalInvocation == null &&
-            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
+            employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         val observation = native.originalBusinessPublicationObservation ?: return null
         if (businessPublications == null) {
             check(observation.frameId == native.frameId && observation.originalAnchorDigest == native.original.recordDigest)
@@ -1083,7 +1161,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         return observation.snapshot
     }
     internal fun captureInstallation(snapshot: LocalBranchInstallationSnapshotV2, receipt: LocalBranchInstallationReceiptV2) {
-        body(); requireNoApprovalRetirement(); check(employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+        body(); requireNoApprovalRetirement(); check(employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null &&
             native.original.record.parent == null && native.original.record.definition?.definitionDigest == snapshot.definitionDigest)
@@ -1095,9 +1173,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         provenance: NativeOriginalJournalProvenanceV1) {
         body(); requireNoApprovalRetirement(); check(originalInvocation != null && nativeOriginalCapture == null && commandAuthorizationCapture == null && finalDeadline == null &&
             sessionRevocationCapture == null && sessionRevocationEvidence == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
-            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
+            additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         nativeOriginalCapture = RuntimeNativeOriginalImportCapture.capture(plan, projection,
             checkNotNull(originalInvocation), checkNotNull(originalLease), provenance)
         operationId=DomainId(plan.operationId.value); requestId=checkNotNull(operationId)
@@ -1109,8 +1187,8 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     internal fun bindNativeOriginalView(store: AtomicMasterStore, invocation: NativeOriginalIntakeInvocation,
         lease: NativeOriginalRetainedLease, view: TransactionView) {
         body(); requireNoApprovalRetirement(); owner.requireNativeOriginal(store,invocation,lease)
-        check(originalInvocation == null && this.view == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
-            administrationCancellationCapture == null && administrationCancellationEvidence == null &&
+        check(originalInvocation == null && this.view == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            administrationCancellationCapture == null && employeeCreationCancellationCapture == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null &&
             deviceRevocationCapture == null && deviceRevocationEvidence == null &&
             additionalDeviceRevocationCapture == null && additionalDeviceRevocationEvidence == null)
         originalStore = store; originalInvocation = invocation; originalLease = lease; this.view = view
@@ -1152,8 +1230,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
 
     private suspend fun prepareNative() {
         body(); check(connection.inTransaction()); phase = Phase.PREPARING
-        check(authenticationCapture == null && sessionRevocationCapture == null && administrationCancellationCapture == null &&
+        check(authenticationCapture == null && sessionRevocationCapture == null && administrationCancellationCapture == null && employeeCreationCancellationCapture == null &&
             deviceRevocationCapture == null && additionalDeviceRevocationCapture == null &&
+            employeeCreationCapture == null &&
             employeeProvisioningCapture == null && employeePolicyActivationCapture == null && deviceAdmissionCapture == null &&
             approvalIssuanceCapture == null && approvalRetirementCapture == null && serialPublicationCapture == null)
         // Only unfinished captures are forbidden here. Lifecycle evidence is installed
@@ -1164,9 +1243,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         requireImageCensus()
         if (changes == 0L) {
             check(commandAuthorizationCapture == null && nativeOriginalCapture == null && finalDeadline == null &&
-                sessionRevocationEvidence == null && administrationCancellationEvidence == null && deviceRevocationEvidence == null &&
+                sessionRevocationEvidence == null && administrationCancellationEvidence == null && employeeCreationCancellationEvidence == null && deviceRevocationEvidence == null &&
                 additionalDeviceRevocationEvidence == null &&
-                employeeProvisioningEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+                employeeProvisioningEvidence == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
                 employeePolicyActivationEvidence == null && deviceAdmissionEvidence == null && approvalIssuanceCapture == null && approvalIssuanceEvidence == null &&
                 approvalRetirementEvidence == null && serialPublicationEvidence == null && serialPublicationOrigin == null &&
                 masterLifecycleEvidence == null)
@@ -1193,9 +1272,12 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         val authentication = authenticationEvidence
         val sessionRevocation = sessionRevocationEvidence
         val administrationCancellation = administrationCancellationEvidence
+        val employeeCreationCancellation = employeeCreationCancellationEvidence
+        check(administrationCancellation == null || employeeCreationCancellation == null)
         val deviceRevocation = deviceRevocationEvidence
         val additionalDeviceRevocation = additionalDeviceRevocationEvidence
         check(deviceRevocation == null || additionalDeviceRevocation == null)
+        val creation = employeeCreationEvidence
         val employeeProvisioning = employeeProvisioningEvidence
         val employeePolicyActivation = employeePolicyActivationEvidence
         val deviceAdmission = deviceAdmissionEvidence
@@ -1219,20 +1301,20 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         }
         val nativeOriginal = nativeOriginalCapture?.evidence(native.original.recordDigest, changes.toInt())
         if (nativeOriginal != null) check(originalInvocation != null && commandAuthorization == null && authentication == null &&
-            administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             throttleEvidence == null && definitionBytes == null && factBytes == null && purpose == RuntimeWritePurposeV2.COMMAND_APPLY &&
             nativeOriginal.producer.operationId.value == operationId?.value && nativeOriginal.producer.originalActorId == actorId &&
             nativeOriginal.producer.semanticDigest == requestDigest)
         if (commandAuthorization != null) check(commandAuthorization.purposeTag == purpose.tag &&
             commandAuthorization.operationId.value == operationId?.value && commandAuthorization.operationId.value == requestId.value &&
             commandAuthorization.semanticDigest == requestDigest && commandAuthorization.authorization.actorId == actorId &&
-            definitionBytes == null && factBytes == null && authentication == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            definitionBytes == null && factBytes == null && authentication == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             throttleEvidence == null && originalInvocation == null)
         if (approvalIssuance != null) check(purpose == RuntimeWritePurposeV2.APPROVAL_ISSUE &&
             approvalIssuance.requestor.actorId == actorId && approvalIssuance.approvalId == requestId &&
             approvalIssuance.value().issueRequestDigest == requestDigest && changes == 4L && operationId == null &&
             commandAuthorization == null && authentication == null && sessionRevocation == null &&
-            administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && employeeProvisioning == null &&
+            administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && employeeProvisioning == null &&
             employeePolicyActivation == null && nativeOriginal == null && finalDeadline == null &&
             originalInvocation == null && definitionBytes == null && factBytes == null && resources.isEmpty())
         if (approvalRetirement != null) check(purpose == RuntimeWritePurposeV2.APPROVAL_RETIRE &&
@@ -1244,8 +1326,8 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             approvalRetirement.beforeCommandSequence.value == originalParent.commandSequence && approvalRetirement.beforeCommandDigest == originalParent.commandDigest &&
             changes == 1L && operationId == null && resources.isEmpty() &&
             approvalIssuance == null && approvalUseCapture == null && !approvalAttemptCompletion && throttleEvidence == null &&
-            commandAuthorization == null && authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            commandAuthorization == null && authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null && definitionBytes == null && factBytes == null &&
             branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
             PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
@@ -1256,8 +1338,8 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             serialPublication.requestValue().requestId == requestId && serialPublication.semanticDigest == requestDigest &&
             serialPublicationOrigin != null && changes == 1L && operationId == null && resources.isEmpty() &&
             approvalIssuance == null && approvalRetirement == null && approvalUseCapture == null && !approvalAttemptCompletion && throttleEvidence == null &&
-            commandAuthorization == null && authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            commandAuthorization == null && authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null && definitionBytes == null && factBytes == null &&
             branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
             PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
@@ -1272,8 +1354,8 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             approvalIssuance == null && approvalRetirement == null && approvalUseCapture == null && !approvalAttemptCompletion &&
             throttleEvidence == null && serialPublication == null && serialPublicationOrigin == null &&
             commandAuthorization == null && authentication == null && sessionRevocation == null &&
-            administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null &&
+            administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivation == null &&
             employeePolicyActivationNative == null && deviceAdmissionNative == null &&
             nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null &&
             branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
@@ -1285,7 +1367,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             sessionRevocation.command.requestId == requestId && sessionRevocation.semanticDigest == requestDigest &&
             changes == RuntimeSessionRevocationHistoryEvidence.MAX_IMAGES.toLong() &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
-            operationId == null && authentication == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null && commandAuthorization == null &&
+            operationId == null && authentication == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null && commandAuthorization == null &&
             nativeOriginal == null && finalDeadline == null && originalInvocation == null)
         if (administrationCancellation != null) check(administrationCancellation.purpose == purpose &&
             administrationCancellation.authorization.scope == coordinates.scope && administrationCancellation.authorization.actorId == actorId &&
@@ -1294,16 +1376,27 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
             operationId == null && authentication == null && sessionRevocation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null &&
             commandAuthorization == null && nativeOriginal == null && finalDeadline == null && originalInvocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && installationReceipt == null)
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && installationReceipt == null)
+        if (employeeCreationCancellation != null) check(employeeCreationCancellation.purpose == purpose &&
+            employeeCreationCancellation.authorization.scope == coordinates.scope && employeeCreationCancellation.authorization.actorId == actorId &&
+            employeeCreationCancellation.original().requestId == requestId && employeeCreationCancellation.original().contentDigest == requestDigest &&
+            changes == RuntimeEmployeeCreationCancellationEvidenceV1.MAX_IMAGES.toLong() &&
+            definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
+            operationId == null && authentication == null && sessionRevocation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null &&
+            commandAuthorization == null && nativeOriginal == null && finalDeadline == null && originalInvocation == null &&
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null &&
+            employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null &&
+            employeePolicyActivation == null && deviceAdmission == null && approvalIssuance == null && approvalRetirement == null &&
+            serialPublication == null && masterLifecycle == null && approvedCommand == null && approvalUseCapture == null && installationReceipt == null)
         if (deviceRevocation != null) check(deviceRevocation.purpose == purpose &&
             deviceRevocation.authorization.scope == coordinates.scope && deviceRevocation.authorization.actorId == actorId &&
             deviceRevocation.command.targetId == coordinates.deviceId && deviceRevocation.command.requestId == requestId &&
             deviceRevocation.semanticDigest == requestDigest && changes == deviceRevocation.images.size.toLong() &&
             changes in RuntimeDeviceRevocationEvidenceV1.MIN_IMAGES.toLong()..RuntimeDeviceRevocationEvidenceV1.MAX_IMAGES.toLong() &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() && operationId == null &&
-            additionalDeviceRevocation == null && authentication == null && sessionRevocation == null && administrationCancellation == null && throttleEvidence == null &&
+            additionalDeviceRevocation == null && authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && throttleEvidence == null &&
             commandAuthorization == null && nativeOriginal == null && finalDeadline == null && originalInvocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && installationReceipt == null)
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivationNative == null && deviceAdmissionNative == null && installationReceipt == null)
         if (additionalDeviceRevocation != null) check(additionalDeviceRevocation.purpose == purpose &&
             additionalDeviceRevocation.authorization.scope == coordinates.scope && additionalDeviceRevocation.authorization.actorId == actorId &&
             additionalDeviceRevocation.command.targetId != coordinates.deviceId && additionalDeviceRevocation.command.requestId == requestId &&
@@ -1312,9 +1405,9 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             additionalDeviceRevocation.semanticDigest == requestDigest && changes == additionalDeviceRevocation.images.size.toLong() &&
             changes in RuntimeDeviceRevocationEvidenceV2.MIN_IMAGES.toLong()..RuntimeDeviceRevocationEvidenceV2.MAX_IMAGES.toLong() &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() && operationId == null &&
-            deviceRevocation == null && authentication == null && sessionRevocation == null && administrationCancellation == null && throttleEvidence == null &&
+            deviceRevocation == null && authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && throttleEvidence == null &&
             commandAuthorization == null && nativeOriginal == null && finalDeadline == null && !finalDeadlineCaptured && originalInvocation == null &&
-            employeeProvisioning == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null &&
+            employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null &&
             deviceAdmission == null && deviceAdmissionNative == null && installationReceipt == null &&
             approvalIssuance == null && approvalRetirement == null && approvalUseCapture == null && !approvalAttemptCompletion &&
             serialPublication == null && serialPublicationOrigin == null &&
@@ -1322,14 +1415,33 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
             RuntimeHistoryCodecV2.roleCommitment(branch) == originalParent.roleCommitment &&
             RuntimeHistoryCodecV2.recoveryCommitment(branch) == originalParent.recoveryCommitment)
-        if (authentication != null) check(authentication.purpose == purpose && authentication.actorId == actorId && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+        if (authentication != null) check(authentication.purpose == purpose && authentication.actorId == actorId && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             authentication.eventId == requestId && changes == authentication.images.size.toLong() &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && originalInvocation == null)
+        if (creation != null) {
+            val original = creation.original()
+            creation.validateStructure()
+            check(purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION && actorId == original.operatorId &&
+                operationId == null && original.scope == coordinates.scope && requestId == original.requestId &&
+                requestDigest == original.contentDigest && changes == creation.images.size.toLong() &&
+                definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
+                authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null &&
+                deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null &&
+                commandAuthorization == null && nativeOriginal == null && finalDeadline == null &&
+                originalInvocation == null && installationReceipt == null && employeeProvisioning == null &&
+                employeeProvisioningNative == null && employeePolicyActivation == null && employeePolicyActivationNative == null &&
+                deviceAdmission == null && deviceAdmissionNative == null && approvalIssuance == null &&
+                approvalRetirement == null && serialPublication == null && masterLifecycle == null && approvalUseCapture == null &&
+                branch.epoch == originalParent.commandEpoch && branch.sequence == originalParent.commandSequence &&
+                PayloadDigest(branch.journalHash) == originalParent.commandDigest &&
+                RuntimeHistoryCodecV2.roleCommitment(branch) == originalParent.roleCommitment &&
+                RuntimeHistoryCodecV2.recoveryCommitment(branch) == originalParent.recoveryCommitment)
+        }
         if (employeeProvisioning != null) check(purpose == RuntimeWritePurposeV2.PROVISIONING && actorId == null && operationId == null &&
             employeeProvisioning.request.scope == coordinates.scope && employeeProvisioning.request.requestId == requestId &&
             employeeProvisioning.request.contentDigest == requestDigest && changes == employeeProvisioning.images.size.toLong() &&
             employeeProvisioningNative?.frameId == native.frameId && definitionBytes == null && factBytes == null &&
-            dependencyRows.isEmpty() && resources.isEmpty() && authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null &&
+            dependencyRows.isEmpty() && resources.isEmpty() && authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null && throttleEvidence == null &&
             commandAuthorization == null && nativeOriginal == null && finalDeadline == null && originalInvocation == null && installationReceipt == null &&
             employeePolicyActivation == null && employeePolicyActivationNative == null && deviceAdmissionNative == null)
         if (employeePolicyActivation != null) check(purpose == RuntimeWritePurposeV2.PROVISIONING && actorId == null && operationId == null &&
@@ -1337,18 +1449,18 @@ internal class RoomRuntimeHistoryFrame internal constructor(
             employeePolicyActivation.request.contentDigest == requestDigest && changes == employeePolicyActivation.images.size.toLong() &&
             changes in 2L..3L && employeePolicyActivationNative?.frameId == native.frameId &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
-            authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             throttleEvidence == null && commandAuthorization == null && nativeOriginal == null && finalDeadline == null &&
-            originalInvocation == null && installationReceipt == null && employeeProvisioning == null && employeeProvisioningNative == null)
+            originalInvocation == null && installationReceipt == null && employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null)
         if (deviceAdmission != null) check(purpose == RuntimeWritePurposeV2.PROVISIONING && actorId == null && operationId == null &&
             deviceAdmission.request.action == LocalProvisioningAction.ADMIT_DEVICE &&
             deviceAdmission.request.scope == coordinates.scope && deviceAdmission.request.requestId == requestId &&
             deviceAdmission.request.contentDigest == requestDigest && changes == deviceAdmission.images.size.toLong() &&
             changes in 3L..4098L && deviceAdmissionNative?.frameId == native.frameId &&
             definitionBytes == null && factBytes == null && dependencyRows.isEmpty() && resources.isEmpty() &&
-            authentication == null && sessionRevocation == null && administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+            authentication == null && sessionRevocation == null && administrationCancellation == null && employeeCreationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
             throttleEvidence == null && commandAuthorization == null && nativeOriginal == null && finalDeadline == null &&
-            originalInvocation == null && installationReceipt == null && employeeProvisioning == null && employeeProvisioningNative == null &&
+            originalInvocation == null && installationReceipt == null && employeeProvisioning == null && employeeCreationCapture == null && employeeCreationEvidence == null && employeeProvisioningNative == null &&
             employeePolicyActivation == null && employeePolicyActivationNative == null &&
             approvalIssuance == null && approvalRetirement == null && approvalUseCapture == null && !approvalAttemptCompletion &&
             serialPublication == null && serialPublicationOrigin == null &&
@@ -1397,7 +1509,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                             if (before != null) check(RuntimeHistoryRowViewV2(before).number("revision") == 0L)
                         } finally { expectedKey.fill(0) }
                     }
-                    (authentication?.images ?: sessionRevocation?.images ?: administrationCancellation?.images)?.get(ordinal)?.let { expected ->
+                    (authentication?.images ?: sessionRevocation?.images ?: administrationCancellation?.images ?: employeeCreationCancellation?.images)?.get(ordinal)?.let { expected ->
                         val expectedKey = expected.key(coordinates.scope)
                         try { check(table == expected.table && captured.mutationKind == expected.mutation.tag &&
                             expectedKey.contentEquals(selectedKey) && after != null &&
@@ -1438,6 +1550,16 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                                     else evidence.accounts.single { it.actorId == expected.recordId }.accountRevision
                                 check(RuntimeHistoryRowViewV2(before).number("revision") == revision.value)
                             }
+                        } finally { expectedKey.fill(0) }
+                    }
+                    creation?.images?.get(ordinal)?.let { expected ->
+                        val expectedKey = expected.key(coordinates.scope)
+                        try {
+                            check(table == expected.table && captured.mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag &&
+                                expectedKey.contentEquals(selectedKey) && before == null && after != null && captured.beforeRowId == null)
+                            val row = RuntimeHistoryRowViewV2(checkNotNull(after))
+                            check(row.number("revision") == 0L && row.number("schemaVersion") == 1L && row.number("formatVersion") == 1L &&
+                                row.text("algorithm") == ProtectedLocalStorageFormat.ALGORITHM && row.text("keyId") == coordinates.storageKeyId.value)
                         } finally { expectedKey.fill(0) }
                     }
                     employeeProvisioning?.images?.get(ordinal)?.let { expected ->
@@ -1486,7 +1608,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                         if (expected.mutation == RuntimeHistoryMutationKindV2.INSERT) check(prior == null)
                         else check(prior?.version == 1L)
                     }
-                    if (employeeProvisioning != null || deviceAdmission != null || administrationCancellation != null ||
+                    if (employeeProvisioning != null || deviceAdmission != null || administrationCancellation != null || employeeCreationCancellation != null ||
                         (deviceRevocation != null || additionalDeviceRevocation != null || employeePolicyActivation != null) &&
                         table == RuntimeHistoryTableV2.AUTH_EVENT)
                         check(prior == null) // Never resurrect an old actor/event/throttle lineage.
@@ -1524,10 +1646,12 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                 owner.requireRetailCustomerReceiptMembershipDelta(this, delta)
                 receiptMembershipDelta = delta
             }
-            val dependencies = if (employeeProvisioning != null) localEmployeeEnrollmentDependenciesV1(employeeProvisioning)
+            val dependencies = if (creation != null) RuntimeDelegatedEmployeeCreationWireV1.dependencies(creation)
+                else if (employeeProvisioning != null) localEmployeeEnrollmentDependenciesV1(employeeProvisioning)
                 else if (employeePolicyActivation != null) localEmployeePolicyActivationDependenciesV1(employeePolicyActivation)
                 else if (deviceAdmission != null) localDeviceAdmissionDependenciesV1(deviceAdmission)
                 else if (sessionRevocation != null) sessionRevocation.dependencies()
+                else if (employeeCreationCancellation != null) RuntimeEmployeeCreationCancellationWireV1.dependencies(employeeCreationCancellation)
                 else if (administrationCancellation != null) RuntimeAdministrationCancellationEvidenceCodec.dependencies(administrationCancellation)
                 else if (deviceRevocation != null) RuntimeDeviceRevocationEvidenceCodec.dependencies(deviceRevocation)
                 else if (additionalDeviceRevocation != null) RuntimeDeviceRevocationEvidenceCodecV2.dependencies(additionalDeviceRevocation)
@@ -1537,10 +1661,12 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                 else if (serialPublication != null) RuntimeSerialPublicationRequestEvidenceCodec.dependencies(serialPublication)
                 else if (throttleOnly) RuntimeThrottleEvidenceCodec.dependencies(checkNotNull(throttle))
                 else definitionBytes?.copyOf() ?: frame(dependencyRows)
-            val facts = if (employeeProvisioning != null) employeeProvisioning.copyWireBytes()
+            val facts = if (creation != null) RuntimeDelegatedEmployeeCreationWireV1.encode(creation)
+                else if (employeeProvisioning != null) employeeProvisioning.copyWireBytes()
                 else if (employeePolicyActivation != null) employeePolicyActivation.copyWireBytes()
                 else if (deviceAdmission != null) deviceAdmission.copyWireBytes()
                 else if (sessionRevocation != null) sessionRevocation.encode()
+                else if (employeeCreationCancellation != null) RuntimeEmployeeCreationCancellationWireV1.encode(employeeCreationCancellation)
                 else if (administrationCancellation != null) RuntimeAdministrationCancellationEvidenceCodec.encode(administrationCancellation)
                 else if (deviceRevocation != null) RuntimeDeviceRevocationEvidenceCodec.encode(deviceRevocation)
                 else if (additionalDeviceRevocation != null) RuntimeDeviceRevocationEvidenceCodecV2.encode(additionalDeviceRevocation)
@@ -1609,13 +1735,16 @@ internal class RoomRuntimeHistoryFrame internal constructor(
                         owner.prepareNativeSerialChild(this, child, serialPublication.capsule(), checkNotNull(serialPublicationOrigin),
                             serialPublication.protectedFinalDeclaration())
                     } else owner.prepareNativeChild(this,child,originalIntent,first,finalDeadline,
-                        sessionRevocation?.protectedFinalDeclaration() ?: administrationCancellation?.protectedFinalDeclaration() ?:
+                        creation?.protectedFinalDeclaration() ?: sessionRevocation?.protectedFinalDeclaration() ?:
+                            administrationCancellation?.protectedFinalDeclaration() ?: employeeCreationCancellation?.protectedFinalDeclaration() ?:
                             deviceRevocation?.protectedFinalDeclaration() ?: additionalDeviceRevocation?.protectedFinalDeclaration() ?:
                             approvalIssuance?.protectedFinalDeclaration() ?:
                             approvalRetirement?.protectedFinalDeclaration() ?:
                             approvedCommand?.approvalUse?.protectedFinalDeclaration(checkNotNull(commandAuthorization)), terminalPublications,
                         if (terminalPublications != null) dependencies else null)
                     receiptMembershipChild = child // Only after actual native preparation returned.
+                    if (creation != null) employeeCreationPreparedIntentDigest = header.intentDigest
+                    if (employeeCreationCancellation != null) employeeCreationCancellationPreparedIntentDigest = header.intentDigest
                     if (employeeProvisioning != null) checkNotNull(employeeProvisioningNative)
                         .retainOriginalPreparedEffect(originalIntent, employeeProvisioning)
                     if (employeePolicyActivation != null) checkNotNull(employeePolicyActivationNative)
@@ -1633,6 +1762,49 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         owner.finishNativeNow(this); phase = Phase.FINISHED
     }
     internal fun requireNormalOuterBody() { check(phase == Phase.FINISHED) }
+    /** Called only by the original owner, after the native OUTER settlement returned and
+     * before this frame closes. A calculated DATA receipt cannot prove COMMIT or a child. */
+    internal fun requireEmployeeCreationSettlement(settlement: SelfOwnedNativeRoomSettlement,
+        receipt: LocalEmployeeCreationReceiptV1) {
+        val evidence = checkNotNull(employeeCreationEvidence)
+        requireCreationOriginalSettlement(settlement, receipt, evidence.original(),
+            checkNotNull(employeeCreationPreparedIntentDigest), evidence.protectedFinalDeclaration())
+    }
+
+    internal fun requireEmployeeCreationCancellationSettlement(settlement: SelfOwnedNativeRoomSettlement,
+        receipt: LocalEmployeeCreationReceiptV1) {
+        val evidence = checkNotNull(employeeCreationCancellationEvidence)
+        requireCreationOriginalSettlement(settlement, receipt, evidence.original(),
+            checkNotNull(employeeCreationCancellationPreparedIntentDigest), evidence.protectedFinalDeclaration())
+    }
+
+    /** The actual owner supplies this SAME frame's OUTER settlement before it closes.
+     * A receipt, a callback return or an apparently matching current row is insufficient. */
+    private fun requireCreationOriginalSettlement(settlement: SelfOwnedNativeRoomSettlement,
+        receipt: LocalEmployeeCreationReceiptV1, original: LocalDelegatedEmployeeCreationV1,
+        expectedIntentDigest: PayloadDigest, expectedDeclaration: NativeHistoryProtectedFinalDeclaration) {
+        requireNormalOuterBody()
+        check(receipt == LocalEmployeeCreationReceiptV1(original.scope, original.requestId, original.operatorId,
+            original.actorId, original.contentDigest))
+        val child = checkNotNull(receiptMembershipChild)
+        val parent = checkNotNull(native.original.record.parent)
+        val settled = settlement.original
+        check(employeeCreationCapture == null && employeeCreationCancellationCapture == null && purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION &&
+            settlement.disposition == SelfOwnedNativeSqlDisposition.COMMITTED &&
+            settled.lifetimeId == native.original.lifetimeId && settled.record.pending == null &&
+            settled.record.allocation.digest == native.original.record.allocation.digest &&
+            settled.record.parent == child && child.historySequence == parent.historySequence + 1 &&
+            child.installationGenesisDigest == parent.installationGenesisDigest && child.commandEpoch == parent.commandEpoch &&
+            child.commandSequence == parent.commandSequence && child.commandDigest == parent.commandDigest &&
+            child.roleCommitment == parent.roleCommitment && child.recoveryCommitment == parent.recoveryCommitment)
+        val decision = checkNotNull(settled.record.protectedFinalDecisions.singleOrNull {
+            it.child.historySequence == child.historySequence
+        })
+        check(decision.scope == coordinates.scope && decision.originalAllocationDigest == settled.record.allocation.digest &&
+            decision.child == child && decision.originalIntentDigest == expectedIntentDigest &&
+            decision.declaration == expectedDeclaration)
+    }
+
     /** Only the owner invokes this after real native COMMITTED plus normal outer return.
      * A copied parent, unfinished frame or mismatched settled child returns unavailable. */
     internal fun retailCustomerReceiptMembershipCommit(settled: OriginalNativeHistorySnapshot): RuntimeRetailCustomerReceiptMembershipCommit? {
@@ -1677,15 +1849,20 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         approvalUseCapture?.images?.clear(); approvalUseCapture=null
         sessionRevocationCapture?.images?.clear(); sessionRevocationCapture=null; sessionRevocationEvidence=null
         administrationCancellationCapture?.images?.clear(); administrationCancellationCapture=null; administrationCancellationEvidence=null
+        employeeCreationCancellationCapture?.images?.clear(); employeeCreationCancellationCapture=null
+        employeeCreationCancellationEvidence=null; employeeCreationCancellationPreparedIntentDigest=null
         deviceRevocationCapture?.images?.clear(); deviceRevocationCapture=null; deviceRevocationEvidence=null
         additionalDeviceRevocationCapture?.images?.clear(); additionalDeviceRevocationCapture=null; additionalDeviceRevocationEvidence=null
+        employeeCreationCapture?.clear(); employeeCreationCapture=null; employeeCreationEvidence=null; employeeCreationPreparedIntentDigest=null
         employeeProvisioningCapture?.images?.clear(); employeeProvisioningCapture=null; employeeProvisioningEvidence=null; employeeProvisioningNative=null
         employeePolicyActivationCapture?.images?.clear(); employeePolicyActivationCapture=null; employeePolicyActivationEvidence=null; employeePolicyActivationNative=null
         deviceAdmissionCapture?.images?.clear(); deviceAdmissionCapture=null; deviceAdmissionEvidence=null; deviceAdmissionNative=null
         nativeOriginalCapture=null
         finalDeadline=null; finalDeadlineCaptured=false
     }
-    private fun requireNoApprovalRetirement() { check(approvalRetirementCapture == null && approvalRetirementEvidence == null &&
+    private fun requireNoApprovalRetirement() { check(employeeCreationCapture == null && employeeCreationEvidence == null &&
+        employeeCreationCancellationCapture == null && employeeCreationCancellationEvidence == null &&
+        approvalRetirementCapture == null && approvalRetirementEvidence == null &&
         serialPublicationCapture == null && serialPublicationEvidence == null && serialPublicationOrigin == null) }
     private fun body() { check(phase == Phase.BODY); coroutineContext.ensureActive(); owner.requireFrame(this,connection) }
     private suspend fun scalar(sql: String): Long = connection.usePrepared(sql) { check(it.step()); it.getLong(0) }

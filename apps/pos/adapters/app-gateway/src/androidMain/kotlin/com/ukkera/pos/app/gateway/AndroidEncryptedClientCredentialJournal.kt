@@ -107,6 +107,7 @@ private fun encodeAndroidCredentials(
             1 -> ANDROID_CREDENTIAL_FORMAT_V1
             2 -> ANDROID_CREDENTIAL_FORMAT_V2
             3 -> ANDROID_CREDENTIAL_FORMAT_V3
+            4 -> ANDROID_CREDENTIAL_FORMAT_V4
             else -> error("client.credentials.format")
         })
         out.putLong(state.revision)
@@ -148,6 +149,12 @@ private fun encodeAndroidCredentials(
             for (entry in state.administrations)
                 out.credentialTextV1(journalJson.encodeToString(StoredClientAdministrationV1.serializer(), entry))
         }
+        if (state.formatVersion >= 4) {
+            out.putInt(state.employeeCreations.size)
+            for (entry in state.employeeCreations) entry.copyWireBytes().useWiped { bytes ->
+                out.putInt(bytes.size); out.put(bytes)
+            }
+        }
         return out.array().copyOf(out.position())
     } finally { out.array().fill(0) }
 }
@@ -164,6 +171,7 @@ private fun decodeAndroidCredentials(
             ANDROID_CREDENTIAL_FORMAT_V1 -> 1
             ANDROID_CREDENTIAL_FORMAT_V2 -> 2
             ANDROID_CREDENTIAL_FORMAT_V3 -> 3
+            ANDROID_CREDENTIAL_FORMAT_V4 -> 4
             else -> error("client.credentials.format")
         }
         val revision = input.long
@@ -209,8 +217,13 @@ private fun decodeAndroidCredentials(
         val administrations = if (version == 1) emptyList() else List(input.credentialCountV1(MAX_CLIENT_ADMINISTRATIONS)) {
             journalJson.decodeFromString(StoredClientAdministrationV1.serializer(), input.credentialTextV1(MAX_CLIENT_ADMINISTRATION_BYTES))
         }
+        val employeeCreations = if (version < 4) emptyList() else List(input.credentialCountV1(MAX_CLIENT_EMPLOYEE_CREATIONS)) {
+            val size = input.int
+            check(size in 1..MAX_CLIENT_EMPLOYEE_CREATION_BYTES && size <= input.remaining())
+            ByteArray(size).useWiped { input.get(it); StoredClientEmployeeCreationV1.decode(it, file.deviceOwner) }
+        }
         check(!input.hasRemaining())
-        val state = StoredClientCredentials(revision, attempts, sessions, enrollments, administrations, version)
+        val state = StoredClientCredentials(revision, attempts, sessions, enrollments, administrations, version, employeeCreations)
         state.validate(file.deviceOwner)
         // Reject alternate framing/UTF-8/enum/JSON projections, not just a successful decode.
         encodeAndroidCredentials(state, file).useWiped { check(it.contentEquals(bytes)) }
@@ -224,6 +237,7 @@ private fun decodeAndroidCredentials(
 private const val ANDROID_CREDENTIAL_FORMAT_V1 = 0x41434331
 private const val ANDROID_CREDENTIAL_FORMAT_V2 = 0x41434332
 private const val ANDROID_CREDENTIAL_FORMAT_V3 = 0x41434333
+private const val ANDROID_CREDENTIAL_FORMAT_V4 = 0x41434334
 private val ANDROID_CREDENTIAL_ID_V1 = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 private fun ByteBuffer.credentialTextV1(value: String) {
@@ -241,7 +255,7 @@ private fun ByteBuffer.credentialIdV1(): DomainId = credentialTextV1(36).let {
     check(ANDROID_CREDENTIAL_ID_V1.matches(it)); DomainId(it)
 }
 private fun ByteBuffer.credentialBinding(value: LocalClientAuthenticationBinding, version: Int) {
-    if (version == 3) {
+    if (version >= 3) {
         put(value.credentialTagV3())
         credentialIdV1(value.credentialIdV3())
     } else {
@@ -250,7 +264,7 @@ private fun ByteBuffer.credentialBinding(value: LocalClientAuthenticationBinding
     }
 }
 private fun ByteBuffer.credentialBinding(version: Int): LocalClientAuthenticationBinding =
-    if (version == 3) credentialBindingV3(get(), credentialIdV1())
+    if (version >= 3) credentialBindingV3(get(), credentialIdV1())
     else {
         check(version in 1..2)
         LocalClientAuthenticationBinding.MasterServiceIncarnation(credentialIdV1())

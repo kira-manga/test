@@ -1,13 +1,13 @@
 package com.ukkera.pos.app.gateway
 
 import com.ukkera.pos.app.*
+import com.ukkera.pos.app.gateway.LocalManagementGatewayAccess.Access
 import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -31,13 +31,35 @@ public class LocalEndpointAdministrationGateway internal constructor(
         this(connection, journal, owner, credentials, {})
 
     private val requests = Mutex()
-    private val retired = MutableStateFlow(false)
+    private val management = LocalManagementGatewayAccess(connection, owner, credentials, retireOriginalSession)
     private val endpoint = checkNotNull(connection.administrationClient)
     override val configured: Boolean = true
     init {
         require(journal.owner.scope == owner.scope && journal.owner.deviceId == owner.deviceId &&
             connection.peer.scope == owner.scope && connection.peer.deviceId == owner.deviceId)
     }
+
+    private val creation = LocalEmployeeCreationGatewayCoordinator(journal, owner, endpoint, requests, management)
+
+    override val employeeCreation: LocalEmployeeCreationUiGateway = LocalEndpointEmployeeCreationGateway(creation)
+
+    internal suspend fun employeeCreationContext(target: LocalEmployeeCreationTargetV1): LocalEmployeeCreationContextResult =
+        creation.employeeCreationContext(target)
+    internal suspend fun captureEmployeeCreationDefinition(draft: LocalEmployeeCreationDraftV1): LocalEmployeeCreationDefinitionResult =
+        creation.captureEmployeeCreationDefinition(draft)
+    internal suspend fun pendingEmployeeCreationOriginal(): EmployeeCreationPendingResult = creation.pendingEmployeeCreationOriginal()
+    internal suspend fun prepareEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1): EmployeeCreationControlResult =
+        creation.prepareEmployeeCreationOriginal(original)
+    internal suspend fun stopEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1): EmployeeCreationControlResult =
+        creation.stopEmployeeCreationOriginal(original)
+    internal suspend fun acknowledgeEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1): EmployeeCreationControlResult =
+        creation.acknowledgeEmployeeCreationOriginal(original)
+    internal suspend fun submitEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1,
+        newPassword: CharArray?): EmployeeCreationSubmissionResult = creation.submitEmployeeCreationOriginal(original, newPassword)
+    internal suspend fun cancelDispatchedEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1): EmployeeCreationRecoveryResult =
+        creation.cancelDispatchedEmployeeCreationOriginal(original)
+    internal suspend fun recoverEmployeeCreationOriginal(original: LocalDelegatedEmployeeCreationV1): EmployeeCreationRecoveryResult =
+        creation.recoverEmployeeCreationOriginal(original)
 
     override suspend fun read(query: LocalAdministrationQuery): LocalAdministrationReadResult = requests.withLock {
         try { withAccess { access ->
@@ -92,7 +114,8 @@ public class LocalEndpointAdministrationGateway internal constructor(
             entry.validate(journal.owner)
             val written = journal.requests.withLock { snapshotUnlocked { state ->
                 if (state.administrations.any { it.owner == owner || it.command.requestId == command.requestId } ||
-                    state.enrollments.any { it.requestId == command.requestId } || state.administrations.size >= MAX_CLIENT_ADMINISTRATIONS)
+                    state.enrollments.any { it.requestId == command.requestId } ||
+                    state.employeeCreations.any { it.original.requestId == command.requestId } || state.administrations.size >= MAX_CLIENT_ADMINISTRATIONS)
                     return@snapshotUnlocked false
                 writing = true
                 journal.replace(state.revision, state.next(administrations = state.administrations + entry)) == JournalWrite.DURABLE
@@ -140,12 +163,7 @@ public class LocalEndpointAdministrationGateway internal constructor(
                                 appliedEventId = result.eventId).also { it.validate(journal.owner) }
                             val definite = known(observed)
                             access.observedSelfRevocation = definite
-                            retired.value = true
-                            try { retireOriginalSession() } catch (_: Exception) {
-                                // A cleanup failure cannot make this exact master observation
-                                // uncertain. The actual installed sink invalidates the session
-                                // fence/lifecycle in finally, even if a negative attachment fails.
-                            }
+                            management.retireAfterObservedSelfRevocation()
                             withContext(NonCancellable) {
                                 try { update(requestId) { before ->
                                     check(before.command == observed.command && before.phase != StoredAdministrationPhase.CANCELLED)
@@ -270,81 +288,12 @@ public class LocalEndpointAdministrationGateway internal constructor(
         return try { state.validate(journal.owner); read(state) } finally { state.destroy() }
     }
 
-    private suspend fun <T> withAccess(body: suspend (Access) -> T): T {
-        try {
-            currentCoroutineContext().ensureActive()
-            if (retired.value) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            try {
-                val initial = currentView(lease)
-                val access = Access(lease, initial)
-                val result = body(access)
-                access.observedSelfRevocation?.let { definite ->
-                    // Only the exact already-observed terminal metadata may cross this deliberately
-                    // retired lifetime. No read, lookup, cancellation or later mutation is exempted.
-                    check(result == definite && retired.value)
-                    return result
-                }
-                val final = currentView(lease)
-                if (final.sessionId != initial.sessionId || final.generation != initial.generation || final.policy.revision != initial.policy.revision)
-                    throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-                access.checkCurrent()
-                return result
-            } finally { lease.destroy() }
-        } catch (failure: GatewayFailure) {
-            if (failure.problem == LocalServiceProblem.SESSION_ENDED && retired.compareAndSet(false, true)) {
-                // Terminal observations must retire the exact attachment even when read/ACK
-                // returns a compatible generic refusal. Ordinary target DENIED and temporary
-                // unavailability are not terminal identity facts. The installed sink fences
-                // only this original adapter; it cannot retire a successor attachment.
-                try { retireOriginalSession() } catch (_: Exception) {
-                    // The actual sink invalidates its session fence/lifecycle in finally.
-                    // Failed negative holders retain their existing root cleanup custody;
-                    // their failure cannot restore access or change this terminal fact.
-                }
-            }
-            throw failure
-        }
-    }
-    private suspend fun currentView(lease: LocalWorkflowCredentialLease): LocalSessionView {
-        currentCoroutineContext().ensureActive()
-        if (retired.value || !connection.isCurrent() || !lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val view = when (val result = lease.observeSession(connection.endpoint)) {
-            is LocalSessionViewResult.Current -> result.view
-            LocalSessionViewResult.Denied -> throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            LocalSessionViewResult.Busy -> throw GatewayFailure(LocalServiceProblem.RETRY_LATER)
-            LocalSessionViewResult.StorageUncertain -> throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
-            LocalSessionViewResult.Unavailable -> throw GatewayFailure(LocalServiceProblem.UNAVAILABLE)
-        }
-        if (retired.value || !connection.isCurrent() || !lease.isCurrent() || view.actorId != owner.actorId || view.deviceId != owner.deviceId ||
-            view.scope != owner.scope) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        return view
-    }
-    private inner class Access(val lease: LocalWorkflowCredentialLease, val view: LocalSessionView) {
-        var observedSelfRevocation: LocalAdministrationResult.Known? = null
-        fun isOwnSessionRevocation(command: LocalAdministrationCommand): Boolean =
-            command.action == LocalAdministrationAction.REVOKE_SESSION && command.targetId == owner.actorId &&
-                command.sessionId == view.sessionId
-        suspend fun checkCurrent() {
-            currentCoroutineContext().ensureActive()
-            if (retired.value || !connection.isCurrent() || !lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        }
-    }
+    private suspend fun <T> withAccess(body: suspend (Access) -> T): T = management.withAccess(body)
 
     private fun directory(command: LocalAdministrationCommand): LocalAdministrationDirectory =
         if (command.action == LocalAdministrationAction.REVOKE_DEVICE) LocalAdministrationDirectory.DEVICES else LocalAdministrationDirectory.ACCOUNTS
-    private fun hasGrant(view: LocalSessionView, directory: LocalAdministrationDirectory): Boolean {
-        val permission = Permission(if (directory == LocalAdministrationDirectory.ACCOUNTS)
-            SecurityAction.LOCAL_ACCOUNT_ADMINISTRATION else SecurityAction.DEVICE_ADMINISTRATION, PermissionVerb.ADMINISTER)
-        val grants = view.policy.grants.filter { it.permission == permission && (it.scope == owner.scope || it.scope == owner.scope.company()) &&
-            (it.namedSubjectId == null || it.namedSubjectId == owner.actorId) }
-        // A denial for one named target must not hide all other management targets. This is
-        // only an area preflight; the master evaluates the actual read/action binding afresh.
-        return grants.any { it.effect == GrantEffect.ALLOW } && grants.none { it.effect == GrantEffect.DENY && it.targetIds == null }
-    }
-    private fun requireGrant(view: LocalSessionView, directory: LocalAdministrationDirectory) {
-        if (!hasGrant(view, directory)) throw GatewayFailure(LocalServiceProblem.DENIED)
-    }
+    private fun hasGrant(view: LocalSessionView, directory: LocalAdministrationDirectory): Boolean = management.hasGrant(view, directory)
+    private fun requireGrant(view: LocalSessionView, directory: LocalAdministrationDirectory) = management.requireGrant(view, directory)
     private fun known(entry: StoredClientAdministrationV1): LocalAdministrationResult.Known = LocalAdministrationResult.Known(
         LocalAdministrationPending(entry.command, LocalAdministrationPhase.valueOf(entry.phase.name), entry.cancellationRequested, entry.receipt))
     private fun validateView(view: LocalAdministrationView, query: LocalAdministrationQuery) {

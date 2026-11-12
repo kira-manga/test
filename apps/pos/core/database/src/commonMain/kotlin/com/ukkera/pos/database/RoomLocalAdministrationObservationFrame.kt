@@ -15,6 +15,7 @@ internal class RoomLocalAdministrationObservationFrame(
     private val cancellation: LocalAuthEvent? = null,
     originalCommand: LocalAdministrationCommand? = null,
     originalObservation: RoomLocalAuthorizationObservation? = null,
+    originalCreation: LocalDelegatedEmployeeCreationV1? = null,
 ) {
     private enum class Phase { NEW, BODY, PREPARED, FINISHED, CLOSED }
     private var phase = Phase.NEW
@@ -25,6 +26,7 @@ internal class RoomLocalAdministrationObservationFrame(
     private val purpose = if (authorization.requirement.permission.action == SecurityAction.DEVICE_ADMINISTRATION)
         RuntimeWritePurposeV2.DEVICE_ADMINISTRATION else RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION
     private val cancellationHistory: RuntimeAdministrationCancellationCapture?
+    private val creationCancellationHistory: RuntimeEmployeeCreationCancellationCapture?
 
     init {
         val requirement = authorization.requirement
@@ -40,16 +42,24 @@ internal class RoomLocalAdministrationObservationFrame(
             requirement.limitUse == LimitUse.NotApplicable && requirement.owner == OwnerConstraint.Unrestricted)
         cancellation?.let { event ->
             val binding = checkNotNull(requirement.binding)
-            check(event.kind == LocalAuthEventKind.ADMINISTRATION_CANCELLED && event.scope == principal.scope &&
+            check(event.kind == (if (originalCreation == null) LocalAuthEventKind.ADMINISTRATION_CANCELLED
+                else LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED) && event.scope == principal.scope &&
                 event.operatorId == principal.actorId && event.eventId.value == binding.operationId?.value &&
                 event.targetId == binding.documentId && event.contentDigest == binding.payloadDigest && event.accountRevision == null)
         }
         // Only the explicit fresh cancellation carries the actual typed command/observation.
         // All generic reads and prior-result paths remain capture-free, not default cancels.
-        check((cancellation != null) == (originalCommand != null) &&
-            (cancellation != null) == (originalObservation != null))
-        cancellationHistory = cancellation?.let { RuntimeAdministrationCancellationCapture.capture(principal, original,
-            authorization, checkNotNull(originalCommand), checkNotNull(originalObservation), it) }
+        check((cancellation != null) == (originalCommand != null || originalCreation != null) &&
+            (cancellation != null) == (originalObservation != null) &&
+            (originalCommand == null || originalCreation == null))
+        cancellationHistory = cancellation?.takeIf { originalCommand != null }?.let {
+            RuntimeAdministrationCancellationCapture.capture(principal, original, authorization,
+                checkNotNull(originalCommand), checkNotNull(originalObservation), it)
+        }
+        creationCancellationHistory = cancellation?.takeIf { originalCreation != null }?.let {
+            RuntimeEmployeeCreationCancellationCapture.capture(principal, original, authorization,
+                checkNotNull(originalCreation), checkNotNull(originalObservation), it)
+        }
     }
 
     suspend fun initialize(transaction: RoomLocalSecurityTransaction): Unit = guarded {
@@ -62,6 +72,7 @@ internal class RoomLocalAdministrationObservationFrame(
         }
         checkFacts(transaction)
         cancellationHistory?.let(transaction::beginHistoryAdministrationCancellation)
+        creationCancellationHistory?.let(transaction::beginHistoryEmployeeCreationCancellation)
         phase = Phase.BODY
     }
 
@@ -76,6 +87,7 @@ internal class RoomLocalAdministrationObservationFrame(
         checkFacts(transaction)
         transaction.ensureAuthorizationHealthy()
         cancellationHistory?.let(transaction::completeHistoryAdministrationCancellation)
+        creationCancellationHistory?.let(transaction::completeHistoryEmployeeCreationCancellation)
         phase = Phase.PREPARED
     }
 

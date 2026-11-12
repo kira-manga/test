@@ -1,0 +1,1344 @@
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt
+@@ -76,6 +76,12 @@
+ }
+ 
+ enum class LocalSessionLifecycle { ACTIVE, LOCKED, REAUTHENTICATION_REQUIRED, AUTHORITY_UNAVAILABLE, STORAGE_UNCERTAIN }
++
++/** Presentation identity only: never a credential, permission, connection or native lifetime. */
++data class LocalSessionAttachmentKey(val ownerId: DomainId, val generation: Long) {
++    init { require(generation > 0) }
++}
++
+ sealed interface LocalSessionCheckResult {
+     data class Current(val display: SessionDisplayContext) : LocalSessionCheckResult
+     data class Unavailable(val problem: LocalServiceProblem) : LocalSessionCheckResult
+@@ -102,6 +108,17 @@
+     val retailPhysical: LocalRetailPhysicalGateway get() = UnavailableLocalRetailPhysical
+     /** Null only for an adapter without lifecycle monitoring; never a proof that it is current. */
+     val lifecycle: StateFlow<LocalSessionLifecycle>? get() = null
++    /**
++     * A replacing adapter publishes a new generation only after durable rotated credentials,
++     * a protected Current and, when replacing a native connection, confirmed old close and
++     * genuinely fresh native connection. In-process token rotation does not stop the master.
++     * It denies old adapters synchronously BEFORE replacement. A pending transition keeps the
++     * previous key (not its authority); null means the interactive session ended. Generations
++     * strictly increase within this owner; UI consumers may miss intermediate flow emissions.
++     * Null flow means this adapter never replaces its captured connection/adapters in place.
++     */
++    val attachmentUpdates: StateFlow<LocalSessionAttachmentKey?>? get() = null
++    val attachmentKey: LocalSessionAttachmentKey? get() = attachmentUpdates?.value
+     /**
+      * Synchronous sample of this exact local interactive capability and its captured connection.
+      * Check again after asynchronous delivery, immediately before adopting its display. This is
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/UkkeraRuntime.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/UkkeraRuntime.kt
+@@ -12,6 +12,8 @@
+ import com.ukkera.pos.app.training.TrainingCategory
+ import com.ukkera.pos.app.training.TrainingWorkspace
+ import com.ukkera.pos.app.ui.AppLanguage
++import com.ukkera.pos.app.ui.LocalCompanyCatalogEntryDrafts
++import com.ukkera.pos.app.ui.LocalFoodConfigurationEntryDrafts
+ import com.ukkera.pos.types.DomainId
+ import kotlinx.coroutines.CancellationException
+ import kotlinx.coroutines.CoroutineScope
+@@ -46,6 +48,8 @@
+     val cleanupStatus: LocalClientCleanupStatus? = null,
+     val checkingCleanup: Boolean = false,
+     val refreshingSession: Boolean = false,
++    /** Last accepted presentation attachment; it never authorizes a service call. */
++    val localAttachment: LocalSessionAttachmentKey? = null,
+     val enrollment: LocalEnrollmentPresentation = LocalEnrollmentPresentation(),
+ )
+ 
+@@ -142,12 +146,14 @@
+                         // Recheck the exact capability after async gateway delivery, not merely a
+                         // potentially lagging lifecycle flow. No suspension before publication.
+                         // Retirement after this sample is handled by the root-owned monitor.
+-                        if (!result.session.isCurrent()) {
++                        val attachment = result.session.attachmentKey
++                        if (!result.session.isCurrent() || result.session.attachmentUpdates != null && attachment == null) {
+                             mutablePresentation.value = presentation.value.copy(signInFailure = SignInFailure.UNAVAILABLE)
+                             return
+                         }
+                         changeRoot(SecurityRoot.BRANCH_WORKSPACE, display)
+                         branchSession = result.session
++                        mutablePresentation.value = presentation.value.copy(localAttachment = attachment)
+                         unclaimedBranch = null
+                     }
+                 }
+@@ -291,11 +297,13 @@
+     /** Root-owned protected-session monitoring, independent of the removed sign-in entry. */
+     internal suspend fun monitorAuthenticatedSession(): Unit = coroutineScope {
+         val session = branchSession ?: return@coroutineScope
+-        val lifecycle = session.lifecycle ?: return@coroutineScope
++        val lifecycle = session.lifecycle
++        val attachments = session.attachmentUpdates
++        if (lifecycle == null && attachments == null) return@coroutineScope
+         val generation = navigator.state.value.rootGeneration
+         fun currentOwner(): Boolean = !closed && branchSession === session &&
+             navigator.state.value.rootGeneration == generation && navigator.state.value.root == SecurityRoot.BRANCH_WORKSPACE
+-        launch {
++        if (lifecycle != null) launch {
+             lifecycle.collect { state ->
+                 if (currentOwner() && state != LocalSessionLifecycle.ACTIVE) localSessionEnded(session, when (state) {
+                     LocalSessionLifecycle.STORAGE_UNCERTAIN -> LocalServiceProblem.STORAGE_UNCERTAIN
+@@ -304,16 +312,26 @@
+                 })
+             }
+         }
++        if (attachments != null) launch {
++            attachments.collect { attachment ->
++                if (!currentOwner()) return@collect
++                if (attachment == null) localSessionEnded(session)
++                else if (attachment != presentation.value.localAttachment) {
++                    // This is a read, never another refresh. The adapter serializes it with
++                    // credential replacement; a flow/presentation key is not Current evidence.
++                    val result = try { session.current() }
++                    catch (cancelled: CancellationException) { throw cancelled }
++                    catch (_: Exception) { LocalSessionCheckResult.Unavailable(LocalServiceProblem.UNAVAILABLE) }
++                    if (currentOwner()) acceptLocalSessionCheck(session, result)
++                }
++            }
++        }
+         while (currentOwner()) {
+             val result = try { session.current() }
+             catch (cancelled: CancellationException) { throw cancelled }
+             catch (_: Exception) { LocalSessionCheckResult.Unavailable(LocalServiceProblem.UNAVAILABLE) }
+             if (!currentOwner()) break
+-            when (result) {
+-                is LocalSessionCheckResult.Current -> if (result.display != presentation.value.display)
+-                    localSessionEnded(session, LocalServiceProblem.SESSION_ENDED)
+-                is LocalSessionCheckResult.Unavailable -> localSessionEnded(session, result.problem)
+-            }
++            acceptLocalSessionCheck(session, result)
+             delay(15_000) // scheduling only, never expiry/monotonic authority or a cloud lease
+         }
+     }
+@@ -326,11 +344,48 @@
+         cleanupScope.launch {
+             try {
+                 val result = session.refresh()
+-                if (branchSession === session && !closed && result is LocalSessionCheckResult.Unavailable)
+-                    localSessionEnded(session, result.problem)
++                acceptLocalSessionCheck(session, result)
+             } catch (cancelled: CancellationException) { throw cancelled }
+             catch (_: Exception) { if (branchSession === session) localSessionEnded(session, LocalServiceProblem.UNAVAILABLE) }
+             finally { if (branchSession === session && !closed) mutablePresentation.value = presentation.value.copy(refreshingSession = false) }
++        }
++    }
++
++    private fun acceptLocalSessionCheck(session: BranchUiSession, result: LocalSessionCheckResult) {
++        if (closed || branchSession !== session) return
++        if (result is LocalSessionCheckResult.Unavailable) {
++            localSessionEnded(session, result.problem)
++            return
++        }
++        result as LocalSessionCheckResult.Current
++        if (result.display != presentation.value.display) {
++            // Identity or effective area changes never transfer private drafts to a new principal.
++            localSessionEnded(session)
++            return
++        }
++        // A concurrent transition can retire this read before delivery. Do not adopt it and do
++        // not mistake an in-progress known refresh for logout; the root monitor observes its end.
++        val current = try { session.isCurrent() } catch (_: Exception) {
++            localSessionEnded(session, LocalServiceProblem.UNAVAILABLE)
++            return
++        }
++        if (!current) return
++        val previous = presentation.value.localAttachment
++        val next = session.attachmentKey
++        if (session.attachmentUpdates == null && next != null || session.attachmentUpdates != null &&
++            (next == null || previous == null || next.ownerId != previous.ownerId || next.generation < previous.generation)) {
++            localSessionEnded(session)
++            return
++        }
++        if (next == previous) return
++        try {
++            denyRetailPhysical()
++            // Retire jobs, physical originals and export lifetimes before publishing new UI
++            // consumers. Only data-only continuation stays in the SAME entry ViewModel.
++            rootScope.retireLocalAttachments()
++            mutablePresentation.value = presentation.value.copy(localAttachment = next)
++        } catch (_: Exception) {
++            localSessionEnded(session, LocalServiceProblem.STORAGE_UNCERTAIN)
+         }
+     }
+ 
+@@ -402,9 +457,15 @@
+         !closed && branchSession === session && navigator.state.value.root == SecurityRoot.BRANCH_WORKSPACE &&
+             navigator.isActiveEntry(token) && try { session.isCurrent() } catch (_: Exception) { false }
+ 
++    /** An old callback cannot read the current key lazily and inherit a replacement adapter. */
++    internal fun ownsLocalAttachment(session: BranchUiSession, token: NavigationToken, key: LocalSessionAttachmentKey?): Boolean =
++        ownsLocalEntry(session, token) && key == presentation.value.localAttachment && key == session.attachmentKey &&
++            (session.attachmentUpdates == null || key != null)
++
+     /** Attach before any original Start await. The UI registry can only withdraw real rights. */
+-    internal fun retailPhysicalLifetime(session: BranchUiSession, token: NavigationToken): LocalRetailPhysicalOwner? {
+-        if (!ownsLocalEntry(session, token) || presentation.value.refreshingSession) return null
++    internal fun retailPhysicalLifetime(session: BranchUiSession, token: NavigationToken,
++        key: LocalSessionAttachmentKey? = session.attachmentKey): LocalRetailPhysicalOwner? {
++        if (!ownsLocalAttachment(session, token, key) || presentation.value.refreshingSession) return null
+         val lifetime = LocalRetailPhysicalLifetime()
+         val root = retailRootLifetime.attach(lifetime) ?: return null
+         val entry = navigator.attachRetailPhysical(token, lifetime)
+@@ -478,9 +539,13 @@
+ 
+ internal class UiRootScope(val koinScope: Scope, val session: UiRootSession) : ViewModelStoreOwner {
+     override val viewModelStore = ViewModelStore()
++    private val localEntries = mutableSetOf<EntryViewModel>()
++    fun register(entry: EntryViewModel) { localEntries += entry }
++    fun unregister(entry: EntryViewModel) { localEntries -= entry }
++    fun retireLocalAttachments() { localEntries.toList().forEach { it.retireLocalAttachments() } }
+     fun close() {
+         try { viewModelStore.clear() } // entry VMs close their scopes/jobs before their parent disappears
+-        finally { try { session.training?.close() } finally { koinScope.close() } }
++        finally { localEntries.clear(); try { session.training?.close() } finally { koinScope.close() } }
+     }
+ }
+ 
+@@ -501,22 +566,56 @@
+ internal class EntryViewModel(val resources: EntryState, private val entryScope: Scope) : ViewModel() {
+     private var localController: LocalWorkflowController? = null
+     private var administrationController: LocalAdministrationController? = null
++    private var workflowContinuation: LocalWorkflowContinuation? = null
++    private var administrationContinuation: LocalAdministrationWorkspace? = null
++    private var localOwner: UiRootScope? = null
++    // The entry, not a lazy-list child or replaceable adapter, owns typed draft data.
++    val companyCatalogDrafts = LocalCompanyCatalogEntryDrafts()
++    val foodConfigurationDrafts = LocalFoodConfigurationEntryDrafts()
+     val state: StateFlow<EntryPresentation> = resources.value.asStateFlow()
+     val scopeClosed: Boolean get() = entryScope.closed
+     fun change(transform: (EntryPresentation) -> EntryPresentation) {
+         if (!entryScope.closed) resources.value.value = transform(resources.value.value)
+     }
+-    fun localWorkflows(runtime: UkkeraRuntime, token: NavigationToken): LocalWorkflowController? {
++    fun localWorkflows(runtime: UkkeraRuntime, token: NavigationToken,
++        attachmentKey: LocalSessionAttachmentKey? = runtime.presentation.value.localAttachment): LocalWorkflowController? {
+         if (entryScope.closed) return null
++        val session = runtime.localSessionFor(token) ?: return null
++        register(runtime.rootScope)
+         localController?.let { return it }
++        if (!runtime.ownsLocalAttachment(session, token, attachmentKey)) return null
++        return LocalWorkflowController(runtime, session, token, viewModelScope, workflowContinuation).also {
++            localController = it; workflowContinuation = null
++        }
++    }
++    fun localAdministration(runtime: UkkeraRuntime, token: NavigationToken,
++        attachmentKey: LocalSessionAttachmentKey? = runtime.presentation.value.localAttachment): LocalAdministrationController? {
++        if (entryScope.closed) return null
+         val session = runtime.localSessionFor(token) ?: return null
+-        return LocalWorkflowController(runtime, session, token, viewModelScope).also { localController = it }
+-    }
+-    fun localAdministration(runtime: UkkeraRuntime, token: NavigationToken): LocalAdministrationController? {
+-        if (entryScope.closed) return null
++        register(runtime.rootScope)
+         administrationController?.let { return it }
+-        val session = runtime.localSessionFor(token) ?: return null
+-        return LocalAdministrationController(runtime, session, token, viewModelScope).also { administrationController = it }
++        if (!runtime.ownsLocalAttachment(session, token, attachmentKey)) return null
++        return LocalAdministrationController(runtime, session, token, viewModelScope, administrationContinuation).also {
++            administrationController = it; administrationContinuation = null
++        }
++    }
++    private fun register(owner: UiRootScope) {
++        if (localOwner === owner) return
++        localOwner?.unregister(this)
++        localOwner = owner
++        owner.register(this)
++    }
++    fun retireLocalAttachments() {
++        localController?.let { workflowContinuation = it.retireForAttachment() }
++        administrationController?.let { administrationContinuation = it.retireForAttachment() }
++        companyCatalogDrafts.retireAttachment()
++        foodConfigurationDrafts.retireAttachment()
++        localController = null
++        administrationController = null
++    }
++    fun clearLocalConfigurationDrafts() {
++        companyCatalogDrafts.clear()
++        foodConfigurationDrafts.clear()
+     }
+     override fun onCleared() {
+         try { localController?.close() }
+@@ -525,6 +624,11 @@
+             finally {
+                 localController = null
+                 administrationController = null
++                workflowContinuation = null
++                administrationContinuation = null
++                clearLocalConfigurationDrafts()
++                localOwner?.unregister(this)
++                localOwner = null
+                 resources.value.value = EntryPresentation()
+                 entryScope.close()
+             }
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalWorkflowController.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalWorkflowController.kt
+@@ -18,7 +18,7 @@
+ import kotlinx.coroutines.flow.collect
+ import kotlinx.coroutines.launch
+ 
+-internal enum class LocalWorkBusy { NONE, READING, REFERENCES, STAGING, SUBMITTING, LOOKUP, PENDING, ACKNOWLEDGING, REPORT_EXPORT, REPORT_EXPORT_LOOKUP }
++internal enum class LocalWorkBusy { NONE, READING, REFERENCES, STAGING, SUBMITTING, LOOKUP, PENDING, ACKNOWLEDGING, REPORT_EXPORT, REPORT_EXPORT_LOOKUP, ATTACHMENT_REVIEW }
+ 
+ /** Ephemeral read controls, bound only to metadata returned by an authorized SKU read. */
+ internal data class LocalPricePreviewDraft(
+@@ -80,15 +80,25 @@
+     val stageUncertain: Boolean = false,
+     val recordedAcknowledged: Boolean = false,
+     val acknowledgementProblem: LocalServiceProblem? = null,
++    val attachmentReviewRequired: Boolean = false,
+ ) {
+     val working: Boolean get() = busy != LocalWorkBusy.NONE
+     val recoveryRequired: Boolean get() = !pendingLoaded || pendingProblem != null || pending.isNotEmpty() ||
+         pendingCursor != null || !pendingPageIsFirst || operationId != null && !recordedAcknowledged
+-    val canStart: Boolean get() = !working && !recoveryRequired && page != null && form == null
++    val canStart: Boolean get() = !working && !attachmentReviewRequired && !recoveryRequired && page != null && form == null
+     val formFrozen: Boolean get() = operationId != null && operation !is LocalOperationResult.Recorded
+     val openingCountProgress: LocalOpeningCountProgress? get() = countedOpeningProgress(form, openingCounts)
+     val openingCanSave: Boolean get() = openingCountProgress?.canSave != false && issue?.tooLarge != true
+ }
++
++/** SAME-entry data only. No gateway, credentials, native preparation, instruction or file lease. */
++internal data class LocalWorkflowContinuation(
++    val workspace: LocalWorkspaceState,
++    val frozen: LocalCommandIntent?,
++    val originalAction: LocalAction?,
++    val retail: LocalRetailDraftContinuation?,
++    val supplier: LocalSupplierDraftContinuation?,
++)
+ 
+ /**
+  * Entry/actor-owned presentation, not an application service. No financial effects, transport
+@@ -100,9 +110,12 @@
+     private val session: BranchUiSession,
+     private val owner: NavigationToken,
+     private val scope: CoroutineScope,
++    private var continuation: LocalWorkflowContinuation? = null,
+ ) {
++    private val attachmentKey = session.attachmentKey
+     private val gateway = session.workflows
+-    private val mutableState = MutableStateFlow(LocalWorkspaceState())
++    // First composition must see the retained workflow, not a temporary CHECKOUT screen.
++    private val mutableState = MutableStateFlow(continuation?.workspace ?: LocalWorkspaceState())
+     val state: StateFlow<LocalWorkspaceState> = mutableState.asStateFlow()
+     private var active = false
+     private var closed = false
+@@ -128,7 +141,7 @@
+         parentAvailable = { physicalParentReady() && !retailPhysical.blocksParentWork },
+         guardChanged = { syncGuard() })
+ 
+-    private fun physicalParentReady(): Boolean = current() && !configurationOwnsDraft && !state.value.working &&
++    private fun physicalParentReady(): Boolean = current() && !state.value.attachmentReviewRequired && !configurationOwnsDraft && !state.value.working &&
+         state.value.form == null && !state.value.formFrozen
+ 
+     private fun activateSupplierPhysical() {
+@@ -139,16 +152,22 @@
+     }
+ 
+     fun activate(workflow: LocalWorkflow, reference: LocalRecordReference? = null, food: LocalFoodUiQuery? = null) {
+-        if (closed || active || !runtime.ownsLocalEntry(session, owner)) return
++        if (closed || active || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+         supplierPhysical.deactivate()
+         retailPhysical.deactivate()
+         active = true
+         activation++
+-        mutableState.value = LocalWorkspaceState(workflow = workflow, reference = reference,
++        val resumed = continuation
++        continuation = null
++        mutableState.value = resumed?.workspace ?: LocalWorkspaceState(workflow = workflow, reference = reference,
+             foodQuery = food ?: LocalFoodUiQuery.MyChecks())
+-        retailPhysical.activate(workflow, reference, state.value.foodQuery)
++        frozen = resumed?.frozen
++        originalAction = resumed?.originalAction
++        retailPhysical.activate(state.value.workflow, state.value.reference, state.value.foodQuery)
++        resumed?.retail?.let(retailPhysical::restoreDraft)
+         activateSupplierPhysical()
+-        if (workflow == LocalWorkflow.REPORTS) {
++        resumed?.supplier?.let(supplierPhysical::restoreDraft)
++        if (state.value.workflow == LocalWorkflow.REPORTS) {
+             val lifecycle = session.lifecycle
+             if (lifecycle == null) {
+                 // A missing protected-session monitor cannot authorize retained report views.
+@@ -157,7 +176,66 @@
+             }
+             watchReportLifecycle(lifecycle)
+         }
+-        load()
++        syncGuard()
++        // A renewed entry never repeats staging, submission, acknowledgement or a physical
++        // action. Reports have no input draft and may perform their normal fresh protected read.
++        if (!state.value.attachmentReviewRequired) load()
++    }
++
++    fun retireForAttachment(): LocalWorkflowContinuation? {
++        if (closed || !active) { close(); return null }
++        val before = state.value
++        val id = before.operationId
++        val recorded = before.operation as? LocalOperationResult.Recorded
++        val uncertain = id != null && recorded == null && before.busy in setOf(
++            LocalWorkBusy.STAGING, LocalWorkBusy.SUBMITTING, LocalWorkBusy.LOOKUP)
++        val snapshot = before.copy(page = null, priceDraft = before.priceDraft?.copy(issue = null),
++            branchReportQuery = LocalBranchReportQuery(before.branchReportQuery.section),
++            branchReportExport = LocalBranchReportExportPresentation(),
++            foodUnavailable = null, readProblem = null, busy = LocalWorkBusy.NONE,
++            pending = emptyList(), pendingLoaded = false, pendingProblem = null,
++            pendingCursor = null, pendingPageIsFirst = true, referencePicker = null,
++            form = before.form?.copy(confirmed = false), issue = null, stageProblem = null,
++            operation = if (uncertain) LocalOperationResult.Unresolved(requireNotNull(id), LocalServiceProblem.UNAVAILABLE) else before.operation,
++            stageUncertain = before.stageUncertain || before.busy == LocalWorkBusy.STAGING,
++            acknowledgementProblem = if (before.busy == LocalWorkBusy.ACKNOWLEDGING)
++                LocalServiceProblem.STORAGE_UNCERTAIN else before.acknowledgementProblem,
++            attachmentReviewRequired = before.workflow != LocalWorkflow.REPORTS)
++        val retained = LocalWorkflowContinuation(snapshot, frozen, originalAction,
++            retailPhysical.snapshotDraft(), supplierPhysical.snapshotDraft())
++        close() // Denies originals/exports and cancels jobs; late replies cannot change retained data.
++        return retained
++    }
++
++    /** Explicit protected reread; no old projection, confirmation or response grants new work. */
++    fun reviewAttachment(token: NavigationToken) {
++        if (!acceptsEntry(token) || !state.value.attachmentReviewRequired || state.value.working ||
++            companyCatalogWorking || foodConfigurationWorking) return
++        val query = currentQuery()
++        mutableState.value = state.value.copy(page = null, readProblem = null, pendingProblem = null)
++        run(LocalWorkBusy.ATTACHMENT_REVIEW) { ticket ->
++            val pending = gateway.pending()
++            currentCoroutineContext().ensureActive()
++            if (!current(ticket)) return@run
++            applyPending(pending, null)
++            if (!current(ticket) || pending !is LocalPendingResult.Available) return@run
++            val result = gateway.read(query)
++            currentCoroutineContext().ensureActive()
++            if (!current(ticket)) return@run
++            when (result) {
++                is LocalReadResult.Available -> {
++                    val supplierDraft = supplierPhysical.snapshotDraft()
++                    applyPage(query, result.page)
++                    supplierDraft?.let(supplierPhysical::restoreDraft)
++                    if (state.value.page != null && state.value.readProblem == null)
++                        mutableState.value = state.value.copy(attachmentReviewRequired = false)
++                }
++                is LocalReadResult.Unavailable -> {
++                    mutableState.value = state.value.copy(readProblem = result.problem)
++                    permissionFailure(result.problem)
++                }
++            }
++        }
+     }
+ 
+     /** Leaving destroys private editor/read material. The gateway's durable queue is not erased. */
+@@ -175,6 +253,7 @@
+         reportLifecycle = null
+         frozen = null
+         originalAction = null
++        continuation = null
+         editorBeforeGuard = null
+         editorAfterGuard = null
+         companyCatalogDraft = false
+@@ -211,7 +290,7 @@
+     }
+ 
+     private fun current(ticket: Long = activation): Boolean = !closed && active && ticket == activation &&
+-        runtime.ownsLocalEntry(session, owner)
++        runtime.ownsLocalAttachment(session, owner, attachmentKey)
+ 
+     private data class RequestOwner(val activation: Long, val navigation: NavigationToken)
+ 
+@@ -220,11 +299,11 @@
+     private fun acceptsEntry(token: NavigationToken): Boolean = current() && runtime.navigator.isCurrent(token) &&
+         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area
+ 
+-    private fun accepts(token: NavigationToken): Boolean = !configurationOwnsDraft && !retailPhysical.blocksParentWork && !supplierPhysical.blocksParentWork && acceptsEntry(token)
++    private fun accepts(token: NavigationToken): Boolean = !state.value.attachmentReviewRequired && !configurationOwnsDraft && !retailPhysical.blocksParentWork && !supplierPhysical.blocksParentWork && acceptsEntry(token)
+ 
+     // A scanner/IME may emit another edit before Compose renders our own new DIRTY guard.
+     // Permit only that immediately preceding guard revision for EPHEMERAL edits, never dispatch.
+-    private fun acceptsEdit(token: NavigationToken): Boolean = accepts(token) || !configurationOwnsDraft && !retailPhysical.blocksParentWork && !supplierPhysical.blocksParentWork && current() &&
++    private fun acceptsEdit(token: NavigationToken): Boolean = accepts(token) || !state.value.attachmentReviewRequired && !configurationOwnsDraft && !retailPhysical.blocksParentWork && !supplierPhysical.blocksParentWork && current() &&
+         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area &&
+         token.revision == editorBeforeGuard && runtime.navigator.state.value.revision == editorAfterGuard
+ 
+@@ -1431,7 +1510,7 @@
+         // disposes the entry changes this token, so an old response cannot revive private data.
+         val ticket = RequestOwner(activation, runtime.navigator.token())
+         val job = scope.launch(start = CoroutineStart.LAZY) {
+-            try { block(ticket) }
++            try { if (current(ticket)) block(ticket) }
+             catch (cancelled: CancellationException) {
+                 if (current(ticket) && kind in setOf(LocalWorkBusy.REPORT_EXPORT, LocalWorkBusy.REPORT_EXPORT_LOOKUP))
+                     applyExportResult(LocalBranchReportExportResult.Unavailable(fileProblem = LocalBranchReportFileProblem.RECOVERY_REQUIRED))
+@@ -1450,6 +1529,8 @@
+                     LocalWorkBusy.PENDING -> applyPending(LocalPendingResult.Unavailable(LocalServiceProblem.UNAVAILABLE), null)
+                     LocalWorkBusy.REFERENCES -> referenceUnavailable(LocalServiceProblem.UNAVAILABLE)
+                     LocalWorkBusy.ACKNOWLEDGING -> acknowledgementUnavailable(LocalServiceProblem.UNAVAILABLE)
++                    LocalWorkBusy.ATTACHMENT_REVIEW -> mutableState.value = state.value.copy(
++                        page = null, readProblem = LocalServiceProblem.UNAVAILABLE, pendingLoaded = false)
+                     else -> if (kind == LocalWorkBusy.READING && state.value.form?.descriptor?.openingAllocations != null)
+                         openingReadUnavailable(LocalServiceProblem.UNAVAILABLE)
+                     else readUnavailable(LocalServiceProblem.UNAVAILABLE)
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationController.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationController.kt
+@@ -61,10 +61,12 @@
+     private val session: BranchUiSession,
+     private val owner: NavigationToken,
+     private val scope: CoroutineScope,
++    private var continuation: LocalAdministrationWorkspace? = null,
+ ) {
++    private val attachmentKey = session.attachmentKey
+     private val gateway = session.administration
+     val operatorId: DomainId get() = session.display.actorId
+-    private val mutableState = MutableStateFlow(LocalAdministrationWorkspace())
++    private val mutableState = MutableStateFlow(continuation ?: LocalAdministrationWorkspace())
+     val state: StateFlow<LocalAdministrationWorkspace> = mutableState.asStateFlow()
+     private var active = false
+     private var closed = false
+@@ -76,10 +78,11 @@
+     private data class Ticket(val activation: Long, val navigation: NavigationToken)
+ 
+     fun activate(directory: LocalAdministrationDirectory) {
+-        if (closed || active || !runtime.ownsLocalEntry(session, owner)) return
++        if (closed || active || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+         active = true
+         activation++
+-        mutableState.value = LocalAdministrationWorkspace(query = LocalAdministrationQuery(directory))
++        mutableState.value = continuation ?: LocalAdministrationWorkspace(query = LocalAdministrationQuery(directory))
++        continuation = null
+         val lifecycle = session.lifecycle
+         if (!gateway.configured || lifecycle == null) {
+             mutableState.value = state.value.copy(readProblem = LocalServiceProblem.NOT_CONFIGURED,
+@@ -116,12 +119,25 @@
+         work?.cancel(); work = null
+         monitor?.cancel(); monitor = null
+         mutableState.value = LocalAdministrationWorkspace()
++        continuation = null
+         removeGuard()
+     }
+ 
+     fun close() { if (!closed) { deactivate(); closed = true } }
++    fun retireForAttachment(): LocalAdministrationWorkspace? {
++        if (closed || !active) { close(); return null }
++        val before = state.value
++        val retained = before.copy(query = before.query.copy(cursor = null), view = null,
++            busy = LocalAdministrationBusy.NONE, pendingLoaded = false, pendingProblem = null,
++            readProblem = null, passwordEntryOpen = false,
++            // Even known metadata is reread before submission; cancellation/ACK uncertainty
++            // retains its exact original request. No credential input crosses attachments.
++            operationProblem = before.original?.let { LocalServiceProblem.STORAGE_UNCERTAIN })
++        close()
++        return retained
++    }
+     private fun current(generation: Long = activation): Boolean = !closed && active && generation == activation &&
+-        runtime.ownsLocalEntry(session, owner) && session.lifecycle?.value == LocalSessionLifecycle.ACTIVE
++        runtime.ownsLocalAttachment(session, owner, attachmentKey) && session.lifecycle?.value == LocalSessionLifecycle.ACTIVE
+     private fun current(ticket: Ticket): Boolean = current(ticket.activation) && runtime.navigator.isCurrent(ticket.navigation)
+     private fun accepts(token: NavigationToken): Boolean = current() && runtime.navigator.isCurrent(token) &&
+         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area
+@@ -337,7 +353,7 @@
+         syncGuard()
+         val ticket = Ticket(activation, runtime.navigator.token())
+         val job = scope.launch(start = CoroutineStart.LAZY) {
+-            try { block(ticket); currentCoroutineContext().ensureActive() }
++            try { if (current(ticket)) block(ticket); currentCoroutineContext().ensureActive() }
+             catch (cancelled: CancellationException) { if (current(ticket)) unavailable(kind); throw cancelled }
+             catch (_: Exception) { if (current(ticket)) unavailable(kind) }
+             finally {
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalRetailPhysicalController.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalRetailPhysicalController.kt
+@@ -26,6 +26,14 @@
+     val terminal: String = "", val reference: String = "", val confirmed: Boolean = false, val paid: String = "")
+ internal data class LocalRetailPreview(val operationId: OperationId, val kind: LocalRetailPhysicalKind,
+     val title: LocalText, val summary: List<LocalRecordValue>, val saveAttempted: Boolean = false)
++
++/** User-entered data and lookup identities only; never transfers a Start, prepared body or grant. */
++internal data class LocalRetailDraftContinuation(
++    val workflow: LocalWorkflow, val reference: LocalRecordReference?,
++    val foodCollectionId: DomainId?, val foodRefundId: DomainId?,
++    val paymentAmount: String, val tenderId: DomainId?,
++    val observation: LocalRetailObservationDraft, val recoveryId: String, val operationId: OperationId?,
++)
+ 
+ /** Ephemeral display only. No native handle, original lifetime or accepting capability is saved. */
+ internal data class LocalRetailWorkspace(
+@@ -84,7 +92,9 @@
+     private val parentAvailable: () -> Boolean,
+     private val guardChanged: () -> Unit,
+ ) {
++    private val attachmentKey = session.attachmentKey
+     private val gateway = session.retailPhysical
++    private val acknowledgementGateway = session.workflows
+     private val mutableState = MutableStateFlow(LocalRetailWorkspace())
+     val state: StateFlow<LocalRetailWorkspace> = mutableState.asStateFlow()
+     private var active = false
+@@ -103,13 +113,28 @@
+ 
+     fun activate(workflow: LocalWorkflow, reference: LocalRecordReference?, foodQuery: LocalFoodUiQuery? = null) {
+         deactivate()
+-        if (workflow !in retailWorkflows || !runtime.ownsLocalEntry(session, owner)) return
++        if (workflow !in retailWorkflows || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+         active = true
+         mutableState.value = LocalRetailWorkspace(workflow = workflow, reference = reference,
+             foodCollectionId = (foodQuery as? LocalFoodUiQuery.Collection)?.collectionId.takeIf { workflow == LocalWorkflow.FOOD },
+             foodRefundId = ((foodQuery as? LocalFoodUiQuery.Refund)?.refundId ?:
+                 reference?.takeIf { it.kind == LocalRecordKind.FOOD_REFUND }?.id).takeIf { workflow == LocalWorkflow.FOOD })
+         guardChanged()
++    }
++
++    fun snapshotDraft(): LocalRetailDraftContinuation? = state.value.takeIf { active }?.let { value ->
++        LocalRetailDraftContinuation(value.workflow, value.reference, value.foodCollectionId, value.foodRefundId,
++            value.paymentAmount, value.tenderId, value.observation.copy(selected = null, confirmed = false),
++            value.recoveryId.ifEmpty { value.operationId?.value.orEmpty() }, value.operationId)
++    }
++
++    fun restoreDraft(value: LocalRetailDraftContinuation) {
++        if (!current() || value.workflow != state.value.workflow || value.reference != state.value.reference ||
++            value.foodCollectionId != state.value.foodCollectionId || value.foodRefundId != state.value.foodRefundId) return
++        update(state.value.copy(paymentAmount = value.paymentAmount, tenderId = value.tenderId,
++            observation = value.observation, recoveryId = value.recoveryId, operationId = value.operationId,
++            notice = LocalText("Session renewed. Previous physical instructions ended. Read the original saved operation before any continuation; no payment or refund was repeated.",
++                "جُددت الجلسة وانتهت التعليمات المادية السابقة. اقرأ العملية الأصلية المحفوظة قبل المتابعة؛ لم يتكرر أي دفع أو رد مبلغ.")))
+     }
+ 
+     /** Parent calls this BEFORE changing activation/workflow/reference or cancelling its scope. */
+@@ -132,7 +157,7 @@
+     }
+ 
+     private fun current(generation: Long = activation): Boolean = active && generation == activation &&
+-        runtime.ownsLocalEntry(session, owner)
++        runtime.ownsLocalAttachment(session, owner, attachmentKey)
+     private fun accepts(token: NavigationToken): Boolean = current() && runtime.navigator.isCurrent(token) &&
+         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area
+     private data class Ticket(val activation: Long, val navigation: NavigationToken)
+@@ -428,7 +453,7 @@
+         if (refundOnly && saved.financialKind != LocalRetailFinancialKind.REFUND) return
+         if (foodRefundLane && (saved.subject != LocalPaymentSubject.FOOD || saved.financialKind != LocalRetailFinancialKind.REFUND)) return
+         // Attach the exact root+entry negative lifetime BEFORE the first credential/journal await.
+-        val original = runtime.retailPhysicalLifetime(session, token) ?: return
++        val original = runtime.retailPhysicalLifetime(session, token, attachmentKey) ?: return
+         originalOwner = original
+         update(state.value.copy(selected = saved.copy(dispatched = true), operationId = id, progress = null,
+             saved = state.value.saved.map { if (it.operationId == id) it.copy(dispatched = true) else it },
+@@ -537,7 +562,7 @@
+         if (!editable(token)) return
+         val saved = state.value.selected?.takeIf { it.recorded && it.operationId == state.value.progress?.operationId } ?: return
+         run(LocalRetailBusy.ACKNOWLEDGING, saved.operationId) { ticket ->
+-            val result = session.workflows.acknowledgeRecorded(saved.operationId)
++            val result = acknowledgementGateway.acknowledgeRecorded(saved.operationId)
+             currentCoroutineContext().ensureActive()
+             if (!current(ticket)) return@run
+             when (result) {
+@@ -728,7 +753,7 @@
+         // Parent owns the one leave guard. Capture AFTER its synchronous registration.
+         val ticket = Ticket(activation, runtime.navigator.token())
+         val job = scope.launch(start = CoroutineStart.LAZY) {
+-            try { block(ticket) }
++            try { if (current(ticket)) block(ticket) }
+             catch (cancelled: CancellationException) {
+                 if (current(ticket)) unavailable(LocalServiceProblem.UNAVAILABLE)
+                 throw cancelled
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalSupplierCashController.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalSupplierCashController.kt
+@@ -23,6 +23,13 @@
+ internal data class LocalSupplierObservationDraft(val selected: LocalSupplierObserved? = null,
+     val actualAmount: String = "", val actualCurrency: String = "", val nonpaymentReason: String = "",
+     val externalReference: String = "", val confirmed: Boolean = false)
++
++/** Data-only continuation. New supplier actions still require current master/native admission. */
++internal data class LocalSupplierDraftContinuation(
++    val reference: LocalRecordReference?, val query: LocalPurchasingUiQuery,
++    val supplierId: String, val invoiceId: String, val payout: String, val reason: String,
++    val observation: LocalSupplierObservationDraft, val recoveryId: String, val operationId: OperationId?,
++)
+ 
+ /** Ephemeral purchasing display only. No native handle, employee grant or lifetime is persisted. */
+ internal data class LocalSupplierCashWorkspace(
+@@ -64,7 +71,9 @@
+     private val parentAvailable: () -> Boolean,
+     private val guardChanged: () -> Unit,
+ ) {
++    private val attachmentKey = session.attachmentKey
+     private val gateway = session.retailPhysical
++    private val acknowledgementGateway = session.workflows
+     private val mutableState = MutableStateFlow(LocalSupplierCashWorkspace())
+     val state: StateFlow<LocalSupplierCashWorkspace> = mutableState.asStateFlow()
+     private var active = false
+@@ -84,12 +93,26 @@
+     fun activate(workflow: LocalWorkflow, reference: LocalRecordReference?, query: LocalPurchasingUiQuery,
+         selectedSupplierId: DomainId? = null) {
+         deactivate()
+-        if (workflow != LocalWorkflow.PURCHASING || !query.includeCosts || !runtime.ownsLocalEntry(session, owner)) return
++        if (workflow != LocalWorkflow.PURCHASING || !query.includeCosts || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+         active = true
+         val supplierId = reference?.takeIf { it.kind == LocalRecordKind.SUPPLIER }?.id ?: selectedSupplierId
+         val invoiceId = reference?.takeIf { it.kind in setOf(LocalRecordKind.PURCHASE_INVOICE, LocalRecordKind.SUPPLIER_PAYABLE) }?.id
+         update(LocalSupplierCashWorkspace(reference = reference, purchasingQuery = query,
+             supplierId = supplierId?.value.orEmpty(), invoiceId = invoiceId?.value.orEmpty()))
++    }
++
++    fun snapshotDraft(): LocalSupplierDraftContinuation? = state.value.takeIf { active }?.let { value ->
++        LocalSupplierDraftContinuation(value.reference, value.purchasingQuery, value.supplierId, value.invoiceId,
++            value.payout, value.reason, value.observation.copy(selected = null, confirmed = false),
++            value.recoveryId.ifEmpty { value.operationId?.value.orEmpty() }, value.operationId)
++    }
++
++    fun restoreDraft(value: LocalSupplierDraftContinuation) {
++        if (!current() || value.reference != state.value.reference || value.query != state.value.purchasingQuery) return
++        update(state.value.copy(supplierId = value.supplierId, invoiceId = value.invoiceId, payout = value.payout,
++            reason = value.reason, observation = value.observation, recoveryId = value.recoveryId, operationId = value.operationId,
++            notice = LocalText("Session renewed. Previous cash instructions ended. Read the original saved operation; no supplier payout was repeated.",
++                "جُددت الجلسة وانتهت تعليمات النقد السابقة. اقرأ العملية الأصلية المحفوظة؛ لم يتكرر أي دفع للمورد.")))
+     }
+ 
+     /** Negative-only lifetime end comes before any state, generation or cancellation write. */
+@@ -111,7 +134,7 @@
+         instruction = null
+     }
+ 
+-    private fun current(generation: Long = activation): Boolean = active && generation == activation && runtime.ownsLocalEntry(session, owner)
++    private fun current(generation: Long = activation): Boolean = active && generation == activation && runtime.ownsLocalAttachment(session, owner, attachmentKey)
+     private fun accepts(token: NavigationToken): Boolean = current() && runtime.navigator.isCurrent(token) &&
+         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area
+     private data class Ticket(val activation: Long, val navigation: NavigationToken)
+@@ -246,7 +269,7 @@
+         if (!editable(token)) return
+         val saved = saved(id)?.takeIf { it.isPhysicalStart && !it.dispatched && !it.recorded && it.summary.isNotEmpty() } ?: return
+         // Actual root/session/entry negative lifetime is attached BEFORE any credential/journal await.
+-        val original = runtime.retailPhysicalLifetime(session, token) ?: return
++        val original = runtime.retailPhysicalLifetime(session, token, attachmentKey) ?: return
+         originalOwner = original
+         update(state.value.copy(selected = saved.copy(dispatched = true), operationId = id, progress = null,
+             saved = state.value.saved.map { if (it.operationId == id) it.copy(dispatched = true) else it },
+@@ -339,7 +362,7 @@
+         if (!editable(token)) return
+         val saved = state.value.selected?.takeIf { it.recorded && supplierSaved(it) && it.operationId == state.value.progress?.operationId } ?: return
+         run(LocalSupplierBusy.ACKNOWLEDGING, saved.operationId) { ticket ->
+-            val result = session.workflows.acknowledgeRecorded(saved.operationId)
++            val result = acknowledgementGateway.acknowledgeRecorded(saved.operationId)
+             currentCoroutineContext().ensureActive()
+             if (!current(ticket)) return@run
+             when (result) {
+@@ -470,7 +493,7 @@
+         // Parent's one shared leave guard registers synchronously before this ticket is taken.
+         val ticket = Ticket(activation, runtime.navigator.token())
+         val job = scope.launch(start = CoroutineStart.LAZY) {
+-            try { block(ticket) }
++            try { if (current(ticket)) block(ticket) }
+             catch (cancelled: CancellationException) {
+                 if (current(ticket)) unavailable(LocalServiceProblem.UNAVAILABLE)
+                 throw cancelled
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalWorkflowScreens.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalWorkflowScreens.kt
+@@ -36,6 +36,7 @@
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
+ import androidx.compose.runtime.LaunchedEffect
++import androidx.compose.runtime.SideEffect
+ import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.key
+@@ -172,17 +173,31 @@
+         return
+     }
+     val workflows = localWorkflows(area)
+-    val controller = model.localWorkflows(runtime, token)
++    val active = runtime.navigator.isActiveEntry(token)
++    // A real entry departure clears private inputs. A temporary unavailable controller or
++    // lazy-list item disposal must not erase the original draft/operation identities.
++    DisposableEffect(runtime, model, active) {
++        if (!active) model.clearLocalConfigurationDrafts()
++        onDispose { if (!runtime.navigator.isActiveEntry(token)) model.clearLocalConfigurationDrafts() }
++    }
++    // Observe the accepted key without replacing navigation/entry owners or their safe drafts.
++    val runtimePresentation by runtime.presentation.collectAsState()
++    val controller = model.localWorkflows(runtime, token, runtimePresentation.localAttachment)
+     if (controller == null) { LiveUnavailableScreen(area); return }
+     val state by controller.state.collectAsState()
+     val retail by controller.retailPhysical.state.collectAsState()
+     val supplier by controller.supplierPhysical.state.collectAsState()
+-    var companyCatalogBusy by remember(controller) { mutableStateOf(false) }
+-    var foodConfigurationBusy by remember(controller) { mutableStateOf(false) }
++    var companyCatalogDraft by remember(controller) { mutableStateOf(false) }
++    var companyCatalogWorking by remember(controller) { mutableStateOf(false) }
++    var foodConfigurationDraft by remember(controller) { mutableStateOf(false) }
++    var foodConfigurationWorking by remember(controller) { mutableStateOf(false) }
++    val companyHasDraft = companyCatalogDraft || model.companyCatalogDrafts.hasDraft
++    val foodHasDraft = foodConfigurationDraft || model.foodConfigurationDrafts.hasDraft
++    val companyCatalogBusy = companyHasDraft || companyCatalogWorking
++    val foodConfigurationBusy = foodHasDraft || foodConfigurationWorking
+     val otherBusy = state.working || retail.working || retail.instruction != null || retail.preview != null ||
+         supplier.working || supplier.instruction != null || supplier.preview != null
+-    val localBusy = otherBusy || companyCatalogBusy || foodConfigurationBusy
+-    val active = runtime.navigator.isActiveEntry(token)
++    val localBusy = otherBusy || companyCatalogBusy || foodConfigurationBusy || state.attachmentReviewRequired
+     val initialFood = when (route) {
+         AppRoute.Food -> LocalFoodUiQuery.MyChecks()
+         is AppRoute.FoodOrder -> LocalFoodUiQuery.Check(route.orderId)
+@@ -193,7 +208,18 @@
+     DisposableEffect(controller, active) {
+         if (active) controller.activate(if (initialFood != null) LocalWorkflow.FOOD else workflows.first(),
+             (route as? AppRoute.Order)?.let { LocalRecordReference(LocalRecordKind.ORDER, it.orderId) }, food = initialFood)
++        else {
++            companyCatalogDraft = false; companyCatalogWorking = false
++            foodConfigurationDraft = false; foodConfigurationWorking = false
++        }
+         onDispose { controller.deactivate() }
++    }
++    // Reattach dirty guards even when the editor's lazy-list item is currently offscreen.
++    SideEffect {
++        if (active) {
++            controller.companyCatalogGuard(companyHasDraft, companyCatalogWorking)
++            controller.foodConfigurationGuard(foodHasDraft, foodConfigurationWorking)
++        }
+     }
+     // Outgoing Nav3 animation entries neither display retained private data nor capture callbacks.
+     if (!active) return
+@@ -217,6 +243,9 @@
+     var review by remember(controller) { mutableStateOf<LocalPendingOperation?>(null) }
+     LaunchedEffect(state.readProblem, state.pendingProblem) {
+         if (state.readProblem == LocalServiceProblem.DENIED || state.pendingProblem == LocalServiceProblem.DENIED) {
++            model.clearLocalConfigurationDrafts()
++            companyCatalogDraft = false; companyCatalogWorking = false
++            foodConfigurationDraft = false; foodConfigurationWorking = false
+             review = null
+             discardForm = false
+         }
+@@ -231,6 +260,15 @@
+         LazyColumn(Modifier.widthIn(max = 1100.dp).fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+             item {
+                 SectionHeading(workflowTitle(state.workflow), copy(Copy.LOCAL_WORKFLOW_HELP))
++                if (state.attachmentReviewRequired) {
++                    Notice(language.text(LocalText(
++                        "Session renewed. Your draft and original request IDs were kept, but old instructions and read results were retired. Reload current access, review the draft, then explicitly continue the SAME saved request. Nothing was submitted automatically.",
++                        "جُددت الجلسة وحُفظت المسودة ومعرفات الطلبات الأصلية، لكن انتهت التعليمات ونتائج القراءة القديمة. أعد قراءة الصلاحيات الحالية وراجع المسودة، ثم تابع الطلب المحفوظ نفسه صراحةً. لم يُرسل أي طلب تلقائيًا.")), caution = true)
++                    OutlinedButton(onClick = { controller.reviewAttachment(token) }, enabled = !state.working,
++                        modifier = Modifier.touchTarget()) {
++                        Text(language.text(LocalText("Reload current access and saved requests", "إعادة قراءة الصلاحيات الحالية والطلبات المحفوظة")))
++                    }
++                }
+                 if (workflows.size > 1) LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                     items(workflows, key = { it.name }) { workflow ->
+                         FilterChip(selected = state.workflow == workflow,
+@@ -240,23 +278,25 @@
+                     }
+                 }
+             }
+-            if (state.workflow == LocalWorkflow.CATALOG) item(key = "native-company-catalog-publication") {
+-                LocalCompanyCatalogPublicationCard(runtime, token,
+-                    parentReady = !otherBusy && !foodConfigurationBusy && state.form == null && !state.formFrozen,
++            if (area == AppArea.CATALOG) item(key = "native-company-catalog-publication") {
++                LocalCompanyCatalogPublicationCard(runtime, token, model.companyCatalogDrafts,
++                    parentReady = !state.attachmentReviewRequired && !otherBusy && !foodConfigurationBusy && state.form == null && !state.formFrozen,
+                     mayStartNew = state.canStart,
+                     guardChanged = { draft, working ->
+-                        companyCatalogBusy = working || draft
+-                        controller.companyCatalogGuard(draft, working)
++                        companyCatalogDraft = draft
++                        companyCatalogWorking = working
++                        controller.companyCatalogGuard(draft || model.companyCatalogDrafts.hasDraft, working)
+                     },
+                     activationStaged = { controller.refreshConfigurationPending(it) })
+             }
+-            if (state.workflow == LocalWorkflow.CATALOG) item(key = "native-company-food-configuration") {
+-                LocalFoodConfigurationCard(runtime, token,
+-                    parentReady = !otherBusy && !companyCatalogBusy && state.form == null && !state.formFrozen,
++            if (area == AppArea.CATALOG) item(key = "native-company-food-configuration") {
++                LocalFoodConfigurationCard(runtime, token, model.foodConfigurationDrafts,
++                    parentReady = !state.attachmentReviewRequired && !otherBusy && !companyCatalogBusy && state.form == null && !state.formFrozen,
+                     mayStartNew = state.canStart,
+                     guardChanged = { draft, working ->
+-                        foodConfigurationBusy = working || draft
+-                        controller.foodConfigurationGuard(draft, working)
++                        foodConfigurationDraft = draft
++                        foodConfigurationWorking = working
++                        controller.foodConfigurationGuard(draft || model.foodConfigurationDrafts.hasDraft, working)
+                     }, activationStaged = { controller.refreshConfigurationPending(it) })
+             }
+             if (state.working) item {
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalAdministrationScreen.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalAdministrationScreen.kt
+@@ -72,7 +72,8 @@
+ @OptIn(ExperimentalLayoutApi::class)
+ @Composable
+ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, model: EntryViewModel, token: NavigationToken) {
+-    val controller = model.localAdministration(runtime, token)
++    val runtimePresentation by runtime.presentation.collectAsState()
++    val controller = model.localAdministration(runtime, token, runtimePresentation.localAttachment)
+     if (controller == null) { LiveUnavailableScreen(area); return }
+     val state by controller.state.collectAsState()
+     val active = runtime.navigator.isActiveEntry(token)
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalCompanyCatalogPublicationCard.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalCompanyCatalogPublicationCard.kt
+@@ -22,6 +22,7 @@
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
++import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+@@ -48,9 +49,25 @@
+ import com.ukkera.pos.types.Revision
+ import com.ukkera.pos.types.UnitPrice
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CoroutineStart
++import kotlinx.coroutines.Job
+ import kotlinx.coroutines.currentCoroutineContext
+ import kotlinx.coroutines.ensureActive
+ import kotlinx.coroutines.launch
++
++/** Same-entry data only. Lazy-list disposal or adapter renewal must not lose original IDs. */
++internal class LocalCompanyCatalogEntryDrafts {
++    val retainedActionId = mutableStateOf<DomainId?>(null)
++    val editor = mutableStateOf<CompanySkuEditor?>(null)
++    val notice = mutableStateOf<LocalText?>(null)
++    val hasDraft: Boolean get() = editor.value != null
++
++    fun retireAttachment() {
++        editor.value = editor.value?.let { if (it.frozen) it else it.copy(taxConfirmed = false) }
++    }
++
++    fun clear() { editor.value = null; retainedActionId.value = null; notice.value = null }
++}
+ 
+ /** Active-entry-only native company form; never used by the training or central navigation root. */
+ @OptIn(ExperimentalLayoutApi::class)
+@@ -58,13 +75,16 @@
+ internal fun LocalCompanyCatalogPublicationCard(
+     runtime: UkkeraRuntime,
+     token: NavigationToken,
++    drafts: LocalCompanyCatalogEntryDrafts,
+     parentReady: Boolean,
+     mayStartNew: Boolean,
+     guardChanged: (draft: Boolean, working: Boolean) -> Unit,
+     activationStaged: (NavigationToken) -> Unit,
+ ) {
+     val session = runtime.localSessionFor(token) ?: return
+-    val gateway = session.companyCatalog
++    val runtimePresentation by runtime.presentation.collectAsState()
++    val attachmentKey = runtimePresentation.localAttachment
++    val gateway = remember(session, attachmentKey) { session.companyCatalog }
+     val language = LocalAppLanguage.current
+     if (!gateway.configured) {
+         Notice(language.text(LocalText("Native local company publication is unavailable. No unsigned catalog or employee-chosen signing key is accepted.",
+@@ -76,27 +96,29 @@
+     val latestParentReady by rememberUpdatedState(parentReady)
+     val latestGuard by rememberUpdatedState(guardChanged)
+     val latestStaged by rememberUpdatedState(activationStaged)
+-    var alive by remember(session, token.entryId) { mutableStateOf(true) }
+-    var generation by remember(session, token.entryId) { mutableStateOf(0L) }
+-    var working by remember(session, token.entryId) { mutableStateOf(false) }
+-    var pendingRefreshRequested by remember(session, token.entryId) { mutableStateOf(false) }
++    var alive by remember(session, token.entryId, attachmentKey) { mutableStateOf(true) }
++    var generation by remember(session, token.entryId, attachmentKey) { mutableStateOf(0L) }
++    var working by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++    var work by remember(session, token.entryId, attachmentKey) { mutableStateOf<Job?>(null) }
++    var retainedActionId by drafts.retainedActionId
++    var pendingRefreshRequested by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
+     // A failed initial read stays visible until explicit refresh. The sibling card's
+     // busy/ready transitions must not create an automatic retry loop.
+-    var initialStatusRequested by remember(session, token.entryId) { mutableStateOf(false) }
+-    var status by remember(session, token.entryId) { mutableStateOf<LocalCompanyCatalogStatus?>(null) }
+-    var editor by remember(session, token.entryId) { mutableStateOf<CompanySkuEditor?>(null) }
+-    var review by remember(session, token.entryId) { mutableStateOf<LocalCompanyCatalogReview?>(null) }
+-    var completed by remember(session, token.entryId) { mutableStateOf<LocalCompanyCatalogCompleted?>(null) }
+-    var problem by remember(session, token.entryId) { mutableStateOf<LocalServiceProblem?>(null) }
+-    var nativeProblem by remember(session, token.entryId) { mutableStateOf<SelfOwnedInstallationFailureV1?>(null) }
+-    var notice by remember(session, token.entryId) { mutableStateOf<LocalText?>(null) }
+-    var page by remember(session, token.entryId) { mutableStateOf(0) }
++    var initialStatusRequested by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++    var status by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalCompanyCatalogStatus?>(null) }
++    var editor by drafts.editor
++    var review by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalCompanyCatalogReview?>(null) }
++    var completed by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalCompanyCatalogCompleted?>(null) }
++    var problem by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalServiceProblem?>(null) }
++    var nativeProblem by remember(session, token.entryId, attachmentKey) { mutableStateOf<SelfOwnedInstallationFailureV1?>(null) }
++    var notice by drafts.notice
++    var page by remember(session, token.entryId, attachmentKey) { mutableStateOf(0) }
+     // NEVER saveable, journaled, logged or submitted as a branch employee password.
+-    var headLogin by remember(session, token.entryId) { mutableStateOf("") }
+-    var headSecret by remember(session, token.entryId) { mutableStateOf("") }
+-    var approvedExact by remember(session, token.entryId) { mutableStateOf(false) }
+-
+-    fun owns(): Boolean = alive && runtime.ownsLocalEntry(session, latestToken)
++    var headLogin by remember(session, token.entryId, attachmentKey) { mutableStateOf("") }
++    var headSecret by remember(session, token.entryId, attachmentKey) { mutableStateOf("") }
++    var approvedExact by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++
++    fun owns(): Boolean = alive && runtime.ownsLocalAttachment(session, latestToken, attachmentKey)
+     fun callbackCurrent(): Boolean = owns() && runtime.navigator.isCurrent(latestToken)
+     fun syncGuard() { if (owns()) latestGuard(editor != null || review != null, working) }
+     fun unavailable(value: LocalServiceProblem, native: SelfOwnedInstallationFailureV1? = null) {
+@@ -106,11 +128,13 @@
+     fun adopt(result: LocalCompanyCatalogReviewResult) {
+         when (result) {
+             is LocalCompanyCatalogReviewResult.Review -> {
++                retainedActionId = result.review.action.originalActionId
+                 review = result.review; completed = null; editor = null
+                 headLogin = result.review.action.headLogin; headSecret = ""; approvedExact = false
+                 notice = null
+             }
+             is LocalCompanyCatalogReviewResult.Completed -> {
++                retainedActionId = result.publication.originalActionId
+                 completed = result.publication; review = null; editor = null; headSecret = ""; approvedExact = false
+                 notice = LocalText("The original company signing completed. Branch activation is separate; no stock or sale has been created by signing.",
+                     "اكتمل توقيع الشركة الأصلي. تفعيل الفرع خطوة منفصلة؛ التوقيع لا ينشئ مخزونًا أو بيعًا.")
+@@ -118,13 +142,13 @@
+             is LocalCompanyCatalogReviewResult.Unavailable -> unavailable(result.problem, result.nativeReason)
+         }
+     }
+-    fun runAction(requireParentReady: Boolean = true, body: suspend () -> Unit): Boolean {
+-        if (!callbackCurrent() || working || requireParentReady && !latestParentReady) return false
++    fun runAction(requireParentReady: Boolean = true, secret: CharArray? = null, body: suspend () -> Unit): Boolean {
++        if (!callbackCurrent() || working || requireParentReady && !latestParentReady) { secret?.fill('\u0000'); return false }
+         working = true; problem = null; nativeProblem = null
+         val ticket = ++generation
+         syncGuard()
+-        scope.launch {
+-            try { body(); currentCoroutineContext().ensureActive() }
++        val job = scope.launch(start = CoroutineStart.LAZY) {
++            try { if (owns() && generation == ticket) body(); currentCoroutineContext().ensureActive() }
+             catch (cancelled: CancellationException) { throw cancelled }
+             catch (_: Exception) { if (owns() && generation == ticket) unavailable(LocalServiceProblem.UNAVAILABLE) }
+             finally { if (owns() && generation == ticket) {
+@@ -132,6 +156,10 @@
+                 if (pendingRefreshRequested) { pendingRefreshRequested = false; latestStaged(runtime.navigator.token()) }
+             } }
+         }
++        // Also clear a transferred password when cancellation wins before the body starts.
++        job.invokeOnCompletion { secret?.fill('\u0000') }
++        work = job
++        job.start()
+         return true
+     }
+     fun readStatus() {
+@@ -146,18 +174,23 @@
+         if (started) initialStatusRequested = true
+     }
+ 
+-    DisposableEffect(session, token.entryId) {
++    DisposableEffect(session, token.entryId, attachmentKey) {
+         alive = true
++        syncGuard()
+         onDispose {
++            val wasCurrent = owns()
+             alive = false; generation++
++            work?.cancel(); work = null
+             headSecret = ""; headLogin = ""; approvedExact = false
+-            editor = null; review = null; completed = null; status = null; pendingRefreshRequested = false
+-            latestGuard(false, false)
+-        }
+-    }
+-    LaunchedEffect(session, token.entryId, parentReady) { if (parentReady && !initialStatusRequested && !working) readStatus() }
+-
+-    val ready = parentReady && !working
++            review = null; completed = null; status = null; pendingRefreshRequested = false
++            // Only the entry owner clears drafts. This card may merely have scrolled offscreen.
++            if (wasCurrent) latestGuard(drafts.hasDraft, false)
++        }
++    }
++    LaunchedEffect(session, token.entryId, attachmentKey, parentReady) {
++        if (parentReady && !initialStatusRequested && !working) readStatus()
++    }
++    val ready = parentReady && !working && owns()
+     fun label(english: String, arabic: String): String = language.text(LocalText(english, arabic))
+     Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Outline)) {
+         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+@@ -195,7 +228,7 @@
+                 })
+                 IdentifierText(label("Retained publication identity for this draft", "معرف الإصدار المحفوظ لهذه المسودة"), draft.publicationId.value)
+                 Button(onClick = {
+-                    if (draft.template != CompanySkuTemplate.RETAIL && (!callbackCurrent() || working || !latestParentReady)) return@Button
++                    if (!callbackCurrent() || working || !latestParentReady) return@Button
+                     val exactDraft = try {
+                         editor?.toDraft()?.also { proposed ->
+                             if (draft.template != CompanySkuTemplate.RETAIL) {
+@@ -229,6 +262,19 @@
+                             "أُغلقت المسودة. يظل أي اقتراح محفوظ أصليًا بمعرفه الأصلي؛ اقرأ الإصدارات المحفوظة لمتابعته.")
+                     }
+                 }, enabled = ready && !draft.frozen, modifier = Modifier.touchTarget()) { Text(label("Dismiss editor; preserve any retained proposal", "إغلاق المسودة مع حفظ أي اقتراح محفوظ")) }
++            }
++
++            if (review == null && completed == null) retainedActionId?.let { original ->
++                IdentifierText(label("Original publication retained across session refresh", "الإصدار الأصلي المحفوظ بعد تجديد الجلسة"), original.value)
++                OutlinedButton(onClick = {
++                    runAction {
++                        val result = gateway.review(original)
++                        currentCoroutineContext().ensureActive()
++                        if (owns()) adopt(result)
++                    }
++                }, enabled = ready, modifier = Modifier.touchTarget()) {
++                    Text(label("Read SAME original publication before continuing", "قراءة الإصدار الأصلي نفسه قبل المتابعة"))
++                }
+             }
+ 
+             review?.let { exact ->
+@@ -256,7 +302,7 @@
+                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                     Button(onClick = {
+                         val password = headSecret.toCharArray(); headSecret = ""; approvedExact = false
+-                        if (!runAction {
++                        if (!runAction(secret = password) {
+                             try {
+                                 val result = gateway.approve(exact, headLogin, password)
+                                 currentCoroutineContext().ensureActive()
+@@ -337,9 +383,9 @@
+     }
+ }
+ 
+-private enum class CompanySkuTemplate { RETAIL, INGREDIENT, FOOD_OUTPUT }
+-
+-private data class CompanySkuEditor(
++internal enum class CompanySkuTemplate { RETAIL, INGREDIENT, FOOD_OUTPUT }
++
++internal data class CompanySkuEditor(
+     val publicationId: DomainId = DomainId.random(), val skuId: DomainId = DomainId.random(),
+     val productId: DomainId = DomainId.random(), val baseUnitId: DomainId = DomainId.random(),
+     val priceRuleId: DomainId = DomainId.random(), val taxPolicyId: DomainId = DomainId.random(),
+--- a/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalFoodConfigurationCard.kt
++++ b/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalFoodConfigurationCard.kt
+@@ -22,6 +22,7 @@
+ import androidx.compose.material3.Text
+ import androidx.compose.runtime.Composable
+ import androidx.compose.runtime.DisposableEffect
++import androidx.compose.runtime.collectAsState
+ import androidx.compose.runtime.LaunchedEffect
+ import androidx.compose.runtime.getValue
+ import androidx.compose.runtime.mutableStateOf
+@@ -47,18 +48,45 @@
+ import com.ukkera.pos.types.Quantity
+ import com.ukkera.pos.types.Revision
+ import kotlinx.coroutines.CancellationException
++import kotlinx.coroutines.CoroutineStart
++import kotlinx.coroutines.Job
+ import kotlinx.coroutines.currentCoroutineContext
+ import kotlinx.coroutines.ensureActive
+ import kotlinx.coroutines.launch
+ 
++/** No native reviews, jobs, credentials or authorizations survive in this entry-owned holder. */
++internal class LocalFoodConfigurationEntryDrafts {
++    val retainedActionId = mutableStateOf<DomainId?>(null)
++    val recipeEditor = mutableStateOf<FoodRecipeEditor?>(null)
++    val stationEditor = mutableStateOf<FoodStationEditor?>(null)
++    val routeEditor = mutableStateOf<FoodRouteEditor?>(null)
++    val activationHeld = mutableStateOf(false)
++    val notice = mutableStateOf<LocalText?>(null)
++    val hasDraft: Boolean get() = recipeEditor.value != null || stationEditor.value?.hidden == false || routeEditor.value?.hidden == false
++
++    fun retireAttachment() {
++        // A submitted body's identity/content is immutable; only unstaged approval is cleared.
++        stationEditor.value = stationEditor.value?.let { if (it.frozen) it else it.copy(confirmed = false) }
++        routeEditor.value = routeEditor.value?.let { if (it.frozen) it else it.copy(confirmed = false) }
++    }
++
++    fun clear() {
++        recipeEditor.value = null; stationEditor.value = null; routeEditor.value = null
++        retainedActionId.value = null; activationHeld.value = false; notice.value = null
++    }
++}
++
+ /** Connected finite setup, active local entries only. This is not full food/local go-live completion. */
+ @OptIn(ExperimentalLayoutApi::class)
+ @Composable
+-internal fun LocalFoodConfigurationCard(runtime: UkkeraRuntime, token: NavigationToken, parentReady: Boolean,
++internal fun LocalFoodConfigurationCard(runtime: UkkeraRuntime, token: NavigationToken,
++    drafts: LocalFoodConfigurationEntryDrafts, parentReady: Boolean,
+     mayStartNew: Boolean, guardChanged: (draft: Boolean, working: Boolean) -> Unit,
+     activationStaged: (NavigationToken) -> Unit) {
+     val session = runtime.localSessionFor(token) ?: return
+-    val gateway = session.companyCatalog.foodConfiguration
++    val runtimePresentation by runtime.presentation.collectAsState()
++    val attachmentKey = runtimePresentation.localAttachment
++    val gateway = remember(session, attachmentKey) { session.companyCatalog.foodConfiguration }
+     val language = LocalAppLanguage.current
+     fun label(english: String, arabic: String): String = language.text(LocalText(english, arabic))
+     if (!gateway.configured) {
+@@ -72,31 +100,33 @@
+     val latestMayStartNew by rememberUpdatedState(mayStartNew)
+     val latestGuard by rememberUpdatedState(guardChanged)
+     val latestStaged by rememberUpdatedState(activationStaged)
+-    var alive by remember(session, token.entryId) { mutableStateOf(true) }
+-    var generation by remember(session, token.entryId) { mutableStateOf(0L) }
+-    var working by remember(session, token.entryId) { mutableStateOf(false) }
+-    var pendingRefreshRequested by remember(session, token.entryId) { mutableStateOf(false) }
++    var alive by remember(session, token.entryId, attachmentKey) { mutableStateOf(true) }
++    var generation by remember(session, token.entryId, attachmentKey) { mutableStateOf(0L) }
++    var working by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++    var work by remember(session, token.entryId, attachmentKey) { mutableStateOf<Job?>(null) }
++    var retainedActionId by drafts.retainedActionId
++    var pendingRefreshRequested by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
+     // A failed initial read stays visible until explicit refresh. The sibling card's
+     // busy/ready transitions must not create an automatic retry loop.
+-    var initialStatusRequested by remember(session, token.entryId) { mutableStateOf(false) }
+-    var status by remember(session, token.entryId) { mutableStateOf<LocalFoodConfigurationStatus?>(null) }
+-    var retainedPage by remember(session, token.entryId) { mutableStateOf(0) }
+-    var recipeEditor by remember(session, token.entryId) { mutableStateOf<FoodRecipeEditor?>(null) }
+-    var stationEditor by remember(session, token.entryId) { mutableStateOf<FoodStationEditor?>(null) }
+-    var routeEditor by remember(session, token.entryId) { mutableStateOf<FoodRouteEditor?>(null) }
+-    var picker by remember(session, token.entryId) { mutableStateOf<FoodSetupPicker?>(null) }
+-    var review by remember(session, token.entryId) { mutableStateOf<LocalFoodRecipeReview?>(null) }
+-    var completed by remember(session, token.entryId) { mutableStateOf<LocalFoodRecipeCompleted?>(null) }
+-    var activationHeld by remember(session, token.entryId) { mutableStateOf(false) }
+-    var problem by remember(session, token.entryId) { mutableStateOf<LocalServiceProblem?>(null) }
+-    var nativeProblem by remember(session, token.entryId) { mutableStateOf<SelfOwnedInstallationFailureV1?>(null) }
+-    var notice by remember(session, token.entryId) { mutableStateOf<LocalText?>(null) }
++    var initialStatusRequested by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++    var status by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalFoodConfigurationStatus?>(null) }
++    var retainedPage by remember(session, token.entryId, attachmentKey) { mutableStateOf(0) }
++    var recipeEditor by drafts.recipeEditor
++    var stationEditor by drafts.stationEditor
++    var routeEditor by drafts.routeEditor
++    var picker by remember(session, token.entryId, attachmentKey) { mutableStateOf<FoodSetupPicker?>(null) }
++    var review by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalFoodRecipeReview?>(null) }
++    var completed by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalFoodRecipeCompleted?>(null) }
++    var activationHeld by drafts.activationHeld
++    var problem by remember(session, token.entryId, attachmentKey) { mutableStateOf<LocalServiceProblem?>(null) }
++    var nativeProblem by remember(session, token.entryId, attachmentKey) { mutableStateOf<SelfOwnedInstallationFailureV1?>(null) }
++    var notice by drafts.notice
+     // Ephemeral only: no saveable state, journal, request, logs or employee-password reuse.
+-    var headLogin by remember(session, token.entryId) { mutableStateOf("") }
+-    var headSecret by remember(session, token.entryId) { mutableStateOf("") }
+-    var exactApproved by remember(session, token.entryId) { mutableStateOf(false) }
+-
+-    fun owns(): Boolean = alive && runtime.ownsLocalEntry(session, latestToken)
++    var headLogin by remember(session, token.entryId, attachmentKey) { mutableStateOf("") }
++    var headSecret by remember(session, token.entryId, attachmentKey) { mutableStateOf("") }
++    var exactApproved by remember(session, token.entryId, attachmentKey) { mutableStateOf(false) }
++
++    fun owns(): Boolean = alive && runtime.ownsLocalAttachment(session, latestToken, attachmentKey)
+     fun callbackCurrent(): Boolean = owns() && runtime.navigator.isCurrent(latestToken)
+     fun editorReady(): Boolean = callbackCurrent() && !working && latestParentReady
+     fun mayCreate(): Boolean = editorReady() && latestMayStartNew && recipeEditor == null && stationEditor == null &&
+@@ -119,10 +149,12 @@
+     fun adopt(result: LocalFoodRecipeResult) {
+         when (result) {
+             is LocalFoodRecipeResult.Review -> {
++                retainedActionId = result.review.action.originalActionId
+                 review = result.review; completed = null; recipeEditor = null; picker = null
+                 headLogin = result.review.action.headLogin; headSecret = ""; exactApproved = false
+             }
+             is LocalFoodRecipeResult.Completed -> {
++                retainedActionId = result.publication.originalActionId
+                 completed = result.publication; review = null; recipeEditor = null; picker = null
+                 headLogin = ""; headSecret = ""; exactApproved = false
+                 notice = LocalText("Original head signing completed. Recipe activation, station/routing configuration and ingredient stock are separate branch operations.",
+@@ -131,13 +163,13 @@
+             is LocalFoodRecipeResult.Unavailable -> unavailable(result.problem, result.nativeReason)
+         }
+     }
+-    fun runAction(body: suspend () -> Unit): Boolean {
+-        if (!callbackCurrent() || working || !latestParentReady) return false
++    fun runAction(secret: CharArray? = null, body: suspend () -> Unit): Boolean {
++        if (!callbackCurrent() || working || !latestParentReady) { secret?.fill('\u0000'); return false }
+         working = true; problem = null; nativeProblem = null
+         val ticket = ++generation
+         syncGuard()
+-        scope.launch {
+-            try { body(); currentCoroutineContext().ensureActive() }
++        val job = scope.launch(start = CoroutineStart.LAZY) {
++            try { if (owns() && generation == ticket) body(); currentCoroutineContext().ensureActive() }
+             catch (cancelled: CancellationException) { throw cancelled }
+             catch (failure: FoodSetupReadFailure) { if (owns() && generation == ticket) unavailable(failure.problem) }
+             catch (_: IllegalArgumentException) { if (owns() && generation == ticket) unavailable(LocalServiceProblem.INVALID_INPUT) }
+@@ -148,6 +180,10 @@
+                 if (pendingRefreshRequested) { pendingRefreshRequested = false; latestStaged(runtime.navigator.token()) }
+             } }
+         }
++        // Also clear a transferred password when cancellation wins before the body starts.
++        job.invokeOnCompletion { secret?.fill('\u0000') }
++        work = job
++        job.start()
+         return true
+     }
+     fun readStatus() {
+@@ -269,18 +305,22 @@
+         }
+     }
+ 
+-    DisposableEffect(session, token.entryId) {
++    DisposableEffect(session, token.entryId, attachmentKey) {
+         alive = true
++        syncGuard()
+         onDispose {
++            val wasCurrent = owns()
+             alive = false; generation++
++            work?.cancel(); work = null
+             headSecret = ""; headLogin = ""; exactApproved = false
+-            recipeEditor = null; stationEditor = null; routeEditor = null; picker = null
+-            review = null; completed = null; status = null; activationHeld = false; pendingRefreshRequested = false
+-            latestGuard(false, false)
+-        }
+-    }
+-    LaunchedEffect(session, token.entryId, parentReady) { if (parentReady && !initialStatusRequested && !working) readStatus() }
+-    val ready = parentReady && !working
++            review = null; completed = null; status = null; picker = null; pendingRefreshRequested = false
++            if (wasCurrent) latestGuard(drafts.hasDraft, false)
++        }
++    }
++    LaunchedEffect(session, token.entryId, attachmentKey, parentReady) {
++        if (parentReady && !initialStatusRequested && !working) readStatus()
++    }
++    val ready = parentReady && !working && owns()
+     val canCreate = mayCreate()
+     Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Outline)) {
+         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+@@ -395,6 +435,19 @@
+                         modifier = Modifier.touchTarget()) { Text(label("Read next source page", "قراءة صفحة المصادر التالية")) }
+                     OutlinedButton(onClick = { if (callbackCurrent() && ready) { picker = null; syncGuard() } }, enabled = ready,
+                         modifier = Modifier.touchTarget()) { Text(label("Close source selector", "إغلاق اختيار المصدر")) }
++                }
++            }
++
++            if (review == null && completed == null) retainedActionId?.let { original ->
++                IdentifierText(label("Original publication retained across session refresh", "الإصدار الأصلي المحفوظ بعد تجديد الجلسة"), original.value)
++                OutlinedButton(onClick = {
++                    runAction {
++                        val result = gateway.review(original)
++                        currentCoroutineContext().ensureActive()
++                        if (owns()) adopt(result)
++                    }
++                }, enabled = ready, modifier = Modifier.touchTarget()) {
++                    Text(label("Read SAME original publication before continuing", "قراءة الإصدار الأصلي نفسه قبل المتابعة"))
+                 }
+             }
+ 
+@@ -421,7 +474,7 @@
+                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                     Button(onClick = {
+                         val password = headSecret.toCharArray(); val login = headLogin; headSecret = ""; exactApproved = false
+-                        if (!runAction {
++                        if (!runAction(secret = password) {
+                             try { val result = gateway.approve(exact, login, password); currentCoroutineContext().ensureActive(); if (owns()) adopt(result) }
+                             finally { password.fill('\u0000') }
+                         }) password.fill('\u0000')
+@@ -476,8 +529,8 @@
+     }
+ }
+ 
+-private data class FoodIngredientEditor(val id: DomainId = DomainId.random(), val sku: LocalFoodSkuSource? = null, val quantity: String = "")
+-private data class FoodRecipeEditor(val publicationId: DomainId = DomainId.random(), val recipeId: DomainId = DomainId.random(),
++internal data class FoodIngredientEditor(val id: DomainId = DomainId.random(), val sku: LocalFoodSkuSource? = null, val quantity: String = "")
++internal data class FoodRecipeEditor(val publicationId: DomainId = DomainId.random(), val recipeId: DomainId = DomainId.random(),
+     val choiceId: DomainId = DomainId.random(), val routeKey: DomainId = DomainId.random(), val output: LocalFoodSkuSource? = null,
+     val english: String = "", val arabic: String = "", val yield: String = "", val portion: String = "",
+     val ingredients: List<FoodIngredientEditor> = listOf(FoodIngredientEditor()), val frozen: Boolean = false) {
+@@ -498,7 +551,7 @@
+             listOf(LocalFoodRecipeChoiceDraft(choiceId, LocalText(english, arabic), emptyList(), components, listOf(routeKey), source)))
+     }
+ }
+-private data class FoodStationEditor(val operationId: OperationId = OperationId.random(), val stationId: DomainId = DomainId.random(),
++internal data class FoodStationEditor(val operationId: OperationId = OperationId.random(), val stationId: DomainId = DomainId.random(),
+     val expectedStorageRevision: Revision? = null, val english: String = "", val arabic: String = "",
+     val mode: LocalFoodConfigurationStationMode = LocalFoodConfigurationStationMode.DISPLAY,
+     val confirmed: Boolean = false, val frozen: Boolean = false, val hidden: Boolean = false) {
+@@ -508,7 +561,7 @@
+         return LocalFoodStationDraft(operationId, stationId, expectedStorageRevision, LocalText(english, arabic), mode)
+     }
+ }
+-private data class FoodRouteEditor(val operationId: OperationId = OperationId.random(), val routeId: DomainId = DomainId.random(),
++internal data class FoodRouteEditor(val operationId: OperationId = OperationId.random(), val routeId: DomainId = DomainId.random(),
+     val expectedStorageRevision: Revision? = null, val recipe: LocalFoodRecipeSource? = null, val warehouse: LocalFoodWarehouseSource? = null,
+     val activity: LocalFoodConfigurationActivity = LocalFoodConfigurationActivity.RESTAURANT,
+     val channel: LocalFoodConfigurationChannel = LocalFoodConfigurationChannel.COUNTER,

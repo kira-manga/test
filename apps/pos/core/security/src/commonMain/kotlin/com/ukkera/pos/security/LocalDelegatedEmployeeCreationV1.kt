@@ -99,3 +99,35 @@ public sealed interface LocalEmployeeCreationReviewV1 {
     public data object StorageUncertain: LocalEmployeeCreationReviewV1
     public data object Busy: LocalEmployeeCreationReviewV1
 }
+
+/** Read-back DATA for this exact retained creation original. This receipt is not employee,
+ * key, native-origin or Master authority, and does not restore the creator's old session. */
+public data class LocalEmployeeCreationReceiptV1(
+    public val scope: BranchScope,
+    public val requestId: DomainId,
+    public val originalOperatorId: DomainId,
+    public val actorId: DomainId,
+    public val contentDigest: PayloadDigest,
+) {
+    override fun toString(): String = "LocalEmployeeCreationReceiptV1([REDACTED])"
+}
+
+/** Exact original lookup only. No status authorizes a new identity, insertion or retry. */
+public sealed interface LocalEmployeeCreationStatusV1 {
+    public class Applied(public val receipt: LocalEmployeeCreationReceiptV1): LocalEmployeeCreationStatusV1 {
+        override fun toString(): String = "LocalEmployeeCreationStatusV1.Applied([REDACTED])"
+    }
+    /** The same original key has a permanent cancellation tombstone. This does not undo a
+     * creation, revoke the creator's session or prove native cleanup by itself. */
+    public class Cancelled(public val receipt: LocalEmployeeCreationReceiptV1): LocalEmployeeCreationStatusV1 {
+        override fun toString(): String = "LocalEmployeeCreationStatusV1.Cancelled([REDACTED])"
+    }
+    /** No matching event was observed on this protected read. This is not safe absence,
+     * cancellation, a rollback conclusion or permission to dispatch another original. */
+    public data object NotObserved: LocalEmployeeCreationStatusV1
+    public data object IdentityConflict: LocalEmployeeCreationStatusV1
+    public data object Denied: LocalEmployeeCreationStatusV1
+    public data object Unavailable: LocalEmployeeCreationStatusV1
+    public data object StorageUncertain: LocalEmployeeCreationStatusV1
+    public data object Busy: LocalEmployeeCreationStatusV1
+}

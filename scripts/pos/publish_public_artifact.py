@@ -21,7 +21,8 @@ import sanitize_diagnostics
 
 
 NOTES = {"README-ARTIFACTS.txt", "SOURCE-REVISION.txt"}
-PACKAGES = (".apk", ".dmg", ".msi", ".app.zip", ".xcarchive.zip")
+# .cer is only the PUBLIC test-signing certificate the owner trusts before installing an MSIX.
+PACKAGES = (".apk", ".dmg", ".msi", ".msix", ".cer", ".app.zip", ".xcarchive.zip")
 
 
 def check_regular_tree(root: Path) -> None:

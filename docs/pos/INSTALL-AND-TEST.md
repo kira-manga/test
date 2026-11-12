@@ -6,6 +6,99 @@ desktop and iOS currently launch an **unconfigured bootstrap**. Installing them
 does not provide a working branch Master, employee login, checkout or paired
 Client. Do not use production data or real payments.
 
+## macOS, Windows and Android inspection downloads — 12 November 2026
+
+The manual owner-package workflow provides macOS Apple Silicon/Intel DMGs,
+a Windows x64 MSI and the retained-signer Android application/runtime-test pair.
+All four artifacts were downloaded and verified against file manifests/checksums.
+Desktop packaging and bounded packaged startup passed; Android input/source checks,
+matching source build and fatal lint passed. The first Windows publication and
+Android memory failures remain recorded alongside the successful retries.
+
+**Inspection packages; full POS operation is incomplete.** Desktop launchers remain
+unconfigured for trusted setup/Master/Client services. Android employee creation
+remains unavailable. Packages contain application tree `a00d8303`; the later
+creation-original lookup is not included. The auxiliary repository stays **PUBLIC**.
+[Downloads, expiry dates, exact source/hashes and readiness limits](../../qa/pos/traceability/owner-test-packages-20261112/README.md).
+
+The current downloads below expire on **26 November 2026**. Sign in to GitHub,
+download the ZIP for your platform, and extract it before opening the installer.
+
+| Platform | Current download | File to open after extracting the ZIP |
+| --- | --- | --- |
+| Mac with Apple Silicon (M-series) | [Apple Silicon DMG](https://github.com/kira-manga/test/actions/runs/43177650760/artifacts/13925765614) | `UkkeraPOS-1.0.0.dmg` |
+| Mac with an Intel processor | [Intel DMG](https://github.com/kira-manga/test/actions/runs/43177650760/artifacts/13925671503) | `UkkeraPOS-1.0.0.dmg` |
+| Windows x64 | [Windows MSI](https://github.com/kira-manga/test/actions/runs/43179326171/artifacts/13925473115) | `UkkeraPOS-0.1.0.msi` |
+| Android | [Android APK](https://github.com/kira-manga/test/actions/runs/43179698847/artifacts/13926298925) | `ukkera-pos-testing.apk` |
+
+On Mac, open the DMG and install the application. On Windows, run the MSI.
+These desktop packages are unsigned and the Mac packages are not notarized, so
+operating-system security prompts can appear. On Android, transfer the application
+APK to the device and open it; the installing app may need permission to install
+APKs. The separate `ukkera-pos-runtime-tests.apk` is for the disposable automated
+qualification campaign, not ordinary owner inspection. Preserve existing app data
+and unresolved original operations when installing an update.
+
+### Opening the Mac inspection build
+
+The current DMGs are unsigned and unnotarized. macOS can display “Apple could not
+verify ‘UkkeraPOS’ is free of malware.” For the expected package downloaded above:
+
+1. Install UkkeraPOS from the DMG and try opening it once.
+2. Click **Done** in the warning.
+3. Open **Apple menu → System Settings → Privacy & Security**.
+4. Scroll to **Security**, find the UkkeraPOS blocked-app message, and click
+   **Open Anyway**. Authenticate if macOS asks, then confirm **Open**.
+5. If the button is absent, try opening UkkeraPOS again and return to that page.
+
+This saves an exception for the application. Keep Gatekeeper enabled; do not strip
+quarantine from downloaded files. See [Apple’s instructions for opening a Mac app
+from an unidentified developer](https://support.apple.com/en-us/102445). An approval
+or a successful launch does not establish that the POS backend is ready.
+
+The owner reported this warning on 12 November 2026. Successful launch, processor
+architecture and the downloaded package checksum have not yet been confirmed from
+that report.
+
+### What remains before a full local trial
+
+The current downloads support installation, startup and available-screen inspection.
+A full trial needs a configured local Master plus a connected Client, genuine native
+storage/keys and startup recovery, employee administration/login, current permissions,
+and the required business operations. Mac and Windows launchers still need that
+trusted service composition. Android needs qualified original-owned employee creation,
+recovery and startup behavior. Protected input capture, the new-employee form and
+first-submit/recovery presentation now exist in source and passed JVM compilation
+and the existing bounded regression selection (2,535 passes, 24 off-platform skips,
+zero failures/errors). They are not included in these packages. Independent focused
+creation/UI/journal qualification, remote creation RPC and actual native cold-admission
+qualification remain open. Android app and both iOS source compilation targets also
+passed; native/installed execution is still unverified. See the
+[successor verification record](../../qa/pos/traceability/creation-inputs-regression-20261112/README.md).
+The newer creation-only connection and durable-consumer boundary are source prerequisites;
+they do not yet install creation RPC, its physical/session ingress or remote runtime root.
+Focused independent qualification remains open. [Source and verification scope](../../qa/pos/traceability/creation-remote-composition-20261112/README.md).
+Required TCP verification also has an unresolved failure. Remaining sales, purchasing,
+returns and financial recovery scope stays open in the [current status](CURRENT-STATUS.md)
+and [live tracker](https://github.com/ukkera/kmp-apps/issues/2).
+
+The local Master is intended to operate without the central service. Central work
+remains held pending local owner testing and separate authorization. No full-local,
+platform or owner acceptance is established by these downloads.
+
+For this checkpoint, inspect installation, startup and available presentation with
+synthetic data. Desktop setup/Master/Client and Android employee creation remain
+unavailable; a refusal in those unfinished paths is not an instruction to reset
+data or repeat an original. Desktop bounded startup passed. Android installation
+and startup were not executed for this package.
+
+[Manual package workflow](https://github.com/kira-manga/test/actions/workflows/pos-owner-test-packages.yml)
+is available for future authorized packaging. Android publication requires the
+retained signed pair and matching source inventory described in the
+[packaging runbook](NATIVE-PACKAGING-HANDOFF.md). The downloaded packages contain
+`a00d8303`; subsequent creation-original coordination, recovery and local-control
+changes are not included.
+
 ## Current retained Android app and runtime-test pair
 
 The retained signed application/runtime-test pair is bound to clean source
@@ -22,8 +115,9 @@ nondebuggable; runtime-test APK debuggable.
 [Exact source, sizes, hashes, signer and limitations](../../qa/pos/traceability/creation-preflight-transaction-20261112/android-package.json).
 Install only the application for ordinary owner testing; runtime-test installation
 requires an explicitly selected disposable synthetic campaign. **Neither was
-installed, launched, instrumented or uploaded here.** No native creation or owner
-acceptance is established. Public downloads retain their earlier source bindings.
+installed, launched or instrumented here.** The later owner-package campaign
+uploaded this exact pair after hosted source/lint verification; use the downloads
+above. No native creation or owner acceptance is established.
 
 ## Earlier retained Android pair — completed created-employee origin
 

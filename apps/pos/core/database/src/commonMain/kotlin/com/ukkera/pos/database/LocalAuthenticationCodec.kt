@@ -82,6 +82,7 @@ internal object LocalAuthenticationCodec {
         LocalAuthEventKind.SERIAL_PUBLICATION_REQUEST -> "ukkera.local-serial-publication-request-event/v1"
         LocalAuthEventKind.MASTER_LIFECYCLE -> LIFECYCLE_PROFILE
         LocalAuthEventKind.ACCOUNT_CREATED -> "ukkera.local-delegated-employee-creation-event/v1"
+        LocalAuthEventKind.ACCOUNT_CREATION_CANCELLED -> "ukkera.local-delegated-employee-creation-cancellation-event/v1"
         else -> "ukkera.local-auth-event/v1"
     }
 

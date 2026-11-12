@@ -1,0 +1,1745 @@
+{
+  "baseline_api_snapshot": {
+    "build_files_read_only": [
+      {
+        "bytes": 1380,
+        "path": "core/security/build.gradle.kts",
+        "sha256": "bdb1e7ece041fd6cfdcc378216265f6e47a60c4dd656d2f173acf71cd8b48ce0"
+      },
+      {
+        "bytes": 2226,
+        "path": "core/database/build.gradle.kts",
+        "sha256": "fc4b190221e2dc30583bea8ab3dc3fe70ba1c1a618be94b8bb361fd6f1b8a781"
+      },
+      {
+        "bytes": 1310,
+        "path": "adapters/app-gateway/build.gradle.kts",
+        "sha256": "64b033e749c7461e496898a01d97d175bddfbcde79b4f01954565cea2f7279b7"
+      }
+    ],
+    "commit_helper_verified": false,
+    "lead_reported_continuation_commit": "57e12ee",
+    "note": "Hash census is not a Git operation, compile receipt or complete transitive dependency closure. Native/UI staged replacements are separately pinned.",
+    "source_files": [
+      {
+        "bytes": 2563,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Allocation.kt",
+        "sha256": "54869ab1638a7c6539b8f902e64355c5ca5115d7af59cdc86b99d1ff4c55becb"
+      },
+      {
+        "bytes": 7048,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/BusinessTime.kt",
+        "sha256": "f8401f7e331a92ba95fb6fd3d0b1b33dd77b96f6b965e3e3b260c113988bdcc4"
+      },
+      {
+        "bytes": 3296,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Codes.kt",
+        "sha256": "697eac2e2a3e2f1af57302daf47d81c6af51ebae42dba9278ffd6188543bc95c"
+      },
+      {
+        "bytes": 10397,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/ExactDecimal.kt",
+        "sha256": "f50e19bd430c1b21d57ea269077d2485d7457837026495161b6cbe1f3a5af522"
+      },
+      {
+        "bytes": 4633,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Identifiers.kt",
+        "sha256": "3f2caa32fb46f699006131e62fbeb24e77157a1e5fd73ea935d08998bc8e8e2f"
+      },
+      {
+        "bytes": 2349,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Money.kt",
+        "sha256": "30dcade37e1ea78ff3f00b57c9e868588762eae4badc3b3cd726b60a3f20e843"
+      },
+      {
+        "bytes": 4771,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Quantity.kt",
+        "sha256": "20e91b4b8a830cebd9131a1ae74abfb3d85ed4d04bc46552d166e571d8a0ee54"
+      },
+      {
+        "bytes": 4054,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/Rates.kt",
+        "sha256": "89a49445ae017cb5a68ff56aee0387e1d5fbf0382e114530a95bd054e18e130e"
+      },
+      {
+        "bytes": 1289,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/ScalarSerialization.kt",
+        "sha256": "4faf0daee1b2fa887cbe12ca0d883623c9c536a4ad919020fee75b8f74bd7f3a"
+      },
+      {
+        "bytes": 1232,
+        "path": "core/types/src/commonMain/kotlin/com/ukkera/pos/types/UnitAmounts.kt",
+        "sha256": "3b8c5c0714e4227bb4c1b80cb05f9ab64fb18a21f2e0c5972cc5260d76fdd21a"
+      },
+      {
+        "bytes": 34346,
+        "path": "core/recovery/src/commonMain/kotlin/com/ukkera/pos/recovery/AuthorityLifecycle.kt",
+        "sha256": "001d86f69b467fa61512c8b5d96e56db899ed7bc50c0a6d6e4227944f919b47c"
+      },
+      {
+        "bytes": 11972,
+        "path": "core/recovery/src/commonMain/kotlin/com/ukkera/pos/recovery/HistoryCoverage.kt",
+        "sha256": "a3921e43b8e9a72583322182889bf8add919ac58918cf254fa728041ab14238e"
+      },
+      {
+        "bytes": 29834,
+        "path": "core/recovery/src/commonMain/kotlin/com/ukkera/pos/recovery/RecoveryAdmission.kt",
+        "sha256": "4cd9c0a1628f9a492ae5dce6ad07c19f9171e864a743bec8ebe8b631b3196a4c"
+      },
+      {
+        "bytes": 5660,
+        "path": "core/recovery/src/commonMain/kotlin/com/ukkera/pos/recovery/RecoveryModels.kt",
+        "sha256": "b782fa932f8d6f8522a0673d4f1d0ed6051bc9b2f3d4ba83c69f4782fe09405f"
+      },
+      {
+        "bytes": 11931,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Approval.kt",
+        "sha256": "d8d29fa800503ef9755131641a78fc5869cffbd9ae31229275089d944d3aab19"
+      },
+      {
+        "bytes": 26541,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Authorization.kt",
+        "sha256": "56fe0184c9912d7c1a335c87dc9a19c274fe3e1c9839171f214dec4d1ff291e0"
+      },
+      {
+        "bytes": 2306,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Digest.kt",
+        "sha256": "d0bf9394d5844d6573a888a0d3479d4c407e5e877e265043df7de851969748bc"
+      },
+      {
+        "bytes": 9101,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/InstalledOfflineInstallationContext.kt",
+        "sha256": "fe449a8865a3ef5986b42505d38ba026d9d8ea242984759ca6242d65cc0f4d4d"
+      },
+      {
+        "bytes": 9164,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAccessIssuance.kt",
+        "sha256": "d5a27871190316b1c60b5fb3c8f9b425e01758f3fc345595991ed90022914983"
+      },
+      {
+        "bytes": 1347,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAccessSecretVerification.kt",
+        "sha256": "a447915d42eee90f861f2a4434b7a8ce00ca2c0bb69f220cc6c04b42772bf04c"
+      },
+      {
+        "bytes": 8211,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAdministration.kt",
+        "sha256": "173c55e43f4b20e018b069ca68f1179f7a96503e6ce299cd0600a6f433147633"
+      },
+      {
+        "bytes": 15090,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthentication.kt",
+        "sha256": "2ec80e5fdecac4cf79eb4acc7be2a7775f42faa2b10e30edf07b95fbd16b692e"
+      },
+      {
+        "bytes": 8952,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthenticationRecords.kt",
+        "sha256": "c0d647951ecc52a080814e18db07691a24ab3d2c5f126a40a95f103a6e1ab45e"
+      },
+      {
+        "bytes": 13296,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalBranchInstallation.kt",
+        "sha256": "895d13307e815cafd065bf757ea5ed3de142045b191777fc27f86010beb585bc"
+      },
+      {
+        "bytes": 57334,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalBranchInstallationV2.kt",
+        "sha256": "83391203bd2f9c384ef16d05af500e8f73599ecbbc1cc5fcf9fc6aadc3221f2b"
+      },
+      {
+        "bytes": 12870,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyAuthority.kt",
+        "sha256": "054de3718aa894b5147f408b30a00c16c4d147bd282dd95cb5f52031517dde3c"
+      },
+      {
+        "bytes": 14251,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyAuthorityStateV1.kt",
+        "sha256": "e128e5a31b31db7116630428741d6e96db7eb385346c9e4069ffd69400c79bb6"
+      },
+      {
+        "bytes": 15122,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyAuthorityWireV1.kt",
+        "sha256": "ab68ca39e0fc8d136b7c60ba0da78c5701c562911f64a40a7e78d50dd741f498"
+      },
+      {
+        "bytes": 9320,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyBusinessPublications.kt",
+        "sha256": "7d4c5efed397088f8f58f3d63f3faa491df2eaca9fc0ebb8b193c3987f2afd7f"
+      },
+      {
+        "bytes": 12842,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyDevicePairings.kt",
+        "sha256": "ac107622f9397e0e07274f1c3a857101202afc05cd7fbf2bde0eb90e15fcaafb"
+      },
+      {
+        "bytes": 14686,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyEmployeeEnrollments.kt",
+        "sha256": "bec5e150a9f251476f78eae8e79f23cc54d1312d6a7e1fe039d2690ec5e3ca73"
+      },
+      {
+        "bytes": 27873,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyPolicyDocumentsV1.kt",
+        "sha256": "ceb445f2f216d35ecf84cfe302f38a894e454e5fc89e93791b92f718b9f69c67"
+      },
+      {
+        "bytes": 38374,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyPolicyWireV1.kt",
+        "sha256": "1839571ad57ea2cb637e1f954e77fa1049349d7fa52627218b9b1eab2959051f"
+      },
+      {
+        "bytes": 8371,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalDevicePairingDefinition.kt",
+        "sha256": "5d7a0a09affaf6fb60ce952783542dcd92146119d5566769c2bc654d5f6a6052"
+      },
+      {
+        "bytes": 14489,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeEnrollmentDefinition.kt",
+        "sha256": "cf8a25eb48ae435c7a960e60bea6fe292488da7342198ee4a79bd7e5c314b2af"
+      },
+      {
+        "bytes": 5125,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalOfflineBranchInstallationVerifier.kt",
+        "sha256": "a048793415d2686f39bbf8dccbc3af79e752126d96f0a093f8be860cd2e66e7c"
+      },
+      {
+        "bytes": 5760,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalProvisioner.kt",
+        "sha256": "6087e1d26c14d5133b584616eab1805340d108178012da6aa6e59a140d43462a"
+      },
+      {
+        "bytes": 4285,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalProvisionerRegistryV1.kt",
+        "sha256": "2853ee0e07053dead714f3819efcf975418cd37c5df6669730ad4757c9dfde10"
+      },
+      {
+        "bytes": 3239,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalSessionMaintenance.kt",
+        "sha256": "e89e03d5dcf5fbf4c34ba72e5b5a2a085ae036e920b9d9eacce816402946a49d"
+      },
+      {
+        "bytes": 10606,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeCompanyBusinessPublicationWireV1.kt",
+        "sha256": "1191bed7bcb7ec68c70c5ab864a09b500abb5541a6bf1ec3aa507aa24f050b90"
+      },
+      {
+        "bytes": 37187,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDevicePairingWireV1.kt",
+        "sha256": "cb4b7b579558fc3095bd9e67e2aea23d6d973c8437f2e664208e7dab7022ff19"
+      },
+      {
+        "bytes": 11637,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeEmployeeEnrollmentHistory.kt",
+        "sha256": "2ba99615a4c9a750e55ce2689ceeaf0b6302fc33245140e4fe699265f9ab307f"
+      },
+      {
+        "bytes": 28966,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeEmployeeEnrollmentWireV1.kt",
+        "sha256": "519e0ffbebc5405a0dcef9c632d8ab17c9cce1dfa2977980352e1ed2c4047bce"
+      },
+      {
+        "bytes": 4562,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeEmployeeProvisioningFrame.kt",
+        "sha256": "b4b4f8486b46801e53fe8b9ad6c0a457ba479453742d68a67d0585bd1199bf54"
+      },
+      {
+        "bytes": 5164,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeHistoryFinalDecision.kt",
+        "sha256": "6bb2d7cb8ba889ca84eea1537ddb4ab226ea3c0f8c4424381991922b7137245f"
+      },
+      {
+        "bytes": 3131,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeHistoryProtectedFinalDecision.kt",
+        "sha256": "d447856c6068e35b1a63e3a1c703e8aeadfa25388d9556e2fff8430773f7c7cf"
+      },
+      {
+        "bytes": 16434,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/OfflineInstallationArtifacts.kt",
+        "sha256": "86ba0790c6d2f8949ef4454d3483ac016813844bf0c1c5ab1dee1d9c665d3e28"
+      },
+      {
+        "bytes": 10184,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/OfflineInstallationContracts.kt",
+        "sha256": "b16dfa86be0eaee6c0971f3344644a07bde36b5e43734bc5a31ea2d7916937dc"
+      },
+      {
+        "bytes": 475,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/OfflineInstallationCrypto.kt",
+        "sha256": "139704939b5a92c82e26d825ec79b95a511be158ef955760b6e33cd646b8bc80"
+      },
+      {
+        "bytes": 7965,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/OfflineInstallationOperations.kt",
+        "sha256": "d4bec400bb469648a9e127e26c3dc2fa0d481d312868ecf7220d7df20d11fa40"
+      },
+      {
+        "bytes": 12391,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/OfflineInstallationWire.kt",
+        "sha256": "95e299e1ed3bb0ff9810ee9e36932d9636552113415b4efba14923e8bdf6a0fc"
+      },
+      {
+        "bytes": 5372,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Password.kt",
+        "sha256": "5ad8570a08c0f831f4bd2be726aeb98907997e3503282cb95fcb9ba444ae2dec"
+      },
+      {
+        "bytes": 9795,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Principal.kt",
+        "sha256": "4653a2ae3cd72c9992cc2ad5c0461aba10cd8ed67d2fa6efc0285cbb59ca2402"
+      },
+      {
+        "bytes": 6908,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Projection.kt",
+        "sha256": "34663ae5c0c2caf15c5e92310fd242e7a4dba0142b8f3faf2c24b7bc6a289363"
+      },
+      {
+        "bytes": 6361,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalPasswordHasher.kt",
+        "sha256": "4c2139cbae907f32784e26cb9b8e78c0466e77aeeb1dfc45eb077848dbf5b4b7"
+      },
+      {
+        "bytes": 18819,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalStorage.kt",
+        "sha256": "6e5b14a88ac269d0e450d3ebd5ce3bd426083f0ba090843a74850ca9468666de"
+      },
+      {
+        "bytes": 5280,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/ResultRecovery.kt",
+        "sha256": "3a19554b7bcf289cb144a2abb1219700c73ed6defe70980ca8012df5151a0125"
+      },
+      {
+        "bytes": 1029,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Scope.kt",
+        "sha256": "0636c9ec67e08304a59a78f6b8ea71b19f2d91eec421a04633b4df5412388880"
+      },
+      {
+        "bytes": 9589,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedInstallationDocumentsV1.kt",
+        "sha256": "161654135e1c31a218ae1da4430a7829f1ca458945d06ffc78dd097fdfc473e6"
+      },
+      {
+        "bytes": 4877,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedInstallationProfileV1.kt",
+        "sha256": "c4d0a5bb93eab10a0872ef1a3241366839f80fafd33641251f8de6d7aa26d252"
+      },
+      {
+        "bytes": 16513,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedInstallationWireV1.kt",
+        "sha256": "ee43405418f4aea93a4610b234e4af557ec2d3d32c956c1b14b3b3eb9525fa6a"
+      },
+      {
+        "bytes": 4513,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedLocalSecurityContext.kt",
+        "sha256": "2e2827f4cf25329210b88982189b5f4809d6e4c9dfb12c425702528a189b9b1c"
+      },
+      {
+        "bytes": 5175,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeApproval.kt",
+        "sha256": "ff11e7c3651d92cf65660139fa2b632ec5ec2108c783c3c7245da8486d294087"
+      },
+      {
+        "bytes": 20515,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryCustody.kt",
+        "sha256": "c93018ba8d647816b1d6aaa1c28269154c627a77deef48d315d00fdc7de58aaa"
+      },
+      {
+        "bytes": 97275,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryWireV2.kt",
+        "sha256": "a80dbaa3f596b191219af4bf299557ff46081aa12c843654966847613259862f"
+      },
+      {
+        "bytes": 13864,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeInstallationJournalV1.kt",
+        "sha256": "cdff9a0b0a40aba7bcab89618f6556f1128c0d11296abb59231b018d19359bdb"
+      },
+      {
+        "bytes": 13527,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Session.kt",
+        "sha256": "74070c27347ce90e2da0870ccd9bc558adcf57ae974c02bfd44080b52237835c"
+      },
+      {
+        "bytes": 14709,
+        "path": "core/security/src/commonMain/kotlin/com/ukkera/pos/security/Throttle.kt",
+        "sha256": "c0142b8f3be9348053856047f65a21a6f460d4d558a03ef90affc6295758a2ab"
+      },
+      {
+        "bytes": 139000,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/AtomicMasterStore.kt",
+        "sha256": "d661c9728e976f10ab5185ec62e7b573add6d95ec861d98637f0f3426daffe9a"
+      },
+      {
+        "bytes": 16821,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/CommandContract.kt",
+        "sha256": "054b316e7c6da4c0424dc09fdb0d803c55ebefac60d8ebf4c5c232dd436d5ab1"
+      },
+      {
+        "bytes": 2354,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/CurrentClaimRanges.kt",
+        "sha256": "a19c5f7ae9766cdd1a035880dd7d472fabf3e39d5247767824045de199a4f0ee"
+      },
+      {
+        "bytes": 3384,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/CurrentPointReads.kt",
+        "sha256": "f128b538cfb036623cec25ee9ffc70f77b28a1927955f5ce6b1cdcb75a6d2347"
+      },
+      {
+        "bytes": 5987,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/DurableRoomProfile.kt",
+        "sha256": "24a112c9ac5a4ab98b503cf39625c6cddefb91538c7321ae5ef43928aafecd3c"
+      },
+      {
+        "bytes": 1950,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAccessIssuanceDao.kt",
+        "sha256": "8621a18469d4bd1e304c63bc7f06ca6a18455e304aa3d71e50870bec98a46635"
+      },
+      {
+        "bytes": 790,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAccessIssuanceRows.kt",
+        "sha256": "426d151042e742debd7efd23b5de22af4aa683594a732d6cb23f8e2eab82dcfb"
+      },
+      {
+        "bytes": 5751,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAccessIssuanceSchema.kt",
+        "sha256": "390c9ca10e8efe1db64997eaf418fe5fdde7d4c4fc2a89e7c2c3da90e692be3a"
+      },
+      {
+        "bytes": 10926,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalActionApprovalCodec.kt",
+        "sha256": "fa8fd0e51f2fe4493426525f41f672675c39ac39e86b0040a62500fc61d297b4"
+      },
+      {
+        "bytes": 2664,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalActionApprovalRows.kt",
+        "sha256": "989f75ddc9496081cd5a77cb47a281bc9cc96780cdb7bdf4ecb2e3dd299d293e"
+      },
+      {
+        "bytes": 6607,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalActionApprovalSchema.kt",
+        "sha256": "b28801edbf242f971209e464157f4daa4d51226dbfaa06201aa405b56824b00e"
+      },
+      {
+        "bytes": 5551,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalActionApprovals.kt",
+        "sha256": "5a18ce8afa2aa8afc1107359816328d66e412e4a5a06f55b7a153ee4dab098b8"
+      },
+      {
+        "bytes": 8185,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationCodec.kt",
+        "sha256": "ec8f5422af37bf5b59be7beb7390d3136cce7b1b3de85c0328e6fd636a4fd4a8"
+      },
+      {
+        "bytes": 5531,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationDao.kt",
+        "sha256": "46bd27b2db3a0775b148bde11bb3fb529c59164f08cc3b04741168054e969dde"
+      },
+      {
+        "bytes": 2647,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationRows.kt",
+        "sha256": "075ac1b00085c0c3dcbcf4fac7dbe84e1b8ce329880b31472fe9de6e5cef4cf7"
+      },
+      {
+        "bytes": 7821,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationSchema.kt",
+        "sha256": "5a039770d515e7e6511c44cf6cf692e636b02cb402ed7e83d9d2a044a5f04b29"
+      },
+      {
+        "bytes": 3425,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationTokens.kt",
+        "sha256": "3ad053fa367c88406024d3967732dfbca43aa9031a8cf73ded7b4fe7fc4f792f"
+      },
+      {
+        "bytes": 14101,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalBranchInstallationCodec.kt",
+        "sha256": "586a6aab373df8c28fd254bb6fd67d10d63c112aa865351f31ee499e6f1a4ed3"
+      },
+      {
+        "bytes": 10929,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalBranchInstallationCodecV2.kt",
+        "sha256": "3faa3f1f5ca21695b50535d9fb128b408661c7931f9513fd93724f9751b6beb0"
+      },
+      {
+        "bytes": 3383,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalBranchInstallationDefinitionSnapshot.kt",
+        "sha256": "e1ca15b8c0d3790ec436bd3371ae1216bfd5bd54ec4f351309587bd5ac01753d"
+      },
+      {
+        "bytes": 6546,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalEffectivePolicyCodec.kt",
+        "sha256": "46ed2f166414466f4b206ad7a381779ac8a1e4ece788dd87020f7d997d12d388"
+      },
+      {
+        "bytes": 6165,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterClient.kt",
+        "sha256": "58ff11a795214a9d8b9a668a2aa0935fc96d29bd6855be5e8426c196a8b52f16"
+      },
+      {
+        "bytes": 56306,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterEndpoint.kt",
+        "sha256": "30387914d9cef2759eef3e10d7a5e47486eb3247cfb29c3b026d060d1d6e0ab8"
+      },
+      {
+        "bytes": 2359,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterInstallationClient.kt",
+        "sha256": "8f63a6ef1cb6981f936fc49c0b90b391ce1a3ba4cce9f6403fd2b1a3c95ac689"
+      },
+      {
+        "bytes": 2745,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterInstallationReceiptClient.kt",
+        "sha256": "388b7b7507e6505458975d5134ce46ad82cdf8787c6b28e351938511f669137d"
+      },
+      {
+        "bytes": 1435,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterLifecycleMode.kt",
+        "sha256": "cbb8c3b87850d07d9276252f6782fb8f07dfe98aa24d2502520e70ec844f1438"
+      },
+      {
+        "bytes": 2124,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterRuntimeState.kt",
+        "sha256": "3cbc984add2d2d6efbd089498278b9f633c7cc6fa4ee3850c5a3d7eb4865527f"
+      },
+      {
+        "bytes": 8997,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterSecurity.kt",
+        "sha256": "2e45e3d8494efb51f8a1e16cb221ca3fea79bed9b0f4b4415a34ca01e634e23d"
+      },
+      {
+        "bytes": 7005,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalSecurityDao.kt",
+        "sha256": "3cd508e1df6f51feacd191ad7e24b2aa1ff6b9d8fcb577230846d4c89441575d"
+      },
+      {
+        "bytes": 3060,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalSecurityRows.kt",
+        "sha256": "7f66c8d327d3c26fcf2ce7ae06a1462ccefa261e623228fca9c6232b43a1e9c1"
+      },
+      {
+        "bytes": 7150,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/MasterReplacementGuards.kt",
+        "sha256": "d28dac3d691d0762b6fd994b3c08f0f1425d4466e2dd4d45b45a12376951b5e8"
+      },
+      {
+        "bytes": 14463,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/MasterRoomDatabase.kt",
+        "sha256": "3a5e7adbd580542bccf63273c6228ea1d2f7a804dd8c45b71f2554bf7db95a81"
+      },
+      {
+        "bytes": 11776,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/NativeOriginalIntake.kt",
+        "sha256": "e4e8da09e8442fa060dee373a7b65746ac64b1c750786934ff19b5a9201639a4"
+      },
+      {
+        "bytes": 905,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/NativeOriginalIntakeLocator.kt",
+        "sha256": "b16db2e73610508e9d0332bd9d3912ea6c828e42db9377cad8a3c76b95476e5e"
+      },
+      {
+        "bytes": 12449,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/NativeOriginalJournalProvenanceCodecV1.kt",
+        "sha256": "41768764f768a3e549231b913e5b7dfb859870ffbd49bcf7a89f1d95f9ad2e36"
+      },
+      {
+        "bytes": 5506,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/NativeOriginalJournalProvenanceV1.kt",
+        "sha256": "70217da34d580f021e28792d1d99c8eeac3bfaec84eaf88e1640a0b05d76fe86"
+      },
+      {
+        "bytes": 8816,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/NativeOriginalRetainedCodecV1.kt",
+        "sha256": "3fe4509d359e27e65286f81e42c010bd1b99a00628bf1ba540936db937d07ea7"
+      },
+      {
+        "bytes": 5637,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/OriginalInstallationReceiptSelection.kt",
+        "sha256": "3a4ab64e1482c3160d25e8762786158579cae84f4b09df6239e6de3469f3656c"
+      },
+      {
+        "bytes": 2185,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/OriginalPhysicalEmployeeEnrollment.kt",
+        "sha256": "02541d89ae8d5d319aea74a017f0b36603a2c85c969724fe1e2fdb5b2e005802"
+      },
+      {
+        "bytes": 5851,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalCommittedStartProjectionV1.kt",
+        "sha256": "b0b13d68b177839aa2222703f02f1d80841940fa5ed5c3c57d36f79246e6d000"
+      },
+      {
+        "bytes": 39194,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalInstructionPublicationRegistry.kt",
+        "sha256": "88323b313c6bd3f1dfa5bafe70636279b5a9b922d2cdc88fee0e4012b90bf2cd"
+      },
+      {
+        "bytes": 24612,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalRecordingExecutionGate.kt",
+        "sha256": "623ae63000ad39036aa05d475271c1e2ca202724c1846d383a60cb39fbe1f242"
+      },
+      {
+        "bytes": 13701,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalRecordingInteractive.kt",
+        "sha256": "1fc3172f59ab594789cea36b0971c93168dda5a349478c447ffb03782218dd73"
+      },
+      {
+        "bytes": 9299,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/ProtectedLocalSchema.kt",
+        "sha256": "fd3dab5c87fb95228ab75c0cb8988a2af115b94ffe5909a7a630099c9641cff9"
+      },
+      {
+        "bytes": 22986,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/ProtectedLocalSecurityCodec.kt",
+        "sha256": "8ae38c9fc02b2015168806172ef1d873b1bb69c9a15d124134aac7a63b1faa15"
+      },
+      {
+        "bytes": 3174,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/ReadContract.kt",
+        "sha256": "3598d0b8d3ca617093ed04c018cb6bae0c076e909d2448c402957aee68a580af"
+      },
+      {
+        "bytes": 6176,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/ReservedOperations.kt",
+        "sha256": "a04deab15f0639d0d220e35d7f4b05641bc352a98f1d59a7aa9df8820718b603"
+      },
+      {
+        "bytes": 11688,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RetainedCommandCodec.kt",
+        "sha256": "df6cdece72c73ee49bb2728b02a5e9e47c63765ce36614350fb2286a7883ab14"
+      },
+      {
+        "bytes": 4757,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RetainedCommandEvidence.kt",
+        "sha256": "73a760952f0a8dd0d3d31557f6dc3dd1baaea921df50c92fb6b5237b903acc74"
+      },
+      {
+        "bytes": 56491,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RetainedCommandFramesV2.kt",
+        "sha256": "819132ccf481112e8db6cd76a7999fdd644cdb680140d0b2e5f4845995a88aa7"
+      },
+      {
+        "bytes": 11155,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomActionApprovalBinding.kt",
+        "sha256": "47e3b5ee6208aae4b092610e56727f777d9717dce40c6d91eef9320d40ac5a2d"
+      },
+      {
+        "bytes": 17167,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomBranchInstallationSchemaProfile.kt",
+        "sha256": "71729862ec13159e32060a7c9030db601e7ff4f8df44078c4150ac0972bbef4d"
+      },
+      {
+        "bytes": 11800,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomBranchInstallationStorage.kt",
+        "sha256": "083da894c034f159ef882e8008042bcd26e48e5747ef24da21c948c0000ba67b"
+      },
+      {
+        "bytes": 14867,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomCurrentLocalAuthorizationSource.kt",
+        "sha256": "a64efbdb196554f1af1426dc1818c3081aa435530cde295400e368a4b1d1e433"
+      },
+      {
+        "bytes": 10765,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAccessPrincipalVerifier.kt",
+        "sha256": "41c8dcd4ec018a080316cc340464f3389b5f6b3ef10e83b943eaa841cb147160"
+      },
+      {
+        "bytes": 13888,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAccountAdministrationFrame.kt",
+        "sha256": "ce39e25f604dc921ec4b7fe54f43f211533d0a5949e5903c779ef9ae2b681089"
+      },
+      {
+        "bytes": 30841,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalActionApprovalService.kt",
+        "sha256": "2c0a9610216d2458213762571f6c40a87403a1c462f89590a14d82bb7b3128d3"
+      },
+      {
+        "bytes": 6430,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAdministrationObservationFrame.kt",
+        "sha256": "f52a5eed3f0b905d7a6f51c8d502dbb11796eb8003892f3dc8120d3bd74864dc"
+      },
+      {
+        "bytes": 25715,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAdministrationService.kt",
+        "sha256": "9d749fca2bd932c01a02d5b595d7e2dbb065a745755c927e96bccd5399c6bd3c"
+      },
+      {
+        "bytes": 5027,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAuthenticationFrame.kt",
+        "sha256": "b015a64eccf28521d0d5da22d00fc1058541f5c9332c3f6f4ca880f55d7ce1d4"
+      },
+      {
+        "bytes": 23318,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAuthenticationService.kt",
+        "sha256": "c167b5ba9cf469bb5cac81eb7b22854b98e8564249332ed8df036959799a1d89"
+      },
+      {
+        "bytes": 3191,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAuthorizationReader.kt",
+        "sha256": "06a9bb5bf4de87ebba9b83f189b1196b5b1d3a647b9e0c7b9bb0446c3dcd1e19"
+      },
+      {
+        "bytes": 12789,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalBranchInitializer.kt",
+        "sha256": "d27fe825934e5c00f4629e86ef524164a8bbcce2640fb7ba049462161a7a5530"
+      },
+      {
+        "bytes": 13686,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalBranchInstallationFrame.kt",
+        "sha256": "d3b764943aa9e9db7cc57f0baf08af0bbbbf65980708f94cd57370f1e99697a2"
+      },
+      {
+        "bytes": 38297,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalCredentialAdministration.kt",
+        "sha256": "6e2f31cf0be2ecb9bef1e337fcb1d2aabb2b59717efbf81cab119929b9c8069b"
+      },
+      {
+        "bytes": 12677,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalDeviceRevocationFrame.kt",
+        "sha256": "15c4c1200ccb1d87bdaeecc3a4cae3d7a11fd849443ddf0a51c2a9e841de189a"
+      },
+      {
+        "bytes": 4214,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalMasterComposition.kt",
+        "sha256": "d98daf293dc5c672536eec1f0a36a96d64ded92bccf2e73491ec85c5c662fb7d"
+      },
+      {
+        "bytes": 27095,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalProvisioningFrame.kt",
+        "sha256": "5555e6b1e4377cdebfbe71fe47836b2736747c847ed77e41b7d6b8de6e54229a"
+      },
+      {
+        "bytes": 2965,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalSecurityBoundary.kt",
+        "sha256": "4e3a4e2f629f41704419059b0dc394d337d9f4dbe33c50523966e373de2951e0"
+      },
+      {
+        "bytes": 74348,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalSecurityStore.kt",
+        "sha256": "c4eef6dbc4db5f2fef4c8eaf537db4eb27314647548170030d12b5fd7cb925ef"
+      },
+      {
+        "bytes": 17328,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomPersistentThrottleStore.kt",
+        "sha256": "132bcc0d3ac6e0c706c53d6997e73575fb7596c2a480e33fb99f2bba829d07ea"
+      },
+      {
+        "bytes": 67119,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt",
+        "sha256": "710e5db58b1ef7de06fefb19ec40b492b4b418b33bb63cf87fa518299b2ea515"
+      },
+      {
+        "bytes": 16776,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryOwner.kt",
+        "sha256": "d477f93f8f538d19e29e568ccd8c18498d1b0674ae88922958a639da398b0ce0"
+      },
+      {
+        "bytes": 5677,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryVerifier.kt",
+        "sha256": "bff9c3a73426f47c4be5a24dca6515e0ca3a3f886fa75b81094c43e9194a8644"
+      },
+      {
+        "bytes": 8180,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedDevicePairings.kt",
+        "sha256": "d7f8c9e435dbc15fd7a553b7824983417dd04b6da3e96fc5a800dee29ac9141f"
+      },
+      {
+        "bytes": 4747,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedEmployeeEnrollments.kt",
+        "sha256": "763a93a6b1994fec7e56bf01cde52c8e27b83011a40ddb328deea9124a3ff9b0"
+      },
+      {
+        "bytes": 4844,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedInstallationVerifier.kt",
+        "sha256": "17ae86e31b1bf0e8d88700e43c49ed64a71b37a4d6db789b54dc70436e7e705a"
+      },
+      {
+        "bytes": 3394,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedMasterComposition.kt",
+        "sha256": "54738bfd793b0456759146b36d5c7bdcb52afda284038505612950631a6d2eeb"
+      },
+      {
+        "bytes": 10351,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeAccountDisableEvidence.kt",
+        "sha256": "6d1b12d0abe5961652d4d43dd6fbdb95f92efed39cf6e2ad5258e1bdc8262505"
+      },
+      {
+        "bytes": 9356,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeAdministrationCancellationEvidence.kt",
+        "sha256": "9b1a401d85b6ecbb5ef19aaaa6db3b3f44e390b4cd1f7a49dee96d7647336748"
+      },
+      {
+        "bytes": 10213,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeAuthenticationEvidence.kt",
+        "sha256": "68d98424f17d1e3cbb38823ed4e0a35dc25f82f4b53e9e68f9dc77308f178e5d"
+      },
+      {
+        "bytes": 84628,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeBusinessHistoryJoin.kt",
+        "sha256": "c39b593edaaa9f9fd2fd5a9eec7e2aad9475d8aa5c3a3a2297789fd40cba246d"
+      },
+      {
+        "bytes": 13159,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeCommandAuthorizationEvidence.kt",
+        "sha256": "cd7fbc5da4a2a8bd43067913cc111dee9d65fa781d5572899354b34c1af7a5f9"
+      },
+      {
+        "bytes": 10533,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeCredentialResetEvidence.kt",
+        "sha256": "7c3eb9b6059c72b8102ffb3576380c2213b9daf3066d06ad7cd84773530c7bfd"
+      },
+      {
+        "bytes": 18720,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDeviceRevocationEvidence.kt",
+        "sha256": "5ae428b40d7b4e77b61817185be47b348a7761c9d328f5a59918c3475c17ae1d"
+      },
+      {
+        "bytes": 40834,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeAuthenticationReplay.kt",
+        "sha256": "aaa4b0ca42b5ebcc487c2d25e2cb5b93356e83f63775f55c295c4cf8e4213900"
+      },
+      {
+        "bytes": 4411,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeCommandHistoryAuthorization.kt",
+        "sha256": "6d5b17bbab449a5839a7d63cef69feeeb9cb5e3fb04c1f3b76b6b236b89bb1cd"
+      },
+      {
+        "bytes": 42082,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeEnrollmentHistoryJoin.kt",
+        "sha256": "fdef849a9216e09a70775a207fa640d149806f41325d0080d4155e9b6f80346c"
+      },
+      {
+        "bytes": 7288,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeProvisioningCapture.kt",
+        "sha256": "b9f5d901e6a93d7131c0a0625203395fc278a99666b0bf12b17ba82e70e4e83a"
+      },
+      {
+        "bytes": 3878,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeSupervisorReviewHistoryAuthorization.kt",
+        "sha256": "48456183d513e70f9da148b649bebaaed70eeae7392dbb6245f4c326a3e9f3ec"
+      },
+      {
+        "bytes": 3949,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoricalFoodCurrentIssueSources.kt",
+        "sha256": "9e734fa028048b30a5f4ff6c8693b82fa30f5e0bfab614381b0742e689901938"
+      },
+      {
+        "bytes": 2530,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoricalFoodCurrentReservationSources.kt",
+        "sha256": "dd91bbb08d4dded4e3bdac90918bc03818a941521d622b389c070e19fd2de4ab"
+      },
+      {
+        "bytes": 12808,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoricalFoodCurrentState.kt",
+        "sha256": "02427046e0f796bc32052df289bc29661b85b71c206723f11ab5e06f249cb8ed"
+      },
+      {
+        "bytes": 2114,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoricalSupervisorReviewProfile.kt",
+        "sha256": "b32e827df827069ec4a5a6d1021e05b7c4c7afc76b8a2be0419a9c4fe416ffca"
+      },
+      {
+        "bytes": 14784,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryBusinessProducer.kt",
+        "sha256": "453d2484650bc598bcef3d7f93a474ba9861ef08789d7ab34f46dd0da1818c08"
+      },
+      {
+        "bytes": 4351,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryCapsule.kt",
+        "sha256": "7c38f1c7a4f437ad37986c4f3f2410ee8db0082b3aff0b7801a0dde5000488f8"
+      },
+      {
+        "bytes": 21371,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryCodecV2.kt",
+        "sha256": "292369465c4530c4d0983d3247dc220fc0702670c358211922dd01eb4ab548cc"
+      },
+      {
+        "bytes": 8180,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryDao.kt",
+        "sha256": "c59085ba90d6cb726cdd4a9b36289c84ce11fd1a651f180cdcf30f9bb5395f31"
+      },
+      {
+        "bytes": 4932,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryProfileV2.kt",
+        "sha256": "72435f3ae0076fec630d910819bd725ae613f192f56fe17f5770a2af28ed344f"
+      },
+      {
+        "bytes": 9155,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryRowCodecV2.kt",
+        "sha256": "0399ecf932bd3eacd2d722ad628f35501a855ef37acfad1e1fbf72c170573a6f"
+      },
+      {
+        "bytes": 15241,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryRowsV2.kt",
+        "sha256": "26db77f82a3a8c9809ef2e7018e75adcf546f574e05ae97a8e7e7a4c0fa112a8"
+      },
+      {
+        "bytes": 163492,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryScanner.kt",
+        "sha256": "5e686fd438b2bb9915b4c1cb6f202cc102e00510b39b098b0f90fbbe57086568"
+      },
+      {
+        "bytes": 14214,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistorySchemaV2.kt",
+        "sha256": "3d081c18b62ac996348991f742484527079f0eff4f980c7907f44f42efe667ce"
+      },
+      {
+        "bytes": 7950,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeNativeOriginalImportEvidence.kt",
+        "sha256": "57e0e1ee6201aeedd6e9980494eda59a6f2dbe476a3639d612c2e38b07b41aad"
+      },
+      {
+        "bytes": 42490,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeOriginalAuthenticationReplay.kt",
+        "sha256": "81d0d129ab338e8b918647bd68d46a34ea499171975bbab13f65064f60528356"
+      },
+      {
+        "bytes": 19459,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeRetainedSessionRevocationEvidence.kt",
+        "sha256": "bd118a2237308d3ea34bbef729895739d944278656dc8d1e6ad7b654ccedb719"
+      },
+      {
+        "bytes": 8613,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeSessionRevocationEvidence.kt",
+        "sha256": "347974d170043d4c73ba558dd5302654f143d70dd2979b2936a7420564d77653"
+      },
+      {
+        "bytes": 7067,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeStockHistorySelectors.kt",
+        "sha256": "335e0ed2dfe22c7a8e16ad685a0cfcd3668b5efe083d8fde3926b7dfaa35218e"
+      },
+      {
+        "bytes": 8131,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeThrottleEvidence.kt",
+        "sha256": "85697767b1d29dd3eba0e8e909b9d27ba1638f61bc700026c227d51f24e87e83"
+      },
+      {
+        "bytes": 16368,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/StockReadEvidenceV1.kt",
+        "sha256": "cec549a788b4702f277e9b0e7772dff6ccbfcf3e2d7f7bcf1c6b2c69988a6c9c"
+      },
+      {
+        "bytes": 32354,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/StockRelationalDao.kt",
+        "sha256": "5f11d29cd80585a722d54bd2e5cd161bc44623d556dc175d611aca8050eb5072"
+      },
+      {
+        "bytes": 16705,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/StockRelationalProjectionV2.kt",
+        "sha256": "948a7240b89ef21d82947c6859061ab7b4559f36c5d6c6a49af8ab3f72e69350"
+      },
+      {
+        "bytes": 5275,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/StockRelationalRowsV2.kt",
+        "sha256": "ac9543dffaf799fe8c907415b5c70cb84f9db6a57f558b9fc1a424fac96aff9f"
+      },
+      {
+        "bytes": 41880,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/StreamedCommandPlan.kt",
+        "sha256": "a0fc95be7917dadc27aa644dc257945fa50a4ef110939d02a803d6b61e5359b9"
+      },
+      {
+        "bytes": 3623,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/TransactionApprovalSource.kt",
+        "sha256": "6674a4a7672bae276cae6b9b658f37daf67df9759cce782e7af6df474b6aa67f"
+      },
+      {
+        "bytes": 6886,
+        "path": "core/database/src/commonMain/kotlin/com/ukkera/pos/database/TransactionLocalHandoffRecipients.kt",
+        "sha256": "9e3d95a6e22ab3da696eb39ae488a664b7190d7ab1f2ecd192308e7558e3d71e"
+      },
+      {
+        "bytes": 30079,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalBranchReportExportWorkflow.kt",
+        "sha256": "f7d4ea422552b6c1c065165a8e9a26d80e0606632194c8b9a6e9f79ace8c5255"
+      },
+      {
+        "bytes": 21128,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalBranchReportWorkflow.kt",
+        "sha256": "8386156a95053548a63168e8cbbc3a88070aa3f8d27e1191d7f3f95c46fcf751"
+      },
+      {
+        "bytes": 13271,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashCloseNotesWorkflow.kt",
+        "sha256": "464a383503635767bb67421cd617b5d74facd165f3a9c6309dce6713a4f5fb28"
+      },
+      {
+        "bytes": 8093,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashClosingWorkflow.kt",
+        "sha256": "3c00d3e4f834755a49fca6193b21059452219bce5b93a314b226f4c24bf37037"
+      },
+      {
+        "bytes": 16594,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashCountWorkflow.kt",
+        "sha256": "3fbfaf21401f4886848d73bd8bfe29b0941f731b9cb1a523453c6f5decda12b9"
+      },
+      {
+        "bytes": 20886,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashResults.kt",
+        "sha256": "544b59ebf7f118e5fec80c3a6993cd618663f39ae64804d6cf8bc783ea770fc8"
+      },
+      {
+        "bytes": 33502,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCashWorkflow.kt",
+        "sha256": "2697db3cf01fd773f715f6b326dbfd8ff6adfdc3d9d75c98f01d1049f1c96f72"
+      },
+      {
+        "bytes": 7602,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientCredentialJournal.kt",
+        "sha256": "4f75fcca9d8f917be9b53c5fd543e0006e86e8fac77a11eae2348ac925725c3f"
+      },
+      {
+        "bytes": 11673,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientIntentJournal.kt",
+        "sha256": "e4b03d33bc91da58ed6513a3c7e64d3ef4d2520a580ed4cfbfde54e1e3eee4fc"
+      },
+      {
+        "bytes": 3256,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientPublication.kt",
+        "sha256": "7c37964079dbdb421a9cdf5d7a765a65c4ca3e2a595b43f650f4eed6412b035e"
+      },
+      {
+        "bytes": 27285,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCollectionWorkflow.kt",
+        "sha256": "954cfffa7c74d3392c840dad3aefb346f92433b564d058fcf60303c0bfb6c41c"
+      },
+      {
+        "bytes": 26754,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalConfigurationWorkflow.kt",
+        "sha256": "e805870c4866c71a891a7b5d312c3964007d1aaa6734a41970a88cf58ac415bf"
+      },
+      {
+        "bytes": 9115,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalCountSurplusWorkflow.kt",
+        "sha256": "54b14f91a55d9eed00ddee34d920bf6dcf5ead70719e1195c2c41002d1ec3718"
+      },
+      {
+        "bytes": 26291,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointAdministrationGateway.kt",
+        "sha256": "26039e7a4e6244cc918b3020193e575449ac230f9d0f2285dace347f1ed7cd9f"
+      },
+      {
+        "bytes": 39311,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
+        "sha256": "4ec7010bb3cd86447607f5281fb20a554e11cb1d1e42d06374e7401bb7e5b3ef"
+      },
+      {
+        "bytes": 25217,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointCompanyCatalogGateway.kt",
+        "sha256": "2fb9016cbe2ce761d09867d63d75dfdfdd1997c23957a54924b95447f2a29951"
+      },
+      {
+        "bytes": 15925,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointEnrollmentGateway.kt",
+        "sha256": "78c0e8e821e396c5ee759dfb7f09f74c4907304d0726689eb547cb8a6c5e4bb1"
+      },
+      {
+        "bytes": 38622,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointFoodConfigurationGateway.kt",
+        "sha256": "dfc2f48e8f3e1663e38ad15788eb1fc02fb556fd7ac3285f49c86dc3e4b05468"
+      },
+      {
+        "bytes": 26763,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointWorkflowGateway.kt",
+        "sha256": "f2b6b8280fe394ef12a1ccd40e75f84b60a37619a7e01cfe9f82c1d50a0d528e"
+      },
+      {
+        "bytes": 691,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEnrollmentPublication.kt",
+        "sha256": "0bcd25f70df7bf413ae0be953aef3c85b6954533842c40d0a3189b383ab8a44b"
+      },
+      {
+        "bytes": 11134,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodFinancialForms.kt",
+        "sha256": "fe7415f7fe1f53b90b194e71f8ff7dad8321a57c9d36b91904067940ac2f4ed3"
+      },
+      {
+        "bytes": 14011,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodFinancialIntent.kt",
+        "sha256": "ca034a1a8e74f201c6af4e56be942e52ff9dfdc05bb0be588be3e06b7c60a2da"
+      },
+      {
+        "bytes": 12883,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodFinancialResults.kt",
+        "sha256": "2d5ccd769a86173782e08db61f6de0da1ed66a71efff35f5ba098e81a11b965e"
+      },
+      {
+        "bytes": 28782,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodFinancialWorkflow.kt",
+        "sha256": "8d588936e74f00c44328a12a2891c81cb8297cd3e46369aeaba1720f17a0dec0"
+      },
+      {
+        "bytes": 23363,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodPhysicalMapping.kt",
+        "sha256": "27803c218029fa6d34787fc4d79168f63c515e5accd75b03d36fbe8226ea0f70"
+      },
+      {
+        "bytes": 25049,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodRefundPhysicalMapping.kt",
+        "sha256": "85b5e0af0d7f286c46f415b93b89fcfa1682423c5b39f0464d106b369f11136e"
+      },
+      {
+        "bytes": 7417,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodRefundPhysicalReads.kt",
+        "sha256": "f3573b34f096eba4197b816f9fee95e39222ba357ab19618726f7c478806c342"
+      },
+      {
+        "bytes": 20086,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodResolutionMapping.kt",
+        "sha256": "6aea01ac30897205227b021041924b4760d018a428d28d8c699b819057fbb425"
+      },
+      {
+        "bytes": 18354,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflow.kt",
+        "sha256": "a5e8ec6873d6260671605cfd6780f7ab8a20965b6bee6f721384273462ba2bf9"
+      },
+      {
+        "bytes": 35335,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflowIntent.kt",
+        "sha256": "474482a903aed80fcb7e80913dab2ef6201cd80770a606feb834a4d194a09f1c"
+      },
+      {
+        "bytes": 2161,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalFoodWorkflowResults.kt",
+        "sha256": "174ca8820f8aa867671f27ffecde294d966f126f434ddc14cfc1052dfbdf3792"
+      },
+      {
+        "bytes": 29320,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalOpeningStockWorkflow.kt",
+        "sha256": "4f8c9633b70192fdec86546b41c4b8f15620d7e6443325e96838ef98b8dda559"
+      },
+      {
+        "bytes": 23963,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalOrderWorkflow.kt",
+        "sha256": "8936d9aa40065c2fec504c9651ed1d5c6b41be45a7a46ca52bfc9f9157826426"
+      },
+      {
+        "bytes": 473,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalOriginalClientJournalAction.kt",
+        "sha256": "aa0a1e0ddae2ca22cf7627a099c92529f157794c7498267baa777c5b15721c15"
+      },
+      {
+        "bytes": 17060,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPricingWorkflow.kt",
+        "sha256": "f5530e417751cde3ae42df35ba9c40cd6b1bdb4c0393daf9d948eb77bed3965a"
+      },
+      {
+        "bytes": 20948,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingAdvanceWorkflow.kt",
+        "sha256": "6d44bd73ad74540ee00c26654e7d4d6c79ad32f60c521df6cb49d29d8e73eb80"
+      },
+      {
+        "bytes": 17495,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingCreditWorkflow.kt",
+        "sha256": "ee3913d7f3ea1e0f411ca33d7f92e06081b30913081af9ae674f4bb1a82b3379"
+      },
+      {
+        "bytes": 13690,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingForms.kt",
+        "sha256": "f9e67a35203401d86b3f88c410e8b2472936c12fadc1ec7561f73cfa19d51f0e"
+      },
+      {
+        "bytes": 14599,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingIntent.kt",
+        "sha256": "3efc6ccbbe3cde2aa7a32d096678dee6eba971a793573a2b987da46239f7fb2f"
+      },
+      {
+        "bytes": 16252,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingPresentation.kt",
+        "sha256": "fa5c47b8b7892f277593aa8a390d4de6d0d68a2fda76ff3c404003304531084a"
+      },
+      {
+        "bytes": 17699,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalPurchasingWorkflow.kt",
+        "sha256": "156efc02099a045d29b1b36eef2e13bfbc83cc5bde7569cd30a0bfbc212c8680"
+      },
+      {
+        "bytes": 65847,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReceivingWorkflow.kt",
+        "sha256": "4262926d15c3c4438acd5ffb3ef025303acb7dce1fba84ec57c7684adc6e79ac"
+      },
+      {
+        "bytes": 2550,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReferenceSelection.kt",
+        "sha256": "3063994afcaa9e62141ffc32ae8833035163094e6bbcf020132b91276b86f40c"
+      },
+      {
+        "bytes": 121327,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalRetailPhysicalGateway.kt",
+        "sha256": "efe0aa7d05f112cdfb5865c438ab40142aa814469e2cce7972c427faa31a5b2c"
+      },
+      {
+        "bytes": 36553,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalRetailPhysicalIntent.kt",
+        "sha256": "de90d45fcf2688f2aff33be956c0fe6f84bd4e3a60bfcf7f792358b967ccaf93"
+      },
+      {
+        "bytes": 7890,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalRetailRefundMapping.kt",
+        "sha256": "9468e6cba659df563e62923fcced44501fa9d4eab8ad8c5d030294bff3d20405"
+      },
+      {
+        "bytes": 9482,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnCaseForms.kt",
+        "sha256": "422300a08a124c483fa775da3703cc9ea9627aa870169b6cbc111041b9bc8be7"
+      },
+      {
+        "bytes": 8257,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnCaseIntent.kt",
+        "sha256": "d2c041a5aeb10404b4cb7708526ee760924b05958f45a238319ee01bacf4b3e1"
+      },
+      {
+        "bytes": 14554,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnCasePresentation.kt",
+        "sha256": "8e0981700c80865fac0a7a5f4e1b425ea92b514616a87f787f370cd887869759"
+      },
+      {
+        "bytes": 10927,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnCaseWorkflow.kt",
+        "sha256": "7c7609c5a59ee5c826096543ce123463baf65efa444bf37305450498829ae3c9"
+      },
+      {
+        "bytes": 13134,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalReturnReceiptWorkflow.kt",
+        "sha256": "436ace94d99987a58d3e04a3e388ba0b770229ab498fb5c0e50e628158250bc9"
+      },
+      {
+        "bytes": 8799,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStockAdministrationWorkflow.kt",
+        "sha256": "3106fc15ecc39461b19f1925ecfda3d8cb73c2254d60b5f20da962fb07ba380c"
+      },
+      {
+        "bytes": 36770,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStockWorkflow.kt",
+        "sha256": "ce5274af7cff59d7940dcf2c75097c2a921ca471b2dd25b2997b441fd1d060ec"
+      },
+      {
+        "bytes": 2671,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStoredAdministration.kt",
+        "sha256": "66644b16c80290b8684f2002a75cc2f6b18640d77f5178f8d9935832f0bd69e8"
+      },
+      {
+        "bytes": 6085,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStoredEnrollment.kt",
+        "sha256": "1f98d28fd41fd2679357ee3a80311355466d97f37714e88df38fa2a7c23c96d8"
+      },
+      {
+        "bytes": 33546,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalSupplierPhysicalMapping.kt",
+        "sha256": "86a5fa8b0e584ca3b4f72f717ef55212b271d5cafde2b4a2e53ac88e06152253"
+      },
+      {
+        "bytes": 61039,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalUnpricedArrivalWorkflow.kt",
+        "sha256": "0991e4e3a4ff1050b5dac9068f20473aa4a6dcc865abeb7d45951f53e144aa3c"
+      },
+      {
+        "bytes": 30562,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalWorkflowLabels.kt",
+        "sha256": "e7d016ba72ae765e7f274ec33417f2332a4d37429722ce0e4b707712bc25dc18"
+      },
+      {
+        "bytes": 54825,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalWorkflowMapping.kt",
+        "sha256": "da192fa13c7f73da32013ed6074cfec6b80090ff4df0a9c8b7b5b57ac7c50ba7"
+      },
+      {
+        "bytes": 9336,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalEmployeeSetupIntents.kt",
+        "sha256": "49aea1d44d72fc883d1f361dc099f3830cbf49a758efccf3b6175a6a2d99b39f"
+      },
+      {
+        "bytes": 3826,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalMasterLaunchRecord.kt",
+        "sha256": "7ad9063645d77d7073702a6ae9663804650e1371511cdabc1a9c19b5ea2e33e2"
+      },
+      {
+        "bytes": 87213,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupCoordinator.kt",
+        "sha256": "8a1c65afb49a008424768e719f39ca706d049445575d95032e917c2860466161"
+      },
+      {
+        "bytes": 608,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupMonitor.kt",
+        "sha256": "d55da2ce380e4b5ee0e923bf73603bbce2248ae34876efbfc341b27e6f971377"
+      },
+      {
+        "bytes": 5947,
+        "path": "adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupPlatform.kt",
+        "sha256": "7651144ae5e3a959ea04f193d9549d25a811b2d49ece56f78ac735ae8e2d7f67"
+      },
+      {
+        "bytes": 4591,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalBinding.kt",
+        "sha256": "62621ed3ae0a83b55d73287c46f063b27e0a57e3b5e0ad6644390f4814f75ce1"
+      },
+      {
+        "bytes": 8980,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalKeys.kt",
+        "sha256": "7b2da7519718d90054a954fb7ded5e1cc6f789743fe737d908701e4b07a07638"
+      },
+      {
+        "bytes": 3530,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalWrite.kt",
+        "sha256": "61770f7e8282d597634e3e516cc60c40af990aff1ffae2f15f061ecfba6b9308"
+      },
+      {
+        "bytes": 12537,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientCredentialJournal.kt",
+        "sha256": "5382e525a260883760f371178fd876cb8fd88f9f47b66040f3ae839a10b982ea"
+      },
+      {
+        "bytes": 14345,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientIntentJournal.kt",
+        "sha256": "e00ab69dbb2d7c7614140f95b3d807556f4ad9f88cc802efe92f870863c48793"
+      },
+      {
+        "bytes": 18217,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalBranchRuntime.kt",
+        "sha256": "aed3178395d4d83126ee3affc3af452fcf31dcf929e2c3a7a4f52c3b696a13f3"
+      },
+      {
+        "bytes": 86147,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalClientJournalOwner.kt",
+        "sha256": "f709ea1a2799014ef6b9a1252b560087888b5c805578e4727e8478e91253225f"
+      },
+      {
+        "bytes": 7486,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidOriginalClientJournals.kt",
+        "sha256": "e1ebf3c4c0e682615cdede72cc7a5f014b3ccff5a6d6975932569d110430075c"
+      },
+      {
+        "bytes": 18603,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidOriginalPhysicalJournalExecutionGate.kt",
+        "sha256": "7b7a35b1265eb2775c32f7c689ad0ca334a0d4757a99fd3b496f0b90d3717aaf"
+      },
+      {
+        "bytes": 1682,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidOriginalRetailPhysicalConnection.kt",
+        "sha256": "2a69a1fb5dd5aa627aea45fd7b85411ade5f1071bc8d7ff0c2779ac05690707a"
+      },
+      {
+        "bytes": 6948,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidSameCohostClientJournals.kt",
+        "sha256": "21e9517f06d2fd8423eb4fcc1fded6c5350290421a51d77aa7cc9455fbfb7668"
+      },
+      {
+        "bytes": 286,
+        "path": "adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupMonitor.android.kt",
+        "sha256": "463d958d53b55d3b6c2a4e0be895cd3e0315bdee5e8f15524d431c0a679ced6d"
+      },
+      {
+        "bytes": 19525,
+        "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/navigation/AppNavigator.kt",
+        "sha256": "ac8bf26462711593f4e07b93dc950aa0541180445fa0a1b3273eecb28274fa54"
+      },
+      {
+        "bytes": 5720,
+        "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/navigation/AppRoute.kt",
+        "sha256": "537bed570586a4687827ffaed298b811bf2367030d6f152f20c93bc623391330"
+      }
+    ],
+    "source_roots": [
+      "core/types/src/commonMain/kotlin",
+      "core/recovery/src/commonMain/kotlin",
+      "core/security/src/commonMain/kotlin",
+      "core/database/src/commonMain/kotlin",
+      "adapters/app-gateway/src/commonMain/kotlin",
+      "adapters/app-gateway/src/androidMain/kotlin",
+      "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/navigation"
+    ]
+  },
+  "lead_owned_build_edges": [
+    "security commonMainApi:p2p-core",
+    "security androidMainImplementation:p2p-transport-lan",
+    "security commonMainImplementation:p2p-rpc",
+    "gateway commonMainImplementation:p2p-rpc"
+  ],
+  "lead_owned_build_options_to_preserve": [
+    "gateway -Xexpect-actual-classes"
+  ],
+  "lead_ui": {
+    "contract": [
+      "LocalSessionAttachmentKey(ownerId: DomainId, generation: Long)",
+      "BranchUiSession.attachmentUpdates: StateFlow<LocalSessionAttachmentKey?>?",
+      "BranchUiSession.attachmentKey read-through .value"
+    ],
+    "metadata": [
+      {
+        "bytes": 3490,
+        "path": ".workspace/lead-local-session-attachment-20261028/manifest.json",
+        "sha256": "ecd55620452480afd5998c8b70149441b69b4ff1bac9262e908128b22030d767"
+      },
+      {
+        "bytes": 3490,
+        "path": ".workspace/lead-local-session-attachment-20261028/SHA256SUMS",
+        "sha256": "b234192ed7ac1c82e615d0a2650ad7f41256dd0ff8dd568112e6d792e8b6d7f8"
+      },
+      {
+        "bytes": 77,
+        "path": ".workspace/lead-local-session-attachment-20261028/SEAL.sha256",
+        "sha256": "80877dc9eea5aa150f646519d345d9318d68d9544a0710ff743b7c9d1779bfc7"
+      }
+    ],
+    "owner": "/root",
+    "source_files": [
+      {
+        "bytes": 10266,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt",
+        "sha256": "5d052ccf097bae69004454b639564ae71d97b8b81afb1e3592dbc50887c4dd08"
+      },
+      {
+        "bytes": 21948,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationController.kt",
+        "sha256": "cdcddbc9e1bbbd49bc57bf5ae0962d6eb79757e0750ad52608a99317b226f3ed"
+      },
+      {
+        "bytes": 52315,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalRetailPhysicalController.kt",
+        "sha256": "7106b11e471ba6922ec2e3cd51c4da326976963af6494ea5bf3c4a7ff3ca3598"
+      },
+      {
+        "bytes": 34633,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalSupplierCashController.kt",
+        "sha256": "0eaf98cf7f741a57c2017462b8423726887299aad2327cc0b0337b330c19b7b8"
+      },
+      {
+        "bytes": 103270,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalWorkflowController.kt",
+        "sha256": "c47f4e520e3d808b9d9a28c485a297ea248a2ad5586292cf2724915b028b16b6"
+      },
+      {
+        "bytes": 33450,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/UkkeraRuntime.kt",
+        "sha256": "8245cb8d716e086dda5f6e0083b82196b387373238a2320c1ea12f9a3903bccb"
+      },
+      {
+        "bytes": 35667,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalAdministrationScreen.kt",
+        "sha256": "29c15e3e0e358a30aa39c81f7844a443c48cb6a5661ab88fd8b6616a3aca5f80"
+      },
+      {
+        "bytes": 47871,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalCompanyCatalogPublicationCard.kt",
+        "sha256": "5d65cdddfc3fefc393cadfffe9ddffcc4518991e5bd3c6fb45b2620f6bbe94b8"
+      },
+      {
+        "bytes": 64751,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalFoodConfigurationCard.kt",
+        "sha256": "13ba589eb1f71eea699b6608b656618b00bf6c52dea14c8c0ed3890522e5ddd7"
+      },
+      {
+        "bytes": 68170,
+        "path": ".workspace/lead-local-session-attachment-20261028/postimages/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalWorkflowScreens.kt",
+        "sha256": "0ae2cedc81c1eac5f421cebc50e9263f079af90e6e4e23e5759d9659b2150a85"
+      }
+    ],
+    "stage": ".workspace/lead-local-session-attachment-20261028",
+    "status": "observed sealed staging bytes only; no helper integration/verification"
+  },
+  "native_worker": {
+    "owner": "/root/opening_stock_delivery",
+    "seal_dependency": "not embedded, to avoid circular mutually dependent source-packet seals",
+    "source_file_count": 43,
+    "source_files": [
+      {
+        "bytes": 6938,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalBinding.kt",
+        "sha256": "c4419da300e66004825f1c64326abd433cf3c8983de56e70efaeeeb7a86ed706"
+      },
+      {
+        "bytes": 5462,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalKeys.kt",
+        "sha256": "96a765c79ba3aaf283cf6463614e252ae1e3c7ae3dba9575a23eca7440e95923"
+      },
+      {
+        "bytes": 88050,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalClientJournalOwner.kt",
+        "sha256": "eb23f6b5cb0f15a40637deb38c757f8d2502eba69196e379a50f14de6b2dc7da"
+      },
+      {
+        "bytes": 8306,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidTargetLocalClientVault.kt",
+        "sha256": "fa50f1a88e043be861afdb8815dfd6519e8546280645967ae7fa3efd81aa15d6"
+      },
+      {
+        "bytes": 83554,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/androidMain/kotlin/com/ukkera/pos/database/AndroidSelfOwnedMasterService.kt",
+        "sha256": "f7fcd2f5f7f23b91258fe533fcd468fbf1215634a6d4ccab4d6f2791b5e11f9a"
+      },
+      {
+        "bytes": 715,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalEffectivePolicyCodec.kt",
+        "sha256": "58367a1401942dd4793cb383215c848cf8f79c6efc10f67150c33fc28d26ab0f"
+      },
+      {
+        "bytes": 59345,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterEndpoint.kt",
+        "sha256": "c4056c6faec74dc7d009c4e3d69ac1a73604dd7879a841c7c5e27f0a5a670db9"
+      },
+      {
+        "bytes": 16902,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/ProtectedLocalSecurityCodec.kt",
+        "sha256": "285f2f784a67e0eb7c34d0f5d372e1179877e85ee2cb5bab211d3d970eec2145"
+      },
+      {
+        "bytes": 39376,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalCredentialAdministration.kt",
+        "sha256": "20aa2ef4dec9c6a6b1289279c82e312a2574ffabed4708eecf6cbbb95219b307"
+      },
+      {
+        "bytes": 28526,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalProvisioningFrame.kt",
+        "sha256": "2cdbd257e8c13e29b1487fa84939287507aa528bdfcd7649e6e2ff469204a7a6"
+      },
+      {
+        "bytes": 75167,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalSecurityStore.kt",
+        "sha256": "95112f65b8f62393668058783708222c485513885c461952f5bbcac5e1e75fac"
+      },
+      {
+        "bytes": 73238,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt",
+        "sha256": "d834df8b90dcf4cbc5a9550320f2631fce22bfe3e28df0c67e69302827be88fa"
+      },
+      {
+        "bytes": 17088,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryOwner.kt",
+        "sha256": "eb341c4b032b5cf58d687ee4b35fb719809f24a0278cfc8fd588fe8e2150e8aa"
+      },
+      {
+        "bytes": 6226,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedDeviceAdmissions.kt",
+        "sha256": "7dc94c7e08ab56cb8c63881b0aa92a9c8d223a63d208f7b6cc22163a2b00c468"
+      },
+      {
+        "bytes": 4147,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomSelfOwnedMasterComposition.kt",
+        "sha256": "89dfd78e6a028d9319715152d3a1e26ee5c0f65282e10a297cb9582d2fc83638"
+      },
+      {
+        "bytes": 6005,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDeviceProvisioningCapture.kt",
+        "sha256": "f40b786c31a0afb3ecca6dc51e6aac6c5e052f1d51da29b8852a86a8a86c0491"
+      },
+      {
+        "bytes": 40834,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeAuthenticationReplay.kt",
+        "sha256": "aaa4b0ca42b5ebcc487c2d25e2cb5b93356e83f63775f55c295c4cf8e4213900"
+      },
+      {
+        "bytes": 42082,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeEnrollmentHistoryJoin.kt",
+        "sha256": "fdef849a9216e09a70775a207fa640d149806f41325d0080d4155e9b6f80346c"
+      },
+      {
+        "bytes": 163492,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryScanner.kt",
+        "sha256": "5e686fd438b2bb9915b4c1cb6f202cc102e00510b39b098b0f90fbbe57086568"
+      },
+      {
+        "bytes": 42490,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeOriginalAuthenticationReplay.kt",
+        "sha256": "81d0d129ab338e8b918647bd68d46a34ea499171975bbab13f65064f60528356"
+      },
+      {
+        "bytes": 9794,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidClientJournalNativeKeys.kt",
+        "sha256": "44654dff4bbc3eca4e802e9766fa75b4acf2ab5e2d1f629d5f79729ea48ec05d"
+      },
+      {
+        "bytes": 103233,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidDevicePairingTarget.kt",
+        "sha256": "8aa46238440176ab8a18d371c9931d5a360517a2baac04fd71fb012d6557da26"
+      },
+      {
+        "bytes": 46731,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDeviceAdmissions.kt",
+        "sha256": "76af9105f857db424d9f12803dad524ffa7e41cea582cf2432fdbd8600cea19f"
+      },
+      {
+        "bytes": 56217,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalInstallerAuthentication.kt",
+        "sha256": "c8aee379040ebb5624cd56286e2638b50822a6f21f4ec05dec7e924985b5eb62"
+      },
+      {
+        "bytes": 59717,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerKeys.kt",
+        "sha256": "128ade1d4e3f8c5d21cd7b492d0c1f53e12c8cd5e0feaa9fad9e1da76905f9b1"
+      },
+      {
+        "bytes": 72780,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerRegistry.kt",
+        "sha256": "c7ba99e140702a18494b3cb4f66d67b71bbd141c42ef574a585b51bb266c7869"
+      },
+      {
+        "bytes": 11989,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidOriginalSdkRpcChallenges.kt",
+        "sha256": "b63d0ca4bfa246326a4cc5999fa611f47740312af1b4c0dbdd6aff87226aefa4"
+      },
+      {
+        "bytes": 63572,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryReadStorage.kt",
+        "sha256": "ee1d4ac19c86078de1a8d80c27170bd0e2fec83f8d036b291adb86971b937482"
+      },
+      {
+        "bytes": 90280,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationOwner.kt",
+        "sha256": "9067d318acc304c82e0b0073bf32658b8d05d70a64dd48f1a5e845d8ae3eba33"
+      },
+      {
+        "bytes": 54457,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidTargetClientVaultNativeSource.kt",
+        "sha256": "4733e337749ed107a46b9017ef1808af6ef005ede05c330966a4b90fda8eee0e"
+      },
+      {
+        "bytes": 15347,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthentication.kt",
+        "sha256": "44fe9028747b23a1c8bea2f4408b0a4bd2c25482fe310b6a97bf0dbb3d655004"
+      },
+      {
+        "bytes": 22223,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyDeviceAdmissions.kt",
+        "sha256": "fe6e253f06c01b832e7d37142a51088c824f1e5c0ab2a75d70babf748bee177b"
+      },
+      {
+        "bytes": 14798,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalCompanyEmployeeEnrollments.kt",
+        "sha256": "d7d2f7b7f57bfdf8e3325466c0d0bc0abb18feec2d1ae691d8ecb86ae29da7be"
+      },
+      {
+        "bytes": 9491,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceAdmissionHistory.kt",
+        "sha256": "4e11865f456b925753cd072c117f2d5ae6f3a27f16b4b0e0c2ffefb7b99bdb0a"
+      },
+      {
+        "bytes": 58993,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceAdmissionWireV1.kt",
+        "sha256": "b75531d60678095272f7fb2d2d7aefdae3dd638e66f6110b810675d17c9d7ac7"
+      },
+      {
+        "bytes": 2776,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeDeviceProvisioningFrame.kt",
+        "sha256": "ffda1af817401d12e36f7168ce77e21df4164e09ce16e64164f28d1b58d99b65"
+      },
+      {
+        "bytes": 19265,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeOriginalSdkRpcChallenges.kt",
+        "sha256": "df6df460747b6df203cef9ccee4e3d402cb8626491d2f9e193bc63b4dacb16fc"
+      },
+      {
+        "bytes": 15908,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetClientJournalProtocol.kt",
+        "sha256": "b8a45744c00ff9830c387244fc5fcab12c7a1ed50ef6b82b10dc3eb7f104b2a8"
+      },
+      {
+        "bytes": 41246,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetClientVaultCustody.kt",
+        "sha256": "3fec32659c751074b7743bc47b99acab4b45b2111bee1414d675a9be23c20473"
+      },
+      {
+        "bytes": 5892,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/NativeTargetSdkRpcCut.kt",
+        "sha256": "76326cb6a7ee1e894b8a63ce3e328bb8186a592885fdd5de9e4f25d3827104c9"
+      },
+      {
+        "bytes": 15401,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/ProtectedLocalPolicyCodec.kt",
+        "sha256": "bbfcbf6d5214f66e48f2dd9884e25fae6c0c1928fdf749c05c672988690ef761"
+      },
+      {
+        "bytes": 28856,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryCustody.kt",
+        "sha256": "6c5ab61a19874678cf2291e69c32e3559379d28d5c292214a1ed91dce41e25b9"
+      },
+      {
+        "bytes": 97463,
+        "path": ".workspace/device-admission-delivery-20261028/postimages/core/security/src/commonMain/kotlin/com/ukkera/pos/security/SelfOwnedNativeHistoryWireV2.kt",
+        "sha256": "a673865c79564e6669d98decf9876fce4cd516bfdebb4b93f58f3daa1ca81a83"
+      }
+    ],
+    "stage": ".workspace/device-admission-delivery-20261028",
+    "status": "UNFINISHED_SOURCE_ONLY_PREREQUISITE; original final host source absent; registry/key API blockers"
+  },
+  "observed_at_utc": "2026-10-28T18:41:54.505309Z",
+  "schema": "ukkera-source-checkpoint-dependencies/v1",
+  "scope": "exact observed source/API snapshots only; not complete transitive compile or execution receipts",
+  "sdk": {
+    "clock_instrumentation_supplement": {
+      "bytes": 1010,
+      "path": ".workspace/lead-sdk-clock-uint-integration-20261028/instrumentation-pin-supplement.json",
+      "sha256": "58b182e2ed713356a68265e128ff2e952bb249786907207eaaa601e8e6e88713"
+    },
+    "clock_tool_pins_lead_reported": {
+      "compile_binding.py": "b88d5c35df98d693799623a811966173b6caea4c998c605cbf1b1e38b43b2634",
+      "compile_binding_observer": "e0767fd4e847beb79cef46bf2f4120412c5cf32f73c5fb8f75e5d0cc30a87248",
+      "prepare": "f89d8e7b529f617283531995a06fc992fbdeded7672ab425b40dd6eae9fd9c49"
+    },
+    "consumed_source_root": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library",
+    "first_message_limitation": "ScopedRpcHostSession.create lacks SDK-owned original first-message custody/demux seam",
+    "helper_edit_or_producer_or_rebuild": "NOT_RUN",
+    "preserve_consumed_materialization": true,
+    "qualification": "NOT_QUALIFIED",
+    "source_files_read_only": [
+      {
+        "bytes": 16719,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pKit.kt",
+        "sha256": "853b311d9a1c3768054cc6e638169493e7b9062676e8614d4c0fd566fe085fb2"
+      },
+      {
+        "bytes": 17432,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pSession.kt",
+        "sha256": "58c3a895b77eab259caa9ef55dc9fc1991962bd30152c42a6e7e1f2165c94e66"
+      },
+      {
+        "bytes": 4443,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pMessage.kt",
+        "sha256": "03ff2f0ed62df69b333603cd79b2bc8a287ed8f17123ada0948b56035ca9c286"
+      },
+      {
+        "bytes": 20356,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/P2pDisclosure.kt",
+        "sha256": "3a03fd73588fc437b15761080b4c9775f14ba5a916503a357098325249c6bd55"
+      },
+      {
+        "bytes": 16245,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/commonMain/kotlin/dev/p2pkit/core/dsl/Builders.kt",
+        "sha256": "b807b0c47fb73d48cc6383092830e28b382f3472e4accb97647872edd377aee2"
+      },
+      {
+        "bytes": 1723,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-core/src/androidMain/kotlin/dev/p2pkit/core/android/P2pKitAndroid.kt",
+        "sha256": "28592491e368ebca69221a228ce0e77de5425a6f174127ddc85297f15bb867b2"
+      },
+      {
+        "bytes": 8318,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcContract.kt",
+        "sha256": "3814c3906aa6348a230364a3f25860ed609336c6dfb956c9cd52726fbbb9ded2"
+      },
+      {
+        "bytes": 7543,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/ScopedRpcSession.kt",
+        "sha256": "ade37971d8038f34f6c4f06457a8b0bb334367f76c21341f9249adf66ee2244c"
+      },
+      {
+        "bytes": 12906,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcLink.kt",
+        "sha256": "e959d37e218dba47ca79b2844c7717d62e3d10990f0d8ba7e81452f526545d16"
+      },
+      {
+        "bytes": 22720,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcClientEngine.kt",
+        "sha256": "b2a1ce652227d805539724108940645f46e3ab7345a5794c2a40fcab7769c9dc"
+      },
+      {
+        "bytes": 18466,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-rpc/src/commonMain/kotlin/dev/p2pkit/rpc/internal/ScopedRpcHostEngine.kt",
+        "sha256": "1b73a081383563f8e7c0d9979a95c74ed839721eb3d233fbd163d441ace4aa97"
+      },
+      {
+        "bytes": 6631,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-transport-lan/src/commonMain/kotlin/dev/p2pkit/transport/lan/OrganizationLan.kt",
+        "sha256": "e37de3ff27bb34d19826feefd1d226863816e27bb80f7b1d0e3935a375355c52"
+      },
+      {
+        "bytes": 4291,
+        "path": ".workspace/sdk-builds/45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619/source/library/p2p-transport-lan/src/androidMain/kotlin/dev/p2pkit/transport/lan/AndroidLanDsl.kt",
+        "sha256": "06afd26aeff39fe1a20a747412a5ff470fb327b940bddf83a2d7e2b58a2ec2b2"
+      }
+    ],
+    "source_key": "45139a7fd28a4c5d7f415b08c71734ff18d1ce8de96cf544e624edb0330fa619"
+  }
+}

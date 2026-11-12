@@ -1,0 +1,249 @@
+{
+  "recordType": "OWNER_REQUESTED_SOURCE_CHECKPOINT_NOT_RELEASE",
+  "recordVersion": 1,
+  "recordedAt": "2026-10-28T18:53:14.540541+00:00",
+  "developmentStatus": "PAUSED_BY_OWNER",
+  "readiness": "INCOMPLETE_NOT_OWNER_TESTING_READY",
+  "git": {
+    "branch": "implement/ukkera-pos-local",
+    "parentCommit": "57e12eec83842d6e4d6ecb16d02fa06220667377",
+    "checkpointRevision": "The Git commit containing this record; final push identity is reported to the owner."
+  },
+  "sourceFingerprint": "b76121e281dddff86e913aaf78e1a493d792543c4c42dad2cca1dee39825a9a0",
+  "localInputCount": 1005,
+  "sourceIdentityScope": "local_fingerprint excludes mutable task records, generated output, held central inputs and .workspace; external SDK/cache/toolchain bytes are not comprehensively fingerprinted",
+  "activeChange": {
+    "description": "Common backup policy extraction with concrete native JVM adapters; compile-tool target allowlist",
+    "implementer": "/root/android_installation_troubleshooter",
+    "sourceReviewerIntegratorExecutor": "/root",
+    "newTestDesigner": null,
+    "testOwnership": "Unchanged historical core recovery regressions; not new independent design or backup adapter acceptance",
+    "sourceReview": {
+      "path": "apps/pos/.workspace/lead-shared-backup-policy-integration-20261028/REVIEW.md",
+      "sha256": "0537fc7a42233bd16b77d163358cd02c5016b8e8e80970981c9db56311781341"
+    },
+    "sourceIntegrationRecord": {
+      "path": "apps/pos/.workspace/lead-shared-backup-policy-integration-20261028/integration.json",
+      "sha256": "ba29534e026a72c5d44fbb265a193adeaa98f8cf9837e96b9ad2ca2080674312",
+      "note": "Original source-only record remains unchanged; later actual execution is recorded separately below."
+    },
+    "files": [
+      {
+        "path": "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupFormats.kt",
+        "sha256": "71fd11ebaa79fd859b2f002d54a7ddbff85463452362ceb09de52cbd8d66498f"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupPolicy.kt",
+        "sha256": "2f3086c20b8335451acd7b8ae25e6596987229381b7c03145a9b4a3c88826cfe"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupPorts.kt",
+        "sha256": "51b69d55f7df4dd6151445bd99df85f6304e6677b8179809e1fbad089e900727"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/commonMain/kotlin/com/ukkera/pos/recovery/store/LocalBackupSnapshotPolicy.kt",
+        "sha256": "c2dfe3216071cfd64d15bb705e818408749eeb5cbc6ff32472617948815bc0eb"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/BackupArchive.kt",
+        "sha256": "7389db732da8845a0c5f80bb120784e9c95debc3a4f45c4b132e6f6c48339f8d"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/JvmLocalBackupStore.kt",
+        "sha256": "9ac8f977d4e9c9b93d6b7058efa7793ebf476b2fc2fc57660a44aa26c8aa2648"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/JvmRecoveryPorts.kt",
+        "sha256": "d4ffdcd8af0cbae73f4637a15c4dd28c6e8c3f69076bf6772b83b5d27f104ec1"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/PrivateBackupFiles.kt",
+        "sha256": "1565eec544e51b0176faaba34c0c4c7f1403f431448762405417e98f9af44879"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/src/jvmMain/kotlin/com/ukkera/pos/recovery/store/SqliteBackupSnapshot.kt",
+        "sha256": "e289473e2d82d3d68d3b915bd309a5e5a34c7a6e66e6ec4e6a5ae69d4780469b"
+      },
+      {
+        "path": "apps/pos/adapters/recovery-store/build.gradle.kts",
+        "sha256": "68c4b898c2f3f64ed60dc9d99b503ca3391c8ced5fcd6f9965e5a3062e3b3062"
+      },
+      {
+        "path": "apps/pos/tools/compile_local.py",
+        "sha256": "aabb0f5194d4a5ffec1c5f3b13bad3cffe4710d4cdd07de5ef1b3a5067f7b41e"
+      }
+    ]
+  },
+  "verification": [
+    {
+      "status": "PASS_LOCAL_COMPILE_ONLY_NOT_ACCEPTANCE",
+      "startedAt": "2026-10-28T18:23:00.415787+00:00",
+      "finishedAt": "2026-10-28T18:23:54.841858+00:00",
+      "evidenceDirectory": "apps/pos/.workspace/evidence/local-compile/20261028T182300.415563Z-9bd480afdbca4bf2b8dc5d8a41ca8b0b",
+      "verificationSha256": "0e87d07992bd34aac99cea2d7eab64bf16b7335e23a1a11de0596f8aaf620cde",
+      "sourceBeforeSha256": "28146599ae58f189cbc29950e52e6e9cf67f578c7549bde3aef89597eaaafc34",
+      "sourceAfterSha256": "28146599ae58f189cbc29950e52e6e9cf67f578c7549bde3aef89597eaaafc34",
+      "sourceFingerprint": "b76121e281dddff86e913aaf78e1a493d792543c4c42dad2cca1dee39825a9a0",
+      "sourcesUnchangedDuringRun": true,
+      "phases": [
+        {
+          "label": "essential-local-compile",
+          "status": "PASS",
+          "durationSeconds": 52.575,
+          "exitCode": 0,
+          "command": [
+            "./gradlew",
+            ":adapters:recovery-store:compileKotlinJvm",
+            ":adapters:local-master-host:compileKotlin",
+            "--console=plain",
+            "--max-workers=1",
+            "--no-daemon",
+            "--no-configuration-cache",
+            "--no-configure-on-demand",
+            "--init-script",
+            "tools/local_only_guard.gradle",
+            "--offline",
+            "--no-build-cache"
+          ]
+        }
+      ],
+      "tests": {},
+      "applicationAcceptance": false,
+      "newIndependentAcceptanceEvidence": false
+    },
+    {
+      "status": "PASS_SELECTED_LOCAL_JVM_REGRESSIONS_NOT_APPLICATION_ACCEPTANCE",
+      "startedAt": "2026-10-28T18:25:41.521903+00:00",
+      "finishedAt": "2026-10-28T18:26:21.249799+00:00",
+      "evidenceDirectory": "apps/pos/.workspace/evidence/local-only/20261028T182541.519259Z",
+      "verificationSha256": "19f39b8725f646da5dd2c174af538de8c2a1113a8b98bfce922a7d363edc9d0d",
+      "sourceBeforeSha256": "28146599ae58f189cbc29950e52e6e9cf67f578c7549bde3aef89597eaaafc34",
+      "sourceAfterSha256": "28146599ae58f189cbc29950e52e6e9cf67f578c7549bde3aef89597eaaafc34",
+      "sourceFingerprint": "b76121e281dddff86e913aaf78e1a493d792543c4c42dad2cca1dee39825a9a0",
+      "sourcesUnchangedDuringRun": true,
+      "phases": [
+        {
+          "label": "host-regressions",
+          "status": "PASS",
+          "durationSeconds": 37.446,
+          "exitCode": 0,
+          "command": [
+            "xvfb-run",
+            "-a",
+            "./gradlew",
+            ":core:recovery:jvmTest",
+            "--rerun",
+            "--console=plain",
+            "--max-workers=1",
+            "--no-daemon",
+            "--no-configuration-cache",
+            "--no-configure-on-demand",
+            "--init-script",
+            "tools/local_only_guard.gradle",
+            "--offline"
+          ]
+        }
+      ],
+      "tests": {
+        "core/recovery/jvmTest": {
+          "classification": "EXISTING_REGRESSION_NOT_INDEPENDENT_ACCEPTANCE",
+          "totals": {
+            "tests": 55,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0
+          }
+        }
+      },
+      "applicationAcceptance": false,
+      "newIndependentAcceptanceEvidence": false
+    }
+  ],
+  "archivedFiles": [
+    {
+      "path": "README.md",
+      "sha256": "623654d348249b153b3f823664729ffafd3ca59cf093999cb3633fb2f57996f5",
+      "bytes": 9025
+    },
+    {
+      "path": "device-admission-dependencies.json",
+      "sha256": "1a64e014185e83cbffbbff8bb30871bda8c603cd15cf54a41aaa17ee9b6e1720",
+      "bytes": 16081
+    },
+    {
+      "path": "device-admission.json",
+      "sha256": "2a1e0bca1e8bf7c96a23b59bf270b759dd18fa09c7500a387abe89d6b97e54f5",
+      "bytes": 36322
+    },
+    {
+      "path": "device-admission.patch",
+      "sha256": "4bce19403d63dde04be095c890ba31279ca96b7f49ebfc64d016bbe72edf5756",
+      "bytes": 545986
+    },
+    {
+      "path": "sdk-dependencies.json",
+      "sha256": "9ccc9a0cf120b632cb0a41ffd3d03efcfdf298e782553986a29006acc17127b7",
+      "bytes": 86041
+    },
+    {
+      "path": "sdk-runtime.json",
+      "sha256": "dc8c8ee9206de892e2b6c33a5775dc7930ccbb7d546e663abc551b5f50c891d7",
+      "bytes": 14632
+    },
+    {
+      "path": "sdk-runtime.patch",
+      "sha256": "1edb85b38594d30aa2250282b27d639824a742409e400cce45c05430b100e445",
+      "bytes": 210315
+    },
+    {
+      "path": "sdk-source-review.md",
+      "sha256": "2bd5eb2c60cc89abb7be984984082fd245a94da477f3c3dff8284d66c4945e00",
+      "bytes": 4687
+    },
+    {
+      "path": "session-attachment.json",
+      "sha256": "f50ccfe9e681936920232cc05322e15408b1ff651399395e879ea5f6fac0f1e2",
+      "bytes": 4718
+    },
+    {
+      "path": "session-attachment.patch",
+      "sha256": "279c6752219807610c1d93698ce54d44681ecc52a250f1effbdedfc2c07b1b55",
+      "bytes": 85212
+    },
+    {
+      "path": "session-source-review.md",
+      "sha256": "d5c799ef521a14fed36763934ccd3b0998e0fdd01c4dacbbe23fe888c987a6a5",
+      "bytes": 8977
+    }
+  ],
+  "pendingPatchStatus": "NOT_APPLIED_NOT_BUILT_NOT_OPERATIONAL; device admission has absent required source files",
+  "finalNativeDependencyObservation": {
+    "path": "apps/pos/.workspace/sdk-runtime-native-dependency-owner-pause-20261028-v1.json",
+    "sha256": "20fff302da2d1670c3142c0563c97a33f0ba3d702ecb36ec7c01b7c0ac8d9715",
+    "status": "Source-only observation, not integration or behavior"
+  },
+  "scopeRegister": {
+    "path": "qa/pos/traceability/shared-password-kmp-20261028/REQUIREMENT-STATUS.csv",
+    "sha256": "6abb0328f55fc79486907b48c4cd1d8a3f3a48f776c78742b01dc2923d322821",
+    "features": 105,
+    "originalScenarios": 141,
+    "gates": 79,
+    "completeRequirementPasses": 0,
+    "statusChangeAtThisCheckpoint": "NONE; earlier source-bound passes not inherited"
+  },
+  "remaining": [
+    "Real original device admission, scoped SDK RPC serving/readback and master/client app integration",
+    "UI session attachment, DENIED cleanup, rapid return, SDK close-result/concurrency/cleanup and API dependencies",
+    "Remaining business workflows and durable restart/reconciliation across all four activities",
+    "Schema 7/native/mobile backup and full backup orchestration integration tests",
+    "Independent test design and complete original acceptance execution",
+    "Two historical security expectation failures and obsolete database raw-throttle fixture",
+    "Consumed SDK recipe d2 producer HOST_MEMORY_RESERVE failure; no automatic retry authorized",
+    "Current runnable verified Android build and actual device checks; iOS/native/master/LAN/Keychain composition and other platform acceptance"
+  ],
+  "centralImplementationAndVerification": "HELD_PENDING_OWNER_LOCAL_TESTING_AND_EXPLICIT_APPROVAL",
+  "epicsOrIssuesCreated": false,
+  "helpers": "ALL_STOPPED",
+  "nextAction": "WAIT_FOR_OWNER; then reconcile/reuse existing GitHub Issues and organize the complete requirements before resuming development",
+  "preservation": "Original plans/frozen cases/failures unchanged; protected untracked QA paths untouched; .workspace, credentials, data, binaries, caches and raw logs not staged"
+}

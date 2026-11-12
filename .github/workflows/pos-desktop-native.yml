@@ -226,6 +226,32 @@ jobs:
             --arch x64 \
             --source-revision "${SOURCE_REVISION:-}"
 
+      - name: Build, sign and probe test MSIX
+        shell: pwsh
+        env:
+          POS_ROOT: ${{ steps.pos.outputs.root }}
+          PFX_BASE64: ${{ secrets.POS_WINDOWS_TEST_PFX_BASE64 }}
+          POS_MSIX_PFX_PASSWORD: ${{ secrets.POS_WINDOWS_TEST_PFX_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Push-Location $env:POS_ROOT
+          ./gradlew.bat --no-daemon :apps:desktop:createDistributable --console=plain
+          if ($LASTEXITCODE -ne 0) { throw "createDistributable failed ($LASTEXITCODE)" }
+          Pop-Location
+          $pfx = Join-Path $env:RUNNER_TEMP 'pos-test-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+          $env:POS_MSIX_PFX_PATH = $pfx
+          try {
+            & "$PWD/scripts/pos/desktop/package-msix.ps1" `
+              -AppImage "$env:POS_ROOT/apps/desktop/build/compose/binaries/main/app/UkkeraPOS" `
+              -Version "0.1.${{ github.run_number }}.0" `
+              -ManifestTemplate "$env:POS_ROOT/apps/desktop/packaging/windows/AppxManifest.xml.template" `
+              -Certificate "$env:POS_ROOT/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer" `
+              -OutputDir "build/pos-artifacts/desktop-windows-x64" -Probe
+          } finally {
+            Remove-Item -Force $pfx -ErrorAction SilentlyContinue
+          }
+
       - name: Validate public artifact staging
         id: public_safe
         if: always()

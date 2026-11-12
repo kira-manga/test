@@ -121,7 +121,7 @@ internal class RuntimeDelegatedEmployeeCreationCapture private constructor(
     original: LocalDelegatedEmployeeCreationV1,
     private val authorization: RuntimeCommandAuthorizationSnapshotV1,
     private val at: MonotonicMoment,
-    private val expectedImages: List<RuntimeEmployeeCreationImageV1>,
+    private var expectedImages: List<RuntimeEmployeeCreationImageV1>,
 ) {
     private val originalBytes = original.copyWireBytes()
     val scope: BranchScope = original.scope
@@ -133,6 +133,22 @@ internal class RuntimeDelegatedEmployeeCreationCapture private constructor(
     private var preflight: RoomLocalAuthorizationObservation? = null
     private val captured = mutableListOf<RuntimeEmployeeCreationImageV1>()
     private var completed = false
+
+    val imageCount: Int get() = expectedImages.size
+
+    fun requireReadyForSealing() {
+        check(!completed && census != null && preflight != null && captured.isEmpty())
+    }
+
+    fun sealedImages(): List<RuntimeEmployeeCreationImageV1> {
+        check(!completed && captured == expectedImages)
+        return captured.toList()
+    }
+
+    fun requireCreatedAccountCensus(actual: List<DomainId>) {
+        check(!completed && actual.distinct().size == actual.size &&
+            actual.sortedBy { it.value } == (checkNotNull(census) + targetId).sortedBy { it.value })
+    }
 
     /** Only the actual still-live zero-write transaction's complete protected input
      * comparison can supply this census. It is consumed once inside its original loan;
@@ -168,7 +184,7 @@ internal class RuntimeDelegatedEmployeeCreationCapture private constructor(
     }
 
     fun clear() {
-        completed = true; originalBytes.fill(0); captured.clear(); census = null; preflight = null
+        completed = true; originalBytes.fill(0); captured.clear(); census = null; preflight = null; expectedImages = emptyList()
     }
 
     override fun toString(): String = "RuntimeDelegatedEmployeeCreationCapture([REDACTED])"

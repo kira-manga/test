@@ -256,6 +256,41 @@ internal class RoomRuntimeHistoryOwner private constructor(
     internal suspend fun <T> writerLoan(block: suspend (Transactor) -> T): T = loans.withLock {
         writerLoanLocked(null, block)
     }
+    /** The creation coordinator borrows only this actual owner's writer. A fresh
+     * Inserted result requires this SAME frame's native COMMITTED child/final decision;
+     * no returned callback value or public receipt substitutes for that observation. */
+    internal suspend fun employeeCreationWriterLoan(block: suspend (Transactor) ->
+        RoomLocalSecurityOutcome<RoomLocalEmployeeCreationExecution>): RoomLocalSecurityOutcome<RoomLocalEmployeeCreationExecution> = loans.withLock {
+        currentCoroutineContext().ensureActive()
+        if (!operational || active != null) protectedLocalUnavailable()
+        try {
+            writerLoanLocked(null, block, creationReceipt = { result ->
+                when (result) {
+                    is RoomLocalSecurityOutcome.Value -> (result.value as? RoomLocalEmployeeCreationExecution.Inserted)?.receipt
+                    else -> null
+                }
+            })
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { localStorageUncertain() }
+    }
+    /** Fresh original cancellation needs its own actual committed tombstone child; a
+     * prior Applied/Cancelled/conflict observation remains a zero-write lookup. */
+    internal suspend fun employeeCreationCancellationWriterLoan(block: suspend (Transactor) ->
+        RoomLocalSecurityOutcome<RoomLocalEmployeeCreationCancellationExecution>):
+        RoomLocalSecurityOutcome<RoomLocalEmployeeCreationCancellationExecution> = loans.withLock {
+        currentCoroutineContext().ensureActive()
+        if (!operational || active != null) protectedLocalUnavailable()
+        try {
+            writerLoanLocked(null, block, creationCancellationReceipt = { result ->
+                when (result) {
+                    is RoomLocalSecurityOutcome.Value ->
+                        (result.value as? RoomLocalEmployeeCreationCancellationExecution.Recorded)?.receipt
+                    else -> null
+                }
+            })
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { localStorageUncertain() }
+    }
     /** Keep revocation serialized until the protected request has fully settled and the
      * following native operation has returned. Authentication must precede this loan. */
     internal suspend fun <T> serialPublicationLoan(block: suspend (SerialPublicationLoan) -> T): T = loans.withLock {
@@ -303,7 +338,8 @@ internal class RoomRuntimeHistoryOwner private constructor(
         writerLoanLocked(operationId, block)
     }
     private suspend fun <T> writerLoanLocked(approvedOperationId: com.ukkera.pos.types.OperationId?,
-        block: suspend (Transactor) -> T): T {
+        block: suspend (Transactor) -> T, creationReceipt: (T) -> LocalEmployeeCreationReceiptV1? = { null },
+        creationCancellationReceipt: (T) -> LocalEmployeeCreationReceiptV1? = { null }): T {
         currentCoroutineContext().ensureActive()
         check(active == null && mode !in setOf(Mode.UNKNOWN,Mode.CLOSED))
         return custody.runRoomWork(block = {
@@ -343,6 +379,10 @@ internal class RoomRuntimeHistoryOwner private constructor(
                 returnedSettlement = settlement // Only the actual native return establishes this boundary.
                 check(settlement.disposition != SelfOwnedNativeSqlDisposition.UNKNOWN)
                 if(settlement.disposition==SelfOwnedNativeSqlDisposition.COMMITTED) checkNotNull(frame).requireNormalOuterBody()
+                creationReceipt(result)?.let { checkNotNull(frame).requireEmployeeCreationSettlement(settlement, it) }
+                creationCancellationReceipt(result)?.let {
+                    checkNotNull(frame).requireEmployeeCreationCancellationSettlement(settlement, it)
+                }
                 settleReceiptMembership(checkNotNull(frame), settlement)
                 original = settlement.original
                 if (original.record.attempt?.phase == NativeHistoryAttemptPhaseV2.RETIRING) {

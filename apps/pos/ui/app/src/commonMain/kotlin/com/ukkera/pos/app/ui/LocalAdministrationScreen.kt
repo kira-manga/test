@@ -101,6 +101,10 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                 Notice(adminText("Device pairing, grant publication and full archived audit history use separate workflows.",
                     "تستخدم إقران الأجهزة ونشر الصلاحيات وسجل التدقيق المؤرشف الكامل مسارات منفصلة."))
             }
+            if (directory == LocalAdministrationDirectory.ACCOUNTS && controller.employeeCreationConfigured) item {
+                LocalEmployeeCreationInputs(controller, state, token)
+                LocalEmployeeCreationRecoveryCard(controller, state, token)
+            }
             if (state.working) item {
                 Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -131,7 +135,7 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
             item {
                 OutlinedTextField(state.targetInput, { controller.changeTarget(it, token) }, singleLine = true,
                     label = { Text(adminText("Exact employee / device UUID", "معرّف UUID الدقيق للموظف / الجهاز")) },
-                    enabled = !state.working && !state.passwordEntryOpen, modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput, modifier = Modifier.fillMaxWidth(),
                     isError = state.invalidTarget, keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { controller.selectExactTarget(token) }))
                 if (state.invalidTarget) Text(adminText("Enter a complete canonical UUID.", "أدخل معرّف UUID قياسيًا كاملًا."),
@@ -141,15 +145,15 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                     style = MaterialTheme.typography.bodySmall)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { controller.selectExactTarget(token) },
-                        enabled = !state.working && !state.passwordEntryOpen && state.targetInput.isNotEmpty(), modifier = Modifier.touchTarget()) {
+                        enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput && state.targetInput.isNotEmpty(), modifier = Modifier.touchTarget()) {
                         Text(adminText("Open exact target", "فتح الهدف الدقيق"))
                     }
-                    OutlinedButton(onClick = { controller.refresh(token) }, enabled = !state.working && !state.passwordEntryOpen,
+                    OutlinedButton(onClick = { controller.refresh(token) }, enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput,
                         modifier = Modifier.touchTarget()) { Text(adminText("Refresh selection", "تحديث الاختيار")) }
-                    OutlinedButton(onClick = { controller.refresh(token, firstPage = true) }, enabled = !state.working && !state.passwordEntryOpen,
+                    OutlinedButton(onClick = { controller.refresh(token, firstPage = true) }, enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput,
                         modifier = Modifier.touchTarget()) { Text(adminText("Directory: first page", "الدليل: الصفحة الأولى")) }
                     if (view?.next != null) OutlinedButton(onClick = { controller.refresh(token, nextPage = true) },
-                        enabled = !state.working && !state.passwordEntryOpen, modifier = Modifier.touchTarget()) {
+                        enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput, modifier = Modifier.touchTarget()) {
                         Text(adminText("Next page in this snapshot", "الصفحة التالية من هذه اللقطة"))
                     }
                 }
@@ -248,6 +252,7 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
     if (state.passwordEntryOpen && state.canSubmit) state.original?.let { original ->
         AdministrationPassword(original, dismiss = { controller.closePasswordEntry(token) }, submit = { controller.submit(token, it) })
     }
+    LocalEmployeeCreationPassword(controller, state, token)
 }
 
 @Composable
@@ -344,7 +349,7 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
                 reviewed, enabled = !state.working) { reviewed = it }
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { controller.recover(token) }, enabled = !state.working && !state.passwordEntryOpen,
+            OutlinedButton(onClick = { controller.recover(token) }, enabled = !state.working && !state.passwordEntryOpen && !state.creationOwnsInput,
                 modifier = Modifier.touchTarget()) { Text(adminText("Recover / reload saved request", "استعادة / إعادة تحميل الطلب المحفوظ")) }
             if (command != null) {
                 if (state.preparationUncertain) OutlinedButton(onClick = { controller.retryPreparation(token) }, enabled = !state.working,
@@ -356,7 +361,7 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
                         else adminText("Confirm original action", "تأكيد الإجراء الأصلي"))
                 }
                 if (pending?.terminal != true) OutlinedButton(onClick = { controller.cancel(token) },
-                    enabled = reviewed && !state.working && !state.passwordEntryOpen, modifier = Modifier.touchTarget()) {
+                    enabled = reviewed && !state.working && !state.passwordEntryOpen && !state.creationOwnsInput, modifier = Modifier.touchTarget()) {
                     Text(adminText("Cancel original ID — never undo applied work", "إلغاء المعرّف الأصلي — لا يتراجع عن عمل مطبّق"))
                 }
                 if (pending?.terminal == true) Button(onClick = { controller.acknowledge(token) },

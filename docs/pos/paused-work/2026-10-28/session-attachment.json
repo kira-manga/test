@@ -1,0 +1,89 @@
+{
+  "status": "UNFINISHED_SOURCE_ONLY_DO_NOT_APPLY_WITHOUT_REVIEW",
+  "implementer": "/root",
+  "sourceReviewer": "/root/android_installation_troubleshooter",
+  "baseCommit": "57e12ee",
+  "sourcePacket": "apps/pos/.workspace/lead-local-session-attachment-correction-20261028",
+  "sourceSealSha256": "f5dbcfc06006ffd1655bac9191a0b9298016a5c2a36822d8014b5cce1d956925",
+  "patchSha256": "279c6752219807610c1d93698ce54d44681ecc52a250f1effbdedfc2c07b1b55",
+  "targets": [
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/AppDependencies.kt",
+      "preimageSha256": "0e4bc91fc90af40c7ffeb65e02dc9219ec0f70b72d7280fbcb165794a08ad030",
+      "postimageSha256": "5d052ccf097bae69004454b639564ae71d97b8b81afb1e3592dbc50887c4dd08",
+      "bytes": 10266
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/UkkeraRuntime.kt",
+      "preimageSha256": "2b296ff391a83479394f722ae4fb030c0905206a751609beb65c5304dc1ed9eb",
+      "postimageSha256": "8a86d80302e380a3e955430f7f60fb025afd444f4cc48a7cd4bb4ff0db7cd493",
+      "bytes": 34066
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalWorkflowController.kt",
+      "preimageSha256": "cd71eecb9cfb98abfa6aa9e11c2aef3f4a171681255fb2a0bd03c704c289a975",
+      "postimageSha256": "bc0a831f4975f89986949337123c66d5ebcf3b0696b9521985791f8ec2f7f322",
+      "bytes": 103408
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationController.kt",
+      "preimageSha256": "39add5721ff22168dce5b13a7f373f120fd57fd82bc0914304491c4558d7e9dc",
+      "postimageSha256": "fc719d5a50a6b1cf4d2aca8a7b0ac040c29756ed73ff25c51f6a699d86d893b3",
+      "bytes": 21985
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalRetailPhysicalController.kt",
+      "preimageSha256": "c318c02a205c8ec9deed798431b921077864c3e8283ad39239f29862e2d250b5",
+      "postimageSha256": "121bb714bda6953df97094a2bb8f42976e3eb16a70125f038915d338084185e1",
+      "bytes": 52400
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalSupplierCashController.kt",
+      "preimageSha256": "0803535667e43734b841c5e8408f9d3566bfaad345b2c6a16b3a0f7d4098b959",
+      "postimageSha256": "c20efb01a61ba8075436c1bfb7c1e5ab7897b9dc3e941124465d0c07206085f4",
+      "bytes": 34718
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalWorkflowScreens.kt",
+      "preimageSha256": "8bf43ae5f3f8c6b20d4025b4678fa24df263ac29a36a8536427387ad8725b991",
+      "postimageSha256": "33b99c58841de0c537c5a30b0198272c057e61199c93f713b59aead4dde2d901",
+      "bytes": 69978
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalAdministrationScreen.kt",
+      "preimageSha256": "2e029c9fb58ef1faabda7912e5561daa8eb1a373bd2ef5b97554b929b182aa36",
+      "postimageSha256": "29c15e3e0e358a30aa39c81f7844a443c48cb6a5661ab88fd8b6616a3aca5f80",
+      "bytes": 35667
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalCompanyCatalogPublicationCard.kt",
+      "preimageSha256": "58057d7af4a561017cdaa3706d427cd986fb30c3932682000e3d37fe4e5771dc",
+      "postimageSha256": "0943b489dd15fc68ec4e31c44afb8990070e4d02ca7cde3bef15370cbd70b59e",
+      "bytes": 48408
+    },
+    {
+      "path": "ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalFoodConfigurationCard.kt",
+      "preimageSha256": "e2eab234690df2ff3a61dc5bfd3d26cdfa74b6b9eccaecd1ee01bace04f2b6b2",
+      "postimageSha256": "51a7076aa985420c22ffc10a15c0ac69c0b4d2a506593087657faa55b6567d4a",
+      "bytes": 65278
+    }
+  ],
+  "sourceReview": {
+    "path": "apps/pos/.workspace/shared-ui-attachment-correction-source-review-20261028/CORRECTION-REVIEW.md",
+    "sha256": "d5c799ef521a14fed36763934ccd3b0998e0fdd01c4dacbbe23fe888c987a6a5"
+  },
+  "correctedSourceFindings": [
+    "R1 controller key ownership",
+    "R2 entry-owned data instead of child-local draft/ID storage",
+    "R3 immutable physical ACK gateway and dispatch-time check"
+  ],
+  "blockers": [
+    "Native-card employee DENIED cleanup must be distinguished from separate head-authentication refusal and routed correctly",
+    "Rapid inactive/return cleanup is not established by active-Boolean Compose observation",
+    "Actual attachment-publishing gateway is separately unfinished",
+    "No compilation, test execution or independent session-attachment test design for this patch"
+  ],
+  "verification": "NOT_RUN; source review is not acceptance",
+  "independentTestDesign": "Fresh-context spawn previously rejected at agent thread limit; no designer/test/oracle was created",
+  "applicationIntegration": "NOT_APPLIED; none of this patch is in the active source tree"
+}
