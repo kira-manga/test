@@ -5,6 +5,7 @@ import com.ukkera.pos.app.BranchUiGateway
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import com.ukkera.pos.app.setup.LocalSetupLanInput
 import com.ukkera.pos.app.setup.LocalSetupLanWorkflow
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import dev.p2pkit.rpc.RpcEndpoint
 import dev.p2pkit.transport.lan.OrganizationLan
 
@@ -59,4 +60,22 @@ public interface LocalSetupLanClient {
     /** Same original owner only; absent explicit custody never creates a fallback. */
     public suspend fun authentication(): LocalSetupLanAuthentication? = null
     public suspend fun close()
+}
+
+/** The Master RPC workflow profile a selected business LAN workflow requests; null for authentication only. */
+public fun LocalSetupLanWorkflow.masterRpcProfile(): LocalMasterRpcWorkflowProfile? = when (this) {
+    LocalSetupLanWorkflow.AUTHENTICATION_ONLY -> null
+    LocalSetupLanWorkflow.SUPPLIERS -> LocalMasterRpcWorkflowProfile.SUPPLIERS
+    LocalSetupLanWorkflow.WAREHOUSES -> LocalMasterRpcWorkflowProfile.WAREHOUSES
+    LocalSetupLanWorkflow.REPORTS -> LocalMasterRpcWorkflowProfile.REPORTS
+    LocalSetupLanWorkflow.STOCK_TRANSFERS -> LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS
+    LocalSetupLanWorkflow.KITCHEN -> LocalMasterRpcWorkflowProfile.KITCHEN
+    LocalSetupLanWorkflow.RETAIL_ORDERS -> LocalMasterRpcWorkflowProfile.RETAIL_ORDERS
+    LocalSetupLanWorkflow.PAYMENT_CORRECTIONS -> LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS
+    LocalSetupLanWorkflow.CUSTOMER_RECEIPTS -> LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS
+    LocalSetupLanWorkflow.FOOD_CHECKS -> LocalMasterRpcWorkflowProfile.FOOD_CHECKS
+    LocalSetupLanWorkflow.FOOD_CASH_FINANCIAL -> LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL
+    LocalSetupLanWorkflow.FOOD_TABLE_ASSIGNMENTS -> LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS
+    LocalSetupLanWorkflow.INVOICE_CAPTURE -> LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE
+    LocalSetupLanWorkflow.INVOICE_MATCHING -> LocalMasterRpcWorkflowProfile.INVOICE_MATCHING
 }

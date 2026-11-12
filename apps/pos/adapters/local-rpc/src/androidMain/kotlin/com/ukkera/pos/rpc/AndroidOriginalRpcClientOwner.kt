@@ -22,13 +22,14 @@ public typealias AndroidOriginalRpcClientUnavailable = LocalOriginalRpcClientUna
  * Android configuration of the shared [LocalOriginalRpcClientOwner]: the official Android RpcPlatform
  * and the local-network permission check. All handoff/slot/selected-Master logic is shared with desktop.
  */
-public class AndroidOriginalRpcClientOwner private constructor(private val shared: LocalOriginalRpcClientOwner) {
+public class AndroidOriginalRpcClientOwner private constructor(private val shared: LocalOriginalRpcClientOwner) :
+    LocalOriginalRpcAuthenticationSource {
     public val phase: StateFlow<LocalRpcFactoryPhase> get() = shared.phase
-    public val original: StateFlow<LocalDevicePairingSdkOriginal?> get() = shared.original
-    public val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = shared.approvedMaster
+    override val original: StateFlow<LocalDevicePairingSdkOriginal?> get() = shared.original
+    override val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = shared.approvedMaster
     public suspend fun acquire(): RpcLocalIdentity = shared.acquire()
     public suspend fun connect(endpoint: RpcEndpoint): Unit = shared.connect(endpoint)
-    public suspend fun authenticationService(): LocalRpcRemoteAuthenticationService = shared.authenticationService()
+    override suspend fun authenticationService(): LocalRpcRemoteAuthenticationService = shared.authenticationService()
     public suspend fun supplierClient(): LocalRpcRemoteSupplierClient = shared.supplierClient()
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient =
         shared.directoryClient(profile)

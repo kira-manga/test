@@ -8,11 +8,13 @@ import com.ukkera.pos.app.gateway.LocalAuthenticationOnlyConnection
 import com.ukkera.pos.app.gateway.LocalBranchDisplayLabels
 import com.ukkera.pos.app.gateway.LocalClientPublication
 import com.ukkera.pos.app.gateway.LocalClientRole
+import com.ukkera.pos.app.gateway.LocalDirectoryClientConnection
 import com.ukkera.pos.app.gateway.LocalEndpointBranchGateway
 import com.ukkera.pos.app.gateway.LocalOriginalClientJournalAction
 import com.ukkera.pos.app.setup.LocalSetupLanEndpoint
 import com.ukkera.pos.app.setup.LocalSetupLanWorkflow
 import com.ukkera.pos.database.LocalMasterInstallationReceiptOpenResult
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.rpc.DesktopOriginalRpcClientOwner
 import com.ukkera.pos.rpc.LocalOriginalRpcClientOwner
 import com.ukkera.pos.security.BranchScope
@@ -69,8 +71,8 @@ public class DesktopClientSetupPlatform(
 /**
  * Desktop UI-process composition: the additional-device (Client) role only. The desktop Master is
  * the OS-supervised background service, never this UI process, so every Master/provisioner entry is
- * fail-closed UNAVAILABLE here. Pairing ceremony, setup intents and LAN policy are shared.
- * Business-workflow LAN profiles require shared actor-intent custody and stay refused until then.
+ * fail-closed UNAVAILABLE here. Pairing ceremony, setup intents, LAN policy and paired actor-intent
+ * custody (allocation ledger, fresh Master Current, actor journals) are shared with Android.
  */
 public class DesktopLocalSetupNativeServices(
     private val platform: DesktopClientSetupPlatform,
@@ -143,9 +145,6 @@ public class DesktopLocalSetupNativeServices(
                 check(freshTargetTransfer === this)
                 lanClient?.let { it.requireSelection(scope, originalPairingActionId, settings); return@synchronized it }
                 check(!denied) { "Fresh target is retired" }
-                check(settings.workflow == LocalSetupLanWorkflow.AUTHENTICATION_ONLY) {
-                    "Desktop business LAN workflows require shared actor-intent custody"
-                }
                 val holder = LanClient(scope, originalPairingActionId, settings, this, value)
                 lanClient = holder // Transfer and ceremony fence precede the native constructor.
                 try {
@@ -253,7 +252,11 @@ public class DesktopLocalSetupNativeServices(
                         }
                         custody = native // Retain actual custody before further IO or currentness checks.
                         check(current() && native.isCurrent())
-                        val acquired = DesktopPairedDeviceClientCredentials.acquire(this@LanClient, native, platform.journalStorage())
+                        val storage = withContext(Dispatchers.IO) { platform.journalStorage() }
+                        val acquired = if (settings.workflow != LocalSetupLanWorkflow.AUTHENTICATION_ONLY)
+                            DesktopPairedDeviceClientCredentials.acquireForActorIntents(this@LanClient, native, storage,
+                                checkNotNull(settings.actorIntentAction))
+                        else DesktopPairedDeviceClientCredentials.acquire(this@LanClient, native, storage)
                         check(acquired is DesktopPairedDeviceClientCredentialsResult.Opened) { "Device credential journal is unavailable" }
                         credentials = acquired.credentials
                         check(current() && acquired.credentials.isCurrent())
@@ -267,12 +270,26 @@ public class DesktopLocalSetupNativeServices(
                             journal.credentials.owner.deviceId == approved.targetDeviceId && journal.isCurrent())
                         val labels = LocalBranchDisplayLabels(approved.scope, "Company " + approved.scope.companyId.value,
                             "Branch " + approved.scope.branchId.value)
-                        val service = rpc.authenticationService()
-                        check(service.isCurrent())
-                        val connection = LocalAuthenticationOnlyConnection(service, service.connectionId,
-                            journal.credentials.owner, labels) { current() && journal.isCurrent() && service.isCurrent() }
-                        val gateway = LocalEndpointBranchGateway.authenticationOnly(MutableStateFlow(connection), journal.credentials)
-                        val attachment = LanAuthentication(gateway, journal, service::isCurrent)
+                        val profile = settings.workflow.masterRpcProfile()
+                        val attachment = if (profile != null) {
+                            val endpoint = rpc.directoryClient(profile)
+                            val intents = checkNotNull(journal.actorIntentSource(rpc)) { "Actor intent custody is unavailable" }
+                            check(endpoint.isCurrent() && journal.isCurrent() && current())
+                            val connection = LocalDirectoryClientConnection(endpoint, endpoint.connectionId,
+                                journal.credentials.owner, labels, profile,
+                                supplierReferences = profile == LocalMasterRpcWorkflowProfile.SUPPLIERS
+                            ) { current() && journal.isCurrent() && endpoint.isCurrent() }
+                            val gateway = LocalEndpointBranchGateway.directoryOnly(MutableStateFlow(connection),
+                                journal.credentials, intents, profile)
+                            LanAuthentication(gateway, journal, endpoint::isCurrent)
+                        } else {
+                            val service = rpc.authenticationService()
+                            check(service.isCurrent())
+                            val connection = LocalAuthenticationOnlyConnection(service, service.connectionId,
+                                journal.credentials.owner, labels) { current() && journal.isCurrent() && service.isCurrent() }
+                            val gateway = LocalEndpointBranchGateway.authenticationOnly(MutableStateFlow(connection), journal.credentials)
+                            LanAuthentication(gateway, journal, service::isCurrent)
+                        }
                         authentication.set(attachment) // Retain before checks/delivery; close owns the gateway.
                         check(attachment.isCurrent())
                     }

@@ -32,14 +32,14 @@ public class LocalOriginalRpcClientUnavailable internal constructor(
 public class LocalOriginalRpcClientOwner private constructor(
     private val requireNetwork: () -> Unit,
     private val retained: LocalRpcOriginalClientOwner,
-) {
+) : LocalOriginalRpcAuthenticationSource {
     public val phase: StateFlow<LocalRpcFactoryPhase> get() = retained.phase
-    public val original: StateFlow<LocalDevicePairingSdkOriginal?> get() = retained.original
-    public val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = retained.approvedMaster
+    override val original: StateFlow<LocalDevicePairingSdkOriginal?> get() = retained.original
+    override val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = retained.approvedMaster
 
     public suspend fun acquire(): RpcLocalIdentity { requireNetwork(); return retained.acquire() }
     public suspend fun connect(endpoint: RpcEndpoint) { requireNetwork(); retained.connect(endpoint) }
-    public suspend fun authenticationService(): LocalRpcRemoteAuthenticationService { requireNetwork(); return retained.authenticationService() }
+    override suspend fun authenticationService(): LocalRpcRemoteAuthenticationService { requireNetwork(); return retained.authenticationService() }
     public suspend fun supplierClient(): LocalRpcRemoteSupplierClient { requireNetwork(); return retained.supplierClient() }
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient {
         requireNetwork(); return retained.directoryClient(profile)

@@ -6,6 +6,7 @@ import com.ukkera.pos.app.gateway.AndroidPairedDeviceClientCredentials
 import com.ukkera.pos.app.gateway.AndroidPairedDeviceClientCredentialsResult
 import com.ukkera.pos.app.gateway.LocalAuthenticationOnlyConnection
 import com.ukkera.pos.app.gateway.LocalDirectoryClientConnection
+import com.ukkera.pos.app.gateway.setup.masterRpcProfile
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.app.gateway.LocalBranchDisplayLabels
 import com.ukkera.pos.app.gateway.LocalEndpointBranchGateway
@@ -617,22 +618,7 @@ internal class AndroidLocalSetupNativeServices(
                         val labels = LocalBranchDisplayLabels(approved.scope, "Company " + approved.scope.companyId.value,
                             "Branch " + approved.scope.branchId.value)
                         val attachment = if (settings.workflow != LocalSetupLanWorkflow.AUTHENTICATION_ONLY) {
-                            val profile = when (settings.workflow) {
-                                LocalSetupLanWorkflow.SUPPLIERS -> LocalMasterRpcWorkflowProfile.SUPPLIERS
-                                LocalSetupLanWorkflow.WAREHOUSES -> LocalMasterRpcWorkflowProfile.WAREHOUSES
-                                LocalSetupLanWorkflow.REPORTS -> LocalMasterRpcWorkflowProfile.REPORTS
-                                LocalSetupLanWorkflow.STOCK_TRANSFERS -> LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS
-                                LocalSetupLanWorkflow.KITCHEN -> LocalMasterRpcWorkflowProfile.KITCHEN
-                                LocalSetupLanWorkflow.RETAIL_ORDERS -> LocalMasterRpcWorkflowProfile.RETAIL_ORDERS
-                                LocalSetupLanWorkflow.PAYMENT_CORRECTIONS -> LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS
-                                LocalSetupLanWorkflow.CUSTOMER_RECEIPTS -> LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS
-                                LocalSetupLanWorkflow.FOOD_CHECKS -> LocalMasterRpcWorkflowProfile.FOOD_CHECKS
-                                LocalSetupLanWorkflow.FOOD_CASH_FINANCIAL -> LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL
-                                LocalSetupLanWorkflow.FOOD_TABLE_ASSIGNMENTS -> LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS
-                                LocalSetupLanWorkflow.INVOICE_CAPTURE -> LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE
-                                LocalSetupLanWorkflow.INVOICE_MATCHING -> LocalMasterRpcWorkflowProfile.INVOICE_MATCHING
-                                LocalSetupLanWorkflow.AUTHENTICATION_ONLY -> error("Business workflow selection is absent")
-                            }
+                            val profile = checkNotNull(settings.workflow.masterRpcProfile()) { "Business workflow selection is absent" }
                             val endpoint = rpc.directoryClient(profile)
                             val intents = checkNotNull(journal.actorIntentSource(rpc)) { "Actor intent custody is unavailable" }
                             check(endpoint.isCurrent() && journal.isCurrent() && current())

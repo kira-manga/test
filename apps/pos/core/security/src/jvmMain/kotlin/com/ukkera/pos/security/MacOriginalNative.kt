@@ -39,8 +39,8 @@ internal object MacOriginalNative {
     private const val LOCK_NB = 4
     private const val SEEKSET = 0
     private const val ATTR_BIT_MAP_COUNT = 5
-    private const val ATTR_VOL_INFO = 0x00000001
-    private const val ATTR_VOL_UUID = 0x00080000
+    private const val ATTR_VOL_INFO = Int.MIN_VALUE // 0x80000000 (sys/attr.h)
+    private const val ATTR_VOL_UUID = 0x00040000 // sys/attr.h
     private const val FSOPT_NOFOLLOW = 0x00000001
     private const val MNT_RDONLY = 0x00000001
     private const val MNT_LOCAL = 0x00001000

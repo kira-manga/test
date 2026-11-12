@@ -35,7 +35,7 @@ public class AndroidPairedDeviceClientCredentials private constructor(
     public val credentials: LocalClientCredentialJournal = checkNotNull(credentialsOwner.credentialJournal)
     private val closure = AtomicReference<CompletableDeferred<Unit>?>(null)
     private val actorGate = Any()
-    private var actorSource: AndroidPairedDeviceActorIntentSource? = null
+    private var actorSource: PairedDeviceActorIntentSource? = null
 
     /** Exact admitted native journal lifetime, independent of old target/RPC currentness. */
     public fun isCurrent(): Boolean = closure.get() == null && credentialsOwner.isCurrent() &&
@@ -55,7 +55,12 @@ public class AndroidPairedDeviceClientCredentials private constructor(
                 if (existing != null) {
                     check(existing.belongsTo(rpc, action)) { "Actor source original RPC owner or disposition differs" }
                     existing
-                } else AndroidPairedDeviceActorIntentSource(application, this, ledger, rpc, action).also { actorSource = it }
+                } else PairedDeviceActorIntentSource(application, ::isCurrent, ledger, rpc, action) { custody ->
+                    when (val acquired = AndroidLocalClientJournalOwner.acquirePairedActor(application, custody)) {
+                        is ClientJournalOutcome.Value -> ClientJournalOutcome.Value(acquired.value.paired)
+                        ClientJournalOutcome.Unavailable -> ClientJournalOutcome.Unavailable
+                    }
+                }.also { actorSource = it }
             }
         }
     }

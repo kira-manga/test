@@ -128,7 +128,7 @@ internal sealed class AndroidClientJournalBinding : ClientJournalBindingFacts {
 
     /** Genuine exact actor allocation and newly authenticated Current, never another
      * cohost's employee, a supplied actor scalar or the device's credential file. */
-    class PairedActor(val custody: AndroidPairedDeviceActorJournalCustody): AndroidClientJournalBinding() {
+    class PairedActor(val custody: PairedDeviceActorJournalCustody): AndroidClientJournalBinding() {
         private val profile = custody.compositionProfile
         init { check(custody.originalOpenClaimed()) }
         // Acquisition-only. Successful INTENTS IO subsequently owns its actual independent

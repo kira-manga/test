@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.gateway
 
+import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import com.ukkera.pos.types.DomainId
@@ -7,17 +8,28 @@ import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
 
+/** The successful paired journal owner facet (Android or desktop) that issued a ledger or actor
+ * journal. Only the platform owner's private constructor, after full admission, provides one. */
+internal interface PairedClientJournalOwner {
+    val intentJournal: LocalClientIntentJournal?
+    val actorAllocationJournal: PairedDeviceActorAllocationJournal?
+    fun isCurrent(): Boolean
+    suspend fun close()
+}
+
 /** Actual protected device allocation history, separate from both credentials and financial
- * intents. Only its fully admitted AES/file/native-head owner can issue an actor open. The
+ * intents, shared by Android and desktop (persisted bytes frozen: paired-actor-allocation-format-v1).
+ * Only its fully admitted AES/file/native-head owner can issue an actor open. The
  * original empty history is created before source transfer by explicit fresh native ENROLL;
  * reopening never creates a missing history or interprets a missing actor file as pristine. */
-internal class AndroidPairedDeviceActorAllocationJournal private constructor(
-    private val file: AndroidClientJournalFile,
+internal class PairedDeviceActorAllocationJournal private constructor(
+    private val file: ClientJournalFileCore,
     val nativeOriginal: PairedDeviceCredentialJournalCustody,
 ) {
-    private val successfulOwner = AtomicReference<AndroidLocalClientJournalOwner?>(null)
+    private val origin = nativeOriginal.actorAllocationOrigin()
+    private val successfulOwner = AtomicReference<PairedClientJournalOwner?>(null)
 
-    fun attachSuccessfulOwner(owner: AndroidLocalClientJournalOwner) {
+    fun attachSuccessfulOwner(owner: PairedClientJournalOwner) {
         check(owner.actorAllocationJournal === this && successfulOwner.compareAndSet(null, owner))
     }
 
@@ -25,12 +37,12 @@ internal class AndroidPairedDeviceActorAllocationJournal private constructor(
         it.actorAllocationJournal === this && it.isCurrent()
     } == true
 
-    suspend fun prepareActorCustody(current: AndroidPairedDeviceCurrentActor,
-        actorIntentAction: LocalPairedDeviceCredentialJournalAction = nativeOriginal.action): AndroidPairedDeviceActorJournalCustody? {
+    suspend fun prepareActorCustody(current: PairedDeviceCurrentActor,
+        actorIntentAction: LocalPairedDeviceCredentialJournalAction = nativeOriginal.action): PairedDeviceActorJournalCustody? {
         if (!isCurrent() || !current.belongsTo(nativeOriginal) || !current.isCurrent()) return null
         val result = file.owned {
-            object : ClientJournalTask<AndroidPairedDeviceActorJournalCustody?> {
-                override fun execute(): AndroidPairedDeviceActorJournalCustody? {
+            object : ClientJournalTask<PairedDeviceActorJournalCustody?> {
+                override fun execute(): PairedDeviceActorJournalCustody? {
                     val before = readState()
                     if (!isCurrent() || !current.isCurrent()) return null
                     val existing = before.records.singleOrNull { it.actorId == current.identity.actorId }
@@ -41,7 +53,7 @@ internal class AndroidPairedDeviceActorAllocationJournal private constructor(
                             // by silently changing this explicit disposition to an existing open.
                             check(existing == null && before.records.size < MAX_PAIRED_ACTOR_ALLOCATIONS)
                             val allocationId = DomainId.random()
-                            val issued = pairedActorRecord(nativeOriginal, current.identity.actorId,
+                            val issued = pairedActorRecord(origin, current.identity.actorId,
                                 allocationId, before.records.size + 1)
                             val next = before.copy(revision = Math.addExact(before.revision, 1L),
                                 records = before.records + issued)
@@ -55,11 +67,11 @@ internal class AndroidPairedDeviceActorAllocationJournal private constructor(
                         LocalPairedActorIntentOpeningDecision.REFUSE -> return null
                     }
                     if (!isCurrent() || !current.isCurrent()) return null
-                    return AndroidPairedDeviceActorJournalCustody.issue(this@AndroidPairedDeviceActorAllocationJournal,
+                    return PairedDeviceActorJournalCustody.issue(this@PairedDeviceActorAllocationJournal,
                         current, actorIntentAction, record)
                 }
 
-                override fun discard(value: AndroidPairedDeviceActorJournalCustody?) { value?.denyUndelivered() }
+                override fun discard(value: PairedDeviceActorJournalCustody?) { value?.denyUndelivered() }
                 override fun clearInputs() = Unit
             }
         }
@@ -72,7 +84,7 @@ internal class AndroidPairedDeviceActorAllocationJournal private constructor(
     /** Complete canonical history plus the SAME retained native file/key/head cut, not a
      * copied allocation record or a supplied positive validator. */
     suspend fun recheckOriginal(record: PairedDeviceActorAllocationRecord,
-        validation: AndroidPairedDeviceActorJournalCustody.NativeValidation): Boolean {
+        validation: PairedDeviceActorJournalCustody.NativeValidation): Boolean {
         try {
             if (!isCurrent()) return false
             val result = file.owned {
@@ -97,22 +109,25 @@ internal class AndroidPairedDeviceActorAllocationJournal private constructor(
 
     private fun readState(): PairedDeviceActorAllocationState =
         file.readManifest(MAX_PAIRED_ACTOR_ALLOCATION_BYTES).useWiped { bytes ->
-            decodePairedActorAllocationState(bytes, nativeOriginal, file.journalId, file.keyId)
+            decodePairedActorAllocationState(bytes, origin, file.journalId, file.keyId)
         }
 
     private fun encodeState(state: PairedDeviceActorAllocationState): ByteArray =
-        encodePairedActorAllocationState(state, nativeOriginal, file.journalId, file.keyId)
+        encodePairedActorAllocationState(state, origin, file.journalId, file.keyId)
 
     companion object {
-        fun fromExisting(file: AndroidClientJournalFile): AndroidPairedDeviceActorAllocationJournal {
+        /** [custody] is the platform file's own acquisition binding, never a caller-supplied value. */
+        fun fromExisting(file: ClientJournalFileCore, custody: PairedDeviceCredentialJournalCustody): PairedDeviceActorAllocationJournal {
             check(file.kind == ClientJournalKind.ACTOR_ALLOCATIONS && file.actorId == null)
-            return AndroidPairedDeviceActorAllocationJournal(file, checkNotNull(file.pairedDeviceAllocationCustody))
+            return PairedDeviceActorAllocationJournal(file, custody)
         }
 
-        fun originalEmptyManifest(file: AndroidClientJournalFile): ByteArray = fromExisting(file)
-            .encodeState(PairedDeviceActorAllocationState(0L, emptyList()))
+        fun originalEmptyManifest(file: ClientJournalFileCore, custody: PairedDeviceCredentialJournalCustody): ByteArray =
+            fromExisting(file, custody).encodeState(PairedDeviceActorAllocationState(0L, emptyList()))
 
-        fun validateExisting(file: AndroidClientJournalFile) { fromExisting(file).readState() }
+        fun validateExisting(file: ClientJournalFileCore, custody: PairedDeviceCredentialJournalCustody) {
+            fromExisting(file, custody).readState()
+        }
     }
 }
 
@@ -130,40 +145,54 @@ internal data class PairedDeviceActorAllocationRecord(
     override fun toString(): String = "PairedDeviceActorAllocationRecord([REDACTED])"
 }
 
-private data class PairedDeviceActorAllocationState(
+internal data class PairedDeviceActorAllocationState(
     val revision: Long,
     val records: List<PairedDeviceActorAllocationRecord>,
 )
 
-internal fun pairedActorAllocationJournalId(original: PairedDeviceCredentialJournalCustody,
-    purpose: String): DomainId = pairedJournalId("ukkera.android.paired-device-actor-allocation-id/v1",
-    original.bindingCommitment, purpose)
+/** Device facts the ledger format binds: scope, device, device binding commitment and the
+ * identifiers an allocation may never reuse (ledger IDs and actors are added during validation). */
+internal class PairedActorAllocationOrigin(
+    val scope: BranchScope,
+    val deviceId: DomainId,
+    val bindingCommitment: String,
+    val reservedIds: List<DomainId>,
+) {
+    override fun toString(): String = "PairedActorAllocationOrigin([REDACTED])"
+}
 
-internal fun pairedActorRecord(original: PairedDeviceCredentialJournalCustody, actorId: DomainId,
+internal fun PairedDeviceCredentialJournalCustody.actorAllocationOrigin(): PairedActorAllocationOrigin =
+    PairedActorAllocationOrigin(scope, deviceId, bindingCommitment, listOf(scope.organizationId, scope.companyId,
+        scope.branchId, deviceId, targetKeyId, originalPairingActionId, journalId, keyId,
+        approvedOriginal.originalRequestId, approvedOriginal.rootId, approvedOriginal.rootKeyId,
+        approvedOriginal.foundingActionId, sdkOriginal.identity.originalPreparationId,
+        sdkOriginal.identity.originalAcquisitionId, approvedOriginal.masterSdkOriginal.originalAcquisitionId))
+
+internal fun pairedActorAllocationJournalId(original: PairedDeviceCredentialJournalCustody, purpose: String): DomainId =
+    pairedActorAllocationJournalId(original.bindingCommitment, purpose)
+
+internal fun pairedActorAllocationJournalId(bindingCommitment: String, purpose: String): DomainId =
+    pairedJournalId("ukkera.android.paired-device-actor-allocation-id/v1", bindingCommitment, purpose)
+
+internal fun pairedActorRecord(original: PairedActorAllocationOrigin, actorId: DomainId,
     allocationId: DomainId, sequence: Int): PairedDeviceActorAllocationRecord {
-    check(ANDROID_CLIENT_UUID_V1.matches(actorId.value) && ANDROID_CLIENT_UUID_V1.matches(allocationId.value) &&
+    check(CLIENT_JOURNAL_UUID_V1.matches(actorId.value) && CLIENT_JOURNAL_UUID_V1.matches(allocationId.value) &&
         sequence in 1..MAX_PAIRED_ACTOR_ALLOCATIONS)
     val binding = pairedDigest("ukkera.android.paired-device-actor-original-binding/v1",
-        original.bindingCommitment, pairedActorAllocationJournalId(original, "journal").value,
-        pairedActorAllocationJournalId(original, "key").value, actorId.value, allocationId.value, sequence.toString())
+        original.bindingCommitment, pairedActorAllocationJournalId(original.bindingCommitment, "journal").value,
+        pairedActorAllocationJournalId(original.bindingCommitment, "key").value, actorId.value, allocationId.value, sequence.toString())
     return PairedDeviceActorAllocationRecord(actorId, allocationId, sequence,
         pairedJournalId("ukkera.android.paired-device-actor-journal-id/v1", binding, "journal"),
         pairedJournalId("ukkera.android.paired-device-actor-journal-id/v1", binding, "key"), binding)
 }
 
 private fun validatePairedActorAllocationState(state: PairedDeviceActorAllocationState,
-    original: PairedDeviceCredentialJournalCustody, journalId: DomainId, keyId: DomainId) {
-    check(journalId == pairedActorAllocationJournalId(original, "journal") &&
-        keyId == pairedActorAllocationJournalId(original, "key") && journalId != keyId)
+    original: PairedActorAllocationOrigin, journalId: DomainId, keyId: DomainId) {
+    check(journalId == pairedActorAllocationJournalId(original.bindingCommitment, "journal") &&
+        keyId == pairedActorAllocationJournalId(original.bindingCommitment, "key") && journalId != keyId)
     check(state.records.size <= MAX_PAIRED_ACTOR_ALLOCATIONS && state.revision == state.records.size.toLong())
     check(state.records.map { it.actorId }.toSet().size == state.records.size)
-    val reserved = listOf(original.scope.organizationId, original.scope.companyId, original.scope.branchId,
-        original.deviceId, original.targetKeyId, original.originalPairingActionId, original.journalId,
-        original.keyId, journalId, keyId, original.approvedOriginal.originalRequestId,
-        original.approvedOriginal.rootId, original.approvedOriginal.rootKeyId,
-        original.approvedOriginal.foundingActionId, original.sdkOriginal.identity.originalPreparationId,
-        original.sdkOriginal.identity.originalAcquisitionId,
-        original.approvedOriginal.masterSdkOriginal.originalAcquisitionId) + state.records.map { it.actorId }
+    val reserved = original.reservedIds + listOf(journalId, keyId) + state.records.map { it.actorId }
     val ownedIds = state.records.flatMap { listOf(it.allocationId, it.journalId, it.keyId) }
     check(ownedIds.toSet().size == ownedIds.size && ownedIds.none { it in reserved })
     state.records.forEachIndexed { index, record ->
@@ -172,8 +201,8 @@ private fun validatePairedActorAllocationState(state: PairedDeviceActorAllocatio
     }
 }
 
-private fun encodePairedActorAllocationState(state: PairedDeviceActorAllocationState,
-    original: PairedDeviceCredentialJournalCustody, journalId: DomainId, keyId: DomainId): ByteArray {
+internal fun encodePairedActorAllocationState(state: PairedDeviceActorAllocationState,
+    original: PairedActorAllocationOrigin, journalId: DomainId, keyId: DomainId): ByteArray {
     validatePairedActorAllocationState(state, original, journalId, keyId)
     val out = ByteBuffer.allocate(MAX_PAIRED_ACTOR_ALLOCATION_BYTES)
     try {
@@ -193,8 +222,8 @@ private fun encodePairedActorAllocationState(state: PairedDeviceActorAllocationS
     } finally { out.array().fill(0) }
 }
 
-private fun decodePairedActorAllocationState(bytes: ByteArray,
-    original: PairedDeviceCredentialJournalCustody, journalId: DomainId, keyId: DomainId): PairedDeviceActorAllocationState {
+internal fun decodePairedActorAllocationState(bytes: ByteArray,
+    original: PairedActorAllocationOrigin, journalId: DomainId, keyId: DomainId): PairedDeviceActorAllocationState {
     check(bytes.size in 1..MAX_PAIRED_ACTOR_ALLOCATION_BYTES)
     val input = ByteBuffer.wrap(bytes)
     fun text(maximum: Int): String {
@@ -205,7 +234,7 @@ private fun decodePairedActorAllocationState(bytes: ByteArray,
         return try { input.get(value); value.decodeToString(throwOnInvalidSequence = true) }
         finally { value.fill(0) }
     }
-    fun id(): DomainId = DomainId(text(36)).also { check(ANDROID_CLIENT_UUID_V1.matches(it.value)) }
+    fun id(): DomainId = DomainId(text(36)).also { check(CLIENT_JOURNAL_UUID_V1.matches(it.value)) }
     check(text(128) == ALLOCATION_PROFILE)
     check(id() == original.scope.organizationId && id() == original.scope.companyId &&
         id() == original.scope.branchId && id() == original.deviceId)

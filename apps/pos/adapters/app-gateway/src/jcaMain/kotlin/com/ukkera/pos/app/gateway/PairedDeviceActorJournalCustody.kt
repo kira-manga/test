@@ -1,7 +1,6 @@
 package com.ukkera.pos.app.gateway
 
-import android.app.Application
-import com.ukkera.pos.rpc.AndroidOriginalRpcClientOwner
+import com.ukkera.pos.rpc.LocalOriginalRpcAuthenticationSource
 import com.ukkera.pos.rpc.LocalRpcRemoteAuthenticationService
 import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
@@ -22,9 +21,9 @@ import kotlinx.coroutines.withContext
  * owner. No LocalAuthenticationService interface, Current DATA, actor scalar or positive
  * lifetime/verifier callback can construct this capture. It supplies acquisition identity
  * only, never grants future business permission or restores an interactive login. */
-internal class AndroidPairedDeviceCurrentActor private constructor(
+internal class PairedDeviceCurrentActor private constructor(
     private val nativeOriginal: PairedDeviceCredentialJournalCustody,
-    private val rpc: AndroidOriginalRpcClientOwner,
+    private val rpc: LocalOriginalRpcAuthenticationSource,
     private val service: LocalRpcRemoteAuthenticationService,
     private val sdkOriginal: LocalDevicePairingSdkOriginal,
     private val approvedOriginal: LocalDevicePairingApprovedMaster,
@@ -39,11 +38,11 @@ internal class AndroidPairedDeviceCurrentActor private constructor(
 
     companion object {
         suspend fun authenticate(original: PairedDeviceCredentialJournalCustody,
-            rpc: AndroidOriginalRpcClientOwner, expected: LocalClientIdentity,
-            credentials: LocalGatewayCredentials): AndroidPairedDeviceCurrentActor? {
+            rpc: LocalOriginalRpcAuthenticationSource, expected: LocalClientIdentity,
+            credentials: LocalGatewayCredentials): PairedDeviceCurrentActor? {
             currentCoroutineContext().ensureActive()
             if (expected.scope != original.scope || expected.deviceId != original.deviceId ||
-                !ANDROID_CLIENT_UUID_V1.matches(expected.actorId.value)) return null
+                !CLIENT_JOURNAL_UUID_V1.matches(expected.actorId.value)) return null
             return try {
                 val service = rpc.authenticationService()
                 val sdk = rpc.original.value ?: return null
@@ -58,7 +57,7 @@ internal class AndroidPairedDeviceCurrentActor private constructor(
                 if (actual != expected || !service.isCurrent() || rpc.original.value !== sdk ||
                     rpc.approvedMaster.value !== approved || !sameOriginal(original, sdk, approved)) return null
                 currentCoroutineContext().ensureActive()
-                AndroidPairedDeviceCurrentActor(original, rpc, service, sdk, approved, actual)
+                PairedDeviceCurrentActor(original, rpc, service, sdk, approved, actual)
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { null }
         }
@@ -91,9 +90,9 @@ internal class AndroidPairedDeviceCurrentActor private constructor(
  * follows full typed intent/history/head admission. Successful INTENTS subsequently owns
  * an independent file/key/head lifetime; old RPC/target close cannot erase pending history.
  * Its immutable actor disposition is selected independently of device custody opening. */
-internal class AndroidPairedDeviceActorJournalCustody private constructor(
-    private val ledger: AndroidPairedDeviceActorAllocationJournal,
-    private val current: AndroidPairedDeviceCurrentActor,
+internal class PairedDeviceActorJournalCustody private constructor(
+    private val ledger: PairedDeviceActorAllocationJournal,
+    private val current: PairedDeviceCurrentActor,
     val action: LocalPairedDeviceCredentialJournalAction,
     val original: PairedDeviceActorAllocationRecord,
 ) {
@@ -111,7 +110,8 @@ internal class AndroidPairedDeviceActorJournalCustody private constructor(
     private val validations = mutableSetOf<NativeValidation>()
     private var closure: CompletableDeferred<Unit>? = null
 
-    fun belongsTo(application: Application): Boolean = ledger.nativeOriginal.belongsTo(application)
+    /** Exact root owner reference (Android Application / desktop root), not scalar DATA. */
+    fun belongsTo(owner: Any): Boolean = ledger.nativeOriginal.belongsTo(owner)
 
     fun isCurrent(): Boolean = synchronized(gate) { phase == Phase.ISSUED || phase == Phase.OPEN_STARTED } &&
         ledger.isCurrent() && current.belongsTo(ledger.nativeOriginal) && current.isCurrent() &&
@@ -119,9 +119,9 @@ internal class AndroidPairedDeviceActorJournalCustody private constructor(
 
     fun originalOpenClaimed(): Boolean = synchronized(gate) { phase == Phase.OPEN_STARTED } && isCurrent()
 
-    suspend fun claimOriginalJournalOpen(application: Application): Boolean {
+    suspend fun claimOriginalJournalOpen(owner: Any): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!belongsTo(application) || !isCurrent()) return false
+        if (!belongsTo(owner) || !isCurrent()) return false
         val validation = synchronized(gate) {
             if (phase != Phase.ISSUED) return false
             phase = Phase.OPEN_STARTED
@@ -130,9 +130,9 @@ internal class AndroidPairedDeviceActorJournalCustody private constructor(
         return validateOriginal(validation) && originalOpenClaimed()
     }
 
-    suspend fun finishNativeHandoff(application: Application): Boolean {
+    suspend fun finishNativeHandoff(owner: Any): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!belongsTo(application) || !originalOpenClaimed()) return false
+        if (!belongsTo(owner) || !originalOpenClaimed()) return false
         val validation = synchronized(gate) {
             if (phase != Phase.OPEN_STARTED) return false
             NativeValidation().also { validations.add(it) }
@@ -182,15 +182,15 @@ internal class AndroidPairedDeviceActorJournalCustody private constructor(
         }
     }
 
-    override fun toString(): String = "AndroidPairedDeviceActorJournalCustody([REDACTED])"
+    override fun toString(): String = "PairedDeviceActorJournalCustody([REDACTED])"
 
     companion object {
-        fun issue(ledger: AndroidPairedDeviceActorAllocationJournal, current: AndroidPairedDeviceCurrentActor,
+        fun issue(ledger: PairedDeviceActorAllocationJournal, current: PairedDeviceCurrentActor,
             action: LocalPairedDeviceCredentialJournalAction, record: PairedDeviceActorAllocationRecord):
-            AndroidPairedDeviceActorJournalCustody {
+            PairedDeviceActorJournalCustody {
             check(ledger.isCurrent() && current.belongsTo(ledger.nativeOriginal) && current.isCurrent() &&
                 current.identity.actorId == record.actorId)
-            return AndroidPairedDeviceActorJournalCustody(ledger, current, action, record)
+            return PairedDeviceActorJournalCustody(ledger, current, action, record)
         }
     }
 }

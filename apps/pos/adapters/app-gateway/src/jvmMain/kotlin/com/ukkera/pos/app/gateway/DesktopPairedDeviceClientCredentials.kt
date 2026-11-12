@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.gateway
 
+import com.ukkera.pos.rpc.LocalOriginalRpcAuthenticationSource
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.SelfOwnedKeyProtectionV1
@@ -58,13 +59,18 @@ public sealed interface DesktopPairedDeviceClientCredentialsResult {
 }
 
 /**
- * Root-owned desktop device credential journal for the exact approved original additional device
- * (credentials-only route, like the Android acquire route). Its key/head/file owner is acquired
- * BEFORE the target is transferred to RPC and survives that source's denial/close.
+ * Root-owned desktop device credential journal for the exact approved original additional device.
+ * Its key/head/file owner is acquired BEFORE the target is transferred to RPC and survives that
+ * source's denial/close. The explicit actor route ([acquireForActorIntents]) also admits the
+ * shared protected actor allocation ledger before transfer, exactly like Android.
  */
 public class DesktopPairedDeviceClientCredentials private constructor(
+    private val rootOwner: Any,
     private val file: DesktopPairedDeviceCredentialFile,
     private val custody: PairedDeviceCredentialJournalCustody,
+    private val storage: DesktopClientJournalStorage,
+    private val actorAllocationOwner: DesktopPairedJournalOwner?,
+    private val actorIntentAction: LocalPairedDeviceCredentialJournalAction?,
 ) {
     public val credentials: LocalClientCredentialJournal = AndroidEncryptedClientCredentialJournal.fromExisting(file)
     private val closure = AtomicReference<CompletableDeferred<Unit>?>(null)
@@ -78,14 +84,46 @@ public class DesktopPairedDeviceClientCredentials private constructor(
     }
     init { file.attach(facet) }
 
-    public fun isCurrent(): Boolean = closure.get() == null && !denied && file.isCurrentOwner(facet)
+    private val actorGate = Any()
+    private var actorSource: PairedDeviceActorIntentSource? = null
+
+    public fun isCurrent(): Boolean = closure.get() == null && !denied && file.isCurrentOwner(facet) &&
+        actorAllocationOwner?.isCurrent() != false
+
+    /** One root-retained source for the SAME final RPC owner; fresh Master Current admits each actor.
+     * A credentials-only acquisition never gains actor custody afterwards. */
+    public fun actorIntentSource(rpc: LocalOriginalRpcAuthenticationSource): LocalAuthenticatedClientIntentJournalSource? {
+        if (!isCurrent()) return null
+        val ledger = actorAllocationOwner?.actorAllocationJournal ?: return null
+        val action = actorIntentAction ?: return null
+        return synchronized(actorGate) {
+            if (!isCurrent()) null else {
+                val existing = actorSource
+                if (existing != null) {
+                    check(existing.belongsTo(rpc, action)) { "Actor source original RPC owner or disposition differs" }
+                    existing
+                } else PairedDeviceActorIntentSource(rootOwner, ::isCurrent, ledger, rpc, action) { actor ->
+                    DesktopPairedJournalOwner.acquireActor(rootOwner, actor, storage)
+                }.also { actorSource = it }
+            }
+        }
+    }
 
     public suspend fun close(): Unit = withContext(NonCancellable) {
         val result = CompletableDeferred<Unit>()
         if (!closure.compareAndSet(null, result)) { checkNotNull(closure.get()).await(); return@withContext }
+        val source = synchronized(actorGate) { actorSource?.also { it.denyNewWork() } }
         var failure: Throwable? = null
-        try { file.closeOwner() } catch (caught: Throwable) { failure = caught }
-        try { custody.close() } catch (caught: Throwable) { failure?.addSuppressed(caught) ?: run { failure = caught } }
+        suspend fun attempt(action: suspend () -> Unit) {
+            try { action() } catch (caught: Throwable) {
+                if (failure == null) failure = caught else if (failure !== caught) failure!!.addSuppressed(caught)
+            }
+        }
+        // Drain accepted actor Current/native work before the allocation and credential anchors.
+        attempt { source?.close() }
+        attempt { actorAllocationOwner?.close() }
+        attempt { file.closeOwner() }
+        attempt { custody.close() }
         failure?.let { result.completeExceptionally(it) } ?: result.complete(Unit)
         result.await()
     }
@@ -95,9 +133,21 @@ public class DesktopPairedDeviceClientCredentials private constructor(
     public companion object {
         /** The one original claim precedes key/file IO; existing-only actions never enroll missing state. */
         public suspend fun acquire(owner: Any, custody: PairedDeviceCredentialJournalCustody,
-            storage: DesktopClientJournalStorage): DesktopPairedDeviceClientCredentialsResult {
+            storage: DesktopClientJournalStorage): DesktopPairedDeviceClientCredentialsResult =
+            acquireActual(owner, custody, storage, actorIntentAction = null)
+
+        /** Explicit actor route: the device disposition alone may create the allocation ledger;
+         * the separate immutable actor disposition governs opening each actor after fresh Current. */
+        public suspend fun acquireForActorIntents(owner: Any, custody: PairedDeviceCredentialJournalCustody,
+            storage: DesktopClientJournalStorage, actorIntentAction: LocalPairedDeviceCredentialJournalAction = custody.action):
+            DesktopPairedDeviceClientCredentialsResult = acquireActual(owner, custody, storage, actorIntentAction)
+
+        private suspend fun acquireActual(owner: Any, custody: PairedDeviceCredentialJournalCustody,
+            storage: DesktopClientJournalStorage, actorIntentAction: LocalPairedDeviceCredentialJournalAction?):
+            DesktopPairedDeviceClientCredentialsResult {
             currentCoroutineContext().ensureActive()
             var delivered = false
+            var allocations: DesktopPairedJournalOwner? = null
             try {
                 if (!custody.belongsTo(owner) || !custody.isCurrent()) return DesktopPairedDeviceClientCredentialsResult.Unavailable
                 if (!custody.claimOriginalJournalOpen(owner) || !custody.originalOpenClaimed())
@@ -137,9 +187,17 @@ public class DesktopPairedDeviceClientCredentials private constructor(
                             override fun clearInputs() = Unit
                         }
                     }
-                    if (result !is ClientJournalOutcome.Value || !custody.finishNativeHandoff(owner))
-                        return DesktopPairedDeviceClientCredentialsResult.Unavailable
-                    val credentials = DesktopPairedDeviceClientCredentials(file, custody)
+                    if (result !is ClientJournalOutcome.Value) return DesktopPairedDeviceClientCredentialsResult.Unavailable
+                    if (actorIntentAction != null) {
+                        val ledger = DesktopPairedJournalOwner.acquireAllocations(owner, custody, storage)
+                        if (ledger !is ClientJournalOutcome.Value) return DesktopPairedDeviceClientCredentialsResult.Unavailable
+                        allocations = ledger.value // Capture before the final native source recheck.
+                        if (!ledger.value.isCurrent() || ledger.value.actorAllocationJournal?.isCurrent() != true)
+                            return DesktopPairedDeviceClientCredentialsResult.Unavailable
+                    }
+                    if (!custody.finishNativeHandoff(owner)) return DesktopPairedDeviceClientCredentialsResult.Unavailable
+                    val credentials = DesktopPairedDeviceClientCredentials(owner, file, custody, storage, allocations, actorIntentAction)
+                    allocations = null
                     opened = true
                     if (!credentials.isCurrent()) { credentials.close(); return DesktopPairedDeviceClientCredentialsResult.Unavailable }
                     delivered = true
@@ -148,7 +206,11 @@ public class DesktopPairedDeviceClientCredentials private constructor(
                     if (!opened) withContext(NonCancellable) { work.requestClose { file.closeNative() }.await() }
                 }
             } finally {
-                if (!delivered) withContext(NonCancellable) { try { custody.close() } catch (_: Throwable) { } }
+                if (!delivered) withContext(NonCancellable) {
+                    // An undelivered ledger owner is closed exactly once here; after transfer the credentials own it.
+                    try { allocations?.close() } catch (_: Throwable) { }
+                    try { custody.close() } catch (_: Throwable) { }
+                }
             }
         }
     }

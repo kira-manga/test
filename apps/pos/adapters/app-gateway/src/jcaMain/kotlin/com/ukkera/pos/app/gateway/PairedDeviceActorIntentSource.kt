@@ -1,7 +1,6 @@
 package com.ukkera.pos.app.gateway
 
-import android.app.Application
-import com.ukkera.pos.rpc.AndroidOriginalRpcClientOwner
+import com.ukkera.pos.rpc.LocalOriginalRpcAuthenticationSource
 import com.ukkera.pos.security.LocalGatewayCredentials
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import com.ukkera.pos.security.OpaqueCredential
@@ -26,15 +25,17 @@ import kotlinx.coroutines.withContext
  * never read here. current(owner) ONLY selects a successfully admitted, already-open actor.
  * Actor disposition is immutable from the explicit source selection, separate from the
  * device custody disposition. Neither selection is inferred from absent actor files. */
-internal class AndroidPairedDeviceActorIntentSource(
-    private val application: Application,
-    private val parent: AndroidPairedDeviceClientCredentials,
-    private val ledger: AndroidPairedDeviceActorAllocationJournal,
-    private val rpc: AndroidOriginalRpcClientOwner,
-    private val actorIntentAction: LocalPairedDeviceCredentialJournalAction = ledger.nativeOriginal.action,
+internal class PairedDeviceActorIntentSource(
+    private val rootOwner: Any,
+    private val parentCurrent: () -> Boolean,
+    private val ledger: PairedDeviceActorAllocationJournal,
+    private val rpc: LocalOriginalRpcAuthenticationSource,
+    private val actorIntentAction: LocalPairedDeviceCredentialJournalAction,
+    /** The platform's actual actor journal acquisition (Android files/KeyStore, desktop files/OS keys). */
+    private val openActor: suspend (PairedDeviceActorJournalCustody) -> ClientJournalOutcome<PairedClientJournalOwner>,
 ) : LocalAuthenticatedClientIntentJournalSource {
-    private class HeldActor(val custody: AndroidPairedDeviceActorJournalCustody,
-        val owner: AndroidLocalClientJournalOwner)
+    private class HeldActor(val custody: PairedDeviceActorJournalCustody,
+        val owner: PairedClientJournalOwner)
     private class Acquired(val held: HeldActor, val newlyOpened: Boolean)
     private class Acquisition(val expected: LocalClientIdentity, val credentials: LocalGatewayCredentials) {
         lateinit var pending: Deferred<Acquired?>
@@ -49,10 +50,10 @@ internal class AndroidPairedDeviceActorIntentSource(
     private val retainedActors = mutableListOf<HeldActor>()
     private val published = mutableMapOf<LocalClientIdentity, HeldActor>()
 
-    fun belongsTo(rpc: AndroidOriginalRpcClientOwner,
+    fun belongsTo(rpc: LocalOriginalRpcAuthenticationSource,
         actorIntentAction: LocalPairedDeviceCredentialJournalAction): Boolean =
         this.rpc === rpc && this.actorIntentAction == actorIntentAction
-    private fun isCurrent(): Boolean = !denied.get() && parent.isCurrent() && ledger.isCurrent()
+    private fun isCurrent(): Boolean = !denied.get() && parentCurrent() && ledger.isCurrent()
 
     override suspend fun current(owner: LocalClientIdentity): LocalClientIntentJournal? {
         currentCoroutineContext().ensureActive()
@@ -118,7 +119,7 @@ internal class AndroidPairedDeviceActorIntentSource(
 
     private suspend fun acquireOwned(acquisition: Acquisition): Acquired? {
         try {
-            val current = AndroidPairedDeviceCurrentActor.authenticate(ledger.nativeOriginal,
+            val current = PairedDeviceCurrentActor.authenticate(ledger.nativeOriginal,
                 rpc, acquisition.expected, acquisition.credentials) ?: return null
             if (!isCurrent() || !current.isCurrent()) return null
             val existing = synchronized(gate) { published[current.identity] }
@@ -129,16 +130,16 @@ internal class AndroidPairedDeviceActorIntentSource(
                 return Acquired(existing, newlyOpened = false)
             }
             val custody = ledger.prepareActorCustody(current, actorIntentAction) ?: return null
-            var owner: AndroidLocalClientJournalOwner? = null
+            var owner: PairedClientJournalOwner? = null
             var deliveredToSource = false
             try {
                 if (!isCurrent()) return null
-                val acquired = AndroidLocalClientJournalOwner.acquirePairedActor(application, custody)
+                val acquired = openActor(custody)
                 if (acquired !is ClientJournalOutcome.Value) return null
                 owner = acquired.value // Retain exact success BEFORE a further suspension.
                 val held = HeldActor(custody, acquired.value)
                 synchronized(gate) { retainedActors.add(held) }
-                if (!acquired.value.isCurrent() || !custody.finishNativeHandoff(application) ||
+                if (!acquired.value.isCurrent() || !custody.finishNativeHandoff(rootOwner) ||
                     !isCurrent() || !current.isCurrent()) return null
                 currentCoroutineContext().ensureActive()
                 return Acquired(held, newlyOpened = true).also { deliveredToSource = true }
@@ -181,5 +182,5 @@ internal class AndroidPairedDeviceActorIntentSource(
         result.await()
     }
 
-    override fun toString(): String = "AndroidPairedDeviceActorIntentSource([REDACTED])"
+    override fun toString(): String = "PairedDeviceActorIntentSource([REDACTED])"
 }

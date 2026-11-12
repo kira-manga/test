@@ -76,9 +76,18 @@ public class AndroidLocalClientJournalOwner private constructor(
     public val intentJournal: LocalClientIntentJournal? =
         if (file.kind == ClientJournalKind.INTENTS)
             AndroidEncryptedClientIntentJournal.fromExisting(file) else null
-    internal val actorAllocationJournal: AndroidPairedDeviceActorAllocationJournal? =
+    internal val actorAllocationJournal: PairedDeviceActorAllocationJournal? =
         if (file.kind == ClientJournalKind.ACTOR_ALLOCATIONS)
-            AndroidPairedDeviceActorAllocationJournal.fromExisting(file) else null
+            PairedDeviceActorAllocationJournal.fromExisting(file, checkNotNull(file.pairedDeviceAllocationCustody)) else null
+
+    /** Shared paired-ledger/actor facet of THIS successful owner (no constructor of its own). */
+    internal val paired: PairedClientJournalOwner = object : PairedClientJournalOwner {
+        override val intentJournal: LocalClientIntentJournal? get() = this@AndroidLocalClientJournalOwner.intentJournal
+        override val actorAllocationJournal: PairedDeviceActorAllocationJournal?
+            get() = this@AndroidLocalClientJournalOwner.actorAllocationJournal
+        override fun isCurrent(): Boolean = this@AndroidLocalClientJournalOwner.isCurrent()
+        override suspend fun close() = this@AndroidLocalClientJournalOwner.close()
+    }
 
     // This private constructor is reached only AFTER the unchanged full typed validator,
     // native head admission and exact binding/continuity checks in the factories below.
@@ -90,7 +99,7 @@ public class AndroidLocalClientJournalOwner private constructor(
     private val physicalDenialDelivered = CompletableDeferred<Unit>()
     init {
         file.attachSuccessfulOwner(this)
-        actorAllocationJournal?.attachSuccessfulOwner(this)
+        actorAllocationJournal?.attachSuccessfulOwner(paired)
     }
 
     /** Final memory-only denial; safe for the registered transaction participant read. */
@@ -441,7 +450,7 @@ public class AndroidLocalClientJournalOwner private constructor(
         /** Only a fully forced original allocation AND private actual fresh Current capture
          * can consume this exact actor open. No first-cohost/employee borrowing is possible. */
         suspend fun acquirePairedActor(application: Application,
-            custody: AndroidPairedDeviceActorJournalCustody): ClientJournalOutcome<AndroidLocalClientJournalOwner> {
+            custody: PairedDeviceActorJournalCustody): ClientJournalOutcome<AndroidLocalClientJournalOwner> {
             currentCoroutineContext().ensureActive()
             if (!custody.belongsTo(application) || !custody.isCurrent() ||
                 !custody.claimOriginalJournalOpen(application) || !custody.originalOpenClaimed())
@@ -479,8 +488,8 @@ public class AndroidLocalClientJournalOwner private constructor(
                         override fun execute(): AndroidLocalClientJournalOwner {
                             file.openNative(enroll, recoverWrites)
                             when (file.kind) {
-                                ClientJournalKind.ACTOR_ALLOCATIONS ->
-                                    AndroidPairedDeviceActorAllocationJournal.validateExisting(file)
+                                ClientJournalKind.ACTOR_ALLOCATIONS -> PairedDeviceActorAllocationJournal.validateExisting(file,
+                                    checkNotNull(file.pairedDeviceAllocationCustody))
                                 ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.validateExisting(file)
                                 ClientJournalKind.CREDENTIALS -> error("client.paired.actor.kind")
                             }
@@ -530,7 +539,8 @@ internal class AndroidClientJournalFile private constructor(
             AndroidEncryptedClientCredentialJournal.pairedDeviceEmptyManifest(this)
         else AndroidEncryptedClientCredentialJournal.originalEmptyManifest(this)
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.originalEmptyManifest(this)
-        ClientJournalKind.ACTOR_ALLOCATIONS -> AndroidPairedDeviceActorAllocationJournal.originalEmptyManifest(this)
+        ClientJournalKind.ACTOR_ALLOCATIONS ->
+            PairedDeviceActorAllocationJournal.originalEmptyManifest(this, checkNotNull(pairedDeviceAllocationCustody))
     }
 
     fun requireEmployeePhysicalCustody(custody: AndroidEmployeeClientCustody) {
