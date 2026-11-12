@@ -31,6 +31,25 @@ public object MacInstalledApplicationIdentity {
     public fun observeUi(signingIdentifier: String, teamIdentifier: String):
         SelfOwnedInstalledIdentityResultV2<SelfOwnedMacUiIdentityV2> = capture(signingIdentifier, teamIdentifier, null)
 
+    /**
+     * The running packaged app's own Team ID as recorded in its code signature, for the first-install
+     * [observeUi] call. DATA only: [observeUi] still performs the Apple-anchor + Team-ID trust check.
+     */
+    public fun ownTeamIdentifier(): String? {
+        if (!Platform.isMac() || Native.POINTER_SIZE != 8) return null
+        return try {
+            References().use { refs ->
+                val code = refs.copy { MacSecurityNative.security.SecCodeCopySelf(0, it) }
+                requirePackagedLauncher(refs)
+                val static = refs.copy { MacSecurityNative.security.SecCodeCopyStaticCode(code, 0, it) }
+                val info = refs.copy { MacSecurityNative.security.SecCodeCopySigningInformation(static, 2, it) }
+                val team = MacSecurityNative.cf.CFDictionaryGetValue(info, MacSecurityNative.constant("kSecCodeInfoTeamIdentifier"))
+                    ?: return null
+                string(team).takeIf { SelfOwnedInstalledIdentityGrammarV2.teamIdentifier(it) }
+            }
+        } catch (_: Exception) { null }
+    }
+
     private fun capture(expectedSigningIdentifier: String, expectedTeam: String, expected: SelfOwnedMacUiIdentityV2?):
         SelfOwnedInstalledIdentityResultV2<SelfOwnedMacUiIdentityV2> {
         if (!Platform.isMac() || Native.POINTER_SIZE != 8) return refused(

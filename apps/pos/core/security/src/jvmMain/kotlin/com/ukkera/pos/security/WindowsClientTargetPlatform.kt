@@ -131,11 +131,22 @@ public class DesktopClientTargetHandle internal constructor(private val target: 
     } catch (failure: SelfOwnedFailureV1) { LocalOriginalPairingTargetResult.Unavailable(failure.reason) }
 
     public companion object {
+        /** Typed refusal reason of a target operation's failure, or null for an unknown outcome. */
+        public fun refusalReason(failure: Throwable): SelfOwnedInstallationFailureV1? = (failure as? SelfOwnedFailureV1)?.reason
+
         /** Windows packaged app: explicit FIRST preparation in the fixed slot directory. */
         public fun prepareNewWindows(expected: SelfOwnedWindowsPackagedAppIdentityV2, slot: LocalTrainingCompositionSlot?,
             scope: BranchScope, capabilities: Set<String>): DesktopClientTargetHandle =
             DesktopClientTargetHandle(DesktopDevicePairingTarget.prepareNew(
                 WindowsClientTargetPlatform.observe(expected, slot), scope, capabilities))
+
+        /** Signed macOS app: explicit FIRST preparation in the fixed slot directory (login Keychain key). */
+        public fun prepareNewMac(slot: LocalTrainingCompositionSlot?, scope: BranchScope, capabilities: Set<String>): DesktopClientTargetHandle =
+            DesktopClientTargetHandle(DesktopDevicePairingTarget.prepareNew(MacClientTargetPlatform.observe(slot), scope, capabilities))
+
+        /** Signed macOS app: existing-only open of the same slot's original target. */
+        public fun openExistingMac(slot: LocalTrainingCompositionSlot?): DesktopClientTargetHandle =
+            DesktopClientTargetHandle(DesktopDevicePairingTarget.openExisting(MacClientTargetPlatform.observe(slot)))
 
         /** Windows packaged app: existing-only open of the same slot's original target. */
         public fun openExistingWindows(expected: SelfOwnedWindowsPackagedAppIdentityV2,

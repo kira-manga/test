@@ -4,6 +4,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.ukkera.pos.app.setup.LocalEntryScreen
+import com.ukkera.pos.app.setup.LocalSetupConnectionPhase
+import com.ukkera.pos.app.setup.LocalSetupConnectionScreen
+import com.ukkera.pos.app.setup.LocalSetupScreen
 import androidx.compose.runtime.remember
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -34,18 +40,26 @@ fun main(args: Array<String>) {
     }
     // Started by the Service Control Manager only; never opens a window in session 0.
     if (args.firstOrNull() == DesktopWindowsService.ARGUMENT) kotlin.system.exitProcess(DesktopWindowsService.run())
-    runUkkeraDesktop(AppDependencies(platform = PlatformCapabilities(PlatformFamily.DESKTOP)), args)
+    val composition = DesktopClientComposition.observe()
+    val dependencies = AppDependencies(platform = PlatformCapabilities(PlatformFamily.DESKTOP))
+    runUkkeraDesktop(composition?.let { dependencies.copy(branchGateway = it.localClient) } ?: dependencies, args, composition)
 }
+
+private enum class DesktopEntryRoute { CHOICE, SETUP, EMPLOYEE }
 
 /**
  * Typed launcher for the actual root-composed client. Never opens/stops a master or invents a
  * peer/key/setup identity. Closing this UI must not System.exit a separately supervised cohost.
  */
-fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String> = emptyArray()) = application(exitProcessOnExit = false) {
+fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String> = emptyArray()) = runUkkeraDesktop(dependencies, args, null)
+
+internal fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String>, composition: DesktopClientComposition?) =
+    application(exitProcessOnExit = false) {
     val host = remember { DesktopAppHost(dependencies) }
     val runtime = host.runtime
     val presentation by runtime.presentation.collectAsState()
     val exit = { host.close(); exitApplication() }
+    var route by remember { mutableStateOf(DesktopEntryRoute.CHOICE) }
     DisposableEffect(host) { onDispose { host.close() } }
     Window(
         title = if (presentation.language == AppLanguage.ARABIC) "Ukkera POS · تحقق محلي" else "Ukkera POS · Local qualification",
@@ -54,9 +68,25 @@ fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String> = emptyA
     ) {
         DisposableEffect(window, host) {
             val binding = host.bind(window)
-            onDispose { binding.close() }
+            val documents = composition?.pairingDocuments?.bind(window)
+            onDispose { binding.close(); documents?.close() }
         }
-        UkkeraApp(runtime, onExitRequest = exit)
+        val language = presentation.language
+        val changeLanguage: (AppLanguage) -> Unit = { runtime.changeLanguage(it) }
+        when (route) {
+            DesktopEntryRoute.CHOICE -> LocalEntryScreen(language, changeLanguage,
+                onSetup = { route = DesktopEntryRoute.SETUP }, onEmployee = { route = DesktopEntryRoute.EMPLOYEE })
+            DesktopEntryRoute.SETUP -> if (composition == null) {
+                // Unpackaged/unsigned process: no native custody exists, never a demonstration fallback.
+                LocalSetupConnectionScreen(LocalSetupConnectionPhase.UNAVAILABLE, language, changeLanguage,
+                    onRetry = {}, onBack = { route = DesktopEntryRoute.CHOICE })
+            } else {
+                LocalSetupScreen(remember(composition) { composition.setup() }, language, changeLanguage,
+                    onBack = { route = DesktopEntryRoute.CHOICE })
+            }
+            DesktopEntryRoute.EMPLOYEE -> UkkeraApp(runtime, onExitRequest = { route = DesktopEntryRoute.CHOICE },
+                onLocalSetupRequest = { route = DesktopEntryRoute.SETUP })
+        }
         // Explicit bounded local launch check; never enters training or simulates authentication.
         if ("--smoke-exit" in args) LaunchedEffect(Unit) { delay(2500); exit() }
     }

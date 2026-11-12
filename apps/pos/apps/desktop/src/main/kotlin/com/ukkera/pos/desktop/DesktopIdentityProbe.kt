@@ -27,9 +27,15 @@ internal object DesktopIdentityProbe {
 
     /** Test-runner check of desktop journal custody (synthetic probe namespace only). */
     fun runClientJournal(output: File): Int {
-        val line = if (!Platform.isWindows()) "UNSUPPORTED_PLATFORM" else
-            com.ukkera.pos.app.gateway.DesktopClientJournalProbe.run(
-                com.ukkera.pos.app.gateway.DesktopClientJournalStorages.windows(DesktopWindowsPackageIdentity.TEST.target()))
+        val line = runCatching {
+            when {
+                Platform.isWindows() -> com.ukkera.pos.app.gateway.DesktopClientJournalProbe.run(
+                    com.ukkera.pos.app.gateway.DesktopClientJournalStorages.windows(DesktopWindowsPackageIdentity.TEST.target()))
+                Platform.isMac() -> com.ukkera.pos.app.gateway.DesktopClientJournalProbe.run(
+                    com.ukkera.pos.app.gateway.DesktopClientJournalStorages.mac(com.ukkera.pos.security.MacDesktopFiles.observeOwnIdentity()))
+                else -> "UNSUPPORTED_PLATFORM"
+            }
+        }.getOrElse { failure -> "FAILED ${failure::class.simpleName}: ${failure.message?.take(160)}" }
         output.writeText(line + "\n")
         return if (line.startsWith("DATA ")) 0 else 1
     }
@@ -41,16 +47,18 @@ internal object DesktopIdentityProbe {
      * synthetic scope: prepare, close, reopen existing-only and compare. Never touches LIVE.
      */
     fun runClientTarget(output: File): Int {
-        val (code, line) = if (!Platform.isWindows()) 2 to "UNSUPPORTED_PLATFORM" else runCatching {
-            val expected = DesktopWindowsPackageIdentity.TEST.target()
+        val (code, line) = if (!Platform.isWindows() && !Platform.isMac()) 2 to "UNSUPPORTED_PLATFORM" else runCatching {
             val slot = com.ukkera.pos.security.LocalTrainingCompositionSlot.TRAINING_2
             val synthetic = com.ukkera.pos.types.DomainId.random()
             val scope = com.ukkera.pos.security.BranchScope(com.ukkera.pos.types.DomainId.random(),
                 com.ukkera.pos.types.DomainId.random(), synthetic)
-            val first = com.ukkera.pos.security.DesktopClientTargetHandle.prepareNewWindows(expected, slot, scope, setOf("probe"))
+            val handles = com.ukkera.pos.security.DesktopClientTargetHandle
+            val first = if (Platform.isMac()) handles.prepareNewMac(slot, scope, setOf("probe"))
+                else handles.prepareNewWindows(DesktopWindowsPackageIdentity.TEST.target(), slot, scope, setOf("probe"))
             val reference = first.original(); val descriptor = first.descriptor().copyWireBytes()
             first.closeNow()
-            val reopened = com.ukkera.pos.security.DesktopClientTargetHandle.openExistingWindows(expected, slot)
+            val reopened = if (Platform.isMac()) handles.openExistingMac(slot)
+                else handles.openExistingWindows(DesktopWindowsPackageIdentity.TEST.target(), slot)
             val same = reopened.original() == reference && reopened.descriptor().copyWireBytes().contentEquals(descriptor)
             reopened.closeNow()
             if (same) 0 to "DATA phase=${reference.phase} reopened=true" else 1 to "MISMATCH phase=${reference.phase}"

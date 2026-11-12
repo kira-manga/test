@@ -330,6 +330,11 @@ if [[ "$FORMAT" == "dmg" ]]; then
     "$APP_PATH/Contents/MacOS/UkkeraPOS" "--identity-probe=$DIAG/mac-identity-probe.txt" > "$DIAG/mac-identity-probe.log" 2>&1 \
       && echo "probe_exit=0" >> "$DIAG/mac-identity-probe.log" || echo "probe_exit=$?" >> "$DIAG/mac-identity-probe.log"
     sed -i '' -E 's/team=[A-Z0-9]{10}/team=[TEAM]/' "$DIAG/mac-identity-probe.txt" 2>/dev/null || true
+    # In-app Client target (TRAINING_2, synthetic scope) and journal custody in the login Keychain.
+    for probe in client-target client-journal; do
+      "$APP_PATH/Contents/MacOS/UkkeraPOS" "--$probe-probe=$DIAG/mac-$probe-probe.txt" > "$DIAG/mac-$probe-probe.log" 2>&1 \
+        && echo "probe_exit=0" >> "$DIAG/mac-$probe-probe.log" || echo "probe_exit=$?" >> "$DIAG/mac-$probe-probe.log"
+    done
   fi
   if [[ "$SMOKE" == "1" ]]; then
     echo "Launching packaged macOS app with --smoke-exit ..."
