@@ -35,9 +35,16 @@ internal object DesktopIdentityProbe {
                     com.ukkera.pos.app.gateway.DesktopClientJournalStorages.mac(com.ukkera.pos.security.MacDesktopFiles.observeOwnIdentity()))
                 else -> "UNSUPPORTED_PLATFORM"
             }
-        }.getOrElse { failure -> "FAILED ${failure::class.simpleName}: ${failure.message?.take(160)}" }
+        }.getOrElse(::failureLine)
         output.writeText(line + "\n")
         return if (line.startsWith("DATA ")) 0 else 1
+    }
+
+    /** Failure kind, message and the first POS frames (code locations only, no data). */
+    private fun failureLine(failure: Throwable): String {
+        val frames = failure.stackTrace.filter { it.className.startsWith("com.ukkera.") }.take(4)
+            .joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+        return "FAILED ${failure::class.simpleName}: ${failure.message?.take(160)} at $frames"
     }
 
     const val CLIENT_TARGET_ARGUMENT = "--client-target-probe="
@@ -62,7 +69,7 @@ internal object DesktopIdentityProbe {
             val same = reopened.original() == reference && reopened.descriptor().copyWireBytes().contentEquals(descriptor)
             reopened.closeNow()
             if (same) 0 to "DATA phase=${reference.phase} reopened=true" else 1 to "MISMATCH phase=${reference.phase}"
-        }.getOrElse { failure -> 1 to "FAILED ${failure::class.simpleName}: ${failure.message?.take(200)}" }
+        }.getOrElse { failure -> 1 to failureLine(failure) }
         output.writeText(line + "\n")
         return code
     }

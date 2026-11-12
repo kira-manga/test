@@ -264,7 +264,7 @@ public class AndroidDevicePairingTarget private constructor(
             profile: SelfOwnedNativeProfileV1): AndroidDevicePairingTargetOpenResult {
             val lease = AndroidProvisionerProcessLease.acquire(profile)
                 ?: return AndroidDevicePairingTargetOpenResult.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
-            val work = try { AndroidOwnedInstallationWork(lease) } catch (_: Throwable) {
+            val work = try { AndroidOwnedInstallationWork(lease, AndroidSelfOwnedProcess) } catch (_: Throwable) {
                 lease.releaseUnusedBeforeNativeOpen()
                 return AndroidDevicePairingTargetOpenResult.Unresolved(SelfOwnedInstallationFailureV1.UNAVAILABLE)
             }

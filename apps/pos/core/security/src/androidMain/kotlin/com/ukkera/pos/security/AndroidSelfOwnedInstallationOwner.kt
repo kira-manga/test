@@ -60,7 +60,7 @@ public object AndroidSelfOwnedInstallationOwner {
         profile: SelfOwnedNativeProfileV1): SelfOwnedNativeOpenResult {
         val lease = AndroidProvisionerProcessLease.acquire(profile)
             ?: return SelfOwnedNativeOpenResult.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
-        val work = try { AndroidOwnedInstallationWork(lease) } catch (_: Throwable) {
+        val work = try { AndroidOwnedInstallationWork(lease, AndroidSelfOwnedProcess) } catch (_: Throwable) {
             // Construction precedes all registry/namespace/key opens.
             lease.releaseUnusedBeforeNativeOpen()
             return SelfOwnedNativeOpenResult.Unresolved(SelfOwnedInstallationFailureV1.UNAVAILABLE)
@@ -111,7 +111,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
     SelfOwnedCompanyBusinessPublicationsOwner, SelfOwnedOriginalSerialCustodyOwnerV1,
     SelfOwnedSerialPrivatePublicationController,
     LocalCompanyBusinessPublicationController, LocalCompanySerialRegistrationController,
-    SelfOwnedPurchasingPoliciesOwner,
+    SelfOwnedPurchasingPoliciesOwner, SelfOwnedOriginalRoomCloseOwner,
     SelfOwnedEmployeeEnrollmentsOwner, NativeLocalEmployeeEnrollmentController, SelfOwnedEmployeeProvisioningOwner,
     SelfOwnedEmployeePolicyActivationsOwner, NativeLocalEmployeePolicyActivationController, SelfOwnedEmployeePolicyActivationFrameOwner,
     NativeLocalDevicePairingController, NativeLocalDeviceAdmissionController, SelfOwnedDeviceAdmissionFrameOwner {
@@ -807,7 +807,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
         work.retainOriginalRoomClose(this, original.driver, databaseIdentity, closeActualRoom)
     }
 
-    internal fun requireOriginalRoomCloseOwner(driver: AndroidSelfOwnedRoomDriver) {
+    override fun requireOriginalRoomCloseOwner(driver: Any) {
         // Denial is expected here. Check only the original retained resource identities;
         // never reopen/read data or replace a driver before executing the actual bound close.
         check(roomDriver === driver && originalRoomOpen?.driver === driver &&

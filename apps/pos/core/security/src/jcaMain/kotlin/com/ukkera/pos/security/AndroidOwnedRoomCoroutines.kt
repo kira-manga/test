@@ -1,6 +1,5 @@
 package com.ukkera.pos.security
 
-import android.util.Log
 
 import java.util.IdentityHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,6 +36,7 @@ import kotlinx.coroutines.currentCoroutineContext
 internal class AndroidOwnedRoomCoroutines(
     private val work: AndroidOwnedInstallationWork,
     ownerJob: Job,
+    private val platform: SelfOwnedProcessPlatform,
 ) {
     internal enum class Kind { FOREGROUND, BACKGROUND, NATIVE }
     internal class Actor internal constructor(val invocation: Any, val root: Job, val kind: Kind)
@@ -70,7 +70,7 @@ internal class AndroidOwnedRoomCoroutines(
                     it.className != AndroidOwnedRoomCoroutines::class.java.name
             }.take(4).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
             val actual = context?.get(Job)
-            Log.i("UkkeraNativeOwner", "Owned Room stage: step=$step; phase=$phase; " +
+            platform.info("Owned Room stage: step=$step; phase=$phase; " +
                 "jobType=${actual?.javaClass?.name ?: "none"}; " +
                 "ownedDispatcher=${context?.get(ContinuationInterceptor) === dispatcher}; " +
                 "controlToken=${context?.let(work::roomToken) != null}; $locations")
@@ -445,7 +445,7 @@ internal class AndroidOwnedRoomCoroutines(
                 val locations = observed.stackTrace.filter {
                     it.className.startsWith("com.ukkera.pos.")
                 }.take(6).joinToString(" <- ") { "${it.className}.${it.methodName}:${it.lineNumber}" }
-                Log.w("UkkeraNativeOwner", "Owned Room custody fault: type=${observed.javaClass.simpleName}; $locations")
+                platform.warn("Owned Room custody fault: type=${observed.javaClass.simpleName}; $locations")
             } catch (_: Throwable) { /* Diagnostic failure cannot skip exclusion. */ }
             // Denial/exclusion only, never proof of death and never a lease-release path.
             work.nativeClosureUnknown()

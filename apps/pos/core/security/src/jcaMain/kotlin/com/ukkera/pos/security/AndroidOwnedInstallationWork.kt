@@ -1,9 +1,5 @@
 package com.ukkera.pos.security
 
-import android.os.Process
-import android.os.SystemClock
-import android.system.ErrnoException
-import android.util.Log
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -47,16 +43,19 @@ internal interface AndroidOwnedTask<T> {
  *
  * A returned clock/lifetime Boolean is internal DENIAL observation only, never key/Room proof.
  */
-internal class AndroidOwnedInstallationWork(private val processLease: AndroidProvisionerProcessLease) {
+internal class AndroidOwnedInstallationWork(
+    private val processLease: AndroidProvisionerProcessLease,
+    internal val platform: SelfOwnedProcessPlatform,
+) {
     private val gate = Any()
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.IO)
-    internal val roomCoroutines = AndroidOwnedRoomCoroutines(this, job)
-    private val pid = Process.myPid()
-    private val uid = Process.myUid()
+    internal val roomCoroutines = AndroidOwnedRoomCoroutines(this, job, platform)
+    private val pid = platform.pid()
+    private val uid = platform.uid()
     private val retired = AtomicBoolean(false)
     private val exclusionRequested = AtomicBoolean(false)
-    private val lastElapsed = AtomicLong(SystemClock.elapsedRealtime())
+    private val lastElapsed = AtomicLong(platform.elapsedMillis())
     private val segment = AtomicReference<SelfOwnedNativeOperationBudget?>(null)
     private var invocation: Invocation<*>? = null
     private var roomInvocation: RoomInvocation<*>? = null
@@ -64,8 +63,8 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     private var actualLifetimeClosed = false
     private var closeResult: CompletableDeferred<Unit>? = null
     private enum class RoomClosePhase { RETAINED, CLOSING, RETURNED }
-    private class OriginalRoomClose(val owner: AndroidSelfOwnedInstallationLifetime,
-        val driver: AndroidSelfOwnedRoomDriver, val database: Any, val closeActual: () -> Unit) {
+    private class OriginalRoomClose(val owner: SelfOwnedOriginalRoomCloseOwner,
+        val driver: Any, val database: Any, val closeActual: () -> Unit) {
         var phase: RoomClosePhase = RoomClosePhase.RETAINED // Guarded by gate; actual return only.
     }
     private var originalRoomClose: OriginalRoomClose? = null
@@ -93,12 +92,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     }
 
     fun clock(): Long {
-        if (Process.myPid() != pid || Process.myUid() != uid) {
+        if (platform.pid() != pid || platform.uid() != uid) {
             requestProcessExclusion(ExclusionReason.PROCESS_IDENTITY_CHANGED); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         }
         repeat(4) {
             val previous = lastElapsed.get()
-            val sampled = SystemClock.elapsedRealtime()
+            val sampled = platform.elapsedMillis()
             if (sampled < 0 || sampled < previous) {
                 requestProcessExclusion(ExclusionReason.ELAPSED_SAMPLE_INVALID); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
             }
@@ -155,9 +154,8 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         if (!request) return
         logProcessExclusionAsync(reason, origin)
         // Never guess another PID/session or pretend this call is proof of actual death.
-        if (Process.myPid() == pid && Process.myUid() == uid) {
-            try { Process.killProcess(pid) } catch (_: Throwable) { /* lease remains held */ }
-            try { Process.sendSignal(pid, 9) } catch (_: Throwable) { /* no replacement is admitted */ }
+        if (platform.pid() == pid && platform.uid() == uid) {
+            try { platform.terminate(pid) } catch (_: Throwable) { /* lease remains held; no replacement is admitted */ }
         }
     }
 
@@ -243,8 +241,8 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     /** Registration is synchronous in the original watched open/control invocation, not a
      * later caller/cleanup lane. The exact driver and bound database operation remain owned
      * even after denial or an abandoned close wait. A second/replacement binding is refused. */
-    internal fun retainOriginalRoomClose(owner: AndroidSelfOwnedInstallationLifetime,
-        driver: AndroidSelfOwnedRoomDriver, database: Any, closeActual: () -> Unit) {
+    internal fun retainOriginalRoomClose(owner: SelfOwnedOriginalRoomCloseOwner,
+        driver: Any, database: Any, closeActual: () -> Unit) {
         val token = roomCoroutines.currentNativeInvocation()
         synchronized(gate) {
             requireActive()
@@ -285,7 +283,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         }
     }
 
-    internal fun requireOriginalRoomClosedBeforeNativeClose(driver: AndroidSelfOwnedRoomDriver?) {
+    internal fun requireOriginalRoomClosedBeforeNativeClose(driver: Any?) {
         synchronized(gate) {
             originalRoomClose?.let {
                 check(it.driver === driver && it.phase == RoomClosePhase.RETURNED)
@@ -483,7 +481,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
 
         private fun completionPhase(phase: String) {
             if (!task.traceCompletion) return
-            try { Log.i("UkkeraNativeOwner", "Native publication delivery: $phase") }
+            try { platform.info("Native publication delivery: $phase") }
             catch (_: Throwable) { /* Diagnostics cannot alter ownership or the original result. */ }
         }
 
@@ -496,7 +494,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                     // This worker is outside gate and its watchdog is already armed. A
                     // stalled diagnostic cannot claim or delay the process-exclusion path.
                     // The implementation class is a static source location, never task data.
-                    try { Log.i("UkkeraNativeOwner", "Native action entered: ${task.javaClass.name}") }
+                    try { platform.info("Native action entered: ${task.javaClass.name}") }
                     catch (_: Throwable) { /* diagnostics do not change the original result */ }
                     requireActive()
                     AndroidOwnedResult.Value(task.execute())
@@ -615,12 +613,12 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             val phase = watched?.phase?.diagnosticName
             val deadlineMillis = watched?.deadlineMillis
             // Direct OS sampling cannot recursively request exclusion through clock().
-            val elapsedMillis = try { SystemClock.elapsedRealtime() } catch (_: Throwable) { null }
+            val elapsedMillis = try { platform.elapsedMillis() } catch (_: Throwable) { null }
             // Capture scalars only, never the budget/token or native inputs. This is best
             // effort: asynchronous logging can lose the race with SIG9 and proves no closure.
             scope.launch {
                 try {
-                    Log.w("UkkeraNativeOwner", "Native process exclusion requested: reason=${reason.name}; " +
+                    platform.warn("Native process exclusion requested: reason=${reason.name}; " +
                         "phase=${phase ?: "none"}; elapsedMillis=${elapsedMillis ?: "unavailable"}; " +
                         "deadlineMillis=${deadlineMillis ?: "none"}; origin=${origin ?: "unobserved"}")
                 } catch (_: Throwable) { /* logging cannot change denial or native custody */ }
@@ -632,7 +630,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
 
     /** Called only outside gate while the existing terminal-close watchdog is armed. */
     private fun cleanupPhase(phase: String) {
-        try { Log.i("UkkeraNativeOwner", "Owner cleanup phase: $phase") }
+        try { platform.info("Owner cleanup phase: $phase") }
         catch (_: Throwable) { /* Diagnostics do not establish or change native closure. */ }
     }
 
@@ -649,9 +647,9 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             }.take(4)).distinct().joinToString(" <- ") {
                 "${it.className}.${it.methodName}:${it.lineNumber}"
             }
-            val errno = (failure as? ErrnoException)?.errno?.let { "; errno=$it" }.orEmpty()
+            val errno = platform.errno(failure)?.let { "; errno=$it" }.orEmpty()
             val reason = (failure as? SelfOwnedFailureV1)?.reason?.name?.let { "; reason=$it" }.orEmpty()
-            Log.w("UkkeraNativeOwner", "Native action refused: ${failure.javaClass.simpleName}$errno$reason; $locations")
+            platform.warn("Native action refused: ${failure.javaClass.simpleName}$errno$reason; $locations")
         } catch (_: Throwable) {
             // Diagnostic failure cannot change retirement, closure or the original result.
         }

@@ -45,8 +45,19 @@ internal object MacOriginalNative {
     private const val MNT_RDONLY = 0x00000001
     private const val MNT_LOCAL = 0x00001000
 
+    /**
+     * x86_64 libSystem still exports the legacy 32-bit-inode `lstat`/`fstat`/`statfs` under the
+     * plain names; the structures below are the 64-bit-inode layouts, so Intel binds the
+     * `$INODE64` variants. arm64 only has the 64-bit-inode layout under the plain names.
+     */
     private val library: MacOriginalLibC by lazy {
-        Native.load(Platform.C_LIBRARY_NAME, MacOriginalLibC::class.java)
+        val inode64 = setOf("lstat", "fstat", "statfs")
+        val options = if (Platform.isIntel()) {
+            mapOf(Library.OPTION_FUNCTION_MAPPER to com.sun.jna.FunctionMapper { _, method ->
+                if (method.name in inode64) method.name + "\$INODE64" else method.name
+            })
+        } else emptyMap()
+        Native.load(Platform.C_LIBRARY_NAME, MacOriginalLibC::class.java, options)
     }
 
     fun requireSupported() {
@@ -276,17 +287,20 @@ internal object MacOriginalNative {
         if (stat.f_flags and MNT_RDONLY != 0) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         }
-        return MacOriginalVolume(type, volumeUuid(path))
+        // Volume attributes are defined only for the mount root (APFS data volumes are
+        // firmlinked, so an ordinary path yields EINVAL): ask the root statfs just reported.
+        val mountRoot = nulString(stat.f_mntonname)
+        return MacOriginalVolume(type, volumeUuid(mountRoot))
     }
 
-    private fun volumeUuid(path: Path): String {
+    private fun volumeUuid(mountRoot: String): String {
         val attributes = MacAttrList()
         attributes.bitmapcount = ATTR_BIT_MAP_COUNT.toShort()
         attributes.volattr = ATTR_VOL_INFO or ATTR_VOL_UUID
         attributes.write()
         val buffer = Memory(32L)
         try {
-            if (library.getattrlist(path.toString(), attributes.pointer, buffer,
+            if (library.getattrlist(mountRoot, attributes.pointer, buffer,
                     NativeLong(32L), NativeLong(FSOPT_NOFOLLOW.toLong())) != 0) {
                 selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             }
