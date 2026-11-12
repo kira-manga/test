@@ -7,9 +7,9 @@ import com.ukkera.pos.types.DomainId
  * owned by the same native lifetime; an approval or historical review remains DATA. */
 internal class AndroidLocalCompanyDevicePairings(
     private val owner: AndroidSelfOwnedInstallationLifetime,
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,
@@ -178,7 +178,7 @@ internal class AndroidLocalCompanyDevicePairings(
      * ledger body are all rejoined. This is not a supplied current/success callback. */
     fun requireSigningCurrent(record: NativeDevicePairingRecordV1,
         approval: AndroidLocalInstallerAuthentication.DevicePairingHeadApproval,
-        actualKeys: AndroidLocalProvisionerKeys, actualRegistry: AndroidLocalProvisionerRegistry) {
+        actualKeys: LocalProvisionerNativeKeys, actualRegistry: LocalProvisionerRegistryStore) {
         if (actualKeys !== keys || actualRegistry !== registry || approval.owner !== authentication ||
             record.phase != LocalDevicePairingPhase.SIGNING_INTENT) refuse(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
         requireNewCeremony(); requireCurrentOrigin(record); requirePreparedHeadCurrent(record)
@@ -306,7 +306,7 @@ internal class AndroidLocalCompanyDevicePairings(
     }
     /** Closed actual ROOT participant rejoins known unsigned original and drained custody. */
     fun requireUnsignedRetirementSigningCurrent(record: NativeDevicePairingRecordV1,
-        actualKeys: AndroidLocalProvisionerKeys, actualRegistry: AndroidLocalProvisionerRegistry) {
+        actualKeys: LocalProvisionerNativeKeys, actualRegistry: LocalProvisionerRegistryStore) {
         if (actualKeys !== keys || actualRegistry !== registry ||
             record.phase != LocalDevicePairingPhase.UNSIGNED_RETIREMENT_SIGNING_INTENT)
             refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)

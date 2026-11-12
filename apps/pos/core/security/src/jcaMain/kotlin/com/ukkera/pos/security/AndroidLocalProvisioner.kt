@@ -5,9 +5,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Actual native owner behind the UI-facing interface; no injected accepting trust boundary. */
 internal class AndroidLocalProvisioner(
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
 ) : LocalProvisioner, LocalCompanyAuthority {
     private val actionOwner = Any()
@@ -264,7 +264,7 @@ internal class AndroidLocalProvisioner(
 
     private fun prepareNewCompanyNative(facts: SelfOwnedCompanyFactsV1): LocalProvisionerPendingAction {
         requireNewIssuance()
-        requireNativeSelfOwnedProtection(facts.protection)
+        environment.requireSupportedProtection(facts.protection)
         // A fresh seven-key/head original must complete its explicit TWO-secret ceremony.
         if (registry.companyBootstrapRecord() != null) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         keys.assertCompletedOriginalKeys()
@@ -287,7 +287,7 @@ internal class AndroidLocalProvisioner(
         }
         val retained = original ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         if (retained.enrollmentStarted) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        if (!AndroidLocalProvisionerRegistry.sameFacts(retained.facts, facts)) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
+        if (!sameProvisionerCompanyFacts(retained.facts, facts)) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         requireNewIssuance()
         keys.prepareOriginalKeys()
         requireNewIssuance()
@@ -320,7 +320,7 @@ internal class AndroidLocalProvisioner(
 
     private fun prepareBranchNative(facts: SelfOwnedBranchFactsV1): LocalProvisionerPendingAction {
         requireNewIssuance()
-        requireNativeSelfOwnedProtection(facts.protection)
+        environment.requireSupportedProtection(facts.protection)
         val original = registry.bootstrapRecord() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.EXISTING_AUTHORITY_REQUIRED)
         val state = registry.readState(keys) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.EXISTING_AUTHORITY_REQUIRED)
         if (!state.issuanceEnabled) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)

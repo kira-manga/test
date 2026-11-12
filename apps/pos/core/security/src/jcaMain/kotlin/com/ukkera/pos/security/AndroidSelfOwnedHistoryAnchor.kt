@@ -12,11 +12,11 @@ import javax.crypto.spec.GCMParameterSpec
  */
 internal class AndroidSelfOwnedHistoryAnchor(
     private val owner: AndroidSelfOwnedInstallationLifetime,
-    private val environment: AndroidSelfOwnedEnvironment,
+    private val environment: SelfOwnedOriginalEnvironment,
     private val work: AndroidOwnedInstallationWork,
-    private val namespace: AndroidSelfOwnedDatabaseNamespace,
-    private val signing: AndroidSelfOwnedInstallationSigning,
-    private val material: AndroidSelfOwnedDataKeyMaterial,
+    private val namespace: SelfOwnedOriginalDatabaseNamespace,
+    private val signing: SelfOwnedOriginalSigning,
+    private val material: SelfOwnedOriginalDataKeys,
     private val ownerIdentity: Any,
     private val lifetimeId: com.ukkera.pos.types.DomainId,
 ) {
@@ -326,7 +326,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
             record.roleIntent?.role != NativeHistoryDesiredRoleV2.RUN)
     }
 
-    fun requireIssuerParticipant(actualWork: AndroidOwnedInstallationWork, actualEnvironment: AndroidSelfOwnedEnvironment) {
+    fun requireIssuerParticipant(actualWork: AndroidOwnedInstallationWork, actualEnvironment: SelfOwnedOriginalEnvironment) {
         known(actualWork === work && actualEnvironment === environment)
         guard()
     }

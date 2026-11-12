@@ -1,6 +1,5 @@
 package com.ukkera.pos.security
 
-import android.util.Log
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
 import java.util.concurrent.atomic.AtomicReference
@@ -11,9 +10,9 @@ import java.util.concurrent.atomic.AtomicReference
  * and watch registry acquisition/discard/close. This helper never calls work.run or closes it.
  */
 internal class AndroidLocalCompanyAuthority(
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val historyAnchor: AndroidSelfOwnedHistoryAnchor? = null,
     private val issuance: AndroidLocalCompanyIssuanceGate = AndroidLocalCompanyIssuanceGate(),
@@ -354,7 +353,7 @@ internal class AndroidLocalCompanyAuthority(
      */
     internal fun requireBeforeInstallationAttemptRetention(admission: AndroidLocalCompanyInstallationAdmission,
         actualAnchor: AndroidSelfOwnedHistoryAnchor, actualWork: AndroidOwnedInstallationWork,
-        actualEnvironment: AndroidSelfOwnedEnvironment, proposal: OriginalInstallationProposal,
+        actualEnvironment: SelfOwnedOriginalEnvironment, proposal: OriginalInstallationProposal,
         snapshot: LocalBranchInstallationSnapshotV2, attemptSequence: Long, prospectiveAttemptId: DomainId) {
         if (activeInstallationAdmission !== admission || actualAnchor !== admission.originalAnchor ||
             actualWork !== work || actualEnvironment !== environment || proposal !== admission.originalProposal ||
@@ -491,7 +490,7 @@ internal class AndroidLocalCompanyAuthority(
 
     fun prepareNewCompanyAndHead(facts: LocalCompanyFoundingFactsV1): LocalCompanyFoundingAction {
         requireNewIssuance()
-        requireNativeSelfOwnedProtection(facts.company.protection)
+        environment.requireSupportedProtection(facts.company.protection)
         keys.assertCompletedOriginalKeys()
         val legacy = registry.bootstrapRecord()
         var original = registry.companyBootstrapRecord()
@@ -516,7 +515,7 @@ internal class AndroidLocalCompanyAuthority(
             original = requireBootstrap()
         }
         if (original.original.enrollmentStarted) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        if (!AndroidLocalProvisionerRegistry.sameFacts(original.original.facts, facts.company) ||
+        if (!sameProvisionerCompanyFacts(original.original.facts, facts.company) ||
             original.headName != facts.headName || original.headLogin != facts.headLogin || original.lifetime != facts.headLifetime) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         }
@@ -530,25 +529,25 @@ internal class AndroidLocalCompanyAuthority(
         requireNewIssuance()
         if (preparedFounding.get() != null) selfOwnedFail(SelfOwnedInstallationFailureV1.BUSY)
         // Static diagnostics are outside the lifecycle monitor; the original watchdog stays armed.
-        try { Log.i("UkkeraNativeOwner", "Company founding phase: body-admitted") }
+        try { work.platform.info("Company founding phase: body-admitted") }
         catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
         val original = requireBootstrap()
         if (registry.readState(keys) != null) selfOwnedFail(SelfOwnedInstallationFailureV1.ALREADY_ENROLLED)
         if (original.original.enrollmentStarted) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         if (!original.complete()) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         keys.assertAllCompanyKeys(); requireFoundingAction(action, original)
-        try { Log.i("UkkeraNativeOwner", "Company founding phase: installer-credential-next") }
+        try { work.platform.info("Company founding phase: installer-credential-next") }
         catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
         val installer = authentication.prepareFoundingInstaller(installerSecret)
         var head: AndroidLocalFoundingVerifier? = null
         var prepared: PreparedFoundingCredentials? = null
         try {
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: installer-credential-returned") }
+            try { work.platform.info("Company founding phase: installer-credential-returned") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: head-credential-next") }
+            try { work.platform.info("Company founding phase: head-credential-next") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
             head = authentication.prepareFoundingHead(headSecret)
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: head-credential-returned") }
+            try { work.platform.info("Company founding phase: head-credential-returned") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
             requireNewIssuance()
             if (requireBootstrap() !== original) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
@@ -597,13 +596,13 @@ internal class AndroidLocalCompanyAuthority(
             // This preflight also reserves both buckets; capacity cannot strand a founding marker.
             registry.requireCompanyCapacity(state)
             requireFoundingAction(action, original); requireNewIssuance()
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: retention-next") }
+            try { work.platform.info("Company founding phase: retention-next") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
             registry.retainEnrollmentStart()
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: bootstrap-retention-returned") }
+            try { work.platform.info("Company founding phase: bootstrap-retention-returned") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
             val retained = registry.retainCompanyState(state, keys)
-            try { Log.i("UkkeraNativeOwner", "Company founding phase: retention-returned") }
+            try { work.platform.info("Company founding phase: retention-returned") }
             catch (_: Throwable) { /* best-effort diagnostics never change the original result */ }
             requireNewIssuance()
             return companyView(requireBootstrap(), retained)
@@ -927,7 +926,7 @@ internal class AndroidLocalCompanyInstallationAdmission internal constructor(
 
     /** Exactly once, after P4 chooses an unused candidate ID but BEFORE any attempt force. */
     fun requireBeforeAttemptRetention(actualAnchor: AndroidSelfOwnedHistoryAnchor,
-        actualWork: AndroidOwnedInstallationWork, actualEnvironment: AndroidSelfOwnedEnvironment,
+        actualWork: AndroidOwnedInstallationWork, actualEnvironment: SelfOwnedOriginalEnvironment,
         proposal: OriginalInstallationProposal, snapshot: LocalBranchInstallationSnapshotV2,
         attemptSequence: Long, prospectiveAttemptId: DomainId) {
         authority.requireBeforeInstallationAttemptRetention(this, actualAnchor, actualWork, actualEnvironment,

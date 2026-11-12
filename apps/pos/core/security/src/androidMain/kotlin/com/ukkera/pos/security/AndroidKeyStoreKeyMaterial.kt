@@ -266,10 +266,10 @@ internal class AndroidSelfOwnedDataKeyMaterial(
     private val environment: AndroidSelfOwnedEnvironment,
     private val journal: AndroidSelfOwnedInstallationJournal,
     private val work: AndroidOwnedInstallationWork,
-) {
+): SelfOwnedOriginalDataKeys {
     private val store = androidKeyStore()
 
-    fun prepareOriginalDataKey(role: SelfOwnedTargetKeyRoleV1) {
+    override fun prepareOriginalDataKey(role: SelfOwnedTargetKeyRoleV1) {
         val kind = kind(role)
         var original = journal.intent()
         var intent = original.key(role)
@@ -306,25 +306,29 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         checkedKey(role)
     }
 
-    fun assertOriginalDataKeys() {
+    override fun assertOriginalDataKeys() {
         checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
         checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
         guard()
     }
 
     /** Journal decryption proves STORAGE itself on both sides of its actual use. */
-    fun assertOriginalPepperKey() {
+    override fun assertOriginalPepperKey() {
         checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
         guard()
     }
 
     /** Native handles remain inside the concrete owner; never encoded/exported or returned to UI. */
-    fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
-    fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
+    override fun keyConfiguration(): SelfOwnedDataKeyConfiguration = configuration().let {
+        SelfOwnedDataKeyConfiguration(it.installationId, it.scope, it.storageReference, it.pepperReference)
+    }
+
+    override fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
+    override fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
 
     fun configuration(): AndroidKeyStoreConfiguration = configuration(guard())
 
-    fun sealJournal(aad: ByteArray, plaintext: ByteArray): AndroidSelfOwnedCiphertext {
+    override fun sealJournal(aad: ByteArray, plaintext: ByteArray): AndroidSelfOwnedCiphertext {
         requireJournalAad(aad)
         if (plaintext.size !in 1..SelfOwnedNativeInstallationFormatV1.MAXIMUM_STATE_PLAINTEXT_BYTES) keyFailure()
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
@@ -341,7 +345,7 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         } finally { nonce?.fill(0); encrypted.fill(0) }
     }
 
-    fun openJournal(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
+    override fun openJournal(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
         requireJournalAad(aad)
         if (nonce.size != 12 || ciphertext.size !in 17..SelfOwnedNativeInstallationFormatV1.MAXIMUM_STATE_PLAINTEXT_BYTES + 16) keyFailure()
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")

@@ -1,7 +1,5 @@
 package com.ukkera.pos.security
 
-import android.os.Process
-import android.os.SystemClock
 import com.ukkera.pos.types.DomainId
 import java.nio.ByteBuffer
 import java.util.UUID
@@ -28,17 +26,17 @@ import kotlinx.coroutines.ensureActive
  */
 internal class AndroidSelfOwnedLocalSecurity(
     private val owner: AndroidSelfOwnedInstallationLifetime,
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val material: AndroidSelfOwnedDataKeyMaterial,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val material: SelfOwnedOriginalDataKeys,
     private val work: AndroidOwnedInstallationWork,
 ) {
-    private val configuration = material.configuration()
+    private val configuration = material.keyConfiguration()
     private val creationParameters = PasswordHashParameters()
-    private val processId = Process.myPid()
-    private val processUid = Process.myUid()
+    private val processId = work.platform.pid()
+    private val processUid = work.platform.uid()
     private val bootId = originalBootId(configuration.installationId, environment.bootCount)
     private val issuerContextId = AndroidP256Primitives.newId()
-    private val lastElapsedNanos = AtomicLong(SystemClock.elapsedRealtimeNanos())
+    private val lastElapsedNanos = AtomicLong(work.platform.elapsedRealtimeNanos())
     private val retired = AtomicBoolean(false)
 
     init {
@@ -250,7 +248,7 @@ internal class AndroidSelfOwnedLocalSecurity(
         try {
             // Export of this temporary PASSWORD DERIVATION is the existing credential format,
             // not export of a native AndroidKeyStore AES/pepper/signing private key.
-            val passwordKey = AndroidNativePasswordKeyDerivation.secretKeyFactory().generateSecret(specification).encoded
+            val passwordKey = work.platform.passwordKeyFactory().generateSecret(specification).encoded
                 ?: selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
             derived = passwordKey
             if (passwordKey.size != 32) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
@@ -303,11 +301,11 @@ internal class AndroidSelfOwnedLocalSecurity(
         if (retired.get() || owner.dataUseDeniedNoIo()) return null
         return try {
             work.requireActive() // Bounded PID/UID/OS-clock and denial checks, not IO-based custody.
-            if (Process.myPid() != processId || Process.myUid() != processUid) return denyObservation()
+            if (work.platform.pid() != processId || work.platform.uid() != processUid) return denyObservation()
             repeat(4) {
                 if (retired.get() || owner.dataUseDeniedNoIo()) return null
                 val previous = lastElapsedNanos.get()
-                val sampled = SystemClock.elapsedRealtimeNanos()
+                val sampled = work.platform.elapsedRealtimeNanos()
                 if (sampled < 0L || sampled < previous) return denyObservation()
                 if (lastElapsedNanos.compareAndSet(previous, sampled)) {
                     work.requireActive()

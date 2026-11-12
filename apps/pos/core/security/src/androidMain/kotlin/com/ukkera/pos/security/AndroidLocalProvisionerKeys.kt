@@ -22,12 +22,12 @@ internal class AndroidLocalProvisionerKeys(
     private val environment: AndroidSelfOwnedEnvironment,
     private val registry: AndroidLocalProvisionerRegistry,
     private val work: AndroidOwnedInstallationWork,
-) {
+): LocalProvisionerNativeKeys {
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null, null) }
     private val aliasPrefix: String get() = environment.profile.p1AliasPrefix
 
     /** Reads only. An orphan prefixed alias forbids creating a new identity from empty files. */
-    fun assertOriginalNamespace() {
+    override fun assertOriginalNamespace() {
         guard()
         val bootstrap = registry.bootstrapRecord()
         val company = registry.companyBootstrapRecord()
@@ -54,7 +54,7 @@ internal class AndroidLocalProvisionerKeys(
         guard()
     }
 
-    fun assertCompletedOriginalKeys() {
+    override fun assertCompletedOriginalKeys() {
         assertOriginalNamespace()
         val original = registry.bootstrapRecord() ?: return
         for (intent in original.keys) if (intent.phase == SelfOwnedKeyIntentPhaseV1.COMPLETE) checkedKey(intent.role)
@@ -64,7 +64,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Explicit founding only; prior original intent is forced BEFORE every native generation. */
-    fun prepareOriginalKeys() {
+    override fun prepareOriginalKeys() {
         assertOriginalNamespace()
         for (role in SelfOwnedNativeKeyRoleV1.entries) {
             var original = requireBootstrap()
@@ -110,7 +110,7 @@ internal class AndroidLocalProvisionerKeys(
         assertAllOriginalKeys()
     }
 
-    fun assertAllOriginalKeys() {
+    override fun assertAllOriginalKeys() {
         assertOriginalNamespace()
         if (!requireBootstrap().complete()) keyFailure()
         for (role in SelfOwnedNativeKeyRoleV1.entries) checkedKey(role)
@@ -118,14 +118,14 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Public point still comes from the proved original native private key, not an import. */
-    fun originalPoint(role: SelfOwnedNativeKeyRoleV1): ByteArray {
+    override fun originalPoint(role: SelfOwnedNativeKeyRoleV1): ByteArray {
         require(role == SelfOwnedNativeKeyRoleV1.ROOT || role == SelfOwnedNativeKeyRoleV1.ISSUER)
         checkedKey(role)
         val point = requireBootstrap().key(role).proof.copyBytes()
         try { checkedKey(role); return point } catch (failure: Throwable) { point.fill(0); throw failure }
     }
 
-    fun rootBody(): SelfOwnedRootBodyV1 {
+    override fun rootBody(): SelfOwnedRootBodyV1 {
         val original = requireBootstrap()
         val point = originalPoint(SelfOwnedNativeKeyRoleV1.ROOT)
         return try {
@@ -136,7 +136,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { point.fill(0) }
     }
 
-    fun rootAnnouncement(): SelfOwnedSignedDocumentV1 {
+    override fun rootAnnouncement(): SelfOwnedSignedDocumentV1 {
         val body = SelfOwnedInstallationWireV1.encodeRoot(rootBody())
         return try {
             val signed = AndroidP256Primitives.signDocument(SelfOwnedDocumentRoleV1.ROOT_ANNOUNCEMENT,
@@ -146,7 +146,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { body.fill(0) }
     }
 
-    fun issuerDelegation(root: SelfOwnedSignedDocumentV1): SelfOwnedSignedDocumentV1 {
+    override fun issuerDelegation(root: SelfOwnedSignedDocumentV1): SelfOwnedSignedDocumentV1 {
         val original = requireBootstrap()
         val expected = SelfOwnedInstallationWireV1.encodeRoot(rootBody()); val supplied = root.body()
         val rootPoint = originalPoint(SelfOwnedNativeKeyRoleV1.ROOT)
@@ -170,7 +170,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Called by the actual authenticated owner; only the durably retained original body can sign. */
-    fun signOriginalPreparation(body: SelfOwnedPreparationBodyV1): SelfOwnedSignedDocumentV1 {
+    override fun signOriginalPreparation(body: SelfOwnedPreparationBodyV1): SelfOwnedSignedDocumentV1 {
         val state = registry.readState(this) ?: keyFailure()
         val original = state.allocations.singleOrNull { it.body.coordinates.allocationId == body.coordinates.allocationId }
             ?: keyFailure()
@@ -188,14 +188,14 @@ internal class AndroidLocalProvisionerKeys(
         } finally { expected.fill(0); bytes.fill(0) }
     }
 
-    fun installerTag(message: ByteArray): ByteArray {
+    override fun installerTag(message: ByteArray): ByteArray {
         require(message.size <= SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES)
         val tag = hmac(checkedKey(SelfOwnedNativeKeyRoleV1.INSTALLER_PEPPER) as SecretKey, message)
         try { checkedKey(SelfOwnedNativeKeyRoleV1.INSTALLER_PEPPER); return tag }
         catch (failure: Throwable) { tag.fill(0); throw failure }
     }
 
-    fun sealRegistry(aad: ByteArray, plaintext: ByteArray): SelfOwnedRegistryEnvelopeV1 {
+    override fun sealRegistry(aad: ByteArray, plaintext: ByteArray): SelfOwnedRegistryEnvelopeV1 {
         require(plaintext.size <= SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_PLAINTEXT_BYTES)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, checkedKey(SelfOwnedNativeKeyRoleV1.REGISTRY) as SecretKey)
@@ -214,7 +214,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { nonce?.fill(0); ciphertext.fill(0); signature?.fill(0) }
     }
 
-    fun openRegistry(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1): ByteArray {
+    override fun openRegistry(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1): ByteArray {
         val point = originalPoint(SelfOwnedNativeKeyRoleV1.ISSUER)
         val message = SelfOwnedInstallationWireV1.registrySignature(aad, envelope.nonce, envelope.ciphertext)
         try {
@@ -228,7 +228,7 @@ internal class AndroidLocalProvisionerKeys(
         catch (failure: Throwable) { plaintext.fill(0); throw failure }
     }
 
-    fun prepareCompanyKeys() {
+    override fun prepareCompanyKeys() {
         val initial = requireCompanyBootstrap()
         if (initial.original.enrollmentStarted) keyFailure()
         prepareOriginalKeys()
@@ -266,21 +266,21 @@ internal class AndroidLocalProvisionerKeys(
         assertAllCompanyKeys()
     }
 
-    fun assertAllCompanyKeys() {
+    override fun assertAllCompanyKeys() {
         assertAllOriginalKeys()
         if (!requireCompanyBootstrap().complete()) keyFailure()
         for (role in LocalCompanyHeadKeyRoleV1.entries) checkedHeadKey(role)
         guard()
     }
 
-    fun headPoint(role: LocalCompanyHeadKeyRoleV1): ByteArray {
+    override fun headPoint(role: LocalCompanyHeadKeyRoleV1): ByteArray {
         require(role != LocalCompanyHeadKeyRoleV1.PEPPER)
         checkedHeadKey(role)
         val bytes = requireCompanyBootstrap().key(role).proof.copyBytes()
         try { checkedHeadKey(role); return bytes } catch (failure: Throwable) { bytes.fill(0); throw failure }
     }
 
-    fun headEnrollmentBody(): LocalCompanyHeadEnrollmentBodyV1 {
+    override fun headEnrollmentBody(): LocalCompanyHeadEnrollmentBodyV1 {
         val original = requireCompanyBootstrap()
         val policy = headPoint(LocalCompanyHeadKeyRoleV1.POLICY)
         val installation = headPoint(LocalCompanyHeadKeyRoleV1.INSTALLATION)
@@ -293,7 +293,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { policy.fill(0); installation.fill(0) }
     }
 
-    fun signFreshHeadEnrollment(): LocalCompanyHeadEnrollmentV1 {
+    override fun signFreshHeadEnrollment(): LocalCompanyHeadEnrollmentV1 {
         assertAllCompanyKeys()
         val original = requireCompanyBootstrap()
         if (original.original.enrollmentStarted || registry.readState(this) != null) keyFailure()
@@ -307,7 +307,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { signature.fill(0) }
     }
 
-    fun headTag(message: ByteArray): ByteArray {
+    override fun headTag(message: ByteArray): ByteArray {
         require(message.size <= SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES)
         val tag = hmac(checkedHeadKey(LocalCompanyHeadKeyRoleV1.PEPPER) as SecretKey, message)
         try { checkedHeadKey(LocalCompanyHeadKeyRoleV1.PEPPER); return tag }
@@ -315,7 +315,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Exact independent head action plus forced original intent; the native P-256 root never signs catalog bytes as Ed25519. */
-    fun signBusinessPublicationEndorsement(record: NativeCompanyBusinessPublicationRecordV1,
+    override fun signBusinessPublicationEndorsement(record: NativeCompanyBusinessPublicationRecordV1,
         approval: AndroidLocalInstallerAuthentication.BusinessPublicationHeadApproval): ByteArray {
         val original = requireCompanyBootstrap()
         val retained = registry.readBusinessPublications(this)?.records?.singleOrNull { it.originalActionId == record.originalActionId }
@@ -342,7 +342,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Historical verification uses the actual original native root and unchanged Ed25519 content. */
-    fun verifyBusinessPublication(record: NativeCompanyBusinessPublicationRecordV1) {
+    override fun verifyBusinessPublication(record: NativeCompanyBusinessPublicationRecordV1) {
         if (record.phase != CompanyBusinessPublicationPhase.COMPLETED) keyFailure()
         val original = requireCompanyBootstrap()
         if (record.company != CompanyScope(original.original.organizationId, original.original.companyId)) keyFailure()
@@ -361,7 +361,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Dedicated employee domain under the ORIGINAL root, after exact forced signing intent. */
-    fun signEmployeeEnrollmentEndorsement(record: NativeEmployeeEnrollmentRecordV1,
+    override fun signEmployeeEnrollmentEndorsement(record: NativeEmployeeEnrollmentRecordV1,
         approval: AndroidLocalInstallerAuthentication.EmployeeEnrollmentHeadApproval): ByteArray {
         val original = requireCompanyBootstrap()
         val retained = registry.readEmployeeEnrollments(this)?.records?.singleOrNull { it.originalActionId == record.originalActionId }
@@ -390,7 +390,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Historical certificate verification is not approval renewal or permission to dispatch. */
-    fun verifyEmployeeEnrollment(record: NativeEmployeeEnrollmentRecordV1) {
+    override fun verifyEmployeeEnrollment(record: NativeEmployeeEnrollmentRecordV1) {
         if (record.rootEndorsement.size != 64) keyFailure()
         val original = requireCompanyBootstrap()
         if (record.target.rootId != original.original.rootId || record.target.rootKeyId != original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId ||
@@ -402,7 +402,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Dedicated complete employee-policy domain under the ORIGINAL root, after exact forced signing intent. */
-    fun signEmployeePolicyActivationEndorsement(record: NativeEmployeePolicyActivationRecordV1,
+    override fun signEmployeePolicyActivationEndorsement(record: NativeEmployeePolicyActivationRecordV1,
         approval: AndroidLocalInstallerAuthentication.EmployeePolicyActivationHeadApproval): ByteArray {
         val original = requireCompanyBootstrap()
         val retained = registry.readEmployeePolicyActivations(this)?.records?.singleOrNull { it.originalActionId == record.originalActionId }
@@ -431,7 +431,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Historical certificate verification is not approval renewal or permission to dispatch. */
-    fun verifyEmployeePolicyActivation(record: NativeEmployeePolicyActivationRecordV1) {
+    override fun verifyEmployeePolicyActivation(record: NativeEmployeePolicyActivationRecordV1) {
         if (record.rootEndorsement.size != 64) keyFailure()
         val original = requireCompanyBootstrap()
         if (record.target.rootId != original.original.rootId || record.target.rootKeyId != original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId ||
@@ -446,7 +446,7 @@ internal class AndroidLocalProvisionerKeys(
     /** CLOSED new one-action producer. No signer callback, old-purpose approval or alias.
      * The actual same-worker pairing participant independently rejoins its native original
      * cut, real head approval and exact forced SIGNING_INTENT before AND after this sign. */
-    fun signDevicePairingEndorsement(record: NativeDevicePairingRecordV1,
+    override fun signDevicePairingEndorsement(record: NativeDevicePairingRecordV1,
         approval: AndroidLocalInstallerAuthentication.DevicePairingHeadApproval,
         actualPairingsOwner: AndroidLocalCompanyDevicePairings): ByteArray {
         val original = requireCompanyBootstrap()
@@ -477,7 +477,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Historical original-root DATA verification, never consent/cut/deadline renewal. */
-    fun verifyDevicePairing(record: NativeDevicePairingRecordV1) {
+    override fun verifyDevicePairing(record: NativeDevicePairingRecordV1) {
         if (record.phase != LocalDevicePairingPhase.APPROVED || record.rootEndorsement.size != 64) keyFailure()
         val original = requireCompanyBootstrap(); val origin = record.body.origin
         val company = registry.readCompanyState(this) ?: keyFailure()
@@ -496,7 +496,7 @@ internal class AndroidLocalProvisionerKeys(
     }
     /** Distinct known-unsigned terminal DATA domain. Never an old head-purpose signer,
      * pairing approval, revocation or authority to consume any signed/admitted original. */
-    fun signUnsignedDevicePairingDisposition(record: NativeDevicePairingRecordV1,
+    override fun signUnsignedDevicePairingDisposition(record: NativeDevicePairingRecordV1,
         actualPairingsOwner: AndroidLocalCompanyDevicePairings): ByteArray {
         val original = requireCompanyBootstrap()
         val origin = record.body.origin
@@ -516,7 +516,7 @@ internal class AndroidLocalProvisionerKeys(
         } finally { message.fill(0) }
     }
     /** Historical terminal DATA verification only; no deadline/cut renewal or current grant. */
-    fun verifyUnsignedDevicePairingDisposition(record: NativeDevicePairingRecordV1) {
+    override fun verifyUnsignedDevicePairingDisposition(record: NativeDevicePairingRecordV1) {
         if (record.phase != LocalDevicePairingPhase.RETIRED_KNOWN_UNSIGNED || record.approvedHead != null ||
             record.rootEndorsement.size != 0 || record.retirementEndorsement.size != 64) keyFailure()
         val original = requireCompanyBootstrap(); val origin = record.body.origin
@@ -534,7 +534,7 @@ internal class AndroidLocalProvisionerKeys(
     // END isolated device-pairing original-root endorsement V1.
 
     /** Exact A0a bodies and a genuine purpose-bound invocation, NOT installation signDocument. */
-    fun signCompanyPolicy(record: LocalCompanyPolicyRecordV1,
+    override fun signCompanyPolicy(record: LocalCompanyPolicyRecordV1,
         approval: AndroidLocalInstallerAuthentication.HeadApproval): PurchasingSignedPolicyV1 {
         fun current(): LocalCompanyAuthorityStateV1 {
             val state = registry.readCompanyState(this) ?: keyFailure()
@@ -559,7 +559,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Full P3 snapshot is mandatory even though the resulting signed message is compact. */
-    fun signOriginalInstallationApproval(snapshot: LocalBranchInstallationSnapshotV2,
+    override fun signOriginalInstallationApproval(snapshot: LocalBranchInstallationSnapshotV2,
         attempt: LocalInstallationAttemptFactsV2,
         approval: AndroidLocalInstallerAuthentication.HeadApproval): LocalInstallationSignedApprovalV2 {
         val freshSnapshot = LocalBranchInstallationWireV2.snapshotDefinition(snapshot.definition)
@@ -596,7 +596,7 @@ internal class AndroidLocalProvisionerKeys(
     }
 
     /** Only an exact retained completion ACK intent can reach the ORIGINAL root bookkeeping key. */
-    fun signOriginalInstallationAcknowledgement(frame: LocalInstallationCommitAcknowledgementV2): LocalInstallationSignedAcknowledgementV2 {
+    override fun signOriginalInstallationAcknowledgement(frame: LocalInstallationCommitAcknowledgementV2): LocalInstallationSignedAcknowledgementV2 {
         val bytes = frame.copyWireBytes()
         fun current() {
             val state = registry.readCompanyState(this) ?: keyFailure()

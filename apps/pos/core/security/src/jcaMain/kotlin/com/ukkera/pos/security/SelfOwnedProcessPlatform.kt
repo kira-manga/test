@@ -10,6 +10,10 @@ internal interface SelfOwnedProcessPlatform {
     fun uid(): Int
     /** Same-boot monotonic milliseconds, including suspended time where the OS supports it. */
     fun elapsedMillis(): Long
+    /** OS monotonic nanoseconds that keep counting across sleep (Android elapsedRealtimeNanos). */
+    fun elapsedRealtimeNanos(): Long
+    /** Fresh caller-owned UTF-8 PBKDF2-HMAC-SHA256 factory. */
+    fun passwordKeyFactory(): javax.crypto.SecretKeyFactory
     /** Best-effort self-termination of the exact current process; never another PID. */
     fun terminate(pid: Int)
     fun info(message: String)

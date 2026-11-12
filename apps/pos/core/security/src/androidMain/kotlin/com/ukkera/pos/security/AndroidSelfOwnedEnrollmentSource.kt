@@ -95,18 +95,18 @@ internal class AndroidSelfOwnedEnvironment private constructor(
     private val captured: Observation,
     private val work: AndroidOwnedInstallationWork,
     private val observationKind: DirectoryObservation,
-    val profile: SelfOwnedNativeProfileV1,
-) {
+    override val profile: SelfOwnedNativeProfileV1,
+): SelfOwnedOriginalEnvironment {
     private enum class DirectoryObservation { PREPARATION, EXISTING_ORIGINAL }
 
-    val target: SelfOwnedTargetDescriptorV1 get() = captured.target
-    val bootCount: Int get() = captured.boot
-    val uid: Int get() = captured.target.applicationUid
+    override val target: SelfOwnedTargetDescriptorV1 get() = captured.target
+    override val bootCount: Int get() = captured.boot
+    override val uid: Int get() = captured.target.applicationUid
     val noBackupDirectory: File get() = File(captured.noBackupPath)
     val dataDirectory: File get() = File(captured.dataPath)
 
     /** Reject a creating observation profile BEFORE any re-observation for an original reader. */
-    fun requireExistingOriginalObservation() {
+    override fun requireExistingOriginalObservation() {
         work.requireActive()
         if (observationKind != DirectoryObservation.EXISTING_ORIGINAL) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
@@ -115,7 +115,7 @@ internal class AndroidSelfOwnedEnvironment private constructor(
     }
 
     /** Actual fixed provisioner volume; no caller-selected path or volume identity. */
-    fun currentProvisionerVolumeUuid(): String {
+    override fun currentProvisionerVolumeUuid(): String {
         requireCurrent()
         val volume = AndroidNativeStorageVolume.uuidForPath(application,
             File(noBackupDirectory, profile.provisionerDirectoryName)).toString()
@@ -123,7 +123,9 @@ internal class AndroidSelfOwnedEnvironment private constructor(
         return volume
     }
 
-    fun requireCurrent() {
+    override fun requireSupportedProtection(protection: SelfOwnedKeyProtectionV1) = requireNativeSelfOwnedProtection(protection)
+
+    override fun requireCurrent() {
         work.requireActive()
         val actual = observe(application, observationKind)
         if (!actual.target.same(captured.target) || actual.boot != captured.boot ||

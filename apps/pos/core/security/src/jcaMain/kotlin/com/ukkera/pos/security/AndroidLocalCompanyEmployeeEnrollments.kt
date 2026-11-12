@@ -7,9 +7,9 @@ import java.util.concurrent.atomic.AtomicReference
  * No caller-selected path/key/verifier, second executor, restored effect permit or head session. */
 internal class AndroidLocalCompanyEmployeeEnrollments(
     private val owner: AndroidSelfOwnedInstallationLifetime,
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,

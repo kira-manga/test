@@ -10,7 +10,7 @@ import dev.p2pkit.transport.lan.lan
 internal class AndroidDevicePairingSdkOwnerV2(
     private val application: Application,
     private val work: AndroidOwnedInstallationWork,
-) {
+): SelfOwnedMasterSdkOwner {
     private val shared = DevicePairingKitOwner(
         requireActive = { work.requireActive() },
         closureUnknown = { work.nativeClosureUnknown() },
@@ -18,17 +18,17 @@ internal class AndroidDevicePairingSdkOwnerV2(
         configure = { transports { lan(application) } },
     )
 
-    fun createNative(exactAppId: AppId, exactDeviceName: String) = shared.create(exactAppId, exactDeviceName)
+    override fun createNative(exactAppId: AppId, exactDeviceName: String) = shared.create(exactAppId, exactDeviceName)
     fun captureNative(originalAcquisitionId: DomainId, originalPreparationId: DomainId,
         target: LocalDevicePairingTargetDescriptor, nativeApplication: SelfOwnedTargetDescriptorV1): LocalDevicePairingSdkIdentityV2 =
         shared.captureAndroid(originalAcquisitionId, originalPreparationId, target, nativeApplication)
-    fun captureMasterNative(originalAcquisitionId: DomainId, allocation: OriginalAllocationCommitmentV2,
+    override fun captureMasterNative(originalAcquisitionId: DomainId, allocation: OriginalAllocationCommitmentV2,
         nativeApplication: SelfOwnedTargetDescriptorV1): LocalMasterSdkOriginalV1 =
         shared.captureMaster(originalAcquisitionId, allocation, nativeApplication)
     fun requireMatchesNative(original: LocalDevicePairingSdkIdentityV2, exactDeviceName: String) =
         shared.requireMatches(original, exactDeviceName)
-    fun requireMatchesNative(original: LocalMasterSdkOriginalV1) = shared.requireMatchesMaster(original)
-    fun closeNative() = shared.close()
+    override fun requireMatchesNative(original: LocalMasterSdkOriginalV1) = shared.requireMatchesMaster(original)
+    override fun closeNative() = shared.close()
 
     override fun toString(): String = "AndroidDevicePairingSdkOwnerV2([REDACTED])"
 

@@ -22,7 +22,7 @@ import java.nio.channels.FileLock
 internal class AndroidLocalProvisionerRegistry(
     private val environment: AndroidSelfOwnedEnvironment,
     private val work: AndroidOwnedInstallationWork,
-) {
+): LocalProvisionerRegistryStore {
     private enum class Phase { NEW, OPENING, OPEN, CLOSE_STARTED, CLOSED }
     private var phase = Phase.NEW
     private val directory = File(environment.noBackupDirectory, environment.profile.provisionerDirectoryName)
@@ -47,10 +47,10 @@ internal class AndroidLocalProvisionerRegistry(
         val before: NativeCompanySerialAuthorityCustodyV1?, val after: NativeCompanySerialAuthorityCustodyV1,
     )
 
-    fun openNative() { openNative(existingOriginal = false) }
+    override fun openNative() { openNative(existingOriginal = false) }
 
     /** Original read/acquisition only: no directory/lock/bootstrap creation or missing repair. */
-    fun openExistingNative() { openNative(existingOriginal = true) }
+    override fun openExistingNative() { openNative(existingOriginal = true) }
 
     private fun openNative(existingOriginal: Boolean) {
         check(phase == Phase.NEW)
@@ -137,11 +137,11 @@ internal class AndroidLocalProvisionerRegistry(
         assertContinuity()
     }
 
-    fun bootstrapRecord(): SelfOwnedBootstrapV1? { assertContinuity(); return bootstrap }
+    override fun bootstrapRecord(): SelfOwnedBootstrapV1? { assertContinuity(); return bootstrap }
 
-    fun companyBootstrapRecord(): LocalCompanyAuthorityBootstrapV1? { assertContinuity(); return companyBootstrap }
+    override fun companyBootstrapRecord(): LocalCompanyAuthorityBootstrapV1? { assertContinuity(); return companyBootstrap }
 
-    fun namespaceIdentity(): SelfOwnedRegistryNamespaceV1 { assertContinuity(); return capturedNamespace() }
+    override fun namespaceIdentity(): SelfOwnedRegistryNamespaceV1 { assertContinuity(); return capturedNamespace() }
 
     private fun capturedNamespace(): SelfOwnedRegistryNamespaceV1 {
         val directoryIdentity = requireNotNull(directoryStamp); val lockIdentity = requireNotNull(lockStamp)
@@ -150,7 +150,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Pure registry/filesystem continuity, no recursive crypto or supplied verifier callback. */
-    fun assertContinuity() {
+    override fun assertContinuity() {
         known(phase == Phase.OPEN)
         assertBase()
         checkNames()
@@ -196,7 +196,7 @@ internal class AndroidLocalProvisionerRegistry(
         }
     }
 
-    fun retainBootstrap(next: SelfOwnedBootstrapV1) {
+    override fun retainBootstrap(next: SelfOwnedBootstrapV1) {
         assertContinuity()
         known(snapshots[REGISTRY] == null && next.target.same(environment.target) && next.namespace == capturedNamespace())
         val old = bootstrap
@@ -232,7 +232,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Explicit fresh wrapper only; no upgrade/adoption of a legacy original. */
-    fun retainCompanyBootstrap(next: LocalCompanyAuthorityBootstrapV1) {
+    override fun retainCompanyBootstrap(next: LocalCompanyAuthorityBootstrapV1) {
         assertContinuity()
         known(snapshots[REGISTRY] == null && next.original.target.same(environment.target) &&
             next.original.namespace == capturedNamespace())
@@ -282,7 +282,7 @@ internal class AndroidLocalProvisionerRegistry(
         assertContinuity()
     }
 
-    fun retainEnrollmentStart() {
+    override fun retainEnrollmentStart() {
         val current = bootstrapRecord() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         known(current.complete() && companyBootstrap?.complete() != false &&
             !current.enrollmentStarted && snapshots[REGISTRY] == null)
@@ -290,7 +290,7 @@ internal class AndroidLocalProvisionerRegistry(
         retainBootstrap(current.copy(revision = current.revision + 1L, enrollmentStarted = true))
     }
 
-    fun readState(keys: AndroidLocalProvisionerKeys): LocalProvisionerRegistryStateV1? {
+    override fun readState(keys: LocalProvisionerNativeKeys): LocalProvisionerRegistryStateV1? {
         if (companyBootstrap != null) return readCompanyState(keys)?.original
         assertContinuity()
         val stored = snapshots[REGISTRY] ?: return null
@@ -310,7 +310,7 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainState(next: LocalProvisionerRegistryStateV1, keys: AndroidLocalProvisionerKeys): LocalProvisionerRegistryStateV1 {
+    override fun retainState(next: LocalProvisionerRegistryStateV1, keys: LocalProvisionerNativeKeys): LocalProvisionerRegistryStateV1 {
         val companyOriginal = companyBootstrapRecord()
         if (companyOriginal != null) {
             val observedSnapshot = snapshots[REGISTRY]
@@ -341,8 +341,8 @@ internal class AndroidLocalProvisionerRegistry(
         return requireNotNull(readState(keys)).also { known(it.revision == next.revision) }
     }
 
-    fun readCompanyState(keys: AndroidLocalProvisionerKeys,
-        diagnoseRetentionReadback: Boolean = false): LocalCompanyAuthorityStateV1? {
+    override fun readCompanyState(keys: LocalProvisionerNativeKeys,
+        diagnoseRetentionReadback: Boolean): LocalCompanyAuthorityStateV1? {
         assertContinuity()
         if (diagnoseRetentionReadback) {
             try { Log.i("UkkeraNativeOwner", "Company retention phase: readback-continuity-returned") }
@@ -369,7 +369,7 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainCompanyState(next: LocalCompanyAuthorityStateV1, keys: AndroidLocalProvisionerKeys): LocalCompanyAuthorityStateV1 {
+    override fun retainCompanyState(next: LocalCompanyAuthorityStateV1, keys: LocalProvisionerNativeKeys): LocalCompanyAuthorityStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         known(original.complete() && original.original.enrollmentStarted)
         val previous = readCompanyState(keys)
@@ -380,7 +380,7 @@ internal class AndroidLocalProvisionerRegistry(
      * previous state. No caller-supplied observation, cache or cross-task reuse exists.
      * The P1 projection need not decrypt/validate that same snapshot twice before writing;
      * current physical custody, native keys and complete post-write readback remain mandatory. */
-    private fun retainObservedCompanyState(next: LocalCompanyAuthorityStateV1, keys: AndroidLocalProvisionerKeys,
+    private fun retainObservedCompanyState(next: LocalCompanyAuthorityStateV1, keys: LocalProvisionerNativeKeys,
         original: LocalCompanyAuthorityBootstrapV1, previous: LocalCompanyAuthorityStateV1?): LocalCompanyAuthorityStateV1 {
         validateState(next.original, keys, original.original)
         validateOriginalTransition(previous?.original, next.original)
@@ -402,7 +402,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Separate authenticated native-local ledger; absent means no publication trust, never a new root. */
-    fun readBusinessPublications(keys: AndroidLocalProvisionerKeys): NativeCompanyBusinessPublicationStateV1? {
+    override fun readBusinessPublications(keys: LocalProvisionerNativeKeys): NativeCompanyBusinessPublicationStateV1? {
         assertContinuity()
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val company = readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -419,7 +419,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Internal actual-source read for the exact next-cut force/recovery protocol only. */
-    private fun readBusinessPublicationsSource(keys: AndroidLocalProvisionerKeys,
+    private fun readBusinessPublicationsSource(keys: LocalProvisionerNativeKeys,
         original: LocalCompanyAuthorityBootstrapV1): NativeCompanyBusinessPublicationStateV1? {
         assertContinuity()
         val stored = snapshots[BUSINESS_PUBLICATIONS] ?: return null
@@ -446,8 +446,8 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainBusinessPublications(next: NativeCompanyBusinessPublicationStateV1,
-        keys: AndroidLocalProvisionerKeys): NativeCompanyBusinessPublicationStateV1 {
+    override fun retainBusinessPublications(next: NativeCompanyBusinessPublicationStateV1,
+        keys: LocalProvisionerNativeKeys): NativeCompanyBusinessPublicationStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val company = readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         val previous = readBusinessPublications(keys)
@@ -497,14 +497,14 @@ internal class AndroidLocalProvisionerRegistry(
         return requireNotNull(readBusinessPublications(keys)).also { known(it == next) }
     }
 
-    fun readOriginalSerialCustody(keys: AndroidLocalProvisionerKeys): OriginalLocalSerialCustodyReferenceV1 {
+    override fun readOriginalSerialCustody(keys: LocalProvisionerNativeKeys): OriginalLocalSerialCustodyReferenceV1 {
         val state = readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         return state.serialCustody?.reference() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
     }
 
     /** Lookup-only recovery of a forced exact next cut. No companion replay or signature. */
-    fun recoverOriginalSerialCustody(originalActionId: DomainId,
-        keys: AndroidLocalProvisionerKeys): OriginalLocalSerialCustodyReferenceV1 {
+    override fun recoverOriginalSerialCustody(originalActionId: DomainId,
+        keys: LocalProvisionerNativeKeys): OriginalLocalSerialCustodyReferenceV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val state = readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         val custody = state.serialCustody ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -524,7 +524,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun retainSerialCustody(next: NativeCompanySerialAuthorityCustodyV1,
-        keys: AndroidLocalProvisionerKeys): LocalCompanyAuthorityStateV1 {
+        keys: LocalProvisionerNativeKeys): LocalCompanyAuthorityStateV1 {
         check(serialCustodyWrite == null)
         val state = readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         serialCustodyWrite = SerialCustodyWrite(state.serialCustody, next)
@@ -533,7 +533,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun validateBusinessPublications(value: NativeCompanyBusinessPublicationStateV1,
-        original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         val company = CompanyScope(original.original.organizationId, original.original.companyId)
         val reserved = original.allIds().toSet()
         known(value.records.all { it.company == company && it.originalActionId !in reserved && it.keyId !in reserved &&
@@ -546,7 +546,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Additive employee ledger on this exact original registry/descriptor/key lifetime. */
-    fun readEmployeeEnrollments(keys: AndroidLocalProvisionerKeys): NativeEmployeeEnrollmentStateV1? {
+    override fun readEmployeeEnrollments(keys: LocalProvisionerNativeKeys): NativeEmployeeEnrollmentStateV1? {
         assertContinuity()
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -562,8 +562,8 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainEmployeeEnrollments(next: NativeEmployeeEnrollmentStateV1,
-        keys: AndroidLocalProvisionerKeys): NativeEmployeeEnrollmentStateV1 {
+    override fun retainEmployeeEnrollments(next: NativeEmployeeEnrollmentStateV1,
+        keys: LocalProvisionerNativeKeys): NativeEmployeeEnrollmentStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val previous = readEmployeeEnrollments(keys)
         NativeEmployeeEnrollmentWireV1.validateTransition(previous, next)
@@ -584,7 +584,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Additive employee-policy ledger on this exact original registry/descriptor/key lifetime. */
-    fun readEmployeePolicyActivations(keys: AndroidLocalProvisionerKeys): NativeEmployeePolicyActivationStateV1? {
+    override fun readEmployeePolicyActivations(keys: LocalProvisionerNativeKeys): NativeEmployeePolicyActivationStateV1? {
         assertContinuity()
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -600,8 +600,8 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainEmployeePolicyActivations(next: NativeEmployeePolicyActivationStateV1,
-        keys: AndroidLocalProvisionerKeys): NativeEmployeePolicyActivationStateV1 {
+    override fun retainEmployeePolicyActivations(next: NativeEmployeePolicyActivationStateV1,
+        keys: LocalProvisionerNativeKeys): NativeEmployeePolicyActivationStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val previous = readEmployeePolicyActivations(keys)
         NativeEmployeePolicyActivationWireV1.validateTransition(previous, next)
@@ -622,7 +622,7 @@ internal class AndroidLocalProvisionerRegistry(
 
     /** NEW pairing preparation ledger on the same retained registry lock/namespace/AEAD.
      * Missing, unknown or partially replaced files are never an authority/key/create bypass. */
-    fun readDevicePairings(keys: AndroidLocalProvisionerKeys): NativeDevicePairingStateV1? {
+    override fun readDevicePairings(keys: LocalProvisionerNativeKeys): NativeDevicePairingStateV1? {
         assertContinuity()
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -638,7 +638,7 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainDevicePairings(next: NativeDevicePairingStateV1, keys: AndroidLocalProvisionerKeys): NativeDevicePairingStateV1 {
+    override fun retainDevicePairings(next: NativeDevicePairingStateV1, keys: LocalProvisionerNativeKeys): NativeDevicePairingStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val previous = readDevicePairings(keys)
         NativeDevicePairingWireV1.validateTransition(previous, next)
@@ -656,15 +656,15 @@ internal class AndroidLocalProvisionerRegistry(
 
     /** Only pairing-created identities and deliberate target/key references, not the
      * original root/company/branch/admitted-device references embedded in the body. */
-    fun devicePairingReservedIdentityIds(keys: AndroidLocalProvisionerKeys): Set<DomainId> =
+    override fun devicePairingReservedIdentityIds(keys: LocalProvisionerNativeKeys): Set<DomainId> =
         readDevicePairings(keys)?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
-    private fun requireNoNewPairingIdentityCollisions(ids: List<DomainId>, keys: AndroidLocalProvisionerKeys) {
+    private fun requireNoNewPairingIdentityCollisions(ids: List<DomainId>, keys: LocalProvisionerNativeKeys) {
         val reserved = devicePairingReservedIdentityIds(keys)
         if (ids.any { it in reserved }) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
     }
 
     /** Newly allocated policy action/request/dispatch identities, never employee target references. */
-    private fun requireNoNewPolicyIdentityCollisions(ids: List<DomainId>, keys: AndroidLocalProvisionerKeys) {
+    private fun requireNoNewPolicyIdentityCollisions(ids: List<DomainId>, keys: LocalProvisionerNativeKeys) {
         if (snapshots[EMPLOYEE_POLICY_ACTIVATIONS] == null) return
         val reserved = readEmployeePolicyActivations(keys)?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
         if (ids.any { it in reserved }) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
@@ -672,7 +672,7 @@ internal class AndroidLocalProvisionerRegistry(
 
     /** Separate additive consumption ledger; pairing originals and their predecessor
      * grammar remain in the complete original pairing file and are never rewritten. */
-    fun readDeviceAdmissions(keys: AndroidLocalProvisionerKeys): NativeDeviceAdmissionStateV1? {
+    override fun readDeviceAdmissions(keys: LocalProvisionerNativeKeys): NativeDeviceAdmissionStateV1? {
         assertContinuity()
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -688,7 +688,7 @@ internal class AndroidLocalProvisionerRegistry(
         } finally { plaintext.fill(0) }
     }
 
-    fun retainDeviceAdmissions(next: NativeDeviceAdmissionStateV1, keys: AndroidLocalProvisionerKeys): NativeDeviceAdmissionStateV1 {
+    override fun retainDeviceAdmissions(next: NativeDeviceAdmissionStateV1, keys: LocalProvisionerNativeKeys): NativeDeviceAdmissionStateV1 {
         val original = companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
         val previous = readDeviceAdmissions(keys)
         NativeDeviceAdmissionWireV1.validateTransition(previous, next)
@@ -704,16 +704,16 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Dispatch-created identities only, not deliberate references to pairing originals. */
-    fun deviceAdmissionReservedIdentityIds(keys: AndroidLocalProvisionerKeys): Set<DomainId> =
+    override fun deviceAdmissionReservedIdentityIds(keys: LocalProvisionerNativeKeys): Set<DomainId> =
         readDeviceAdmissions(keys)?.records.orEmpty().map { it.dispatchId }.toSet()
-    private fun requireNoNewDeviceAdmissionIdentityCollisions(ids: List<DomainId>, keys: AndroidLocalProvisionerKeys) {
+    private fun requireNoNewDeviceAdmissionIdentityCollisions(ids: List<DomainId>, keys: LocalProvisionerNativeKeys) {
         if (snapshots[DEVICE_ADMISSIONS] == null) return
         val reserved = deviceAdmissionReservedIdentityIds(keys)
         if (ids.any { it in reserved }) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
     }
 
     private fun validateDeviceAdmissions(value: NativeDeviceAdmissionStateV1,
-        original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         // Embedded approval DATA is never its own source. This read verifies the genuine
         // FULL pairing ledger, including each unchanged unsigned-predecessor link.
         val pairings = readDevicePairings(keys) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
@@ -728,7 +728,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun validateDevicePairings(value: NativeDevicePairingStateV1,
-        original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         val company = checkNotNull(readCompanyState(keys))
         val rootBytes = company.original.root.copyWireBytes()
         val rootDigest = try { sha256(rootBytes) } finally { rootBytes.fill(0) }
@@ -765,7 +765,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun validateEmployeeEnrollments(value: NativeEmployeeEnrollmentStateV1,
-        original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         val rootBytes = checkNotNull(readCompanyState(keys)).original.root.copyWireBytes()
         val rootDigest = try { sha256(rootBytes) } finally { rootBytes.fill(0) }
         val fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody())
@@ -789,7 +789,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun validateEmployeePolicyActivations(value: NativeEmployeePolicyActivationStateV1,
-        original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         val rootBytes = checkNotNull(readCompanyState(keys)).original.root.copyWireBytes()
         val rootDigest = try { sha256(rootBytes) } finally { rootBytes.fill(0) }
         val fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody())
@@ -815,7 +815,7 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     /** Preflight BEFORE enrollment-start or a new claim; this grants no signing permission. */
-    fun requireCompanyCapacity(next: LocalCompanyAuthorityStateV1) {
+    override fun requireCompanyCapacity(next: LocalCompanyAuthorityStateV1) {
         encodeCompanyStateWithCompletionCapacity(next).fill(0)
     }
 
@@ -956,13 +956,13 @@ internal class AndroidLocalProvisionerRegistry(
     }
 
     private fun validateCompanyState(state: LocalCompanyAuthorityStateV1, original: LocalCompanyAuthorityBootstrapV1,
-        keys: AndroidLocalProvisionerKeys) {
+        keys: LocalProvisionerNativeKeys) {
         validateState(state.original, keys, original.original)
         validateCompanyExtensions(state, original, keys)
     }
 
     private fun validateCompanyExtensions(state: LocalCompanyAuthorityStateV1, original: LocalCompanyAuthorityBootstrapV1,
-        keys: AndroidLocalProvisionerKeys) {
+        keys: LocalProvisionerNativeKeys) {
         val head = state.head
         known(head.headAuthorityId == original.headAuthorityId && head.headEnrollmentId == original.headEnrollmentId &&
             head.name == original.headName && head.login == original.headLogin && head.throttleBoot <= environment.bootCount)
@@ -1026,7 +1026,7 @@ internal class AndroidLocalProvisionerRegistry(
 
     /** Actual founding/root/head/issuer sources, never company-ID/P2 self-attestation. */
     private fun requireOriginalSerialCustodyOrigin(custody: NativeCompanySerialAuthorityCustodyV1,
-        state: LocalCompanyAuthorityStateV1, original: LocalCompanyAuthorityBootstrapV1, keys: AndroidLocalProvisionerKeys) {
+        state: LocalCompanyAuthorityStateV1, original: LocalCompanyAuthorityBootstrapV1, keys: LocalProvisionerNativeKeys) {
         val origin = custody.authority.origin
         val allocation = state.original.allocations.singleOrNull()
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
@@ -1077,7 +1077,7 @@ internal class AndroidLocalProvisionerRegistry(
         }
     }
 
-    private fun validateState(state: LocalProvisionerRegistryStateV1, keys: AndroidLocalProvisionerKeys,
+    private fun validateState(state: LocalProvisionerRegistryStateV1, keys: LocalProvisionerNativeKeys,
         original: SelfOwnedBootstrapV1) {
         // V1 exposes founding enrollment, not a 64-account administration/import API.
         known(state.installers.size == 1 && state.allocations.size <= 1)
@@ -1229,7 +1229,7 @@ internal class AndroidLocalProvisionerRegistry(
     private fun closeTransient(value: OwnedDescriptor) { value.closeOnce(); descriptors.remove(value) }
 
     /** Called only inside watched discard/close; CLOSED is idempotent, unknown CLOSE_STARTED is not. */
-    fun closeNative() {
+    override fun closeNative() {
         if (phase == Phase.CLOSED) return
         if (phase == Phase.CLOSE_STARTED) {
             work.nativeClosureUnknown()
@@ -1286,7 +1286,7 @@ internal class AndroidLocalProvisionerRegistry(
     private class VerifiedBusinessPublications(
         val snapshot: Snapshot,
         val original: LocalCompanyAuthorityBootstrapV1,
-        val keys: AndroidLocalProvisionerKeys,
+        val keys: LocalProvisionerNativeKeys,
         val state: NativeCompanyBusinessPublicationStateV1,
     )
     private data class Stamp(val device: Long, val inode: Long, val uid: Int, val gid: Int, val mode: Int,
@@ -1338,8 +1338,7 @@ internal class AndroidLocalProvisionerRegistry(
         private const val FILE_MODE = 384 // 0600
 
         fun sameFacts(left: SelfOwnedCompanyFactsV1, right: SelfOwnedCompanyFactsV1): Boolean =
-            left.companyName == right.companyName && left.responsiblePersonName == right.responsiblePersonName &&
-                left.installerLogin == right.installerLogin && left.protection == right.protection
+            sameProvisionerCompanyFacts(left, right)
 
         private fun sameSigned(left: SelfOwnedSignedDocumentV1, right: SelfOwnedSignedDocumentV1): Boolean {
             val l = left.copyWireBytes(); val r = right.copyWireBytes()

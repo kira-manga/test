@@ -9,9 +9,9 @@ import java.util.concurrent.atomic.AtomicReference
  * Neither SQL existence nor a supplied outcome/cleanup callback terminalizes an original. */
 internal class AndroidLocalCompanyDeviceAdmissions(
     private val owner: AndroidSelfOwnedInstallationLifetime,
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,

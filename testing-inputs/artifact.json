@@ -1,8 +1,19 @@
 {
-  "source_revision": "a00d830336e21ecd4d251845646b6eef91c8b3f8",
+  "status": "PACKAGED_NOT_EXECUTED_NOT_OWNER_READY",
+  "synthetic_data_only": true,
+  "package": "com.ukkera.pos.local.testing",
+  "debuggable": false,
+  "ordinary_production_services_and_native_checks": true,
+  "source_revision": "7594e8e12dfc38a635d0db0860dea4263c2fe947",
   "working_tree_dirty": false,
-  "apk_sha256": "38308dcfc5672c4f26e061e9cb05cdee26f4d4c6af1d4cc3680c94161141ca33",
-  "apk_bytes": 34382510,
-  "status": "PACKAGED_NOT_EXECUTED",
-  "signer_certificate_sha256": "54f974f83a806bd08dfebd647615e31c3c11866ba9f81a78774aee544dc9e08f"
+  "build_command": ":apps:android:assembleLocalTesting",
+  "unsigned_sha256": "4a8170358c6ff427cf7dfb1f4ca7abc1c346a4c88ac12f5f6889639976497c6c",
+  "apk": "ukkera-pos-testing.apk",
+  "apk_sha256": "751ebd5612798622fb37da9f072300a4731486c17d8ae3324338b38367556821",
+  "apk_bytes": 34562734,
+  "signature_report_sha256": "e9231c69e82f1a4dfa544fe88aa41e163210914c658a3b994f403d5439b31d2c",
+  "badging_report_sha256": "bb6a327a44ae92557806800169d176ef3169378e1b760de76b483cb3116357a8",
+  "packaged_utc": "2026-11-12T22:26:08.050796+00:00",
+  "central_implementation_and_verification": "HELD_NOT_RUN",
+  "limits": "Declared minimum is Android7/API24; native security must meet the selected key-protection policy, and actual admission remains required. Packaging is not setup/checkout/native/device acceptance or proof of full API24 compatibility. No debug-key, test authority, fixture data or permissive verifier is injected."
 }

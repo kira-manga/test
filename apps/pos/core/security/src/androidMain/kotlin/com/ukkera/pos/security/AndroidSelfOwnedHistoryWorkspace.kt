@@ -33,7 +33,7 @@ internal class AndroidSelfOwnedHistoryWorkspace(
     private val work: AndroidOwnedInstallationWork,
     private val environment: AndroidSelfOwnedEnvironment,
     private val original: OriginalNativeHistorySnapshot,
-) : SelfOwnedNativeHistoryWorkspaceController {
+) : SelfOwnedNativeHistoryWorkspaceController , SelfOwnedHistoryWorkspaceStore {
     private enum class State { NEW, OPENING, OPEN, CLOSING, CLOSED, UNKNOWN }
     private var state = State.NEW
     private var directory: File? = null
@@ -57,9 +57,9 @@ internal class AndroidSelfOwnedHistoryWorkspace(
     private var lastRecordId = 0L
     private val cursors = mutableSetOf<SelfOwnedNativeHistoryDataCursor>()
 
-    val actuallyClosedNative: Boolean get() = state == State.CLOSED
+    override val actuallyClosedNative: Boolean get() = state == State.CLOSED
 
-    fun openNative() {
+    override fun openNative() {
         known(state == State.NEW)
         state = State.OPENING
         try {
@@ -528,7 +528,7 @@ internal class AndroidSelfOwnedHistoryWorkspace(
     }
 
     /** Cleanup only. The retained reader invokes this before its own actual native close. */
-    fun closeNative() {
+    override fun closeNative() {
         if (state == State.CLOSED) return
         if (state == State.CLOSING || state == State.UNKNOWN) { work.nativeClosureUnknown(); uncertain() }
         state = State.CLOSING

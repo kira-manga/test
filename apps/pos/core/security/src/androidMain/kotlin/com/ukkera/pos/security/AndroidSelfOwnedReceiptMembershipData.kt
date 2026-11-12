@@ -32,9 +32,8 @@ internal class AndroidSelfOwnedReceiptMembershipData(
     private val work: AndroidOwnedInstallationWork,
     private val environment: AndroidSelfOwnedEnvironment,
     readIdentity: Any?,
-) : SelfOwnedNativeReceiptMembershipDataController {
-    internal enum class State { NEW, OPENING, BUILDING, PARKING, PARKED, REOPENING, PREPARED, ACTIVE, CLOSING, CLOSED, UNKNOWN }
-    @Volatile private var state = State.NEW
+) : SelfOwnedNativeReceiptMembershipDataController , SelfOwnedReceiptMembershipStore {
+    @Volatile private var state = SelfOwnedReceiptMembershipState.NEW
     private val busy = AtomicBoolean(false)
     private val denied = AtomicBoolean(false)
     private var readIdentity: Any? = readIdentity
@@ -58,17 +57,17 @@ internal class AndroidSelfOwnedReceiptMembershipData(
     private var nextSequence = 1L
     private var endOffset = 0L
 
-    internal val stateNative: State get() = state
-    internal val readIdentityNative: Any? get() = readIdentity
+    override val stateNative: SelfOwnedReceiptMembershipState get() = state
+    override val readIdentityNative: Any? get() = readIdentity
 
-    internal fun belongsToReadNative(identity: Any): Boolean = readIdentity === identity
+    override fun belongsToReadNative(identity: Any): Boolean = readIdentity === identity
 
-    internal fun requireActuallyParkedNative() {
-        known(state == State.PARKED && !busy.get() && descriptors.isEmpty() &&
+    override fun requireActuallyParkedNative() {
+        known(state == SelfOwnedReceiptMembershipState.PARKED && !busy.get() && descriptors.isEmpty() &&
             parentDescriptor == null && directoryDescriptor == null && fileDescriptor == null)
     }
 
-    internal fun requireCompletedBuildParkedNative() {
+    override fun requireCompletedBuildParkedNative() {
         requireActuallyParkedNative()
         known(constructionCompleted && !denied.get() && readIdentity != null &&
             directoryCreated && !directoryRemoved && fileCreated && !fileRemoved &&
@@ -76,23 +75,23 @@ internal class AndroidSelfOwnedReceiptMembershipData(
             encryptionKey != null && locatorKey != null && resourceId != null && noncePrefix != null)
     }
 
-    internal fun requirePreparedForDeliveryNoIo() {
-        known(state == State.PREPARED && constructionCompleted && !busy.get() && !denied.get() && readIdentity != null &&
+    override fun requirePreparedForDeliveryNoIo() {
+        known(state == SelfOwnedReceiptMembershipState.PREPARED && constructionCompleted && !busy.get() && !denied.get() && readIdentity != null &&
             parentDescriptor != null && directoryDescriptor != null && fileDescriptor != null)
     }
 
-    internal fun activatePreparedNoIo() {
+    override fun activatePreparedNoIo() {
         requirePreparedForDeliveryNoIo()
         readIdentity = null
-        state = State.ACTIVE
+        state = SelfOwnedReceiptMembershipState.ACTIVE
     }
 
-    internal fun abandonDeliveryNoIo() { denied.set(true); readIdentity = null }
-    internal fun denyUseNoIo() { denied.set(true) }
+    override fun abandonDeliveryNoIo() { denied.set(true); readIdentity = null }
+    override fun denyUseNoIo() { denied.set(true) }
 
-    internal fun openNative() {
-        known(state == State.NEW)
-        state = State.OPENING
+    override fun openNative() {
+        known(state == SelfOwnedReceiptMembershipState.NEW)
+        state = SelfOwnedReceiptMembershipState.OPENING
         owner.requireReceiptMembershipDataNative(this)
         val random = SecureRandom()
         resourceId = ByteArray(16)
@@ -134,15 +133,15 @@ internal class AndroidSelfOwnedReceiptMembershipData(
         requireFile(observedFile)
         known(observedFile.sameIdentity(stamp(Os.lstat(file.path))) && observedFile.bytes == 0L)
         fileStamp = observedFile
-        state = if (readIdentity == null) State.ACTIVE else State.BUILDING
+        state = if (readIdentity == null) SelfOwnedReceiptMembershipState.ACTIVE else SelfOwnedReceiptMembershipState.BUILDING
         owner.requireReceiptMembershipDataNative(this)
         checkFootprint(open = true, active = true)
         constructionCompleted = true
     }
 
-    internal fun reopenAfterClosedReadNative() {
+    override fun reopenAfterClosedReadNative() {
         requireCompletedBuildParkedNative()
-        state = State.REOPENING
+        state = SelfOwnedReceiptMembershipState.REOPENING
         owner.requireReceiptMembershipDataNative(this)
         checkFootprint(open = false, active = true)
         parentDescriptor = openDirectory(environment.noBackupDirectory, requireNotNull(parentStamp))
@@ -150,7 +149,7 @@ internal class AndroidSelfOwnedReceiptMembershipData(
         // The file must be the exact existing DATA file; reopen has no CREATE or replacement edge.
         fileDescriptor = openDescriptor(File(requireNotNull(directory), FILE_NAME),
             OsConstants.O_RDWR or OsConstants.O_NOFOLLOW, 0)
-        state = State.PREPARED
+        state = SelfOwnedReceiptMembershipState.PREPARED
         owner.requireReceiptMembershipDataNative(this)
         checkFootprint(open = true, active = true)
     }
@@ -174,7 +173,7 @@ internal class AndroidSelfOwnedReceiptMembershipData(
     override suspend fun preflight(): Unit = dataWork { token -> task(token) { Unit } }
 
     override suspend fun park(): Unit = withContext(NonCancellable) {
-        if (state == State.PARKED || state == State.CLOSED) return@withContext
+        if (state == SelfOwnedReceiptMembershipState.PARKED || state == SelfOwnedReceiptMembershipState.CLOSED) return@withContext
         val token = work.roomToken(currentCoroutineContext())
             ?: throw NativeHistoryUnavailable(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
         owner.requireReceiptMembershipDataCleanupNative(this@AndroidSelfOwnedReceiptMembershipData, token)
@@ -191,24 +190,24 @@ internal class AndroidSelfOwnedReceiptMembershipData(
     }
 
     private fun parkNative() {
-        if (state == State.PARKED || state == State.CLOSED) return
-        if (state == State.PARKING || state == State.CLOSING || state == State.UNKNOWN) closureUnknown()
-        state = State.PARKING
+        if (state == SelfOwnedReceiptMembershipState.PARKED || state == SelfOwnedReceiptMembershipState.CLOSED) return
+        if (state == SelfOwnedReceiptMembershipState.PARKING || state == SelfOwnedReceiptMembershipState.CLOSING || state == SelfOwnedReceiptMembershipState.UNKNOWN) closureUnknown()
+        state = SelfOwnedReceiptMembershipState.PARKING
         try {
             for (descriptor in descriptors.toList().asReversed()) descriptor.closeActual()
             parentDescriptor = null; directoryDescriptor = null; fileDescriptor = null
-            state = State.PARKED
-        } catch (failure: Throwable) { state = State.UNKNOWN; work.nativeClosureUnknown(); throw failure }
+            state = SelfOwnedReceiptMembershipState.PARKED
+        } catch (failure: Throwable) { state = SelfOwnedReceiptMembershipState.UNKNOWN; work.nativeClosureUnknown(); throw failure }
     }
 
     /** Only the lifetime's actual watched terminal cleanup calls this. No active-data guard. */
-    internal fun closeNative() {
-        if (state == State.CLOSED) return
+    override fun closeNative() {
+        if (state == SelfOwnedReceiptMembershipState.CLOSED) return
         if (!busy.compareAndSet(false, true)) closureUnknown()
         denied.set(true)
         try {
             parkNative()
-            state = State.CLOSING
+            state = SelfOwnedReceiptMembershipState.CLOSING
             if (directoryCreated && !directoryRemoved) {
                 val ownedDirectory = requireNotNull(directory)
                 known(requireNotNull(parentStamp).sameDirectory(stamp(Os.lstat(environment.noBackupDirectory.path))))
@@ -236,8 +235,8 @@ internal class AndroidSelfOwnedReceiptMembershipData(
             noncePrefix?.fill(0); noncePrefix = null
             readIdentity = null
             constructionCompleted = false
-            state = State.CLOSED
-        } catch (failure: Throwable) { state = State.UNKNOWN; work.nativeClosureUnknown(); throw failure }
+            state = SelfOwnedReceiptMembershipState.CLOSED
+        } catch (failure: Throwable) { state = SelfOwnedReceiptMembershipState.UNKNOWN; work.nativeClosureUnknown(); throw failure }
         finally { busy.set(false) }
     }
 
@@ -408,7 +407,7 @@ internal class AndroidSelfOwnedReceiptMembershipData(
     }
 
     private fun guard(token: Any) {
-        known(state == State.BUILDING || state == State.PREPARED || state == State.ACTIVE)
+        known(state == SelfOwnedReceiptMembershipState.BUILDING || state == SelfOwnedReceiptMembershipState.PREPARED || state == SelfOwnedReceiptMembershipState.ACTIVE)
         progressGuard(token)
         owner.requireReceiptMembershipDataNative(this)
         checkFootprint(open = true, active = true)

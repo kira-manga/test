@@ -15,7 +15,7 @@ internal class AndroidSelfOwnedInstallationSigning(
     private val environment: AndroidSelfOwnedEnvironment,
     private val journal: AndroidSelfOwnedInstallationJournal,
     private val work: AndroidOwnedInstallationWork,
-) {
+): SelfOwnedOriginalSigning {
     private val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null, null) }
 
     // Pure verification of immutable document bytes only. Never a currentness,
@@ -33,7 +33,7 @@ internal class AndroidSelfOwnedInstallationSigning(
     )
 
     /** Missing native intent cannot adopt any orphan target/storage/pepper alias as a new key. */
-    fun assertAliasNamespace() {
+    override fun assertAliasNamespace() {
         work.requireActive(); environment.requireCurrent()
         val original = journal.intentOrNull()
         val allowed = if (original == null) emptySet() else original.keys
@@ -52,7 +52,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         environment.requireCurrent(); work.requireActive()
     }
 
-    fun prepareOriginalSigningKey() {
+    override fun prepareOriginalSigningKey() {
         assertAliasNamespace()
         var original = journal.intent(); var intent = original.key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING)
         requireNativeSelfOwnedProtection(original.source.preparationBody.protection)
@@ -83,16 +83,16 @@ internal class AndroidSelfOwnedInstallationSigning(
         checkedKey()
     }
 
-    fun assertOriginalSigningKey() { checkedKey(); guard() }
+    override fun assertOriginalSigningKey() { checkedKey(); guard() }
 
-    fun originalPoint(): ByteArray {
+    override fun originalPoint(): ByteArray {
         checkedKey()
         val point = journal.intent().key(SelfOwnedTargetKeyRoleV1.TARGET_SIGNING).proof.copyBytes()
         try { checkedKey(); return point } catch (failure: Throwable) { point.fill(0); throw failure }
     }
 
     /** Crypto consistency alone is NOT imported-root origin; actual P1/journal origin is separate. */
-    fun verifyOriginalSource() {
+    override fun verifyOriginalSource() {
         // intent() still performs the real namespace check on every invocation.
         val source = journal.intent().source
         if (!source.preparationBody.target.same(environment.target)) keyFailure()
@@ -118,7 +118,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         verifiedOriginalSource = source // Publish only after every check returned.
     }
 
-    fun createOriginalBinding(): SelfOwnedNativeBindingV1 {
+    override fun createOriginalBinding(): SelfOwnedNativeBindingV1 {
         val body = SelfOwnedNativeInstallationWireV1.encodeBindingBody(expectedBindingBody())
         val message = try { SelfOwnedNativeInstallationWireV1.bindingSigningMessage(body) }
         catch (failure: Throwable) { body.fill(0); throw failure }
@@ -131,7 +131,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         } finally { body.fill(0); message.fill(0) }
     }
 
-    fun validateOriginalBinding(binding: SelfOwnedNativeBindingV1) {
+    override fun validateOriginalBinding(binding: SelfOwnedNativeBindingV1) {
         val expected = SelfOwnedNativeInstallationWireV1.encodeBindingBody(expectedBindingBody())
         val actual = binding.body(); val signature = binding.signature()
         val point = originalPoint()
@@ -144,7 +144,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         } finally { expected.fill(0); actual.fill(0); signature.fill(0); point.fill(0) }
     }
 
-    fun signJournalEnvelope(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
+    override fun signJournalEnvelope(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
         requireJournalFrame(aad, nonce, ciphertext)
         val message = SelfOwnedNativeInstallationWireV1.stateSignature(aad, nonce, ciphertext)
         val signature = try { AndroidP256Primitives.sign(checkedKey(), message) } finally { message.fill(0) }
@@ -158,8 +158,8 @@ internal class AndroidSelfOwnedInstallationSigning(
      * whole verification instead. No proof object, plaintext buffer or key handle escapes.
      * The storage decrypt still performs its own native key checks before and after use.
      */
-    fun openOriginalJournalState(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1,
-        material: AndroidSelfOwnedDataKeyMaterial): SelfOwnedNativeJournalStateV1 {
+    override fun openOriginalJournalState(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1,
+        material: SelfOwnedOriginalDataKeys): SelfOwnedNativeJournalStateV1 {
         requireJournalFrame(aad, envelope.nonce, envelope.ciphertext)
         val original = journal.intent()
         checkedKey() // Actual original private-key possession and native metadata, before read.
@@ -192,8 +192,8 @@ internal class AndroidSelfOwnedInstallationSigning(
     }
 
     /** Actual original allocation, not hashes supplied by a caller or imported signature chain. */
-    fun originalHistoryAllocation(binding: SelfOwnedNativeBindingV1,
-        initial: AndroidOriginalCompanionInitialization? = null): OriginalAllocationCommitmentV2 {
+    override fun originalHistoryAllocation(binding: SelfOwnedNativeBindingV1,
+        initial: AndroidOriginalCompanionInitialization?): OriginalAllocationCommitmentV2 {
         requireHistoryAcquisition(initial)
         validateOriginalBinding(binding)
         val source = journal.intent().source
@@ -208,15 +208,15 @@ internal class AndroidSelfOwnedInstallationSigning(
     }
 
     /** V2 history is a distinct closed original-target domain. N-only methods are untouched. */
-    fun signHistoryEnvelope(allocation: OriginalAllocationCommitmentV2, aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray,
-        initial: AndroidOriginalCompanionInitialization? = null): ByteArray {
+    override fun signHistoryEnvelope(allocation: OriginalAllocationCommitmentV2, aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray,
+        initial: AndroidOriginalCompanionInitialization?): ByteArray {
         requireHistoryFrame(allocation,aad,nonce,ciphertext,initial)
         val message = SelfOwnedNativeHistoryWireV2.envelopeSignatureMessage(aad,nonce,ciphertext)
         val signature = try { AndroidP256Primitives.sign(checkedKey(),message) } finally { message.fill(0) }
         return try { checkedKey(); signature } catch (failure: Throwable) { signature.fill(0); throw failure }
     }
-    fun verifyHistoryEnvelope(allocation: OriginalAllocationCommitmentV2, aad: ByteArray, envelope: NativeHistoryEnvelopeV2,
-        initial: AndroidOriginalCompanionInitialization? = null) {
+    override fun verifyHistoryEnvelope(allocation: OriginalAllocationCommitmentV2, aad: ByteArray, envelope: NativeHistoryEnvelopeV2,
+        initial: AndroidOriginalCompanionInitialization?) {
         requireHistoryFrame(allocation,aad,envelope.nonce,envelope.ciphertext,initial)
         val point = originalPoint(); var message = ByteArray(0)
         try {
@@ -252,7 +252,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         return try { writer.coordinates(value); writer.finish() } finally { writer.clear() }
     }
 
-    fun verifyOriginalHumanApproval(snapshot: LocalBranchInstallationSnapshotV2, attempt: LocalInstallationAttemptFactsV2,
+    override fun verifyOriginalHumanApproval(snapshot: LocalBranchInstallationSnapshotV2, attempt: LocalInstallationAttemptFactsV2,
         proof: LocalInstallationSignedApprovalV2) {
         environment.requireExistingOriginalObservation()
         val source = journal.intent().source
@@ -278,7 +278,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         } finally { message.fill(0); actual.fill(0); signature.fill(0); point.fill(0) }
         guard()
     }
-    fun verifyOriginalTargetApproval(snapshot: LocalBranchInstallationSnapshotV2, attempt: LocalInstallationAttemptFactsV2,
+    override fun verifyOriginalTargetApproval(snapshot: LocalBranchInstallationSnapshotV2, attempt: LocalInstallationAttemptFactsV2,
         human: LocalInstallationSignedApprovalV2, proof: LocalInstallationSignedApprovalV2) {
         verifyOriginalHumanApproval(snapshot,attempt,human)
         val expected = LocalBranchInstallationWireV2.targetApprovalFrame(snapshot,attempt,human)
@@ -292,7 +292,7 @@ internal class AndroidSelfOwnedInstallationSigning(
         } finally { message.fill(0); actual.fill(0); signature.fill(0); point.fill(0); expectedPoint.fill(0) }
         checkedKey(); guard()
     }
-    fun signOriginalTargetApproval(anchor: AndroidSelfOwnedHistoryAnchor, attempt: OriginalInstallationAttempt,
+    override fun signOriginalTargetApproval(anchor: AndroidSelfOwnedHistoryAnchor, attempt: OriginalInstallationAttempt,
         human: LocalInstallationSignedApprovalV2): LocalInstallationSignedApprovalV2 {
         anchor.requireIssuerParticipant(work,environment)
         anchor.requireOriginalAttemptForIssuance(attempt)
@@ -308,7 +308,7 @@ internal class AndroidSelfOwnedInstallationSigning(
             }
         } finally { signature.fill(0) }
     }
-    fun verifyOriginalAcknowledgement(value: LocalInstallationSignedAcknowledgementV2) {
+    override fun verifyOriginalAcknowledgement(value: LocalInstallationSignedAcknowledgementV2) {
         environment.requireExistingOriginalObservation()
         val root = journal.intent().source.rootBody
         if (value.frame.rootKeyId != root.rootKeyId) keyFailure()

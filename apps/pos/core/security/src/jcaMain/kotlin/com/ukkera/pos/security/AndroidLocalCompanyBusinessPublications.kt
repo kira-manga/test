@@ -1,15 +1,13 @@
 package com.ukkera.pos.security
 
-import android.os.SystemClock
-import android.util.Log
 import com.ukkera.pos.types.DomainId
 import org.bouncycastle.math.ec.rfc8032.Ed25519
 
 /** Execute-only participant of the same native owner/worker. It never opens a second owner. */
 internal class AndroidLocalCompanyBusinessPublications(
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val issuance: AndroidLocalCompanyIssuanceGate,
     private val history: AndroidSelfOwnedHistoryAnchor,
@@ -456,11 +454,11 @@ internal class AndroidLocalCompanyBusinessPublications(
     /** Fixed phase names and elapsed durations only; no keys, credentials, content or IDs.
      * Observation neither changes the owned work deadline nor grants currentness. */
     private inline fun <T> publicationPhase(phase: String, action: () -> T): T {
-        val started = SystemClock.elapsedRealtime()
-        try { Log.i("UkkeraNativeOwner", "Company publication phase: $phase-entered") }
+        val started = work.platform.elapsedMillis()
+        try { work.platform.info("Company publication phase: $phase-entered") }
         catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
         val result = action()
-        try { Log.i("UkkeraNativeOwner", "Company publication phase: $phase-returned; durationMillis=${SystemClock.elapsedRealtime() - started}") }
+        try { work.platform.info("Company publication phase: $phase-returned; durationMillis=${work.platform.elapsedMillis() - started}") }
         catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
         return result
     }

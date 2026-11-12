@@ -10,6 +10,8 @@ internal object AndroidSelfOwnedProcess : SelfOwnedProcessPlatform {
     override fun pid(): Int = Process.myPid()
     override fun uid(): Int = Process.myUid()
     override fun elapsedMillis(): Long = SystemClock.elapsedRealtime()
+    override fun elapsedRealtimeNanos(): Long = SystemClock.elapsedRealtimeNanos()
+    override fun passwordKeyFactory(): javax.crypto.SecretKeyFactory = AndroidNativePasswordKeyDerivation.secretKeyFactory()
     override fun terminate(pid: Int) {
         try { Process.killProcess(pid) } catch (_: Throwable) { /* lease remains held */ }
         try { Process.sendSignal(pid, 9) } catch (_: Throwable) { /* no replacement is admitted */ }

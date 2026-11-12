@@ -2,8 +2,8 @@ package com.ukkera.pos.security
 
 /** Actual original target-journal transitions. File custody is the SAME retained namespace. */
 internal class AndroidSelfOwnedInstallationJournal(
-    private val namespace: AndroidSelfOwnedDatabaseNamespace,
-    private val environment: AndroidSelfOwnedEnvironment,
+    private val namespace: SelfOwnedOriginalDatabaseNamespace,
+    private val environment: SelfOwnedOriginalEnvironment,
     private val work: AndroidOwnedInstallationWork,
     private val ownerToken: Any,
 ) {
@@ -99,8 +99,8 @@ internal class AndroidSelfOwnedInstallationJournal(
     }
 
     /** Authenticated positive native state only; absence after a prior binding marker is unresolved. */
-    fun readState(signing: AndroidSelfOwnedInstallationSigning,
-        material: AndroidSelfOwnedDataKeyMaterial): SelfOwnedNativeJournalStateV1? {
+    fun readState(signing: SelfOwnedOriginalSigning,
+        material: SelfOwnedOriginalDataKeys): SelfOwnedNativeJournalStateV1? {
         val original = intent()
         val encoded = namespace.readState() ?: return null
         try {
@@ -114,8 +114,8 @@ internal class AndroidSelfOwnedInstallationJournal(
         } finally { encoded.fill(0) }
     }
 
-    fun retainState(next: SelfOwnedNativeJournalStateV1, signing: AndroidSelfOwnedInstallationSigning,
-        material: AndroidSelfOwnedDataKeyMaterial): SelfOwnedNativeJournalStateV1 {
+    fun retainState(next: SelfOwnedNativeJournalStateV1, signing: SelfOwnedOriginalSigning,
+        material: SelfOwnedOriginalDataKeys): SelfOwnedNativeJournalStateV1 {
         val original = intent()
         known(original.complete() && original.bindingStarted)
         val previous = readState(signing, material)

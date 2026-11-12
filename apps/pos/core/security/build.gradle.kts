@@ -22,7 +22,12 @@ kotlin {
     // Preserve iosMain actuals while adding the separate JVM/Android JCA branch.
     applyDefaultHierarchyTemplate()
     sourceSets {
-        val jcaMain by creating { dependsOn(commonMain.get()) }
+        val jcaMain by creating {
+            dependsOn(commonMain.get())
+            // Direct RFC8032 primitives; no global JCA provider replacement. The supported
+            // Android baseline does not guarantee platform Ed25519 for company publication.
+            dependencies { implementation(libs.sqlite.bundled); implementation(libs.bouncycastle.provider) }
+        }
         jvmMain.get().dependsOn(jcaMain)
         androidMain.get().dependsOn(jcaMain)
         commonMain.dependencies {
@@ -35,10 +40,6 @@ kotlin {
         androidMain.dependencies {
             api(project(":adapters:android-native-files"))
             implementation(libs.p2pkit.lan)
-            implementation(libs.sqlite.bundled)
-            // Direct RFC8032 primitives; no global JCA provider replacement. The supported
-            // Android baseline does not guarantee platform Ed25519 for company publication.
-            implementation(libs.bouncycastle.provider)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

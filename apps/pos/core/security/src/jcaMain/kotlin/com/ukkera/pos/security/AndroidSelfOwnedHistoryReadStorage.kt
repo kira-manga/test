@@ -22,10 +22,10 @@ import kotlinx.coroutines.withContext
 internal class AndroidSelfOwnedHistoryReadStorage(
     private val owner: AndroidSelfOwnedInstallationLifetime,
     private val work: AndroidOwnedInstallationWork,
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val namespace: AndroidSelfOwnedDatabaseNamespace,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val namespace: SelfOwnedOriginalDatabaseNamespace,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
-    private val material: AndroidSelfOwnedDataKeyMaterial,
+    private val material: SelfOwnedOriginalDataKeys,
     private val ownerIdentity: Any,
     val original: OriginalNativeHistorySnapshot,
     val employeeSelection: NativeEmployeeEnrollmentHistorySelection? = null,
@@ -41,8 +41,8 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     private enum class State { NEW, OPENING, READING, CLOSING, CLOSED, UNKNOWN }
     private var state = State.NEW
     private val sessionIdentity = Any()
-    private var databasePin: AndroidSelfOwnedDatabaseNamespace.OriginalDatabasePin? = null
-    private var actuallyClosedPin: AndroidSelfOwnedDatabaseNamespace.OriginalDatabasePin? = null
+    private var databasePin: OriginalDatabasePin? = null
+    private var actuallyClosedPin: OriginalDatabasePin? = null
     private var connection: SQLiteConnection? = null
     private var connectionCloseStarted = false
     private val statements = mutableListOf<OwnedStatement>()
@@ -58,7 +58,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     // close, including cancellation/abandonment after a delivered wrapper is lost.
     private var retainedRowBatch: List<NativeHistoryRowBatchItemV2> = emptyList()
     private var lastClose: SelfOwnedNativeHistoryReadClosed? = null
-    private var dataWorkspace: AndroidSelfOwnedHistoryWorkspace? = null
+    private var dataWorkspace: SelfOwnedHistoryWorkspaceStore? = null
 
     fun openNative() {
         check(state == State.NEW)
@@ -69,7 +69,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         val binding = original.record.database ?: uncertain()
         work.roomCoroutines.traceStage("history-read-open-after-custody")
         try {
-            val pin = namespace.pinOriginalDatabase(binding,AndroidSelfOwnedDatabaseNamespace.OriginalDatabaseUse.STABLE_READ)
+            val pin = namespace.pinOriginalDatabase(binding,OriginalDatabaseUse.STABLE_READ)
             databasePin = pin
             work.roomCoroutines.traceStage("history-read-open-after-pin")
             val driver = BundledSQLiteDriver()
@@ -159,7 +159,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         perform(dispose = { dataWorkspace?.closeNative() }) {
             known(session.controller === this && session.original === original)
             if (dataWorkspace != null) selfOwnedFail(SelfOwnedInstallationFailureV1.BUSY)
-            val retained = AndroidSelfOwnedHistoryWorkspace(this, work, environment, original)
+            val retained = owner.platform.historyWorkspace(this, work, environment, original)
             dataWorkspace = retained // Retain before any file/key/SQLite acquisition.
             retained.openNative()
             SelfOwnedNativeHistoryWorkspace(retained, original)
@@ -277,11 +277,11 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     internal class RollbackPager private constructor(
         private val owner: AndroidSelfOwnedInstallationLifetime,
         private val work: AndroidOwnedInstallationWork,
-        private val environment: AndroidSelfOwnedEnvironment,
-        private val namespace: AndroidSelfOwnedDatabaseNamespace,
+        private val environment: SelfOwnedOriginalEnvironment,
+        private val namespace: SelfOwnedOriginalDatabaseNamespace,
         private val binding: NativeHistoryDatabaseIdentityV2,
     ) {
-        private var pin: AndroidSelfOwnedDatabaseNamespace.OriginalDatabasePin? = null
+        private var pin: OriginalDatabasePin? = null
         private var handle: SQLiteConnection? = null
         private var statement: SQLiteStatement? = null
         private var statementCloseStarted = false
@@ -293,7 +293,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
             check(pin == null && handle == null && !closed)
             try {
                 // No size/header/page validity check before this actual RW/noCREATE pager.
-                pin = namespace.pinOriginalDatabase(binding,AndroidSelfOwnedDatabaseNamespace.OriginalDatabaseUse.ROLLBACK_PAGER)
+                pin = namespace.pinOriginalDatabase(binding,OriginalDatabaseUse.ROLLBACK_PAGER)
                 val driver = BundledSQLiteDriver(); knownPager(!driver.hasConnectionPool)
                 handle = driver.open(requireNotNull(pin).path,SQLITE_OPEN_READWRITE or SQLITE_OPEN_NOFOLLOW)
                 namespace.assertOriginalDatabasePin(requireNotNull(pin))
@@ -327,8 +327,8 @@ internal class AndroidSelfOwnedHistoryReadStorage(
             } catch (failure: Throwable) { work.nativeClosureUnknown(); throw failure }
         }
         internal fun requireOriginalCustody(actualOwner: AndroidSelfOwnedInstallationLifetime,
-            actualWork: AndroidOwnedInstallationWork, actualEnvironment: AndroidSelfOwnedEnvironment,
-            actualNamespace: AndroidSelfOwnedDatabaseNamespace, originalBinding: NativeHistoryDatabaseIdentityV2) {
+            actualWork: AndroidOwnedInstallationWork, actualEnvironment: SelfOwnedOriginalEnvironment,
+            actualNamespace: SelfOwnedOriginalDatabaseNamespace, originalBinding: NativeHistoryDatabaseIdentityV2) {
             knownPager(owner === actualOwner && work === actualWork && environment === actualEnvironment &&
                 namespace === actualNamespace && binding == originalBinding && pin == null && handle == null && !closed)
         }
@@ -339,7 +339,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         private fun uncertainPager(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         companion object {
             fun retainedCandidate(owner: AndroidSelfOwnedInstallationLifetime,work: AndroidOwnedInstallationWork,
-                environment: AndroidSelfOwnedEnvironment,namespace: AndroidSelfOwnedDatabaseNamespace,
+                environment: SelfOwnedOriginalEnvironment,namespace: SelfOwnedOriginalDatabaseNamespace,
                 binding: NativeHistoryDatabaseIdentityV2): RollbackPager = RollbackPager(owner,work,environment,namespace,binding).also {
                     owner.retainHistoryRollbackPagerNative(it)
                 }
@@ -390,11 +390,11 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         val trace = index < 4 || index == 16 || index == 64 || index == 128 || index == 256 ||
             index == 512 || index == 1024 || index == 2048 || index == 4096
         var stage = "existing-context"
-        var started = if (trace) android.os.SystemClock.elapsedRealtime() else 0L
+        var started = if (trace) work.platform.elapsedMillis() else 0L
         fun completed(next: String) {
             if (trace) {
-                val finished = android.os.SystemClock.elapsedRealtime()
-                try { android.util.Log.i("UkkeraNativeOwner", "Native history-read guard: observation=${index + 1}; stage=$stage; durationMillis=${finished - started}") }
+                val finished = work.platform.elapsedMillis()
+                try { work.platform.info("Native history-read guard: observation=${index + 1}; stage=$stage; durationMillis=${finished - started}") }
                 catch (_: Throwable) { /* Diagnostic only; preserve the actual outcome. */ }
                 started = finished
             }
@@ -1051,7 +1051,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         employeeSource: NativeEmployeeEnrollmentHistorySource? = null,
         policySource: NativeEmployeePolicyActivationHistorySource? = null,
         deviceAdmissionSource: NativeDeviceAdmissionHistorySource? = null): Node {
-        val configuration=material.configuration()
+        val configuration=material.keyConfiguration()
         val scopeParts=row.text("scope").split('/'); known(scopeParts.size==3)
         val scope=BranchScope(DomainId(scopeParts[0]),DomainId(scopeParts[1]),DomainId(scopeParts[2]))
         known(scope==configuration.scope && row.number("schemaVersion")==1L && row.number("formatVersion")==1L &&

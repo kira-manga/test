@@ -1,6 +1,5 @@
 package com.ukkera.pos.security
 
-import android.util.Log
 import com.ukkera.pos.types.DomainId
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -10,9 +9,9 @@ import javax.security.auth.Destroyable
 
 /** Actual separate installer credentials; never a branch CredentialBinding or employee login. */
 internal class AndroidLocalInstallerAuthentication(
-    private val environment: AndroidSelfOwnedEnvironment,
-    private val registry: AndroidLocalProvisionerRegistry,
-    private val keys: AndroidLocalProvisionerKeys,
+    private val environment: SelfOwnedOriginalEnvironment,
+    private val registry: LocalProvisionerRegistryStore,
+    private val keys: LocalProvisionerNativeKeys,
     private val work: AndroidOwnedInstallationWork,
     private val headIssuance: AndroidLocalCompanyIssuanceGate? = null,
 ) {
@@ -881,18 +880,18 @@ internal class AndroidLocalInstallerAuthentication(
         var material: SecretKey? = null
         var derived: ByteArray? = null
         try {
-            val factory = AndroidNativePasswordKeyDerivation.secretKeyFactory()
-            try { Log.i("UkkeraNativeOwner", "Credential derivation phase: factory-returned") }
+            val factory = work.platform.passwordKeyFactory()
+            try { work.platform.info("Credential derivation phase: factory-returned") }
             catch (_: Throwable) { /* diagnostics do not change the original result */ }
             val created = factory.generateSecret(specification)
             material = created
             val bytes = requireNotNull(created.encoded)
             derived = bytes
             if (bytes.size != 32) selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
-            try { Log.i("UkkeraNativeOwner", "Credential derivation phase: derivation-returned") }
+            try { work.platform.info("Credential derivation phase: derivation-returned") }
             catch (_: Throwable) { /* diagnostics do not change the original result */ }
             val result = use(bytes)
-            try { Log.i("UkkeraNativeOwner", "Credential derivation phase: pepper-tag-returned") }
+            try { work.platform.info("Credential derivation phase: pepper-tag-returned") }
             catch (_: Throwable) { /* diagnostics do not change the original result */ }
             return result
         } finally {

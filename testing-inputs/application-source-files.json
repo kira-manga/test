@@ -1,5 +1,5 @@
 {
-  "source_revision": "a00d830336e21ecd4d251845646b6eef91c8b3f8",
+  "source_revision": "7594e8e12dfc38a635d0db0860dea4263c2fe947",
   "files": [
     {
       "path": "apps/pos/.editorconfig",
@@ -59,27 +59,15 @@
     },
     {
       "path": "apps/pos/adapters/app-gateway/build.gradle.kts",
-      "sha256": "d5c885fed618df59ca4b95736b809dd04aa5b0a8d9781925fcb4e1e785a8f5ef"
+      "sha256": "f58971d55071a5eee6205b2b86137caf4e91e1505ba4895c401baff16debb35d"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalBinding.kt",
-      "sha256": "deb3846046b030e9cb29f58e1c09b171960c63e9907420beb9be03d9e6c978b7"
+      "sha256": "ba4908a20e222a8b4a11a71b8dbb4f0d80cecdddfb42c30ec4757e939ac695dd"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalKeys.kt",
-      "sha256": "7f6d022b62134e3dfb443144023bfb07215e8b3d77823ffb0b8e4abc92c72ce3"
-    },
-    {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidClientJournalWrite.kt",
-      "sha256": "61770f7e8282d597634e3e516cc60c40af990aff1ffae2f15f061ecfba6b9308"
-    },
-    {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientCredentialJournal.kt",
-      "sha256": "0abb3efd89b273d74b64c9fe8977d8896d89e42db44741bc3f2c55da996f272b"
-    },
-    {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientIntentJournal.kt",
-      "sha256": "a5c0183b7d84d285476919a87968b08e77493fc78dbb46bc0b581b281fab438f"
+      "sha256": "b5adc9ce9a1f3e8b23ecc201cda881c52fdb672386ab56b0dd36ae6fd7acde5d"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalBranchRuntime.kt",
@@ -87,11 +75,11 @@
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidLocalClientJournalOwner.kt",
-      "sha256": "3924f655e9aee0a7619436617d6ab05dbb3ed8a9ede8bbb353633a7f1f6871c5"
+      "sha256": "9fd29c73a69831e74f452412675719eb24eaa5c7a1abef871f462b05371f1574"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidOriginalClientJournals.kt",
-      "sha256": "e1ebf3c4c0e682615cdede72cc7a5f014b3ccff5a6d6975932569d110430075c"
+      "sha256": "d850b1da4be2865f1259d44979c4ff37d63f2fa513e2c00988938893fc6cc5a1"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidOriginalPhysicalJournalExecutionGate.kt",
@@ -102,24 +90,12 @@
       "sha256": "5cff42094d704a9082907f5d39fe26cc0278b0cd4fb5c633e980748fbfab4d02"
     },
     {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidPairedDeviceActorAllocationJournal.kt",
-      "sha256": "4bb367d895c6baf9377027af0d936165c07b47af20eef8a72ad7869164289699"
-    },
-    {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidPairedDeviceActorIntentSource.kt",
-      "sha256": "b357a3e5dbdcf7511846aab4e514fdc61cad6054b8c078e89a08e8f641821641"
-    },
-    {
-      "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidPairedDeviceActorJournalCustody.kt",
-      "sha256": "442e7f43d44d87e80cb7305acf1045bfc9fb378a9f1e618332132a54f14ec9bd"
-    },
-    {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidPairedDeviceClientCredentials.kt",
-      "sha256": "ede6ec3a5c4e860a4b0497c01685665e2f51f6d2b597f6dc0cc2777c898ed43e"
+      "sha256": "5b59c1018651b4912928276d0ca2b93d01f62ca29dc24e8bdb479ed504f13776"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/AndroidSameCohostClientJournals.kt",
-      "sha256": "21e9517f06d2fd8423eb4fcc1fded6c5350290421a51d77aa7cc9455fbfb7668"
+      "sha256": "8ce1d1a514aa10d8fb71f797273ec1424693ccd7b6dd6f4c8292dac1c3eb3451"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/androidMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupMonitor.android.kt",
@@ -175,7 +151,7 @@
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientCredentialJournal.kt",
-      "sha256": "f36f08b6476f7587fc2d039495178dd4d1e58301d996a3c95f35d9dc7cb1b056"
+      "sha256": "e3e0af1d4d32d639f5473bc5e7585ad8b9a858b49796212ad83ce8f89a399c3e"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalClientDocumentarySource.kt",
@@ -210,8 +186,32 @@
       "sha256": "3e7194418c622c4f9c771d9d26004197a486a8faf64482b323bc3cec0f015d6d"
     },
     {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationClientConnection.kt",
+      "sha256": "a937c3be24920eab708bb73d265e52b52baffd5025334dfcb6aa959ca0895ad4"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationGatewayCoordinator.kt",
+      "sha256": "16d697b25c3f74e640e9a7e6c3416f7ff4aa3154519dd2813c18d471d12a6ca9"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationOriginalControl.kt",
+      "sha256": "b01ab9a1a20287c37226233591f09a296102f467e53d8a50692455a0a66e2f50"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationOriginalJournal.kt",
+      "sha256": "120225df2c861c5ad3b6bce729f251a53894eb1ec5a046165a71d25d9dc43f9f"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationOriginalRecovery.kt",
+      "sha256": "8d970119fd0a8f98a478fd3065c570deba285494ecd07a65fbd8a6dab21873eb"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEmployeeCreationOriginalSubmission.kt",
+      "sha256": "cdd05470e95e7bec024785f2506748c21cab8cce16756cb7888d7f356c0939d8"
+    },
+    {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointAdministrationGateway.kt",
-      "sha256": "49f841f76b0dec5f2219822bb22a225b602b4e7e9b67ab92b5611983c380a2aa"
+      "sha256": "7f43af8032f65569d3e23ae46a8583f6fa08514ee2caf0d74b0d3a52d0a4dc27"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointBranchGateway.kt",
@@ -226,8 +226,12 @@
       "sha256": "3d43084fb1c43ba88c528cabbae3a4f79cfcc121e849af0a516c8d69b4444eaf"
     },
     {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointEmployeeCreationGateway.kt",
+      "sha256": "8af27d0d65399363a43dbeb184f9591749ecbdf4e9c194b51e0f36700d998f6b"
+    },
+    {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointEnrollmentGateway.kt",
-      "sha256": "78c0e8e821e396c5ee759dfb7f09f74c4907304d0726689eb547cb8a6c5e4bb1"
+      "sha256": "971a8e0d4b48aa1ecae2b8ebc46b2520433248d7affd629328a19c6ae9a7a571"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointFoodConfigurationGateway.kt",
@@ -251,7 +255,7 @@
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEndpointWorkflowGateway.kt",
-      "sha256": "d363c99e7eea3b3dc2640069d364bbb4a24a2aa08ff6d732f5feefa0588dad37"
+      "sha256": "a0f0ce5916c5624ceea797545a5767133b674187e969b6ceaf05d369da6ae82b"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalEnrollmentPublication.kt",
@@ -364,6 +368,10 @@
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalKitchenWorkflow.kt",
       "sha256": "c97cdd437aa27ba698641437dffa758d773165d9c2903bb2ce5d58d484e7451c"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalManagementGatewayAccess.kt",
+      "sha256": "d6fa14a05f5619b279a2e46de339891337c691f79411bd2044459537e5135db7"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalManagerOrderWorkflow.kt",
@@ -530,6 +538,10 @@
       "sha256": "66644b16c80290b8684f2002a75cc2f6b18640d77f5178f8d9935832f0bd69e8"
     },
     {
+      "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStoredEmployeeCreation.kt",
+      "sha256": "1cae9ae7b63fb1eb5802ee0d9ece201909a19e9dedb82d9d8bf3d24e4b0eb569"
+    },
+    {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/LocalStoredEnrollment.kt",
       "sha256": "96e5359f5d82c192db7d1ed4ce10317eea4051848f377aff0a195c436a1940fd"
     },
@@ -603,7 +615,7 @@
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupLanPlatform.kt",
-      "sha256": "27e8e9c9296b23a3c29751fc57eeea78ff440c0a5b1f00f16eb2ec9b9600bd3f"
+      "sha256": "acc84bf702943bf2862815149d37e497baf86ceb878f84b0d81cc5523e6a84e7"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/commonMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupMonitor.kt",
@@ -738,16 +750,88 @@
       "sha256": "4cce9d416b2b0bed02d4ef8ddc92cbcea43e9398c2bc00f6e99f27c299d13ef9"
     },
     {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientCredentialJournal.kt",
+      "sha256": "b5373edf8a3ded3e98803975f8c63e24373a958bdc7e82e5f2112a2c5fecad70"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/AndroidEncryptedClientIntentJournal.kt",
+      "sha256": "0f78c7407a568d33220c4406147469e29e4a634ba05b447c32acbdeb3b377490"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/ClientJournalFileCore.kt",
+      "sha256": "605ec77ccb3befdf4df8cff0e7108214f2bef06fb7acf9b54cb67b7f6fb095de"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/ClientJournalWork.kt",
+      "sha256": "50fefd023fce68e432ff91d074cfabebf81fb4bd66145029c9814bbdc21f38f5"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/ClientJournalWrite.kt",
+      "sha256": "789b5a4820151e74ef179e8d47dc4d771743bad2ba3d685aa601f23669ee53a5"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/PairedDeviceActorAllocationJournal.kt",
+      "sha256": "c9aeeab8ae5df957502a5bc6dfcc2d8a6354b248416d042b6e8769fecb924bb5"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/PairedDeviceActorIntentSource.kt",
+      "sha256": "3f19dddb8de35373167a80a7b6b6395bd03f001228b8d9fd7067af9fd0aa4dc5"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/PairedDeviceActorJournalCustody.kt",
+      "sha256": "4ee45cc42697d5f3d1dbaba0c891ce349b2686cffce27d99cb084e8562d715a3"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jcaMain/kotlin/com/ukkera/pos/app/gateway/PairedJournalNames.kt",
+      "sha256": "864f8100cfd8945f432e36c8c7fde608b741b5314d7f4dfe98121fb549895f06"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/DesktopClientJournalNative.kt",
+      "sha256": "a07721c241f7e6e081a354b04b726e04a41e572fab2ebdd45e115eb796eea5d0"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/DesktopClientJournalPlatforms.kt",
+      "sha256": "60d9c030d8637a7f44fc55dd2578b7fcfca1806a5db7a9c1ffb26ec9b70fbf34"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/DesktopClientJournalProbe.kt",
+      "sha256": "8521e704d0fc9d7efe29ba5406d7a9922176d20ec7194ebee72fdf7a22c79d84"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/DesktopPairedActorJournals.kt",
+      "sha256": "87fdda49ee53cfe9e9a0b307cd19b8e0085ba1065c60e7d9bca9c38f704a930f"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/DesktopPairedDeviceClientCredentials.kt",
+      "sha256": "98bb267573cd9407d3db2e701fc3d1223e3401ca6dfd70099ccfdac01cf77a33"
+    },
+    {
       "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/JvmEncryptedClientCredentialJournal.kt",
-      "sha256": "748b038b841fff7a108bc3039f84f538fe142aa435addeb293c0db680093ab5d"
+      "sha256": "578e431b17aa3244ba570d4f3cf596ddd46b7cd5222e4f07c365dfb118db5bd2"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/JvmEncryptedClientIntentJournal.kt",
       "sha256": "ed30c02d97ca513f2d2b95492dc43b2bd3361b6b22ecdc6a4dff0c4e0bdef657"
     },
     {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/setup/DesktopLocalSetupNativeServices.kt",
+      "sha256": "d9749f99d8d123be5d9e9b553a720855e8b515ab517b301d5d0f6454da6df4e5"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/setup/DesktopSetupStorage.kt",
+      "sha256": "71cc6d1993fb79450967e9df1ab0ccc3b0894711917a00c5001319733f414077"
+    },
+    {
       "path": "apps/pos/adapters/app-gateway/src/jvmMain/kotlin/com/ukkera/pos/app/gateway/setup/LocalSetupMonitor.jvm.kt",
       "sha256": "463d958d53b55d3b6c2a4e0be895cd3e0315bdee5e8f15524d431c0a679ced6d"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/DesktopClientJournalFrozenTest.kt",
+      "sha256": "f29e64ae82f832bc0ee035d2a5f11a1d5bcc05451d55d7d209ee623e14dde7d9"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/PairedActorAllocationFrozenTest.kt",
+      "sha256": "421393f181257bfc085fbca6b956f7b40f7b07ad1dad3ce782ed7f7b99523543"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/RetailCustomerReceiptFrozenV1GatewayEnvelopeTest.kt",
@@ -1524,6 +1608,10 @@
     {
       "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/independent/warehouserpcworkflowv1/WarehouseRpcV1ProtocolSupportingTest.kt",
       "sha256": "04c5df931be64a6a5575aa84b3f59b37edf7e9a40ec49dc04aa5cade8fc0256f"
+    },
+    {
+      "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/setup/DesktopSetupStorageTest.kt",
+      "sha256": "022890c91857ced95fdea9b5dca1f433e754512749d619d10bdc809056debc52"
     },
     {
       "path": "apps/pos/adapters/app-gateway/src/jvmTest/kotlin/com/ukkera/pos/app/gateway/setup/LocalMasterLaunchRecordFrozenV2Fixtures.kt",
@@ -3003,11 +3091,19 @@
     },
     {
       "path": "apps/pos/adapters/local-rpc/src/androidMain/kotlin/com/ukkera/pos/rpc/AndroidOriginalRpcClientOwner.kt",
-      "sha256": "853828f2b52309b1f06b8812b63d7a86e3a8ba60585fa90fd90e72c3b5f821ad"
+      "sha256": "fc7889ea6ace3a945c9e93df5d00e4036ed73fd09f79f5c13a27ed81f8c306f4"
     },
     {
       "path": "apps/pos/adapters/local-rpc/src/androidMain/kotlin/com/ukkera/pos/rpc/AndroidOriginalRpcHostOwner.kt",
       "sha256": "9fb7c4c311fae3a69a58f2cbdece70c0bac21979bc922a6535f120cd98f6a570"
+    },
+    {
+      "path": "apps/pos/adapters/local-rpc/src/commonMain/kotlin/com/ukkera/pos/rpc/LocalOriginalRpcAuthenticationSource.kt",
+      "sha256": "5ff9b01529525a3fb838f302481370ad6844d9b2a239add15c64efac79f82a6e"
+    },
+    {
+      "path": "apps/pos/adapters/local-rpc/src/commonMain/kotlin/com/ukkera/pos/rpc/LocalOriginalRpcClientOwner.kt",
+      "sha256": "d9927944fc4db0ae155645f930fb292266380041791568db31c4d9e329bc306e"
     },
     {
       "path": "apps/pos/adapters/local-rpc/src/commonMain/kotlin/com/ukkera/pos/rpc/LocalRpcAuthenticationWire.kt",
@@ -3060,6 +3156,10 @@
     {
       "path": "apps/pos/adapters/local-rpc/src/commonMain/kotlin/com/ukkera/pos/rpc/LocalRpcTrustStore.kt",
       "sha256": "30912079e8596e399734abc33ad7156ca4b6597d97cc2a9d9ffd363debf85de9"
+    },
+    {
+      "path": "apps/pos/adapters/local-rpc/src/jvmMain/kotlin/com/ukkera/pos/rpc/DesktopOriginalRpcClientOwner.kt",
+      "sha256": "cf7ef8a75edb0e3159f4acfe5fd52c05435f6c191f506d36cd8072c9c5067ff2"
     },
     {
       "path": "apps/pos/adapters/local-rpc/src/jvmTest/kotlin/com/ukkera/pos/rpc/independent/authenticationcurrentrenewalv2/AuthenticationCurrentRenewalV2CodecSupportingTest.kt",
@@ -5263,7 +5363,7 @@
     },
     {
       "path": "apps/pos/apps/android/src/main/kotlin/com/ukkera/pos/android/AndroidLocalSetupNativeServices.kt",
-      "sha256": "3ba0b4e3c7f7986495521824431b76d585c387467b3e3244b84d000d805aa32d"
+      "sha256": "1b3932981b27fe46e69c5b2982575e7ec477382a766a5bcbc6a25679fc50f7eb"
     },
     {
       "path": "apps/pos/apps/android/src/main/kotlin/com/ukkera/pos/android/AndroidLocalSetupOwner.kt",
@@ -5307,11 +5407,51 @@
     },
     {
       "path": "apps/pos/apps/desktop/build.gradle.kts",
-      "sha256": "6d816f4524ac16159388fb59f61c8e25f19f378275f83fb1d2705b986fb34af6"
+      "sha256": "6072fd68e3a79fb471e5192b3170f81f089d9296cf3a092ae242e9d9739f4afd"
+    },
+    {
+      "path": "apps/pos/apps/desktop/packaging/windows/AppxManifest.xml.template",
+      "sha256": "4a0627a00d0f801190459f99f9cfa6e71c4f11d4d674dfb2a913c2d663e55243"
+    },
+    {
+      "path": "apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer",
+      "sha256": "998f39e61839e620384736fab82fec773e827314580fb69bfaccf66446026f6c"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopClientComposition.kt",
+      "sha256": "762a88b37320d29aedcfb84831662fdefeb1a9691380b401186032ea098c6cb9"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopIdentityProbe.kt",
+      "sha256": "d73637fdfa7c2d3ae36f8171cb3500e7a43e2c854a18630689cb136e73435ed4"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopSetupPairingDocuments.kt",
+      "sha256": "3a3d852dc7cc27752ec300d5c1b47980f48e541444ba2f6b2312e16239431381"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopWindowsPackageIdentity.kt",
+      "sha256": "9f8e44315541aae009f7f55e0e37b01840b489339ad0975a1fef945c0d24ab2b"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopWindowsService.kt",
+      "sha256": "70fec3dee6778e36db6050a99436ee78ea5875b86542599fa1507ef980e8b00f"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/DesktopWindowsServiceIdentity.kt",
+      "sha256": "6f021dbc0b90e6d8db25e42cc0b2660836a4828655f01c09919d5416695e300f"
     },
     {
       "path": "apps/pos/apps/desktop/src/main/kotlin/com/ukkera/pos/desktop/Main.kt",
-      "sha256": "6699bc70eead6f4ba294628c3a834161616321358e2073b8875ebb4e91fc5442"
+      "sha256": "7bf2c8c6bf4531ba4c262b5846f4b7d41ad36554a28fd0746af5126ff445739f"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/test/kotlin/com/ukkera/pos/desktop/DesktopWindowsPackageIdentityFrozenTest.kt",
+      "sha256": "9090825e8ee48d0e75e0484d097a7de4aca3078f33bb3e2a7e6b09bfc24a4efe"
+    },
+    {
+      "path": "apps/pos/apps/desktop/src/test/kotlin/com/ukkera/pos/desktop/DesktopWindowsServiceIdentityFrozenTest.kt",
+      "sha256": "9757254f621a43de23da13e1f6f73317ff03cfd1ab495ff3dace981e320f3492"
     },
     {
       "path": "apps/pos/apps/ios/Info.plist",
@@ -5587,7 +5727,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationCodec.kt",
-      "sha256": "d6108939afa34bc3151a965d43dffd627e69bd49820c911f18a5d4890e22faa3"
+      "sha256": "de11e1da25ff2eeee5c9726b85df3f64fcb39b82a4a9709f1470a2eced5df123"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalAuthenticationDao.kt",
@@ -5623,7 +5763,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterClient.kt",
-      "sha256": "ba1df13dc4f08497217dbe17ccbdbf4c0252881d2752bf814c25f49a33341b15"
+      "sha256": "d7d61a10411dcc92f8476b3eac6a6dbf38d23938b7fc63aab8f7a68487fb97b5"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterClientRpcBridgeV1.kt",
@@ -5631,7 +5771,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterEndpoint.kt",
-      "sha256": "db66e19d2b4ab7dcaf00df4cb8b8e40d329ded0eb07d9ad3784d62c69e2fe2bb"
+      "sha256": "dfeea0076fae50fc2d9b8cb766e1500bc80b758dddd0b4d891bc1d3860de7fd2"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/LocalMasterFoodCashFinancialRpcProtocolV1.kt",
@@ -5751,7 +5891,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalInstructionPublicationRegistry.kt",
-      "sha256": "e44303b87d210a5134dacf90004448744ad95db396d16e4a017faf92f9d0872c"
+      "sha256": "9bac5411e516ae1f0287bdde71710cba79478143870c6e20f49499d56b45971c"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/PhysicalRecordingExecutionGate.kt",
@@ -5823,11 +5963,11 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAdministrationObservationFrame.kt",
-      "sha256": "f52a5eed3f0b905d7a6f51c8d502dbb11796eb8003892f3dc8120d3bd74864dc"
+      "sha256": "1f9104f4c34a87a4a5d2c4b015c84eee0555bd86fa035ab8d2594751621e82bd"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAdministrationService.kt",
-      "sha256": "d17feb14d0bb5be05506a28566aeec8e743f31c4b2881ba078bd186fc3bfe7ba"
+      "sha256": "de6c765f65c902c98c08c545356db970ac933c1722412895659cb3f333df82f2"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalAuthenticationFrame.kt",
@@ -5858,6 +5998,18 @@
       "sha256": "62cd328caaa6554abd79548be1f0ee16c92e33e69d0bee6c08e4857638d10fca"
     },
     {
+      "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalEmployeeCreationCancellationExecution.kt",
+      "sha256": "c1b87229ecee4c3fe852dca220082277df5dadcaa90c8e6cdcd1bbaf49ab545e"
+    },
+    {
+      "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalEmployeeCreationExecution.kt",
+      "sha256": "0330bc2deab43c06d57bcd6adb30ee2a47fefd3629b90a05235e43a549494afb"
+    },
+    {
+      "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalEmployeeCreationFrame.kt",
+      "sha256": "9cc9be43368a4b12d66aaa87c60507089d4e39ed1cd257341192f09ec8f2b4e3"
+    },
+    {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalEmployeeCreationInputs.kt",
       "sha256": "d6376e4295876028c7ee1fb240f7a104cc04d29baca767fb3af219383b38bfcd"
     },
@@ -5883,7 +6035,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomLocalSecurityStore.kt",
-      "sha256": "24dffedd1c2a72be2addadba494d0b50cfab00cb1213d030292af6e1a3b236f1"
+      "sha256": "88a77ba5dfba774f5ae017cda7e074c0a0282dd244073ff7e28d9405b2f8e987"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomPersistentThrottleStore.kt",
@@ -5891,11 +6043,11 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt",
-      "sha256": "5f0a7466a955d959f27ac5d538d01194858c7e5aff97502fd35eafc0cc3545b5"
+      "sha256": "b909d62322dd9a5063893c07bbeebd4412de56ae29a1eed441ff2fcf44d1b055"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryOwner.kt",
-      "sha256": "fd03512dc250c89e39c6b67e4d1adb12672582ac290d380b3e6b0c2753a6ec56"
+      "sha256": "1970a5a108e9ec5d0dd79fc04b4b8e7bb768a7295bbc7d1dfa94b000153dc49e"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryVerifier.kt",
@@ -5979,7 +6131,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDelegatedEmployeeCreationEvidence.kt",
-      "sha256": "f242ef6a6c32a1c7dc3784be8695a78cf3502997cce22a966033d1cb11f363af"
+      "sha256": "c8b1eac39a8b39108c0b90c3a3beff0cc6f8bce373bb8e6e7700d8e0b92b0847"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeDelegatedEmployeeCreationSeedJoin.kt",
@@ -6003,7 +6155,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeAuthenticationReplay.kt",
-      "sha256": "cd13aeefafebfbcd96aec4a4592a5f0ac181a4a27a1950d80d7f8e3a8bface80"
+      "sha256": "69b7980fba4bb56bd4dba0465945b59e48b867458b0a38d6b2f7922b660180cb"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeBranchActivityActivationRejectionHistoryAuthorization.kt",
@@ -6022,12 +6174,16 @@
       "sha256": "bbdc22b254d6e3b0471b65b8bb154e75a557e19b891d2b6be9850c2ab09afa60"
     },
     {
+      "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeCreationCancellationEvidence.kt",
+      "sha256": "4aa45a384c51265a294a7d40058dc03d5f1890c64fa9d789f4c8f01a4ce94d4d"
+    },
+    {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeCreationSeed.kt",
       "sha256": "9cb24d504bdaed5b58945b69399e31a79bc76a6404be4c9f2fee80e5f94413b1"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeEnrollmentHistoryJoin.kt",
-      "sha256": "c64800c8a3c421ba5dd337cf56ad196a97313dc1f44f75ed34ee171c99a1cc1a"
+      "sha256": "e2831bc3dd353499728f7171837e2c03343c909c9b7418e74277307e08024bf6"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeEmployeeFloorConfigurationRejectionHistoryAuthorization.kt",
@@ -6263,7 +6419,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryScanner.kt",
-      "sha256": "5b3c01c8c4973875c1ec421909c31a3ac1cafc54fdd19b788182b959c520eb5a"
+      "sha256": "7e5be4289a3f636796400b5f16d4e18732e6b126edd909ed89d0ddae131292ed"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistorySchemaV2.kt",
@@ -6283,7 +6439,7 @@
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeOriginalAuthenticationReplay.kt",
-      "sha256": "1863ddfebfa8bb94ddd41f868c8785730c183ab498837af5bffdbf4efb4e3ae8"
+      "sha256": "7f3d2c389d1bf5f3fa009e249a36ea476ce1fbfc138d82824ff24f06d3110dcc"
     },
     {
       "path": "apps/pos/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeRetailCustomerReceiptCapture.kt",
@@ -7143,7 +7299,7 @@
     },
     {
       "path": "apps/pos/core/security/build.gradle.kts",
-      "sha256": "bbe3367bbce78ed7671007fb4efca26febd343dd67bc9550500b858aeb7b89b8"
+      "sha256": "2864ad736fcb0d120e4b9b452d0f8c29c987e13217309200f98ccab5d24f4926"
     },
     {
       "path": "apps/pos/core/security/src/androidHostTest/kotlin/com/ukkera/pos/security/LocalPasswordHasherRegressionFixtures.android.kt",
@@ -7171,11 +7327,11 @@
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidDevicePairingSdkOwnerV2.kt",
-      "sha256": "61fcd174a3fcc8b4d61c8532c1ee121080c2bda71f4905711a66920421e1e07b"
+      "sha256": "15f0fa4973403d66fdf273bdf8ddc899dc028ad672070432b3032997ac93a440"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidDevicePairingTarget.kt",
-      "sha256": "b7444f13fec95813404da10bd2a86a50e62d82716ccf80b8d8531df990a25f47"
+      "sha256": "54430ce429c67d913f10df4ce4bc4d2983bfc0ff4f070e798734449b6af18f7f"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidElapsedRealtimeEnvironment.kt",
@@ -7183,7 +7339,7 @@
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidKeyStoreKeyMaterial.kt",
-      "sha256": "e9d08fe0644cce59ae980985bec08a53a8090424acad7e2bb15e95440893b785"
+      "sha256": "47ced41355a49529b8cc42af7953d8195ecef4d70f4eec36de3a731815a8afc7"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidKeyStoreLocalStorage.kt",
@@ -7202,52 +7358,16 @@
       "sha256": "6ef5fc18ecc993d09a71e7d0f790619bf16695cfe80f996a11529649a3f16d5b"
     },
     {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyAuthority.kt",
-      "sha256": "cb7412c7a8451043a1c2309dbc0f0213da9992effb4123de19d4486a24764950"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyBusinessPublications.kt",
-      "sha256": "a624ab61fec4af3dbae948b7673010984647b47408781192707980204cd56b20"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDeviceAdmissions.kt",
-      "sha256": "6f769b86ac1b027324b17aee7e900df21c2a3f99a06f0c3a9a63eecf2016e261"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDevicePairings.kt",
-      "sha256": "5412d94b8dee4017483bc6d785b9636fdcfb122208106c2b1ea1edae4d11ae2b"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyEmployeeEnrollments.kt",
-      "sha256": "318c752f067ebde6b637bdfa8bd799dc2a015eca68f6ddb270b24faaba47ca78"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyEmployeePolicyActivations.kt",
-      "sha256": "b9ac6b331d73141d944f2756b6237d01b7b6a79c11ae5bcf6855de964de06a54"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalFoundingVerifier.kt",
-      "sha256": "8d484c5bcf717b305399977b39faf27d3467329467c5a6d6d93b25a28d9e8a77"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalInstallerAuthentication.kt",
-      "sha256": "f519857675fe2403d491b98107f0dcb6410866dcbf521265e41526ecddb7e817"
-    },
-    {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalPasswordHasher.kt",
       "sha256": "60c794ae5a8ceb8660c25029e70cbca8f0b3fcf8b5ef229208efd5cbbefebe60"
     },
     {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisioner.kt",
-      "sha256": "f4bd7ad54a43aa60aa3b0bccc77bbb41a884d0df596ad2e9143a78d97fde65f3"
-    },
-    {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerKeys.kt",
-      "sha256": "5133401ee1c2fcac03ce8c98ae78183447759a085f119f250145ab00b66d4fbe"
+      "sha256": "a5c0e26b6c7301b7451cb6650efeaf1fde5287cf67267eea8ac309c521030a86"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisionerRegistry.kt",
-      "sha256": "fa124f7adcf31a91e4c02535fce2802b6e269ad9ef213906af2367d90e34087e"
+      "sha256": "9b02580b8b1b6beb41bef5c093b088668fc2d57898046956b67390c8877ea4ff"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidNativeApplicationMetadata.kt",
@@ -7274,64 +7394,32 @@
       "sha256": "3df03acd0876bbee85f2cc4089ddcb6e00fe56dfbfe42e66d4e66fd71dfc5a42"
     },
     {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidOwnedInstallationWork.kt",
-      "sha256": "29f1be0b1d0e8d759a3bf257b9813c3a65c163e0016833747294c33a4e4e0cc1"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidOwnedRoomCoroutines.kt",
-      "sha256": "24ab66d7b08439429e6dff8b7514694c81523d82a4875b9e107fcc50abda1b6b"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidP256Primitives.kt",
-      "sha256": "069c344e1e9405753e415d2eb437fcacadc50aa4e1c97791eddab6c54b5822ae"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidPairedDeviceCredentialJournalCustody.kt",
-      "sha256": "803c5a7b418a491bb5c3057dac037a88b8146e3ed04088873249561402d3036f"
-    },
-    {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedDatabaseNamespace.kt",
-      "sha256": "d8b8aa6a65c16154a5d1561fa557312b107b4785f0c99d9cd7a172994042c5c9"
+      "sha256": "7afd375177213221748fa13fe62329cd62967f620b695b3d4ebe003bb65310c2"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedEnrollmentSource.kt",
-      "sha256": "a7f558f25eff573a40da276fb17edbec0bd681760f0d768e15a4bc80581db630"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryAnchor.kt",
-      "sha256": "eca47fdc1e22330064aaef4fa1edf1ae458a0cc2352503fca17e9d4ea1efb528"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryReadStorage.kt",
-      "sha256": "b7c000009c2caee00887ed1d484a02e98633762106c2dc9898364b2f1c56efd6"
+      "sha256": "b55731e399033af08a4c88f736543a862423fa93c6d22657340a4a9b3d13809d"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryWorkspace.kt",
-      "sha256": "3f76da99148ea15b8ec846694110d29b591b7109663b7efdc01899f669419ee4"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationJournal.kt",
-      "sha256": "7ef46eeae2f2d30bc1356d8fe1ac07364fcd5a0507325ab432faaf66b8798e87"
-    },
-    {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationOwner.kt",
-      "sha256": "b3c99771cb10c9a3274dc3c0253a65aed30876d0f5885b07e6007a18d5a057f4"
+      "sha256": "b40158cd4286fd10a26f9554f38820d615cf34275f6157bf1fec3ffc37560ec6"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationSigning.kt",
-      "sha256": "bf6932854666126ee07b8fa084b6579873a026a240a8d8389776b0eb6501ff99"
+      "sha256": "97731cfc26de179aa213c8b84200eb4f20500d8153b5197fcde988acb92aa0f6"
     },
     {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedLocalSecurity.kt",
-      "sha256": "072020323a6b6129c4b74226f3c4eb170fbb68c4655e6fb1a85b3bc7d8b136e5"
+      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedOriginalPlatform.kt",
+      "sha256": "8f397c94f059cc38cdf411cd62f00793f0c22c8d34fc8b873dd573c513904618"
     },
     {
-      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedNativeProfile.kt",
-      "sha256": "61b813f77873d6f8098fd9eed9b135d431e0d6751b4e85b24885f35274558604"
+      "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedProcess.kt",
+      "sha256": "8a6ad61e515e42f613dbb7ac0ffd4d163fc3139b2b2a010cb200dea3325e7062"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedReceiptMembershipData.kt",
-      "sha256": "6e83c2bfb10b5b7ecf790d9b32e5c7a4c5ad01f26bedea429dd3d55b7b8e8c8f"
+      "sha256": "67d3998f546c9a1308cbdce25bb178d90b48b860acc810de4664eaaf5a851855"
     },
     {
       "path": "apps/pos/core/security/src/androidMain/kotlin/com/ukkera/pos/security/Digest.android.kt",
@@ -7371,7 +7459,7 @@
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAdministration.kt",
-      "sha256": "307632208c4a7ede4180282a6a0a4af782db315ba37a06195973e43de7927860"
+      "sha256": "f535b459041708a4b9731fd94f9b734f5b08218160ea60708f04970bc407e35a"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthentication.kt",
@@ -7379,7 +7467,7 @@
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalAuthenticationRecords.kt",
-      "sha256": "7fe54feef9fdfcc3ad8b19fb48ef572f4c446590815de5d8ad609926f0a0ff0a"
+      "sha256": "985e4702c872af523a0e90330d498a0e88b9c814cc7709e92f0749962ed45a3e"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalBranchInstallation.kt",
@@ -7447,7 +7535,7 @@
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalDelegatedEmployeeCreationV1.kt",
-      "sha256": "0cc65d3e841a4dd5c2e6dc92410e6da3067225dd81275e248dff8f215e7cb66b"
+      "sha256": "52b0409e5c340356b899bb5f6c08be15ea39843914fe810d41c48ed574b24db2"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalDevicePairingApprovedMaster.kt",
@@ -7467,7 +7555,7 @@
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalDevicePairingSdkIdentityV2.kt",
-      "sha256": "d53b632009636aa7ee0932001c9caeb2dac5736540b331c42e5671e0ccb05e0c"
+      "sha256": "bc1ca23aa01333c913bac35b1030e0e45598d7849b078fa3ff6e0b3a81382c6c"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalDevicePairingSdkOriginal.kt",
@@ -7480,6 +7568,22 @@
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeCreationConfigurationV1.kt",
       "sha256": "1b411948db0ce907b132b41d6a774f33e912c8469f3c758bb6ce51bea11004cc"
+    },
+    {
+      "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeCreationExecutionV1.kt",
+      "sha256": "8f63059a993b641d7553df11c311297e94b6ca1a5d22a7b38ac335a111b844ac"
+    },
+    {
+      "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeCreationPreparationV1.kt",
+      "sha256": "33d91829f1726d3b8a8b411fda481a38e980816bbd66b25a3b0c91d68be43c33"
+    },
+    {
+      "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeCreationResultAcceptanceV1.kt",
+      "sha256": "6295b5b472cb442d205e54f06f3d545465ea91dbbf09d5244c8ab31d883861f8"
+    },
+    {
+      "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeCreationServiceV1.kt",
+      "sha256": "de7f735e969443661279126c7e74e2183b99f9a1299c9da8228209207f270405"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalEmployeeDelegationReviewV1.kt",
@@ -7516,6 +7620,10 @@
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalOriginalDeviceAdmission.kt",
       "sha256": "e23939e9046edb00aec76e3bf95b6bda96d1eea1f98f191c374af48030f8d36d"
+    },
+    {
+      "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalOriginalPairingTarget.kt",
+      "sha256": "cffc451508b01264633402df8e4cf97e039675859f966e46c051fbdf34b3f0b5"
     },
     {
       "path": "apps/pos/core/security/src/commonMain/kotlin/com/ukkera/pos/security/LocalPairedDeviceCredentialJournalAction.kt",
@@ -8006,8 +8114,124 @@
       "sha256": "0d270c1fb12bf79ab3edd14d12cb283db339241249add149f940d9f8e246ba09"
     },
     {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyAuthority.kt",
+      "sha256": "1ec5a8178f0e1ee8b826314de5f74587e4f029dc91cb5b860aeb70a2515bae8a"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyBusinessPublications.kt",
+      "sha256": "ba330b93fd2352efb7682cc99b3177d122d91245c0dd6955638af66c97dcd5fc"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDeviceAdmissions.kt",
+      "sha256": "beeee2adeb102dec17d2413da9f9fef11cf435a651743d9810e76e11bc1e3155"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyDevicePairings.kt",
+      "sha256": "cc6d7c8f41a16f15d8d33adf10545c1cef5b45a9e149131de6883eb5320aa6a4"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyEmployeeEnrollments.kt",
+      "sha256": "0445c4e4709cc49742e62bb5139a653961645208ee3c0984852f7fe1177817e8"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalCompanyEmployeePolicyActivations.kt",
+      "sha256": "1c69804c049643458a0926630e57f58ca6caabcc03de49022659175be8fb3ce0"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalFoundingVerifier.kt",
+      "sha256": "8d484c5bcf717b305399977b39faf27d3467329467c5a6d6d93b25a28d9e8a77"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalInstallerAuthentication.kt",
+      "sha256": "41a1b2bdc9c1b618ee697689925d0aad3f05be86fab7237f0d3f172e9193e345"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidLocalProvisioner.kt",
+      "sha256": "f5efc9f846c069e636068bd0b88a32909bad4a72c72f6e6cdc67d5d6f2df08f4"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidOwnedInstallationWork.kt",
+      "sha256": "4e4adcf41a7cf4a3252d2a10adb52fb8de3256d93518a4da23c70a7b2cc05f09"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidOwnedRoomCoroutines.kt",
+      "sha256": "09d795dcf48e19547aa704ff9d70381d2e6bc6e5b5f60943688b3e6a816c5c42"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidP256Primitives.kt",
+      "sha256": "069c344e1e9405753e415d2eb437fcacadc50aa4e1c97791eddab6c54b5822ae"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidProvisionerProcessLease.kt",
+      "sha256": "d5edc8cc2bbe436e2256ca4cf18b3297df201c017cee8ee26764b2c3ecf999be"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryAnchor.kt",
+      "sha256": "29df0f390a6c141ed67a3b1c930ecaa1be782c189c32b989d9ec09a313b81091"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedHistoryReadStorage.kt",
+      "sha256": "2ccead14c3ba0407776667f84b22b5509200e55f6aa0d16803af33185b9eb223"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationJournal.kt",
+      "sha256": "0bb20eedcf65c4221833a5d4560fc09da6ca75e9feb769c5918ad3884ddf6215"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedInstallationOwner.kt",
+      "sha256": "56ca20b8b90ece30a765a34fbcc7087cf78f5b404e6f328598ea2b675c2a5507"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedLocalSecurity.kt",
+      "sha256": "ee59835aefff8ec29833e3ad919e2432becad2f1aaaa6de2b86d60135a429171"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedNativeProfile.kt",
+      "sha256": "61b813f77873d6f8098fd9eed9b135d431e0d6751b4e85b24885f35274558604"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/AndroidSelfOwnedRoomDriver.kt",
+      "sha256": "796c90e52842c4889700db67925e988f605890f52fdf7daeecd3772c245d8cde"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/DevicePairingKitOwner.kt",
+      "sha256": "25507e12e5458fda80ed27beac5b99fe78fc407df5aec44b85199146205ad52f"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/DevicePairingTargetCore.kt",
+      "sha256": "d5ddc845406aa036fd625ccd1948a5413a4b02f06f4c2df0404c526e915a1fae"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/DevicePairingTargetRecordsV1.kt",
+      "sha256": "4e3b73a82f0831218858f6073e13e825e6733601437a1364b2da108b2ce13450"
+    },
+    {
       "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/JvmP256Primitives.kt",
       "sha256": "ef060a2abd3cdd361b1409a654523781aa18f70b926b2d572cb7c0b97ed03b86"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/NativePairedDeviceCredentialJournalWire.kt",
+      "sha256": "619fe74ae5d189bd2d810e6271a0220ec51d57be7fc6f323c18396ec55f32bdc"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/PairedDeviceCredentialJournalCustody.kt",
+      "sha256": "5b08165cd18fc14457c7cc255506534fa4594d620f6cdc504358007d4939e532"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/SelfOwnedOriginalNatives.kt",
+      "sha256": "e05f102d9a28d95a584e4373386952749328d15ce32875a3bafb9a0e929b27af"
+    },
+    {
+      "path": "apps/pos/core/security/src/jcaMain/kotlin/com/ukkera/pos/security/SelfOwnedProcessPlatform.kt",
+      "sha256": "90901b97a512c1b0d503d1bc20741af2d8015fecf80b5e710c9dabd51073cd3c"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/DesktopDevicePairingTarget.kt",
+      "sha256": "803925e2ef261fe1c43a9a6fbce1a6a60260fa44cb980baaa2c38b0b523ee25e"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/DesktopTargetSnapshotStore.kt",
+      "sha256": "3820eeeee1b08832e4765f4a13587eaad64fa619dbf6f3dc0958f5c5d18eb174"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/Digest.jvm.kt",
@@ -8034,8 +8258,12 @@
       "sha256": "96378c5989824f14419b277de29eb6f008972d8175c132d93549f8d41f32a8f8"
     },
     {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacDesktopClientStorage.kt",
+      "sha256": "9fa277a0c0433c5c394a7cbba4683b62df6c87c8e8be368674263efebc243ab6"
+    },
+    {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacInstalledApplicationIdentity.kt",
-      "sha256": "da70b211d52c266bc3e709f8a26ef66e84770a620d7e784a8318e10b9ebdec34"
+      "sha256": "2516484d3f13a0dc142e1cb1186167d92d04d6ad03231db2d310c218edea7f5d"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacKeychainSecureIdentityStore.kt",
@@ -8047,7 +8275,7 @@
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacOriginalNative.kt",
-      "sha256": "bb1c4d2664e4c832549dc1fe828a39a979a999a466c2e23d4197af53e5a09109"
+      "sha256": "3c0e141614145e082f42c6c906a970f8187694422b93f85d6dff98ced4838612"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacSelfOwnedOriginalNamespace.kt",
@@ -8056,6 +8284,18 @@
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacSelfOwnedSigningKey.kt",
       "sha256": "9507f505b68e67c625d96c6e90e139ca086b3bb0b284e50fd91c78a890e5598e"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsClientTargetKey.kt",
+      "sha256": "85da0b5d473f51bd30ea873ebb513d83d8c928657c512eeb3a39bd632956d444"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsClientTargetPlatform.kt",
+      "sha256": "18ebfa5e5e7b041b6b45fadb926dde9937b2a23e9487439b374f3de26422e5a7"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsDesktopClientStorage.kt",
+      "sha256": "927f3a0d84dddc80eb615cf368203e89b5546aa23a9f167151e170c9f47acc64"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsDpapiSecureIdentityStore.kt",
@@ -8071,7 +8311,7 @@
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsOriginalNative.kt",
-      "sha256": "e60f8503a4a3784bb4b1767c6cfaeb2ffa7cd66ed6752e2497af0af18a7182bd"
+      "sha256": "c370f1583ba81144ab42cbe5935c0ed2ef10d7bffabb4467a5114dfabcea2512"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsSelfOwnedOriginalNamespace.kt",
@@ -8079,7 +8319,7 @@
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsSelfOwnedSigningKey.kt",
-      "sha256": "553d95eabb8995661c44159580438b6c78f9a8974700c58fcf14e2d103937cef"
+      "sha256": "3e65801f5abbe42611a6e6312daea22b2e6b50e0cd205a4145b0250f8d184673"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/WindowsSelfOwnedStorageKey.kt",
@@ -8090,8 +8330,32 @@
       "sha256": "13a72550ac265b35de80016bfa042f8e2ccce17f377fb47b6b2daae6c58eeb7b"
     },
     {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/DesktopDevicePairingTargetFrozenTest.kt",
+      "sha256": "f4dfa72d240b384ef764c15d421889e7349a6353c06b4940c92d0377996e1282"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/DesktopTargetStoreFrozenTest.kt",
+      "sha256": "adef2e11c2cacbf0c33bb054b911392faca6e7771736a1dfe3885cd6729cfe14"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/DevicePairingTargetRecordsDesktopV2FrozenTest.kt",
+      "sha256": "e1eefcc74d82593dcf3fb52c9e9c041156d4e0c0e73e93f638989cb6ae880cac"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/DevicePairingTargetRecordsV1CharacterizationTest.kt",
+      "sha256": "b66e694615346f8baca316298e3a012ac9674c5bb95a9f1e466b653f7b027b21"
+    },
+    {
       "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/JvmLocalPasswordHasherTest.kt",
       "sha256": "f6ea8f0f2b1ee36da4da2e8044a0853cbeb00afdeb27fbe8032c1614bb0219b0"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/LocalDevicePairingSdkIdentityDesktopFrozenTest.kt",
+      "sha256": "6332ab00aeb42e1db004f6c793a0ccb75359685283423f303adb976e5700fce3"
+    },
+    {
+      "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/LocalDevicePairingSdkIdentityV2CharacterizationTest.kt",
+      "sha256": "f629fa7c57f6bfb7b0e8999cf2b7c0d633bb49bb5279cc8677c28a2d7c55ed37"
     },
     {
       "path": "apps/pos/core/security/src/jvmTest/kotlin/com/ukkera/pos/security/independent/androidlifecycleresumev1/HistoricalLifecycleAuthorizationV2Test.kt",
@@ -8843,7 +9107,7 @@
     },
     {
       "path": "apps/pos/gradle/libs.versions.toml",
-      "sha256": "c6d8499d8cd596ce5abf23e2d97afc319f48468a977073384f2f8708cd4f7bd5"
+      "sha256": "cda9d3b6850cd0c04883f6deba608ebc8a9bb811da04c887ca685ec6e584df18"
     },
     {
       "path": "apps/pos/gradle/wrapper/gradle-wrapper.jar",
@@ -9051,11 +9315,11 @@
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationContracts.kt",
-      "sha256": "d8ed18195ec75a6da48fa078abba01134a07284edfa9b6fa603c8b8f009dd224"
+      "sha256": "5c783e4d18652ea92216bf8cd998892be400cbf8ae84a6505e0d36777e343c23"
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalAdministrationController.kt",
-      "sha256": "8c16d43b2cc2e2c2f910fd094d9cc51b25e9f8f116c1da83b054fc3390eb8ae7"
+      "sha256": "0944c216e054a275ad468ec276ae7a811c87a691250c920abd70bb1431dff731"
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalBranchReportExportPresentation.kt",
@@ -9088,6 +9352,14 @@
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalCustomerReceiptUiProfile.kt",
       "sha256": "b7f155c1cdafb37a63e5f2cd30022c134856f5a3ba8bd58db8a469d7646e0db2"
+    },
+    {
+      "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalEmployeeCreationContracts.kt",
+      "sha256": "1a9b27ca64c593a5e2c2eb48bdec1f5d31f0c3e70c07451426b7a81191af8969"
+    },
+    {
+      "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalEmployeeCreationWorkspace.kt",
+      "sha256": "d95b68a6a726e44e051f855882adf7cb0252cfca2cbdb926dd8327d4e060f7c7"
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/LocalFoodCashFinancialContracts.kt",
@@ -9355,7 +9627,7 @@
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalAdministrationScreen.kt",
-      "sha256": "24a393d3760eb8e8e7394f3a29a6ec5d52303a3eed701717c8304cfe1a8b8b25"
+      "sha256": "8f70e5c6874433595d1fe053d11bd1dffd9f3062261dedc914d07e92faa217dd"
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalBranchReportScreen.kt",
@@ -9376,6 +9648,18 @@
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalConfigurationEntryLifetime.kt",
       "sha256": "6bf797308145d8ccaafd75cea68805a6120c3bb05347932d5c30da969e3bb7b6"
+    },
+    {
+      "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalEmployeeCreationInputs.kt",
+      "sha256": "fa7deedebec5c47380d5fcd64848d53f65e283da9024c203b40aefed5f85d4ed"
+    },
+    {
+      "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalEmployeeCreationPassword.kt",
+      "sha256": "b725d372f37800cf7092e6326aca5ea053b1ea5b87d8015eecba74df4ff990a6"
+    },
+    {
+      "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalEmployeeCreationRecoveryCard.kt",
+      "sha256": "b313d99a9d29dc06b9cacb8b5fad8540a05455cdcf72df081c0ccf629810c9d8"
     },
     {
       "path": "apps/pos/ui/app/src/commonMain/kotlin/com/ukkera/pos/app/ui/LocalFoodConfigurationCard.kt",
