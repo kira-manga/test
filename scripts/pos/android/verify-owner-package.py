@@ -47,7 +47,8 @@ def verify(args: argparse.Namespace) -> dict:
         require(sha256(path) == entry['sha256'], 'Application source differs from retained package source')
     sdk = os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
     require(bool(sdk), 'Android SDK is not configured')
-    tools = Path(sdk) / 'build-tools/37.0.0'
+    require(re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', args.build_tools) is not None, 'Invalid build-tools version')
+    tools = Path(sdk) / 'build-tools' / args.build_tools
     results = {}
     for kind, expected_name, package in (
             ('app', 'ukkera-pos-testing.apk', 'com.ukkera.pos.local.testing'),
@@ -75,7 +76,8 @@ def verify(args: argparse.Namespace) -> dict:
     return {'status': 'VERIFIED_PACKAGES_NOT_INSTALLED', 'source_revision': args.source_revision,
             'android_source_revision': args.android_source_revision,
             'aux_snapshot_revision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
-            'application_source_files_checked': len(files), 'signer_certificate_sha256': args.signer_sha256,
+            'application_source_files_checked': len(files), 'android_build_tools': args.build_tools,
+            'signer_certificate_sha256': args.signer_sha256,
             'run_id': os.environ.get('GITHUB_RUN_ID', 'local'), 'run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT', 'local'),
             **results, 'limits': 'Source/package checks only. No native startup, creation, Master/Client or owner acceptance.'}
 
@@ -87,6 +89,7 @@ def main() -> None:
     parser.add_argument('--signer-sha256', required=True)
     parser.add_argument('--inputs', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--build-tools', default='37.0.0', help='Installed Android build-tools version (CI default: 37.0.0)')
     args = parser.parse_args()
     result = verify(args)
     args.output.parent.mkdir(parents=True, exist_ok=True)
