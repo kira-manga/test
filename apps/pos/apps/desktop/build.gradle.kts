@@ -21,6 +21,7 @@ tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 
 dependencies {
     implementation(project(":ui:app"))
+    implementation(project(":adapters:app-gateway"))
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation(libs.jna)

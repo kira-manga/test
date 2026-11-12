@@ -105,6 +105,31 @@ internal object WindowsOriginalNative {
         }
     }
 
+    /** Existing file/directory facts for desktop client journals; no creation, no reparse following. */
+    fun observeEntryFacts(path: String): WindowsEntryObservation {
+        requireSupported()
+        val handle = openDirectoryHandle(path) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        try {
+            val info = fileInformation(handle.pointer)
+            requireNoReparsePoint(handle.pointer, info)
+            val identity = fileIdentity(handle.pointer)
+            val owner = PointerByReference(); val descriptor = PointerByReference()
+            if (advapi.GetSecurityInfo(handle.pointer, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION,
+                    owner, null, null, null, descriptor) != 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            val security = checkNotNull(descriptor.value)
+            val sid = try {
+                val text = PointerByReference()
+                check(advapi.ConvertSidToStringSidW(checkNotNull(owner.value), text) != 0)
+                val value = checkNotNull(text.value)
+                try { value.getWideString(0) } finally { kernel.LocalFree(value) }
+            } finally { kernel.LocalFree(security) }
+            val size = (info.nFileSizeHigh.toLong() shl 32) or (info.nFileSizeLow.toLong() and 0xffffffffL)
+            val written = (info.ftLastWriteTime.high.toLong() shl 32) or (info.ftLastWriteTime.low.toLong() and 0xffffffffL)
+            return WindowsEntryObservation(identity.volumeSerialNumber, identity.fileId, info.nNumberOfLinks, size, written,
+                info.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY != 0, sid)
+        } finally { handle.closeConfirmed() }
+    }
+
     /** Existing file/directory identity only; nothing is created. A missing entry is unexplained state. */
     fun observeExistingEntry(path: String): WindowsOriginalFileIdentity {
         requireSupported()

@@ -359,6 +359,9 @@ internal interface WindowsOriginalNCrypt : StdCallLibrary {
     fun NCryptDecrypt(key: Pointer, input: ByteArray, inputSize: Int, padding: Pointer,
         output: ByteArray, capacity: Int, used: IntByReference, flags: Int): Int
     fun NCryptFreeObject(handle: Pointer): Int
+    fun NCryptEnumKeys(provider: Pointer, scope: WString?, keyName: PointerByReference, enumState: PointerByReference, flags: Int): Int
+    fun NCryptDeleteKey(key: Pointer, flags: Int): Int
+    fun NCryptFreeBuffer(buffer: Pointer): Int
 }
 
 internal interface WindowsOriginalSigningSecurity : StdCallLibrary {

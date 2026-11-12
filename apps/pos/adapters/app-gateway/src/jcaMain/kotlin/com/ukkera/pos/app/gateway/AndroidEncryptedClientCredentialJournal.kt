@@ -15,18 +15,18 @@ import java.nio.ByteBuffer
  * master. Native enrollment and cross-restart rollback admission are separate owner gates.
  */
 public class AndroidEncryptedClientCredentialJournal private constructor(
-    private val file: AndroidClientJournalFile,
+    private val file: ClientJournalFileCore,
 ) : LocalClientCredentialJournal(file.deviceOwner) {
     override internal suspend fun read(): JournalRead<StoredClientCredentials> =
         when (val result = file.owned {
-            object : AndroidClientJournalTask<StoredClientCredentials> {
+            object : ClientJournalTask<StoredClientCredentials> {
                 override fun execute(): StoredClientCredentials = readState()
                 override fun discard(value: StoredClientCredentials) { value.destroy() }
                 override fun clearInputs() = Unit
             }
         }) {
-            is AndroidClientJournalOutcome.Value -> JournalRead.Value(result.value)
-            AndroidClientJournalOutcome.Unavailable -> JournalRead.Unavailable
+            is ClientJournalOutcome.Value -> JournalRead.Value(result.value)
+            ClientJournalOutcome.Unavailable -> JournalRead.Unavailable
         }
 
     override internal suspend fun replace(
@@ -38,7 +38,7 @@ public class AndroidEncryptedClientCredentialJournal private constructor(
         require(expectedRevision in 0 until Long.MAX_VALUE && next.revision == expectedRevision + 1)
         val owned = encodeAndroidCredentials(next, file)
         try {
-            object : AndroidClientJournalTask<JournalWrite> {
+            object : ClientJournalTask<JournalWrite> {
                 override fun execute(): JournalWrite {
                     val captured = decodeAndroidCredentials(owned, file)
                     try {
@@ -55,8 +55,8 @@ public class AndroidEncryptedClientCredentialJournal private constructor(
             }
         } catch (failure: Throwable) { owned.fill(0); throw failure }
     }) {
-        is AndroidClientJournalOutcome.Value -> result.value
-        AndroidClientJournalOutcome.Unavailable -> JournalWrite.UNAVAILABLE
+        is ClientJournalOutcome.Value -> result.value
+        ClientJournalOutcome.Unavailable -> JournalWrite.UNAVAILABLE
     }
 
     private fun readState(): StoredClientCredentials =
@@ -69,22 +69,22 @@ public class AndroidEncryptedClientCredentialJournal private constructor(
 
     internal companion object {
         /** Called only while the native owner is explicitly enrolling the untouched original C1. */
-        fun originalEmptyManifest(file: AndroidClientJournalFile): ByteArray =
+        fun originalEmptyManifest(file: ClientJournalFileCore): ByteArray =
             encodeAndroidCredentials(StoredClientCredentials(), file)
 
         /** Called only inside explicit, genuinely qualified paired-device credential enrollment. */
-        fun pairedDeviceEmptyManifest(file: AndroidClientJournalFile): ByteArray {
-            check(file.kind == AndroidClientJournalKind.CREDENTIALS && file.actorId == null)
+        fun pairedDeviceEmptyManifest(file: ClientJournalFileCore): ByteArray {
+            check(file.kind == ClientJournalKind.CREDENTIALS && file.actorId == null)
             return encodeAndroidCredentials(StoredClientCredentials(formatVersion = 3), file)
         }
 
-        fun fromExisting(file: AndroidClientJournalFile): AndroidEncryptedClientCredentialJournal {
-            check(file.kind == AndroidClientJournalKind.CREDENTIALS && file.actorId == null)
+        fun fromExisting(file: ClientJournalFileCore): AndroidEncryptedClientCredentialJournal {
+            check(file.kind == ClientJournalKind.CREDENTIALS && file.actorId == null)
             return AndroidEncryptedClientCredentialJournal(file)
         }
 
         /** Real pre-delivery decode, invoked inside the same retained native acquisition. */
-        fun validateExisting(file: AndroidClientJournalFile) {
+        fun validateExisting(file: ClientJournalFileCore) {
             file.readManifest(MAX_CLIENT_CREDENTIAL_BYTES).useWiped {
                 decodeAndroidCredentials(it, file).destroy()
             }
@@ -98,7 +98,7 @@ public class AndroidEncryptedClientCredentialJournal private constructor(
  */
 private fun encodeAndroidCredentials(
     state: StoredClientCredentials,
-    file: AndroidClientJournalFile,
+    file: ClientJournalFileCore,
 ): ByteArray {
     state.validate(file.deviceOwner)
     val out = ByteBuffer.allocate(MAX_CLIENT_CREDENTIAL_BYTES)
@@ -161,7 +161,7 @@ private fun encodeAndroidCredentials(
 
 private fun decodeAndroidCredentials(
     bytes: ByteArray,
-    file: AndroidClientJournalFile,
+    file: ClientJournalFileCore,
 ): StoredClientCredentials {
     check(bytes.size in 1..MAX_CLIENT_CREDENTIAL_BYTES)
     val sessions = ArrayList<StoredClientSessionV1>()

@@ -66,7 +66,7 @@ public class AndroidDevicePairingTarget private constructor(
             is AndroidDevicePairingTargetResult.Unavailable -> LocalOriginalPairingTargetResult.Unavailable(result.reason)
         }
     private class CredentialCustodyIssue {
-        val custody = AtomicReference<AndroidPairedDeviceCredentialJournalCustody?>(null)
+        val custody = AtomicReference<PairedDeviceCredentialJournalCustody?>(null)
         val settled = CompletableDeferred<Unit>()
     }
     private val credentialCustodyIssue = AtomicReference<CredentialCustodyIssue?>(null)
@@ -135,7 +135,7 @@ public class AndroidDevicePairingTarget private constructor(
      * ONE retained issue per source lifetime; lost/uncertain issuance is never reissued. */
     public suspend fun acquireCredentialJournalCustody(originalPairingActionId: DomainId,
         action: LocalPairedDeviceCredentialJournalAction):
-        AndroidDevicePairingTargetResult<AndroidPairedDeviceCredentialJournalCustody> {
+        AndroidDevicePairingTargetResult<PairedDeviceCredentialJournalCustody> {
         currentCoroutineContext().ensureActive()
         if (denied.get()) return AndroidDevicePairingTargetResult.Unavailable(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         val issue = CredentialCustodyIssue()
@@ -144,8 +144,8 @@ public class AndroidDevicePairingTarget private constructor(
         var prepared = false
         try {
             return when (val result = work.run {
-                object : AndroidOwnedTask<AndroidPairedDeviceCredentialJournalCustody> {
-                    override fun execute(): AndroidPairedDeviceCredentialJournalCustody {
+                object : AndroidOwnedTask<PairedDeviceCredentialJournalCustody> {
+                    override fun execute(): PairedDeviceCredentialJournalCustody {
                         if (denied.get()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
                         native.requireReadable()
                         val value = native.acquireCredentialJournalCustody(this@AndroidDevicePairingTarget,
@@ -156,7 +156,7 @@ public class AndroidDevicePairingTarget private constructor(
                         if (denied.get()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
                         return value
                     }
-                    override fun discard(value: AndroidPairedDeviceCredentialJournalCustody) { value.denyUndelivered() }
+                    override fun discard(value: PairedDeviceCredentialJournalCustody) { value.denyUndelivered() }
                     override fun clearInputs() { issue.settled.complete(Unit) }
                 }.also { prepared = true }
             }) {
@@ -170,7 +170,16 @@ public class AndroidDevicePairingTarget private constructor(
         }
     }
 
-    internal fun credentialJournalCustodyCurrent(custody: AndroidPairedDeviceCredentialJournalCustody): Boolean {
+    /** Internal adapter: this public target cannot expose the internal source interface itself. */
+    internal val custodySource: PairedDeviceCredentialCustodySource = object : PairedDeviceCredentialCustodySource {
+        override fun credentialJournalCustodyCurrent(custody: PairedDeviceCredentialJournalCustody): Boolean =
+            this@AndroidDevicePairingTarget.credentialJournalCustodyCurrent(custody)
+        override suspend fun revalidateCredentialJournalCustody(custody: PairedDeviceCredentialJournalCustody,
+            validation: PairedDeviceCredentialJournalCustody.NativeValidation): Boolean =
+            this@AndroidDevicePairingTarget.revalidateCredentialJournalCustody(custody, validation)
+    }
+
+    internal fun credentialJournalCustodyCurrent(custody: PairedDeviceCredentialJournalCustody): Boolean {
         if (denied.get() || credentialCustodyIssue.get()?.custody?.get() !== custody) return false
         // Reuse the actual source's original process/clock/terminal-work fence, not a
         // manufactured positive current marker. Protected key/evidence IO stays owned.
@@ -178,8 +187,8 @@ public class AndroidDevicePairingTarget private constructor(
         return !denied.get() && credentialCustodyIssue.get()?.custody?.get() === custody
     }
 
-    internal suspend fun revalidateCredentialJournalCustody(custody: AndroidPairedDeviceCredentialJournalCustody,
-        validation: AndroidPairedDeviceCredentialJournalCustody.NativeValidation): Boolean {
+    internal suspend fun revalidateCredentialJournalCustody(custody: PairedDeviceCredentialJournalCustody,
+        validation: PairedDeviceCredentialJournalCustody.NativeValidation): Boolean {
         try {
             return when (work.run {
                 object : AndroidOwnedTask<Unit> {
@@ -342,11 +351,11 @@ private class AndroidDevicePairingTargetNative(private val application: Applicat
         core.recoverAfterKnownUnsigned(proof)
     fun acquireCredentialJournalCustody(target: AndroidDevicePairingTarget, originalPairingActionId: DomainId,
         action: LocalPairedDeviceCredentialJournalAction, issueSettled: CompletableDeferred<Unit>):
-        AndroidPairedDeviceCredentialJournalCustody {
+        PairedDeviceCredentialJournalCustody {
         val (approved, sdk, expected) = core.allocateCredentialJournal(originalPairingActionId, action)
-        return AndroidPairedDeviceCredentialJournalCustody(application, target, action, approved, sdk, expected, issueSettled)
+        return PairedDeviceCredentialJournalCustody(application, target.custodySource, action, approved, sdk, expected, issueSettled)
     }
-    fun requireCredentialJournalCustody(custody: AndroidPairedDeviceCredentialJournalCustody) {
+    fun requireCredentialJournalCustody(custody: PairedDeviceCredentialJournalCustody) {
         known(custody.belongsTo(application) && custody.originalOpenClaimed())
         core.requireCredentialAllocation(custody.originalRecord)
     }

@@ -109,6 +109,10 @@ public class DesktopClientTargetHandle internal constructor(private val target: 
             try { return target.importApprovedMaster(certificate, root) } finally { root.fill(0) }
         } finally { certificate.fill(0) }
     }
+    /** Root-owned credential-journal custody on this approved original (see the Android target). */
+    public fun acquireCredentialJournalCustody(owner: Any, originalPairingActionId: DomainId,
+        action: LocalPairedDeviceCredentialJournalAction): PairedDeviceCredentialJournalCustody =
+        target.acquireCredentialJournalCustody(owner, originalPairingActionId, action)
     public fun beginAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =
         target.beginAfterKnownUnsigned(retirement)
     public fun recoverAfterKnownUnsigned(retirement: LocalDevicePairingUnsignedRetirement): LocalDevicePairingTargetReference =

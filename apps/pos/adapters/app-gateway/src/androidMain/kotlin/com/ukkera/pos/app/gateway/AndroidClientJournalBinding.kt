@@ -4,7 +4,7 @@ import com.ukkera.pos.database.AndroidEmployeeClientCustody
 import com.ukkera.pos.database.AndroidOriginalLocalClient
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
 import com.ukkera.pos.security.NativeEmployeeJournalAllocation
-import com.ukkera.pos.security.AndroidPairedDeviceCredentialJournalCustody
+import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import com.ukkera.pos.security.SelfOwnedKeyProtectionV1
 import com.ukkera.pos.types.DomainId
@@ -15,20 +15,20 @@ import java.security.MessageDigest
  * employee owns only its separate intent namespace and no device credential journal.
  * PairedDevice consumes only real protected additional-device credential custody. Its
  * separate actor-allocation history issues PairedActor only after actual Master Current. */
-internal sealed class AndroidClientJournalBinding {
-    abstract fun isCurrent(): Boolean
-    abstract fun permitsEnrollment(): Boolean
-    abstract fun requireCoordinates(owner: LocalClientDeviceIdentity, actor: DomainId?, journalId: DomainId,
+internal sealed class AndroidClientJournalBinding : ClientJournalBindingFacts {
+    abstract override fun isCurrent(): Boolean
+    abstract override fun permitsEnrollment(): Boolean
+    abstract override fun requireCoordinates(owner: LocalClientDeviceIdentity, actor: DomainId?, journalId: DomainId,
         keyId: DomainId, protection: SelfOwnedKeyProtectionV1)
-    abstract val rootName: String
-    abstract val keyAliasNamespace: String
-    abstract val headAliasNamespace: String
-    abstract val aeadDomain: String
-    abstract val headDigestDomain: String
-    open val fixedKind: AndroidClientJournalKind? get() = null
-    open val employeeEnrollmentCommitment: String? get() = null
-    open val pairedDeviceEnrollmentCommitment: String? get() = null
-    open val pairedActorEnrollmentCommitment: String? get() = null
+    abstract override val rootName: String
+    abstract override val keyAliasNamespace: String
+    abstract override val headAliasNamespace: String
+    abstract override val aeadDomain: String
+    abstract override val headDigestDomain: String
+    override val fixedKind: ClientJournalKind? get() = null
+    override val employeeEnrollmentCommitment: String? get() = null
+    override val pairedDeviceEnrollmentCommitment: String? get() = null
+    override val pairedActorEnrollmentCommitment: String? get() = null
 
     class Original(val original: AndroidOriginalLocalClient): AndroidClientJournalBinding() {
         override fun isCurrent(): Boolean = original.isCurrent()
@@ -47,7 +47,7 @@ internal sealed class AndroidClientJournalBinding {
         override fun requireCoordinates(owner: LocalClientDeviceIdentity, actor: DomainId?, journalId: DomainId,
             keyId: DomainId, protection: SelfOwnedKeyProtectionV1) {
             val c = original.material.coordinates
-            val kind = if (actor == null) AndroidClientJournalKind.CREDENTIALS else AndroidClientJournalKind.INTENTS
+            val kind = if (actor == null) ClientJournalKind.CREDENTIALS else ClientJournalKind.INTENTS
             check(owner == LocalClientDeviceIdentity(c.scope, c.deviceId) && (actor == null || actor == c.firstActorId) &&
                 journalId == originalClientJournalId(original, kind, "journal") && keyId == originalClientJournalId(original, kind, "key") &&
                 protection == original.material.protection)
@@ -80,7 +80,7 @@ internal sealed class AndroidClientJournalBinding {
                 protection == custody.material.protection && allocation.belongsTo(custody.native) && allocation.originalOpenClaimed())
         }
     }
-    class PairedDevice(val custody: AndroidPairedDeviceCredentialJournalCustody): AndroidClientJournalBinding() {
+    class PairedDevice(val custody: PairedDeviceCredentialJournalCustody): AndroidClientJournalBinding() {
         private val profile = custody.approvedOriginal.masterSdkOriginal.compositionProfile
         init { check(custody.originalOpenClaimed()) }
         // This gate is used ONLY during actual acquisition. Successful journal IO owns its
@@ -104,13 +104,13 @@ internal sealed class AndroidClientJournalBinding {
 
     /** Separate protected allocation METADATA, initialized before the actual native source
      * handoff. It cannot produce a credential or financial-intent journal view. */
-    class PairedActorAllocations(val custody: AndroidPairedDeviceCredentialJournalCustody): AndroidClientJournalBinding() {
+    class PairedActorAllocations(val custody: PairedDeviceCredentialJournalCustody): AndroidClientJournalBinding() {
         private val profile = custody.approvedOriginal.masterSdkOriginal.compositionProfile
         init { check(custody.originalActorAllocationOpenClaimed()) }
         override fun isCurrent(): Boolean = custody.isCurrent() && custody.originalActorAllocationOpenClaimed()
         override fun permitsEnrollment(): Boolean =
             custody.action == LocalPairedDeviceCredentialJournalAction.ENROLL && isCurrent()
-        override val fixedKind: AndroidClientJournalKind get() = AndroidClientJournalKind.ACTOR_ALLOCATIONS
+        override val fixedKind: ClientJournalKind get() = ClientJournalKind.ACTOR_ALLOCATIONS
         override val rootName: String get() = pairedRoot("ukkera-local-paired-device-actor-allocations-v1", profile)
         override val keyAliasNamespace: String get() = pairedAlias("com.ukkera.pos.paired-device-actor-allocation.v1/", profile)
         override val headAliasNamespace: String get() = pairedAlias("com.ukkera.pos.paired-device-actor-allocation-head.v1/", profile)
@@ -151,20 +151,4 @@ internal sealed class AndroidClientJournalBinding {
                 protection == custody.protection && custody.originalOpenClaimed())
         }
     }
-}
-
-/** Exact native-approved profile selects only a fixed container; LIVE names stay unchanged. */
-private fun pairedSuffix(profile: com.ukkera.pos.security.LocalCompositionSdkProfileV1): String = when (profile) {
-    com.ukkera.pos.security.LocalMasterSdkProfileV1 -> ""
-    is com.ukkera.pos.security.LocalTrainingSdkProfileV1 ->
-        "-" + profile.slot.name.lowercase().replace('_', '-')
-    else -> error("Unsupported paired journal composition profile")
-}
-private fun pairedRoot(live: String, profile: com.ukkera.pos.security.LocalCompositionSdkProfileV1): String {
-    check(live.endsWith("-v1"))
-    return live.removeSuffix("-v1") + pairedSuffix(profile) + "-v1"
-}
-private fun pairedAlias(live: String, profile: com.ukkera.pos.security.LocalCompositionSdkProfileV1): String {
-    check(live.endsWith(".v1/"))
-    return live.removeSuffix(".v1/") + pairedSuffix(profile).replace('-', '.') + ".v1/"
 }

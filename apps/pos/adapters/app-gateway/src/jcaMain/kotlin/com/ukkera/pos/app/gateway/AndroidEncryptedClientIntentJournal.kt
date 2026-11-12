@@ -15,7 +15,7 @@ import kotlinx.serialization.Serializable
  * interrupted duplicate remains pending until the same explicit acknowledgement is repeated.
  */
 public class AndroidEncryptedClientIntentJournal private constructor(
-    private val file: AndroidClientJournalFile,
+    private val file: ClientJournalFileCore,
 ) : LocalClientIntentJournal(LocalClientIdentity(file.deviceOwner.scope,
     requireNotNull(file.actorId), file.deviceOwner.deviceId)) {
 
@@ -110,7 +110,7 @@ public class AndroidEncryptedClientIntentJournal private constructor(
                     existing != null -> if (existing.sameIntent(captured))
                         JournalWrite.DURABLE else JournalWrite.IDENTITY_CONFLICT
                     state.manifest.entries.size >= MAX_CLIENT_PENDING -> JournalWrite.NO_CAPACITY
-                    state.manifest.archivedCount + state.manifest.entries.size >= ANDROID_CLIENT_MAX_ARCHIVES_V1 ->
+                    state.manifest.archivedCount + state.manifest.entries.size >= CLIENT_JOURNAL_MAX_ARCHIVES_V1 ->
                         JournalWrite.NO_CAPACITY
                     else -> {
                         writeManifest(state.manifest.next(state.manifest.entries + captured))
@@ -331,39 +331,39 @@ public class AndroidEncryptedClientIntentJournal private constructor(
     }
 
     /** Private authored operations, not a caller-provided verifier/native work implementation. */
-    private fun <T> task(vararg inputs: ByteArray, execute: () -> T): AndroidClientJournalTask<T> =
+    private fun <T> task(vararg inputs: ByteArray, execute: () -> T): ClientJournalTask<T> =
         try {
-            object : AndroidClientJournalTask<T> {
+            object : ClientJournalTask<T> {
                 override fun execute(): T = execute.invoke()
                 override fun discard(value: T) = Unit // these complete records contain no token/native handles
                 override fun clearInputs() { inputs.forEach { it.fill(0) } }
             }
         } catch (failure: Throwable) { inputs.forEach { it.fill(0) }; throw failure }
 
-    private fun <T> readResult(value: AndroidClientJournalOutcome<T>): JournalRead<T> = when (value) {
-        is AndroidClientJournalOutcome.Value -> JournalRead.Value(value.value)
-        AndroidClientJournalOutcome.Unavailable -> JournalRead.Unavailable
+    private fun <T> readResult(value: ClientJournalOutcome<T>): JournalRead<T> = when (value) {
+        is ClientJournalOutcome.Value -> JournalRead.Value(value.value)
+        ClientJournalOutcome.Unavailable -> JournalRead.Unavailable
     }
-    private fun writeResult(value: AndroidClientJournalOutcome<JournalWrite>): JournalWrite = when (value) {
-        is AndroidClientJournalOutcome.Value -> value.value
-        AndroidClientJournalOutcome.Unavailable -> JournalWrite.UNAVAILABLE
+    private fun writeResult(value: ClientJournalOutcome<JournalWrite>): JournalWrite = when (value) {
+        is ClientJournalOutcome.Value -> value.value
+        ClientJournalOutcome.Unavailable -> JournalWrite.UNAVAILABLE
     }
 
     internal companion object {
         /** Initial data only; the caller still needs the real once-only native enrollment. */
-        fun originalEmptyManifest(file: AndroidClientJournalFile): ByteArray {
+        fun originalEmptyManifest(file: ClientJournalFileCore): ByteArray {
             val adapter = fromExisting(file)
             return adapter.encodeManifest(AndroidClientIntentManifestV1(owner = adapter.owner,
                 journalId = file.journalId, keyId = file.keyId, revision = 0, archivedCount = 0, entries = emptyList()))
         }
 
-        fun fromExisting(file: AndroidClientJournalFile): AndroidEncryptedClientIntentJournal {
-            check(file.kind == AndroidClientJournalKind.INTENTS && file.actorId != null)
+        fun fromExisting(file: ClientJournalFileCore): AndroidEncryptedClientIntentJournal {
+            check(file.kind == ClientJournalKind.INTENTS && file.actorId != null)
             return AndroidEncryptedClientIntentJournal(file)
         }
 
         /** Actual complete decode/census under the original retained acquisition before delivery. */
-        fun validateExisting(file: AndroidClientJournalFile) {
+        fun validateExisting(file: ClientJournalFileCore) {
             fromExisting(file).readState()
         }
     }
@@ -391,8 +391,8 @@ private data class AndroidClientIntentManifestV1(
     fun validate(expectedOwner: LocalClientIdentity, expectedJournalId: DomainId, expectedKeyId: DomainId) {
         check(profile == "ukkera.android.client-intents/v1" && owner == expectedOwner &&
             journalId == expectedJournalId && keyId == expectedKeyId)
-        check(revision >= 0 && archivedCount in 0L..ANDROID_CLIENT_MAX_ARCHIVES_V1.toLong() &&
-            entries.size <= MAX_CLIENT_PENDING && archivedCount + entries.size <= ANDROID_CLIENT_MAX_ARCHIVES_V1)
+        check(revision >= 0 && archivedCount in 0L..CLIENT_JOURNAL_MAX_ARCHIVES_V1.toLong() &&
+            entries.size <= MAX_CLIENT_PENDING && archivedCount + entries.size <= CLIENT_JOURNAL_MAX_ARCHIVES_V1)
         check(entries.map { it.operationId }.toSet().size == entries.size && entries.none { it.acknowledged })
         check(documentarySources == null || sourceRecords.size in 1..MAX_CLIENT_DOCUMENTARY_SOURCES)
         check(sourceRecords.map { it.documentId }.toSet().size == sourceRecords.size)

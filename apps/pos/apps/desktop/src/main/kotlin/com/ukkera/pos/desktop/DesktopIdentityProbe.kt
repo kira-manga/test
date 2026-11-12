@@ -23,6 +23,17 @@ internal object DesktopIdentityProbe {
         return code
     }
 
+    const val CLIENT_JOURNAL_ARGUMENT = "--client-journal-probe="
+
+    /** Test-runner check of desktop journal custody (synthetic probe namespace only). */
+    fun runClientJournal(output: File): Int {
+        val line = if (!Platform.isWindows()) "UNSUPPORTED_PLATFORM" else
+            com.ukkera.pos.app.gateway.DesktopClientJournalProbe.run(
+                com.ukkera.pos.app.gateway.DesktopClientJournalStorages.windows(DesktopWindowsPackageIdentity.TEST.target()))
+        output.writeText(line + "\n")
+        return if (line.startsWith("DATA ")) 0 else 1
+    }
+
     const val CLIENT_TARGET_ARGUMENT = "--client-target-probe="
 
     /**

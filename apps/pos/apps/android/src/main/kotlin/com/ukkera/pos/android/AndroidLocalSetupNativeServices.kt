@@ -10,7 +10,7 @@ import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.app.gateway.LocalBranchDisplayLabels
 import com.ukkera.pos.app.gateway.LocalEndpointBranchGateway
 import com.ukkera.pos.app.gateway.setup.LocalSetupLanAuthentication
-import com.ukkera.pos.security.AndroidPairedDeviceCredentialJournalCustody
+import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.SupervisorJob
@@ -559,7 +559,7 @@ internal class AndroidLocalSetupNativeServices(
         private var connecting: Deferred<Unit>? = null
         private var selectedEndpoint: LocalSetupLanEndpoint? = null
         private var closing: Deferred<Unit>? = null
-        private var custody: AndroidPairedDeviceCredentialJournalCustody? = null
+        private var custody: PairedDeviceCredentialJournalCustody? = null
         private var credentials: AndroidPairedDeviceClientCredentials? = null
         private val authentication = AtomicReference<LanAuthentication?>(null)
         private val retired = CompletableDeferred<Unit>()

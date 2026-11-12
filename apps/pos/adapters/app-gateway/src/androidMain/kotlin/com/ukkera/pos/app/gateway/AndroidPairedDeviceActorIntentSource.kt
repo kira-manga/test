@@ -134,7 +134,7 @@ internal class AndroidPairedDeviceActorIntentSource(
             try {
                 if (!isCurrent()) return null
                 val acquired = AndroidLocalClientJournalOwner.acquirePairedActor(application, custody)
-                if (acquired !is AndroidClientJournalOutcome.Value) return null
+                if (acquired !is ClientJournalOutcome.Value) return null
                 owner = acquired.value // Retain exact success BEFORE a further suspension.
                 val held = HeldActor(custody, acquired.value)
                 synchronized(gate) { retainedActors.add(held) }

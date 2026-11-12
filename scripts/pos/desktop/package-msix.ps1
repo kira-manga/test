@@ -88,6 +88,10 @@ if ($Probe) {
         $targetProcess = Start-Process -FilePath $alias -ArgumentList "--client-target-probe=$targetFile" -Wait -PassThru
         $summary.client_target_exit = $targetProcess.ExitCode
         $summary.client_target_probe = if (Test-Path $targetFile) { (Get-Content -Raw $targetFile).Trim() } else { 'NO_OUTPUT' }
+        $journalFile = Join-Path $diagnostics 'client-journal-probe.txt'
+        $journalProcess = Start-Process -FilePath $alias -ArgumentList "--client-journal-probe=$journalFile" -Wait -PassThru
+        $summary.client_journal_exit = $journalProcess.ExitCode
+        $summary.client_journal_probe = if (Test-Path $journalFile) { (Get-Content -Raw $journalFile).Trim() } else { 'NO_OUTPUT' }
         # Packaged-service identity is an experiment: record the actual outcome, never infer it.
         $probeDir = Join-Path $env:ProgramData 'UkkeraPOSTestProbe'
         New-Item -ItemType Directory -Force -Path $probeDir | Out-Null

@@ -2,7 +2,7 @@ package com.ukkera.pos.app.gateway
 
 import android.app.Application
 import com.ukkera.pos.rpc.AndroidOriginalRpcClientOwner
-import com.ukkera.pos.security.AndroidPairedDeviceCredentialJournalCustody
+import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.LocalPairedDeviceCredentialJournalAction
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CompletableDeferred
@@ -27,7 +27,7 @@ public sealed interface AndroidPairedDeviceClientCredentialsResult {
  */
 public class AndroidPairedDeviceClientCredentials private constructor(
     private val application: Application,
-    private val custody: AndroidPairedDeviceCredentialJournalCustody,
+    private val custody: PairedDeviceCredentialJournalCustody,
     private val credentialsOwner: AndroidLocalClientJournalOwner,
     private val actorAllocationOwner: AndroidLocalClientJournalOwner?,
     private val actorIntentAction: LocalPairedDeviceCredentialJournalAction?,
@@ -89,7 +89,7 @@ public class AndroidPairedDeviceClientCredentials private constructor(
         /** The capability is retained by the root before this suspension. Source proof is
          * retained until full typed manifest/head/continuity admission and protected final
          * handoff. No automatic enroll, new capability after uncertainty or restored login. */
-        public suspend fun acquire(application: Application, custody: AndroidPairedDeviceCredentialJournalCustody):
+        public suspend fun acquire(application: Application, custody: PairedDeviceCredentialJournalCustody):
             AndroidPairedDeviceClientCredentialsResult = acquireActual(application, custody, actorIntentAction = null)
 
         /** Explicit supplier actor route. Both actual native journal owners are captured
@@ -97,11 +97,11 @@ public class AndroidPairedDeviceClientCredentials private constructor(
          * creation; REOPEN/RECOVER cannot initialize a missing ledger. The separate immutable
          * actor disposition controls opening an actor after fresh actual Master Current. */
         public suspend fun acquireForActorIntents(application: Application,
-            custody: AndroidPairedDeviceCredentialJournalCustody,
+            custody: PairedDeviceCredentialJournalCustody,
             actorIntentAction: LocalPairedDeviceCredentialJournalAction = custody.action): AndroidPairedDeviceClientCredentialsResult =
             acquireActual(application, custody, actorIntentAction)
 
-        private suspend fun acquireActual(application: Application, custody: AndroidPairedDeviceCredentialJournalCustody,
+        private suspend fun acquireActual(application: Application, custody: PairedDeviceCredentialJournalCustody,
             actorIntentAction: LocalPairedDeviceCredentialJournalAction?): AndroidPairedDeviceClientCredentialsResult {
             currentCoroutineContext().ensureActive()
             var owner: AndroidLocalClientJournalOwner? = null
@@ -109,11 +109,11 @@ public class AndroidPairedDeviceClientCredentials private constructor(
             var delivered = false
             try {
                 val acquired = AndroidLocalClientJournalOwner.acquirePairedDevice(application, custody)
-                if (acquired !is AndroidClientJournalOutcome.Value) return AndroidPairedDeviceClientCredentialsResult.Unavailable
+                if (acquired !is ClientJournalOutcome.Value) return AndroidPairedDeviceClientCredentialsResult.Unavailable
                 owner = acquired.value // Capture the actual owner immediately, before more suspension.
                 if (actorIntentAction != null) {
                     val allocations = AndroidLocalClientJournalOwner.acquirePairedActorAllocations(application, custody)
-                    if (allocations !is AndroidClientJournalOutcome.Value) return AndroidPairedDeviceClientCredentialsResult.Unavailable
+                    if (allocations !is ClientJournalOutcome.Value) return AndroidPairedDeviceClientCredentialsResult.Unavailable
                     actorAllocationOwner = allocations.value // Capture before final native source recheck.
                     if (!allocations.value.isCurrent() || allocations.value.actorAllocationJournal?.isCurrent() != true)
                         return AndroidPairedDeviceClientCredentialsResult.Unavailable

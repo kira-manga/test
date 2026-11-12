@@ -3,7 +3,7 @@ package com.ukkera.pos.app.gateway
 import android.app.Application
 import com.ukkera.pos.rpc.AndroidOriginalRpcClientOwner
 import com.ukkera.pos.rpc.LocalRpcRemoteAuthenticationService
-import com.ukkera.pos.security.AndroidPairedDeviceCredentialJournalCustody
+import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
 import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
 import com.ukkera.pos.security.LocalDevicePairingSdkOriginal
 import com.ukkera.pos.security.LocalGatewayCredentials
@@ -23,14 +23,14 @@ import kotlinx.coroutines.withContext
  * lifetime/verifier callback can construct this capture. It supplies acquisition identity
  * only, never grants future business permission or restores an interactive login. */
 internal class AndroidPairedDeviceCurrentActor private constructor(
-    private val nativeOriginal: AndroidPairedDeviceCredentialJournalCustody,
+    private val nativeOriginal: PairedDeviceCredentialJournalCustody,
     private val rpc: AndroidOriginalRpcClientOwner,
     private val service: LocalRpcRemoteAuthenticationService,
     private val sdkOriginal: LocalDevicePairingSdkOriginal,
     private val approvedOriginal: LocalDevicePairingApprovedMaster,
     val identity: LocalClientIdentity,
 ) {
-    fun belongsTo(original: AndroidPairedDeviceCredentialJournalCustody): Boolean = nativeOriginal === original
+    fun belongsTo(original: PairedDeviceCredentialJournalCustody): Boolean = nativeOriginal === original
 
     /** Exact retained selected-original/physical connection observation only. The fresh
      * authorization is the actual Current exchange below, not this synchronous sample. */
@@ -38,7 +38,7 @@ internal class AndroidPairedDeviceCurrentActor private constructor(
         rpc.approvedMaster.value === approvedOriginal
 
     companion object {
-        suspend fun authenticate(original: AndroidPairedDeviceCredentialJournalCustody,
+        suspend fun authenticate(original: PairedDeviceCredentialJournalCustody,
             rpc: AndroidOriginalRpcClientOwner, expected: LocalClientIdentity,
             credentials: LocalGatewayCredentials): AndroidPairedDeviceCurrentActor? {
             currentCoroutineContext().ensureActive()
@@ -63,7 +63,7 @@ internal class AndroidPairedDeviceCurrentActor private constructor(
             catch (_: Exception) { null }
         }
 
-        private fun sameOriginal(native: AndroidPairedDeviceCredentialJournalCustody,
+        private fun sameOriginal(native: PairedDeviceCredentialJournalCustody,
             sdk: LocalDevicePairingSdkOriginal, approved: LocalDevicePairingApprovedMaster): Boolean {
             val retained = native.approvedOriginal
             if (sdk.exactDeviceName != native.sdkOriginal.exactDeviceName ||

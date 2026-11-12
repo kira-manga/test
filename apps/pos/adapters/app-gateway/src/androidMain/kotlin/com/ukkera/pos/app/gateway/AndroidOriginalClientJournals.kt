@@ -76,16 +76,16 @@ public class AndroidOriginalClientJournals private constructor(
             var delivered = false
             try {
                 val first = AndroidLocalClientJournalOwner.acquireOriginal(application, original,
-                    AndroidClientJournalKind.CREDENTIALS, firstEnrollment, recoverWrites)
-                if (first !is AndroidClientJournalOutcome.Value) return AndroidOriginalClientJournalsResult.Unavailable
+                    ClientJournalKind.CREDENTIALS, firstEnrollment, recoverWrites)
+                if (first !is ClientJournalOutcome.Value) return AndroidOriginalClientJournalsResult.Unavailable
                 credentials = first.value
                 // This exact owner remains private/locked until both journals are published.
                 // No failed read or missing first journal can authorize creation of the second.
                 if (continuation && !first.value.verifyUnusedOriginalCredentials())
                     return AndroidOriginalClientJournalsResult.Unavailable
                 val second = AndroidLocalClientJournalOwner.acquireOriginal(application, original,
-                    AndroidClientJournalKind.INTENTS, requiresPristineMaster, recoverWrites)
-                if (second !is AndroidClientJournalOutcome.Value) return AndroidOriginalClientJournalsResult.Unavailable
+                    ClientJournalKind.INTENTS, requiresPristineMaster, recoverWrites)
+                if (second !is ClientJournalOutcome.Value) return AndroidOriginalClientJournalsResult.Unavailable
                 intents = second.value
                 currentCoroutineContext().ensureActive()
                 if (!original.isCurrent() || (requiresPristineMaster && !original.permitsFirstEnrollment()) ||
@@ -108,13 +108,13 @@ public class AndroidOriginalClientJournals private constructor(
  * chosen after missing files. No scalar reopening API exports these as custody. SHA-256's
  * first 128 bits are encoded as a UUID-shaped DomainId; these IDs are not credentials.
  */
-internal fun originalClientJournalId(original: AndroidOriginalLocalClient, kind: AndroidClientJournalKind,
+internal fun originalClientJournalId(original: AndroidOriginalLocalClient, kind: ClientJournalKind,
     purpose: String): DomainId {
     val c = original.material.coordinates
     val body = listOf("ukkera.android.original-client-enrollment/v1", c.scope.organizationId.value,
         c.scope.companyId.value, c.scope.branchId.value, c.deviceId.value, c.installationId.value,
         c.firstActorId.value, original.receipt.core.originalRequestId.value, original.receipt.digest.value,
-        if (kind == AndroidClientJournalKind.CREDENTIALS) "credentials" else "intents", purpose).joinToString("\n")
+        if (kind == ClientJournalKind.CREDENTIALS) "credentials" else "intents", purpose).joinToString("\n")
     return body.encodeToByteArray().useWiped { bytes ->
         MessageDigest.getInstance("SHA-256").digest(bytes).useWiped { hash ->
             val hex = encodeHex(hash).take(32)

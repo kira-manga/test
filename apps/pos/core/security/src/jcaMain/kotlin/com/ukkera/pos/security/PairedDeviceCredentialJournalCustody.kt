@@ -1,6 +1,5 @@
 package com.ukkera.pos.security
 
-import android.app.Application
 import com.ukkera.pos.types.DomainId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.NonCancellable
@@ -19,9 +18,16 @@ import kotlinx.coroutines.withContext
  * actual AES/key-head/file owner BEFORE the target may be transferred/closed. Currentness here
  * is acquisition-only and deliberately ends at handoff; it is not storage/session currentness.
  */
-public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
-    private val application: Application,
-    private val target: AndroidDevicePairingTarget,
+/** The issuing original target's revalidation seam (Android or desktop); never a caller-supplied predicate. */
+internal interface PairedDeviceCredentialCustodySource {
+    fun credentialJournalCustodyCurrent(custody: PairedDeviceCredentialJournalCustody): Boolean
+    suspend fun revalidateCredentialJournalCustody(custody: PairedDeviceCredentialJournalCustody,
+        validation: PairedDeviceCredentialJournalCustody.NativeValidation): Boolean
+}
+
+public class PairedDeviceCredentialJournalCustody internal constructor(
+    private val owner: Any,
+    private val target: PairedDeviceCredentialCustodySource,
     public val action: LocalPairedDeviceCredentialJournalAction,
     public val approvedOriginal: LocalDevicePairingApprovedMaster,
     public val sdkOriginal: LocalDevicePairingSdkOriginal,
@@ -44,8 +50,8 @@ public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
     private val validations = mutableSetOf<NativeValidation>()
     private var closure: CompletableDeferred<Unit>? = null
 
-    /** Exact actual Application/source reference, not matching package/scope scalar DATA. */
-    public fun belongsTo(application: Application): Boolean = this.application === application
+    /** Exact actual root owner (Android Application / desktop root) reference, not scalar DATA. */
+    public fun belongsTo(owner: Any): Boolean = this.owner === owner
 
     /** End-only acquisition gate. The protected native readback is rechecked under the
      * actual source worker before open and again after complete encrypted-journal admission. */
@@ -63,9 +69,9 @@ public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
 
     /** The ONE original open is consumed before any client-key/file IO. A failed/abandoned
      * attempt cannot be claimed again or changed from existing-only to enrollment. */
-    public suspend fun claimOriginalJournalOpen(application: Application): Boolean {
+    public suspend fun claimOriginalJournalOpen(owner: Any): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!belongsTo(application) || !target.credentialJournalCustodyCurrent(this)) return false
+        if (!belongsTo(owner) || !target.credentialJournalCustodyCurrent(this)) return false
         val validation = synchronized(gate) {
             if (phase != Phase.ISSUED) return false
             phase = Phase.OPEN_STARTED
@@ -77,9 +83,9 @@ public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
     /** A separate ONE original actor-allocation-ledger open, while this actual source is
      * still held before transfer. This is allocation metadata custody, not an actor, financial
      * journal or enrollment inference from missing files. Failure consumes the same claim. */
-    public suspend fun claimOriginalActorAllocationJournalOpen(application: Application): Boolean {
+    public suspend fun claimOriginalActorAllocationJournalOpen(owner: Any): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!belongsTo(application) || !target.credentialJournalCustodyCurrent(this)) return false
+        if (!belongsTo(owner) || !target.credentialJournalCustodyCurrent(this)) return false
         val validation = synchronized(gate) {
             if (phase != Phase.OPEN_STARTED || actorAllocationOpenStarted) return false
             actorAllocationOpenStarted = true
@@ -99,9 +105,9 @@ public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
     /** Final protected source recheck and withdrawal of this acquisition gate. This does
      * not prove a journal exists and cannot construct one: only the private fully validated
      * journal factory may publish its independently retained native owner afterwards. */
-    public suspend fun finishNativeHandoff(application: Application): Boolean {
+    public suspend fun finishNativeHandoff(owner: Any): Boolean {
         currentCoroutineContext().ensureActive()
-        if (!belongsTo(application) || !target.credentialJournalCustodyCurrent(this)) return false
+        if (!belongsTo(owner) || !target.credentialJournalCustodyCurrent(this)) return false
         val validation = synchronized(gate) {
             if (phase != Phase.OPEN_STARTED) return false
             NativeValidation().also { validations.add(it) }
@@ -156,5 +162,5 @@ public class AndroidPairedDeviceCredentialJournalCustody internal constructor(
         }
     }
 
-    override fun toString(): String = "AndroidPairedDeviceCredentialJournalCustody([REDACTED])"
+    override fun toString(): String = "PairedDeviceCredentialJournalCustody([REDACTED])"
 }

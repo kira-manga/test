@@ -61,7 +61,7 @@ internal class AndroidSameCohostClientJournals(
         var delivered = false
         try {
             val acquired = AndroidLocalClientJournalOwner.acquireEmployee(application, custody, allocation)
-            if (acquired !is AndroidClientJournalOutcome.Value) return@withLock false
+            if (acquired !is ClientJournalOutcome.Value) return@withLock false
             native = acquired.value
             currentCoroutineContext().ensureActive()
             if (closure.get() != null || !original.belongsTo(originalClient) || !custody.belongsTo(originalClient) ||

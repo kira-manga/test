@@ -203,6 +203,44 @@ internal class DesktopDevicePairingTarget private constructor(private val native
     val compositionProfile: LocalCompositionSdkProfileV1 get() = native.sdkProfile
     fun denyNewWork() { denied = true }
 
+    private val issuedCustody = java.util.concurrent.atomic.AtomicReference<PairedDeviceCredentialJournalCustody?>(null)
+    private var custodyIssued = false
+
+    /** Revalidation seam for the ONE custody this lifetime issues; same checks as the Android target. */
+    private val custodySource = object : PairedDeviceCredentialCustodySource {
+        override fun credentialJournalCustodyCurrent(custody: PairedDeviceCredentialJournalCustody): Boolean =
+            !denied && !closed && issuedCustody.get() === custody
+
+        override suspend fun revalidateCredentialJournalCustody(custody: PairedDeviceCredentialJournalCustody,
+            validation: PairedDeviceCredentialJournalCustody.NativeValidation): Boolean {
+            validation.prepared = true
+            return try {
+                synchronized(this@DesktopDevicePairingTarget) {
+                    if (!custody.isCurrent()) return@synchronized false
+                    core.requireReadable()
+                    if (!custody.originalOpenClaimed()) return@synchronized false
+                    core.requireCredentialAllocation(custody.originalRecord)
+                    core.requireReadable()
+                    custody.isCurrent()
+                }
+            } catch (_: Exception) { false } finally { validation.finish() }
+        }
+    }
+
+    /**
+     * Explicit protected credential-journal custody on THIS approved original, before the target is
+     * transferred to RPC. ONE issue per lifetime; a lost/uncertain issue is never reissued.
+     */
+    fun acquireCredentialJournalCustody(owner: Any, originalPairingActionId: DomainId,
+        action: LocalPairedDeviceCredentialJournalAction): PairedDeviceCredentialJournalCustody = run {
+        check(!custodyIssued) { "Credential custody was already issued for this target lifetime" }
+        custodyIssued = true
+        val (approved, sdk, record) = core.allocateCredentialJournal(originalPairingActionId, action)
+        val settled = kotlinx.coroutines.CompletableDeferred(Unit)
+        PairedDeviceCredentialJournalCustody(owner, custodySource, action, approved, sdk, record, settled)
+            .also { issuedCustody.set(it) }
+    }
+
     @Synchronized override fun close() {
         if (closed) return
         closed = true; denied = true

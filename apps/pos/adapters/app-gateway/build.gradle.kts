@@ -21,7 +21,13 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    applyDefaultHierarchyTemplate()
     sourceSets {
+        // Shared JVM desktop + Android code (client journal engine and LAN composition).
+        val jcaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jcaMain)
+        androidMain.get().dependsOn(jcaMain)
+        jcaMain.dependencies { api(project(":adapters:local-rpc")) }
         commonMain.dependencies {
             api(project(":ui:app"))
             api(project(":core:database"))
