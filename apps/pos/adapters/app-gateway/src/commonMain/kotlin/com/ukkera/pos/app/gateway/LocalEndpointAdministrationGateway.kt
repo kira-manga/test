@@ -118,14 +118,14 @@ public class LocalEndpointAdministrationGateway internal constructor(
                 val observed = recover(access, original)
                 val current = (observed as? LocalAdministrationResult.Known)?.operation ?: return@operation observed
                 if (current.terminal || current.cancellationRequested) return@operation observed
-                val reset = original.command.action == LocalAdministrationAction.RESET_CREDENTIAL
-                // Lost reset replies are lookup/cancel only. Never guess that another entered
+                val secretRequired = original.command.action.requiresNewPassword
+                // Lost password-bearing replies are lookup/cancel only. Never guess another entered
                 // password equals the original, and never replay a password after a restart.
-                if (reset && current.phase != LocalAdministrationPhase.PREPARED) return@operation observed
-                if (reset != (owned != null)) return@operation LocalAdministrationResult.Unresolved(requestId, LocalServiceProblem.INVALID_INPUT)
+                if (secretRequired && current.phase != LocalAdministrationPhase.PREPARED) return@operation observed
+                if (secretRequired != (owned != null)) return@operation LocalAdministrationResult.Unresolved(requestId, LocalServiceProblem.INVALID_INPUT)
                 val dispatched = update(original.command.requestId) { before ->
                     check(before.command == original.command && !before.terminal && !before.cancellationRequested)
-                    if (reset) check(before.phase == StoredAdministrationPhase.PREPARED)
+                    if (secretRequired) check(before.phase == StoredAdministrationPhase.PREPARED)
                     before.copy(phase = StoredAdministrationPhase.DISPATCHED)
                 }
                 access.checkCurrent()
@@ -271,30 +271,45 @@ public class LocalEndpointAdministrationGateway internal constructor(
     }
 
     private suspend fun <T> withAccess(body: suspend (Access) -> T): T {
-        currentCoroutineContext().ensureActive()
-        if (retired.value) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
         try {
-            val initial = currentView(lease)
-            val access = Access(lease, initial)
-            val result = body(access)
-            access.observedSelfRevocation?.let { definite ->
-                // Only the exact already-observed terminal metadata may cross this deliberately
-                // retired lifetime. No read, lookup, cancellation or later mutation is exempted.
-                check(result == definite && retired.value)
+            currentCoroutineContext().ensureActive()
+            if (retired.value) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+            val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+            try {
+                val initial = currentView(lease)
+                val access = Access(lease, initial)
+                val result = body(access)
+                access.observedSelfRevocation?.let { definite ->
+                    // Only the exact already-observed terminal metadata may cross this deliberately
+                    // retired lifetime. No read, lookup, cancellation or later mutation is exempted.
+                    check(result == definite && retired.value)
+                    return result
+                }
+                val final = currentView(lease)
+                if (final.sessionId != initial.sessionId || final.generation != initial.generation || final.policy.revision != initial.policy.revision)
+                    throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                access.checkCurrent()
                 return result
+            } finally { lease.destroy() }
+        } catch (failure: GatewayFailure) {
+            if (failure.problem == LocalServiceProblem.SESSION_ENDED && retired.compareAndSet(false, true)) {
+                // Terminal observations must retire the exact attachment even when read/ACK
+                // returns a compatible generic refusal. Ordinary target DENIED and temporary
+                // unavailability are not terminal identity facts. The installed sink fences
+                // only this original adapter; it cannot retire a successor attachment.
+                try { retireOriginalSession() } catch (_: Exception) {
+                    // The actual sink invalidates its session fence/lifecycle in finally.
+                    // Failed negative holders retain their existing root cleanup custody;
+                    // their failure cannot restore access or change this terminal fact.
+                }
             }
-            val final = currentView(lease)
-            if (final.sessionId != initial.sessionId || final.generation != initial.generation || final.policy.revision != initial.policy.revision)
-                throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            access.checkCurrent()
-            return result
-        } finally { lease.destroy() }
+            throw failure
+        }
     }
     private suspend fun currentView(lease: LocalWorkflowCredentialLease): LocalSessionView {
         currentCoroutineContext().ensureActive()
         if (retired.value || !connection.isCurrent() || !lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val view = when (val result = connection.endpoint.current(lease.credentials)) {
+        val view = when (val result = lease.observeSession(connection.endpoint)) {
             is LocalSessionViewResult.Current -> result.view
             LocalSessionViewResult.Denied -> throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
             LocalSessionViewResult.Busy -> throw GatewayFailure(LocalServiceProblem.RETRY_LATER)
@@ -358,6 +373,14 @@ public class LocalEndpointAdministrationGateway internal constructor(
         val account = detail.account
         if (account.actorId != command.targetId || account.accountRevision != command.expectedRevision) return false
         return when (command.action) {
+            LocalAdministrationAction.ACTIVATE_ACCOUNT -> !account.enabled && !account.credentialPresent &&
+                account.actorId != owner.actorId && detail.retainedSessions.none { it.status == SessionStatus.ACTIVE } &&
+                command.expectedCredentialRevision == account.credentialRevision && command.activationRevisions?.let {
+                    it.policy == account.policyRevision && it.configuration == account.configurationRevision } == true
+            LocalAdministrationAction.REACTIVATE_ACCOUNT -> !account.enabled && account.credentialPresent &&
+                account.actorId != owner.actorId && detail.retainedSessions.none { it.status == SessionStatus.ACTIVE } &&
+                command.reactivationRevisions?.let { expected -> expected.credential == account.credentialRevision &&
+                    expected.policy == account.policyRevision && expected.configuration == account.configurationRevision } == true
             LocalAdministrationAction.DISABLE_ACCOUNT -> account.enabled
             LocalAdministrationAction.RESET_CREDENTIAL -> account.enabled && account.credentialRevision == command.expectedCredentialRevision
             LocalAdministrationAction.REVOKE_SESSION -> detail.retainedSessions.any { it.sessionId == command.sessionId && it.status == SessionStatus.ACTIVE }

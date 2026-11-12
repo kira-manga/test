@@ -10,9 +10,12 @@ import kotlinx.serialization.json.Json
 /**
  * Versioned extension router. Original v1 bytes/meaning stay exact. The v2 envelope contains a
  * canonical v1 BASE plus explicit, index-bound extensions; a missing ceiling never becomes
- * unlimited. The base is deliberately stripped of extensions only inside this full v2 encoding.
+ * unlimited. The v3 envelope adds a complete delegated-creation configuration catalogue around
+ * an unchanged v1/v2 base. Semantic definition wrappers retain the same complete catalogue.
  */
 internal object LocalEffectivePolicyCodec {
+    private const val V3 = "ukkera.activated-local-policy/v3"
+    private val prefixV3 = ("{\"schema\":\"$V3\",").encodeToByteArray()
     private const val V2 = "ukkera.activated-local-policy/v2"
     private val prefix = ("{\"schema\":\"$V2\",").encodeToByteArray()
     private val json = Json {
@@ -21,12 +24,26 @@ internal object LocalEffectivePolicyCodec {
         allowStructuredMapKeys = false; prettyPrint = false
     }
 
-    fun requiresV2(value: ActivatedLocalPolicy): Boolean = value.approvalPolicy != null || value.grants.any {
+    fun requiresExtension(value: ActivatedLocalPolicy): Boolean = value.employeeCreationConfiguration != null || value.approvalPolicy != null || value.grants.any {
         it.limits.noMonetaryCeiling != null || it.delegationCeiling?.noMonetaryCeiling != null
     }
 
     fun encodePolicy(value: ActivatedLocalPolicy): ByteArray = guarded {
-        if (!requiresV2(value)) return@guarded ProtectedLocalSecurityCodec.encodePolicy(value)
+        value.employeeCreationConfiguration?.let { configuration ->
+            val base = ActivatedLocalPolicy(value.scope, value.actorId, value.revision, value.grants,
+                value.sessionPolicy, value.throttlePolicy, value.approvalPolicy)
+            val baseBytes = encodePolicy(base)
+            val extension = configuration.copyWireBytes()
+            try {
+                val bytes = json.encodeToString(PolicyV3.serializer(), PolicyV3(V3,
+                    baseBytes.decodeToString(throwOnInvalidSequence = true), extension)).encodeToByteArray(throwOnInvalidSequence = true)
+                if (bytes.size !in 1..ProtectedLocalTable.EFFECTIVE_POLICY.maximumPlaintextBytes) {
+                    bytes.fill(0); protectedLocalUnavailable()
+                }
+                return@guarded bytes
+            } finally { baseBytes.fill(0); extension.fill(0) }
+        }
+        if (!requiresExtension(value)) return@guarded ProtectedLocalSecurityCodec.encodePolicy(value)
         val grants = value.grants
         val baseGrants = grants.map { grant -> PermissionGrant(grant.permission, grant.scope, grant.effect,
             grant.limits.copy(noMonetaryCeiling = null), grant.ownerAccess, grant.namedSubjectId, grant.targetIds,
@@ -55,6 +72,27 @@ internal object LocalEffectivePolicyCodec {
     fun decodePolicy(binding: ProtectedLocalBinding, plaintext: ByteArray): ActivatedLocalPolicy = guarded {
         require(binding.table == ProtectedLocalTable.EFFECTIVE_POLICY && binding.schemaVersion == 1)
         binding.requirePlaintextSize(plaintext.size)
+        if (plaintext.size >= prefixV3.size && prefixV3.indices.all { plaintext[it] == prefixV3[it] }) {
+            val snapshot = plaintext.copyOf()
+            try {
+                val wire = json.decodeFromString(PolicyV3.serializer(), snapshot.decodeToString(throwOnInvalidSequence = true))
+                try {
+                    require(wire.schema == V3)
+                    val baseBytes = wire.basePolicy.encodeToByteArray(throwOnInvalidSequence = true)
+                    val base = try {
+                        require(baseBytes.size < prefixV3.size || prefixV3.indices.any { baseBytes[it] != prefixV3[it] })
+                        decodePolicy(binding, baseBytes)
+                    } finally { baseBytes.fill(0) }
+                    require(base.employeeCreationConfiguration == null)
+                    val configuration = LocalEmployeeCreationConfigurationV1.decode(wire.employeeCreationConfiguration)
+                    val value = ActivatedLocalPolicy(base.scope, base.actorId, base.revision, base.grants,
+                        base.sessionPolicy, base.throttlePolicy, base.approvalPolicy, configuration)
+                    val canonical = encodePolicy(value)
+                    try { require(canonical.contentEquals(snapshot)) } finally { canonical.fill(0) }
+                    return@guarded value
+                } finally { wire.employeeCreationConfiguration.fill(0) }
+            } finally { snapshot.fill(0) }
+        }
         if (plaintext.size < prefix.size || prefix.indices.any { plaintext[it] != prefix[it] }) {
             return@guarded ProtectedLocalSecurityCodec.decodePolicy(binding, plaintext)
         }
@@ -108,3 +146,7 @@ private class MonetaryExtension(val grantIndex: Int, val limitCurrency: Currency
 @Serializable
 private class ApprovalPolicyWire(@Serializable(with = MinorUnitsSerializer::class) val validForMillis: Long,
     val namedSelfApprovalActions: List<SecurityAction>)
+
+/** Additive envelope; legacy v1/v2 bytes remain byte-for-byte unchanged. */
+@Serializable
+private class PolicyV3(val schema: String, val basePolicy: String, val employeeCreationConfiguration: ByteArray)

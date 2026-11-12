@@ -4,9 +4,10 @@ import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
 
-/** Complete native-selected employee initial-image/event join, separate from the founding
- * employee reducer. The native prepass supplies the ACTUAL original enrollment images before
- * EVENTS, not a current credential candidate, firstActor fallback or parsed ledger capability.
+/** Employee initial-image/event join, separate from the founding employee reducer.
+ * The fixed native prepass supplies ACTUAL enrollment images before EVENTS; delegated
+ * actors arise only from completed chronological native creation events. Current credentials,
+ * firstActor fallbacks and parsed ledger descriptors cannot create either origin.
  * All ordinary exhaustive census/events/lineages/current/relationship passes remain mandatory.
  * No source, count, current row, certificate or callback alone removes a hold or grants custody. */
 internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
@@ -18,25 +19,35 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     private val original = session.original
     private val coordinates = original.record.allocation.coordinates
     private val scope = coordinates.scope
-    private class Entry(val source: NativeEmployeeEnrollmentHistorySource) {
+    /** Hash-only final census targets. Census precedes EVENTS, so a later-created actor
+     * must not disappear merely because no native enrollment prepass selected it. The cold
+     * workspace already retains its bounded allowance for every protected census row. */
+    private class Current {
+        var account: PayloadDigest? = null
+        var policy: PayloadDigest? = null
+        var configuration: PayloadDigest? = null
+        val throttles = linkedMapOf<ThrottleKey, PayloadDigest>()
+        fun clear() { account = null; policy = null; configuration = null; throttles.clear() }
+    }
+    private class Entry(val source: RuntimeEmployeeHistoryOrigin, val current: Current) {
         var header: RuntimeHistoryEventHeaderV2? = null
         val versions = mutableListOf<RuntimeHistoryRowVersionRowV2>()
         var replay: RuntimeEmployeeAuthenticationReplay? = null
         var activated = false
         var eventJoined = false
-        var currentAccount: PayloadDigest? = null
-        var currentPolicy: PayloadDigest? = null
-        var currentConfiguration: PayloadDigest? = null
-        val currentThrottles = linkedMapOf<ThrottleKey, PayloadDigest>()
         fun clear() {
             versions.forEach { it.key.fill(0) }; versions.clear()
             replay?.clear(); replay = null; header = null
-            currentAccount = null; currentPolicy = null; currentConfiguration = null; currentThrottles.clear()
+            source.clear()
         }
     }
-    private val entries = session.employeeEnrollments.map(::Entry)
-    private val bySequence = entries.associateBy { it.source.child.historySequence }
-    private val byActor = entries.associateBy { it.source.requested.request.targetId }
+    private val currentByActor = linkedMapOf<DomainId, Current>()
+    private val nativeEntries = session.employeeEnrollments.map {
+        Entry(RuntimeEmployeeHistoryOrigin.nativeEnrollment(it), currentByActor.getOrPut(it.requested.request.targetId, ::Current))
+    }
+    private val entries = nativeEntries.toMutableList()
+    private val bySequence = entries.associateBy { it.source.child.historySequence }.toMutableMap()
+    private val byActor = entries.associateBy { it.source.actorId }.toMutableMap()
     private val currentAdmissions = linkedMapOf<DomainId, PayloadDigest>()
     // Genuine C1/native original admission origin, NOT a reversal of current revoked rows.
     // Enrollment compares its native historical admission census at its actual event cut;
@@ -96,6 +107,10 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         private set
     var enrollmentMutations = 0L
         private set
+    var creationMutations = 0L
+        private set
+    var creationImages = 0L
+        private set
     var throttleMutations = 0L
         private set
     var authenticationMutations = 0L
@@ -112,7 +127,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         private set
     var serialPublicationRequestMutations = 0L
         private set
-    val mutationCount: Long get() = enrollmentMutations + throttleMutations + authenticationMutations + sessionRevocationMutations +
+    val mutationCount: Long get() = enrollmentMutations + creationMutations + throttleMutations + authenticationMutations + sessionRevocationMutations +
         administrationCancellationMutations + deviceRevocationMutations + policyActivationMutations + serialPublicationRequestMutations
     val tipCount: Long get() = entries.sumOf { it.replay?.tipCount ?: 0L }
     val sessionCount: Long get() = entries.sumOf { it.replay?.sessionCount ?: 0L }
@@ -161,28 +176,34 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     init {
         earlierReplayTarget?.requireSameSession(session)
         historyShapeV2(entries.size <= LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS && bySequence.size == entries.size && byActor.size == entries.size &&
-            (session.hasEmployeeSeedTraversal || entries.isEmpty()))
-        for (entry in entries) historyShapeV2(entry.source.requested.request.scope == scope &&
-            entry.source.requested.request.targetId != coordinates.firstActorId && entry.source.originalCohostDeviceId == coordinates.deviceId)
+            (session.hasEmployeeSeedTraversal || nativeEntries.isEmpty()))
+        for (entry in entries) historyShapeV2(entry.source.scope == scope &&
+            entry.source.actorId != coordinates.firstActorId && entry.source.originalCohostDeviceId == coordinates.deviceId)
     }
 
     /** Hashes of decoded current rows are closure targets ONLY. Credentials/accounts used
      * to seed replay arrive later from the independently selected native initial images. */
     fun census(binding: ProtectedLocalBinding, bytes: ByteArray, value: Any) {
         val commitment = sha256(bytes)
+        fun current(actor: DomainId): Current? {
+            if (actor == coordinates.firstActorId) return null
+            val target = currentByActor.getOrPut(actor, ::Current)
+            historyCapacityV2(currentByActor.size <= LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS)
+            return target
+        }
         when (value) {
-            is ProtectedLocalAccount -> byActor[value.state.actorId]?.let { entry ->
-                historyShapeV2(entry.currentAccount == null); entry.currentAccount = commitment
+            is ProtectedLocalAccount -> current(value.state.actorId)?.let { target ->
+                historyShapeV2(target.account == null); target.account = commitment
             }
-            is ActivatedLocalPolicy -> byActor[value.actorId]?.let { entry ->
-                historyShapeV2(entry.currentPolicy == null); entry.currentPolicy = commitment
+            is ActivatedLocalPolicy -> current(value.actorId)?.let { target ->
+                historyShapeV2(target.policy == null); target.policy = commitment
             }
-            is LocalAuthConfiguration -> byActor[value.actorId]?.let { entry ->
-                historyShapeV2(entry.currentConfiguration == null); entry.currentConfiguration = commitment
+            is LocalAuthConfiguration -> current(value.actorId)?.let { target ->
+                historyShapeV2(target.configuration == null); target.configuration = commitment
             }
-            is PersistentThrottleState -> byActor[value.key.actorId]?.let { entry ->
-                historyShapeV2(binding.key == ProtectedLocalRecordKey.Throttle(value.key) && entry.currentThrottles.put(value.key, commitment) == null)
-                historyCapacityV2(entry.currentThrottles.size <= 257)
+            is PersistentThrottleState -> current(value.key.actorId)?.let { target ->
+                historyShapeV2(binding.key == ProtectedLocalRecordKey.Throttle(value.key) && target.throttles.put(value.key, commitment) == null)
+                historyCapacityV2(target.throttles.size <= 257)
             }
             is LocalDeviceAdmission -> {
                 historyShapeV2(currentAdmissions.put(value.deviceId, commitment) == null)
@@ -193,9 +214,9 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
 
     fun startSeed(row: RuntimeHistoryEventRowV2, header: RuntimeHistoryEventHeaderV2) {
         try {
-            historyShapeV2(session.hasEmployeeSeedTraversal && !prepassEnded && seed == null && seedAt < entries.size)
-            val entry = entries[seedAt]
-            requireEnrollmentHeader(entry.source, row, header)
+            historyShapeV2(session.hasEmployeeSeedTraversal && !prepassEnded && seed == null && seedAt < nativeEntries.size)
+            val entry = nativeEntries[seedAt]
+            requireEnrollmentHeader(entry.source.companyHeadEnrollment(), row, header)
             seed = SeedScan(entry, row, header)
         } catch (failure: Throwable) { row.header.fill(0); throw failure }
     }
@@ -211,12 +232,12 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         try { active.finish(); seedAt++ } finally { active.clear(); seed = null }
     }
     fun endSeedPass() {
-        historyShapeV2(session.hasEmployeeSeedTraversal && !prepassEnded && seed == null && seedAt == entries.size)
+        historyShapeV2(session.hasEmployeeSeedTraversal && !prepassEnded && seed == null && seedAt == nativeEntries.size)
         prepassEnded = true
     }
 
     private inner class SeedScan(val entry: Entry, val row: RuntimeHistoryEventRowV2, val header: RuntimeHistoryEventHeaderV2) {
-        private val source = entry.source
+        private val source = entry.source.companyHeadEnrollment()
         private val stream = RuntimeHistoryEventStreamV2(header)
         private val capsule = RuntimeHistoryCapsule(header)
         private var mutations = 0
@@ -335,22 +356,23 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         intent: NativeHistoryOriginalIntentV2, mutations: List<RuntimeHistoryRowVersionRowV2>,
         previous: RuntimeHistoryEventHeaderV2, previousDigest: PayloadDigest): Boolean {
         if (header.purpose != RuntimeWritePurposeV2.PROVISIONING) return false
-        val entry = bySequence[header.sequence] ?: return false
-        historyShapeV2(prepassEnded && !entry.eventJoined && entry.header == header && commitment == entry.source.child.historyDigest &&
-            recordedHead(previous,previousDigest) == entry.source.preparationParent && mutations.size == entry.versions.size)
+        val entry = nativeEntries.singleOrNull { it.source.child.historySequence == header.sequence } ?: return false
+        val source = entry.source.companyHeadEnrollment()
+        historyShapeV2(prepassEnded && !entry.eventJoined && entry.header == header && commitment == source.child.historyDigest &&
+            recordedHead(previous,previousDigest) == source.preparationParent && mutations.size == entry.versions.size)
         mutations.zip(entry.versions).forEach { (actual, retained) -> requireSameVersion(actual,retained) }
-        requireEnrollmentCapsule(entry.source,capsule,intent)
+        requireEnrollmentCapsule(source,capsule,intent)
         entry.eventJoined = true
         if (!enabled) return false
         historyShapeV2(!entry.activated && entry.replay != null && activeActors.size < 4096 &&
-            entry.source.requested.request.targetId !in activeActors)
-        requireRetainedAdmissions(entry.source)
-        historyShapeV2(chronologicalAdmissions == entry.source.evidence.admissionDigests.toMap())
-        val request = entry.source.requested.request
-        val login = entry.source.requested.definition.login
-        historyShapeV2(localLoginKey(scope,login) !in activeLogins && entry.source.evidence.absenceDependenciesDigest ==
+            source.requested.request.targetId !in activeActors)
+        requireRetainedAdmissions(source)
+        historyShapeV2(chronologicalAdmissions == source.evidence.admissionDigests.toMap())
+        val request = source.requested.request
+        val login = source.requested.definition.login
+        historyShapeV2(localLoginKey(scope,login) !in activeLogins && source.evidence.absenceDependenciesDigest ==
             localEmployeeEnrollmentAbsenceDigestV1(request,login,activeActors,chronologicalAdmissions.keys))
-        for (admission in entry.source.requested.admissions) {
+        for (admission in source.requested.admissions) {
             // Retained withdrawn/nonzero devices keep their genuine enrollment buckets
             // for closure, but cannot acquire a new positive authentication origin.
             if (admission.deviceId == coordinates.deviceId || !admission.admitted || admission.revision != Revision(0)) continue
@@ -359,7 +381,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
                 checkNotNull(chronologicalAdmissions[admission.deviceId]))
         }
         activeActors += request.targetId; activeLogins += localLoginKey(scope,login); entry.activated = true
-        eventCount = add(eventCount,1L); enrollmentMutations = add(enrollmentMutations,entry.source.evidence.images.size.toLong())
+        eventCount = add(eventCount,1L); enrollmentMutations = add(enrollmentMutations,source.evidence.images.size.toLong())
         return true
     }
 
@@ -441,6 +463,66 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         historyShapeV2(prepassEnded && entry.eventJoined && entry.source.child.historySequence < header.sequence)
         return checkNotNull(entry.replay).approvalActor(session, header)
     }
+    /** Build a distinct chronological reducer only from this event's complete original,
+     * creator, native-final and historical INSERT comparison. The scanner still holds the
+     * entire creation family while its guarded writer/original recovery and full closure
+     * qualification remain unfinished. This return value grants no employee authority. */
+    internal fun creationSeed(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        previous: RuntimeHistoryEventHeaderV2, previousDigest: PayloadDigest,
+        evidence: RuntimeDelegatedEmployeeCreationEvidenceV1,
+        images: RuntimeDelegatedEmployeeCreationSeedJoin.InitialImages?,
+        final: NativeHistoryProtectedFinalDecision?, founding: RuntimeOriginalAuthenticationReplay?): Boolean {
+        if (!enabled || !prepassEnded || images == null || final == null || founding == null) return false
+        val original = evidence.original()
+        val creator = if (original.operatorId == coordinates.firstActorId) founding.approvalActor(session, header)
+            else approvalActor(original.operatorId, header)
+        if (creator == null) return false
+        val logins = linkedSetOf(checkNotNull(session.original.record.definition).definition.firstAccount.login)
+        for (entry in entries.filter { it.activated }) {
+            historyShapeV2(entry.eventJoined && entry.replay != null && entry.source.child.historySequence < header.sequence)
+            logins += entry.source.definition.login
+        }
+        historyShapeV2(logins.size == activeActors.size &&
+            logins.map { localLoginKey(scope, it) }.toSet() == activeLogins)
+        val completed = images.join(session, previous, previousDigest, eventDigest, evidence, creator,
+            activeActors.toSet(), logins, chronologicalAdmissions.toMap(), final)
+        var replay: RuntimeEmployeeAuthenticationReplay? = null
+        var retained: List<RuntimeHistoryRowVersionRowV2>? = null
+        var transferred = false
+        try {
+            historyShapeV2(completed.matchesNativeSelection(session) && original.actorId !in byActor &&
+                header.sequence !in bySequence && original.actorId !in activeActors && activeActors.size < 4096 &&
+                entries.size < LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS &&
+                localLoginKey(scope, completed.requested.definition.login) !in activeLogins)
+            val active = RuntimeEmployeeAuthenticationReplay.fromCompletedCreation(completed, earlierReplayTarget)
+            replay = active
+            retained = completed.takeVersions()
+            val origin = active.origin
+            requireRetainedAdmissions(origin)
+            historyShapeV2(chronologicalAdmissions == origin.admissionDigests.toMap())
+            for (admission in origin.admissions) {
+                // Withdrawn device seeds remain in closure. They gain no positive origin.
+                if (admission.deviceId == coordinates.deviceId || !admission.admitted || admission.revision != Revision(0)) continue
+                val admissionOrigin = joinedAdditionalAdmissions[admission.deviceId] ?: malformed()
+                active.enrollmentDeviceAdmission(session, admissionOrigin,
+                    checkNotNull(chronologicalAdmissions[admission.deviceId]))
+            }
+            earlierReplayTarget?.observeCreatedOrigin(origin)
+            val current = currentByActor.getOrPut(original.actorId, ::Current)
+            historyCapacityV2(currentByActor.size <= LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS)
+            val entry = Entry(origin, current)
+            entry.header = header; entry.versions += retained; entry.replay = active
+            entry.activated = true; entry.eventJoined = true
+            entries += entry; byActor[original.actorId] = entry; bySequence[header.sequence] = entry
+            activeActors += original.actorId; activeLogins += localLoginKey(scope, origin.definition.login)
+            eventCount = add(eventCount, 1L); creationMutations = add(creationMutations, retained.size.toLong())
+            transferred = true
+            return true
+        } finally {
+            if (!transferred) { replay?.clear(); retained?.forEach { it.key.fill(0) }; completed.clear() }
+        }
+    }
+
     internal fun serialPublicationRequest(proof: RuntimeSerialPublicationHistoryRequest): Boolean {
         val entry = active(proof.actorId) ?: return false
         historyShapeV2(prepassEnded && entry.eventJoined && entry.source.child.historySequence < proof.header.sequence &&
@@ -644,6 +726,34 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         return true
     }
 
+    fun accountActivation(value: RuntimeAccountActivationEvidenceV1,
+        final: NativeHistoryProtectedFinalDecision,
+        founding: RuntimeOriginalAuthenticationReplay?,
+        actualAfter: ProtectedLocalAccount): RuntimeRetainedSessionRevocationTargetOwner? {
+        if (!enabled || !session.hasChronologicalAccountImageTraversal) return null
+        value.validate()
+        val operatorPermitted = if (value.authorization.actorId == coordinates.firstActorId)
+            founding?.accountActivationAuthority(value, final) == true
+        else {
+            val operator = active(value.authorization.actorId) ?: return null
+            historyShapeV2(prepassEnded && operator.eventJoined &&
+                operator.source.child.historySequence < final.child.historySequence &&
+                operator.source.child.commandEpoch == final.child.commandEpoch)
+            checkNotNull(operator.replay).accountActivationAuthority(value, final)
+        }
+        if (!operatorPermitted) return null
+        if (value.command.targetId == coordinates.firstActorId) {
+            if (founding?.accountActivationTarget(value, actualAfter) != true) return null
+            return RuntimeRetainedSessionRevocationTargetOwner.ORIGINAL
+        }
+        val target = active(value.command.targetId) ?: return null
+        historyShapeV2(prepassEnded && target.eventJoined && target.source.child.historySequence < final.child.historySequence &&
+            target.source.child.commandEpoch == final.child.commandEpoch)
+        if (!checkNotNull(target.replay).accountActivationTarget(value, actualAfter)) return null
+        eventCount = add(eventCount,1L); sessionRevocationMutations = add(sessionRevocationMutations,value.images.size.toLong())
+        return RuntimeRetainedSessionRevocationTargetOwner.ENROLLED_EMPLOYEE
+    }
+
     /** Closed reset coordinator. Both identities already have their OWN native-founded or
      * enrolled prefix at this event cut. The opened AFTER is only a credential candidate,
      * never authority/current state; prove the operator/final first, then reduce the target. */
@@ -701,6 +811,60 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         historyShapeV2(prepassEnded && target.eventJoined && target.source.child.historySequence < final.child.historySequence &&
             target.source.child.commandEpoch == final.child.commandEpoch)
         if (!checkNotNull(target.replay).accountDisableTarget(value)) return null
+        eventCount = add(eventCount,1L); sessionRevocationMutations = add(sessionRevocationMutations,value.images.size.toLong())
+        return RuntimeRetainedSessionRevocationTargetOwner.ENROLLED_EMPLOYEE
+    }
+
+    fun credentialFreeAccountDisable(value: RuntimeCredentialFreeAccountDisableEvidenceV1,
+        final: NativeHistoryProtectedFinalDecision,
+        founding: RuntimeOriginalAuthenticationReplay?): RuntimeRetainedSessionRevocationTargetOwner? {
+        if (!enabled) return null
+        value.validate()
+        val operatorPermitted = if (value.authorization.actorId == coordinates.firstActorId)
+            founding?.credentialFreeAccountDisableAuthority(value, final) == true
+        else {
+            val operator = active(value.authorization.actorId) ?: return null
+            historyShapeV2(prepassEnded && operator.eventJoined &&
+                operator.source.child.historySequence < final.child.historySequence &&
+                operator.source.child.commandEpoch == final.child.commandEpoch)
+            checkNotNull(operator.replay).credentialFreeAccountDisableAuthority(value, final)
+        }
+        if (!operatorPermitted) return null
+        if (value.command.targetId == coordinates.firstActorId) {
+            if (founding?.credentialFreeAccountDisableTarget(value) != true) return null
+            return RuntimeRetainedSessionRevocationTargetOwner.ORIGINAL
+        }
+        val target = active(value.command.targetId) ?: return null
+        historyShapeV2(prepassEnded && target.eventJoined && target.source.child.historySequence < final.child.historySequence &&
+            target.source.child.commandEpoch == final.child.commandEpoch)
+        if (!checkNotNull(target.replay).credentialFreeAccountDisableTarget(value)) return null
+        eventCount = add(eventCount,1L); sessionRevocationMutations = add(sessionRevocationMutations,value.images.size.toLong())
+        return RuntimeRetainedSessionRevocationTargetOwner.ENROLLED_EMPLOYEE
+    }
+
+    fun accountReactivation(value: RuntimeAccountReactivationEvidenceV1,
+        final: NativeHistoryProtectedFinalDecision,
+        founding: RuntimeOriginalAuthenticationReplay?): RuntimeRetainedSessionRevocationTargetOwner? {
+        if (!enabled) return null
+        value.validate()
+        val operatorPermitted = if (value.authorization.actorId == coordinates.firstActorId)
+            founding?.accountReactivationAuthority(value, final) == true
+        else {
+            val operator = active(value.authorization.actorId) ?: return null
+            historyShapeV2(prepassEnded && operator.eventJoined &&
+                operator.source.child.historySequence < final.child.historySequence &&
+                operator.source.child.commandEpoch == final.child.commandEpoch)
+            checkNotNull(operator.replay).accountReactivationAuthority(value, final)
+        }
+        if (!operatorPermitted) return null
+        if (value.command.targetId == coordinates.firstActorId) {
+            if (founding?.accountReactivationTarget(value) != true) return null
+            return RuntimeRetainedSessionRevocationTargetOwner.ORIGINAL
+        }
+        val target = active(value.command.targetId) ?: return null
+        historyShapeV2(prepassEnded && target.eventJoined && target.source.child.historySequence < final.child.historySequence &&
+            target.source.child.commandEpoch == final.child.commandEpoch)
+        if (!checkNotNull(target.replay).accountReactivationTarget(value)) return null
         eventCount = add(eventCount,1L); sessionRevocationMutations = add(sessionRevocationMutations,value.images.size.toLong())
         return RuntimeRetainedSessionRevocationTargetOwner.ENROLLED_EMPLOYEE
     }
@@ -817,7 +981,7 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         eventDigest: PayloadDigest, evidence: RuntimeNativeOriginalImportEvidenceV1): NativeOriginalPrefixCutoff {
         historyShapeV2(enabled && earlierReplayTarget == null && !earlierFoundingTargetAuthorized &&
             prepassEnded && seed == null && original === session.original &&
-            (session.hasEmployeeSeedTraversal || entries.isEmpty()) && session.hasChronologicalAccountImageTraversal)
+            (session.hasEmployeeSeedTraversal || nativeEntries.isEmpty()) && session.hasChronologicalAccountImageTraversal)
         evidence.validate()
         val native = original.record
         val definition = checkNotNull(native.definition)
@@ -1083,47 +1247,65 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         configuration: PayloadDigest?, sequence: Long): Boolean {
         val enrollment = byActor[actor]?.source ?: return false
         val origin = session.deviceAdmissions.singleOrNull { it.requested.request.targetId == device } ?: return false
-        if (device == coordinates.deviceId || configuration != enrollment.evidence.images[2].plaintextDigest) return false
+        if (device == coordinates.deviceId || configuration != enrollment.seedImages[2].plaintextDigest) return false
         if (enrollment.child.historySequence < origin.child.historySequence && origin.child.historySequence < sequence &&
             origin.originalCohostDeviceId == coordinates.deviceId && origin.requested.request.scope == scope &&
             origin.child.commandEpoch == enrollment.child.commandEpoch &&
             origin.child.installationGenesisDigest == enrollment.child.installationGenesisDigest &&
             origin.evidence.accountDigests.any { it.first == actor } && origin.evidence.images.first().plaintextDigest == admission) return true
         return enrollment.child.historySequence < sequence &&
-            RuntimeEmployeeAuthenticationReplay.matchesEnrollmentDeviceAdmissionOrigin(session, enrollment, origin, admission)
+            RuntimeEmployeeAuthenticationReplay.matchesEmployeeSeedDeviceAdmissionOrigin(session, enrollment, origin, admission)
     }
     fun matchesSessionRevocation(value: RuntimeSessionRevocationEvidenceV1): Boolean {
         val facts = value.authorization
         val source = byActor[facts.actorId]?.source ?: return false
         return facts.scope == scope && facts.deviceId == source.originalCohostDeviceId &&
-            facts.dependencies.admission == source.evidence.admissionDigests.single { it.first == source.originalCohostDeviceId }.second
+            facts.dependencies.admission == source.admissionDigests.single { it.first == source.originalCohostDeviceId }.second
     }
     /** Lineage/image ownership follows the target. This identity predicate grants nothing;
      * operator authority and mutable BEFORE/issuance facts were proved in actual event order. */
     fun matchesRetainedSessionRevocationTarget(value: RuntimeRetainedSessionRevocationEvidenceV1): Boolean {
         val source = byActor[value.command.targetId]?.source ?: return false
         return value.authorization.scope == scope && value.target.session.scope == scope &&
-            value.target.session.actorId == source.requested.request.targetId &&
+            value.target.session.actorId == source.actorId &&
             value.target.session.deviceId == source.originalCohostDeviceId
     }
     /** Target lineage ownership only, never an operator grant or a current target seed. */
     fun matchesAccountDisableTarget(value: RuntimeAccountDisableEvidenceV1): Boolean {
         val source = byActor[value.command.targetId]?.source ?: return false
-        return value.authorization.scope == scope && value.command.targetId == source.requested.request.targetId &&
+        return value.authorization.scope == scope && value.command.targetId == source.actorId &&
+            value.authorization.deviceId == source.originalCohostDeviceId
+    }
+
+    fun matchesCredentialFreeAccountDisableTarget(value: RuntimeCredentialFreeAccountDisableEvidenceV1): Boolean {
+        val source = byActor[value.command.targetId]?.source ?: return false
+        return value.authorization.scope == scope && value.command.targetId == source.actorId &&
+            value.authorization.deviceId == source.originalCohostDeviceId
+    }
+
+    fun matchesAccountActivationTarget(value: RuntimeAccountActivationEvidenceV1): Boolean {
+        val source = byActor[value.command.targetId]?.source ?: return false
+        return value.authorization.scope == scope && value.command.targetId == source.actorId &&
+            value.authorization.deviceId == source.originalCohostDeviceId
+    }
+
+    fun matchesAccountReactivationTarget(value: RuntimeAccountReactivationEvidenceV1): Boolean {
+        val source = byActor[value.command.targetId]?.source ?: return false
+        return value.authorization.scope == scope && value.command.targetId == source.actorId &&
             value.authorization.deviceId == source.originalCohostDeviceId
     }
     /** Reset target lineage ownership only. Mutable BEFORE/operator/final authority and
      * genuine chronological AFTER remain separate event-order joins, never this predicate. */
     fun matchesCredentialResetTarget(value: RuntimeCredentialResetEvidenceV1): Boolean {
         val source = byActor[value.command.targetId]?.source ?: return false
-        return value.authorization.scope == scope && value.command.targetId == source.requested.request.targetId &&
+        return value.authorization.scope == scope && value.command.targetId == source.actorId &&
             value.authorization.deviceId == source.originalCohostDeviceId
     }
     /** Lineage audit ownership is the original OPERATOR, not the inert cancellation target.
      * This predicate is only a counter join; event-cut/operator/native-final proof is separate. */
     fun matchesAdministrationCancellation(value: RuntimeAdministrationCancellationEvidenceV1): Boolean {
         val source = byActor[value.authorization.actorId]?.source ?: return false
-        return value.authorization.scope == scope && value.authorization.actorId == source.requested.request.targetId &&
+        return value.authorization.scope == scope && value.authorization.actorId == source.actorId &&
             value.authorization.deviceId == source.originalCohostDeviceId
     }
     /** Lineage image ownership only, never an operator grant/current account seed.
@@ -1139,40 +1321,52 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         return value.authorization.scope == scope && value.command.targetId == source.originalCohostDeviceId &&
             value.authorization.deviceId == source.originalCohostDeviceId
     }
-    private fun originDependencies(source: NativeEmployeeEnrollmentHistorySource,
-        admission: PayloadDigest, configuration: PayloadDigest?): Boolean = configuration == source.evidence.images[2].plaintextDigest &&
-        admission == source.evidence.admissionDigests.single { it.first == source.originalCohostDeviceId }.second
+    private fun originDependencies(source: RuntimeEmployeeHistoryOrigin,
+        admission: PayloadDigest, configuration: PayloadDigest?): Boolean = configuration == source.seedImages[2].plaintextDigest &&
+        admission == source.admissionDigests.single { it.first == source.originalCohostDeviceId }.second
 
-    /** Every original enrollment mutation reappears in the exhaustive per-key LINEAGE.
+    /** Every original employee seed mutation reappears in exhaustive per-key LINEAGE.
      * This is not a mini receipt query or a count substituted for a real historical image. */
     fun lineageSourceImage(version: RuntimeHistoryRowVersionRowV2): LocalEmployeeEnrollmentProtectedImage? {
         val entry = bySequence[version.sequence] ?: return null
         val retained = entry.versions.getOrNull(version.ordinal) ?: malformed()
         requireSameVersion(version,retained)
-        return entry.source.evidence.images[version.ordinal]
+        return entry.source.seedImages[version.ordinal]
     }
     fun lineageSourceEvent(version: RuntimeHistoryRowVersionRowV2, row: RuntimeHistoryEventRowV2, header: RuntimeHistoryEventHeaderV2) {
         val entry = bySequence[version.sequence] ?: return
         historyShapeV2(entry.eventJoined && row.eventDigest == entry.source.child.historyDigest.value && entry.header == header)
     }
+    fun lineageSourceCapsule(version: RuntimeHistoryRowVersionRowV2,
+        header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        capsule: RuntimeHistoryCapsule, intent: NativeHistoryOriginalIntentV2) {
+        val entry = bySequence[version.sequence] ?: return
+        historyShapeV2(entry.eventJoined && entry.header == header && entry.source.child.historyDigest == eventDigest)
+        entry.source.requireCreationCapsule(session, header, eventDigest, capsule, intent)
+    }
     fun lineageSourcePlaintext(version: RuntimeHistoryRowVersionRowV2, binding: ProtectedLocalBinding, bytes: ByteArray) {
         val expected = lineageSourceImage(version) ?: return
         historyShapeV2(expected.matchesHistoryBinding(binding,scope) && sha256(bytes) == expected.plaintextDigest)
-        enrollmentImages = add(enrollmentImages,1L)
+        val origin = checkNotNull(bySequence[version.sequence]).source
+        if (origin.eventPurpose == RuntimeWritePurposeV2.PROVISIONING) enrollmentImages = add(enrollmentImages,1L)
+        else { historyShapeV2(origin.eventPurpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION)
+            creationImages = add(creationImages,1L) }
     }
     fun finish() {
         historyShapeV2(enabled && earlierReplayTarget == null && nativeOriginalPrefixCutoff == null &&
             prepassEnded && seed == null && entries.all { it.activated && it.eventJoined && it.replay != null } &&
-            enrollmentImages == enrollmentMutations && mutationCount == entries.sumOf { checkNotNull(it.replay).mutationCount } &&
+            enrollmentImages == enrollmentMutations && creationImages == creationMutations &&
+            currentByActor.keys == byActor.keys && mutationCount == entries.sumOf { checkNotNull(it.replay).mutationCount } &&
             currentAdmissions == chronologicalAdmissions)
         for (entry in entries) {
-            checkNotNull(entry.replay).finish(entry.currentAccount,entry.currentPolicy,entry.currentConfiguration,entry.currentThrottles)
+            checkNotNull(entry.replay).finish(entry.current.account,entry.current.policy,entry.current.configuration,entry.current.throttles)
         }
     }
     fun abandon() { enabled = false; entries.forEach { it.replay?.clear(); it.replay = null }; joinedAdditionalAdmissions.clear()
         nativeOriginalPrefixCutoff?.clear() }
     fun clear() {
         seed?.clear(); seed = null; entries.forEach { it.clear() }
+        currentByActor.values.forEach { it.clear() }; currentByActor.clear()
         currentAdmissions.clear(); chronologicalAdmissions.clear(); joinedAdditionalAdmissions.clear(); activeActors.clear(); activeLogins.clear()
         earlierFoundingTargetAuthorized = false
         nativeOriginalPrefixCutoff?.clear()
@@ -1206,11 +1400,13 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         try { historyShapeV2(dependencies.contentEquals(capsule.dependencies) && facts.contentEquals(capsule.facts)) }
         finally { dependencies.fill(0); facts.fill(0) }
     }
-    private fun requireRetainedAdmissions(source: NativeEmployeeEnrollmentHistorySource) {
-        val actual = source.requested.admissions.map { it.deviceId to digest(ProtectedLocalSecurityCodec.encodeAdmission(it)) }
-        historyShapeV2(actual == source.evidence.admissionDigests &&
-            source.requested.admissions.filter { it.admitted }.map { it.deviceId }.toSet() == source.requested.definition.admittedDeviceIds &&
-            source.requested.admissions.single { it.deviceId == source.originalCohostDeviceId }.admitted)
+    private fun requireRetainedAdmissions(source: NativeEmployeeEnrollmentHistorySource) =
+        requireRetainedAdmissions(RuntimeEmployeeHistoryOrigin.nativeEnrollment(source))
+    private fun requireRetainedAdmissions(source: RuntimeEmployeeHistoryOrigin) {
+        val actual = source.admissions.map { it.deviceId to digest(ProtectedLocalSecurityCodec.encodeAdmission(it)) }
+        historyShapeV2(actual == source.admissionDigests &&
+            source.admissions.filter { it.admitted }.map { it.deviceId }.toSet() == source.definition.admittedDeviceIds &&
+            source.admissions.single { it.deviceId == source.originalCohostDeviceId }.admitted)
     }
     private fun requireEnrollmentMutation(row: RuntimeHistoryRowVersionRowV2, expected: LocalEmployeeEnrollmentProtectedImage, ordinal: Int) {
         val key = expected.runtimeKey(scope)
@@ -1240,14 +1436,18 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
  * neither stores nor registers an authorization proof and cannot admit a native read. */
 internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
     private var session: SelfOwnedNativeHistoryReadSession?,
-    private val source: NativeEmployeeEnrollmentHistorySource?,
+    private var source: RuntimeEmployeeHistoryOrigin?,
+    private val foundingTarget: Boolean,
+    private var awaitingCreatedOrigin: Boolean,
     private val header: RuntimeHistoryEventHeaderV2,
     private val eventDigest: PayloadDigest,
     private val evidence: RuntimeCommandAuthorizationEvidenceV1,
 ) {
     val actorId: DomainId get() = evidence.authorization.actorId
     val historySequence: Long get() = header.sequence
-    val isFoundingTarget: Boolean get() = source == null
+    // Missing origin is never a founding identity. An unselected nonfounding actor
+    // remains negative until its actual completed creation event is replayed.
+    val isFoundingTarget: Boolean get() = foundingTarget
     private var lastOrdinarySequence = 0L
     private var lastOrdinaryCommandSequence = 0L
     private var foundingTargetAttempted = false
@@ -1256,12 +1456,29 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
         historyShapeV2(this.session === session)
     }
 
-    fun owns(source: NativeEmployeeEnrollmentHistorySource): Boolean {
-        historyShapeV2(session != null)
-        return this.source === source
+    /** This exact replay may discover its target only at the completed native creation
+     * event. Header/caller/current-row data cannot register that origin in advance. */
+    fun observeCreatedOrigin(origin: RuntimeEmployeeHistoryOrigin) {
+        val session = checkNotNull(session)
+        historyShapeV2(origin.eventPurpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION &&
+            origin.matchesNativeSelection(session))
+        if (origin.actorId != actorId) return
+        val coordinates = session.original.record.allocation.coordinates
+        historyShapeV2(!foundingTarget && awaitingCreatedOrigin && source == null &&
+            origin.actorId != coordinates.firstActorId && origin.scope == coordinates.scope &&
+            origin.originalCohostDeviceId == coordinates.deviceId &&
+            origin.child.historySequence < header.sequence && origin.child.commandSequence < header.commandSequence &&
+            origin.child.commandEpoch == header.commandEpoch && origin.child.installationGenesisDigest == header.installationGenesisDigest)
+        source = origin
+        awaitingCreatedOrigin = false
     }
 
-    fun requireTarget(source: NativeEmployeeEnrollmentHistorySource, header: RuntimeHistoryEventHeaderV2,
+    fun owns(source: RuntimeEmployeeHistoryOrigin): Boolean {
+        historyShapeV2(session != null)
+        return this.source?.sameNativeSelection(source) == true
+    }
+
+    fun requireTarget(source: RuntimeEmployeeHistoryOrigin, header: RuntimeHistoryEventHeaderV2,
         eventDigest: PayloadDigest, evidence: RuntimeCommandAuthorizationEvidenceV1) {
         historyShapeV2(owns(source) && this.header == header && this.eventDigest == eventDigest && this.evidence === evidence &&
             header.sequence > lastOrdinarySequence && header.commandSequence > lastOrdinaryCommandSequence)
@@ -1279,28 +1496,28 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
         lastOrdinaryCommandSequence = header.commandSequence
     }
 
-    fun requireIssuableTarget(source: NativeEmployeeEnrollmentHistorySource, sequence: Long) {
+    fun requireIssuableTarget(source: RuntimeEmployeeHistoryOrigin, sequence: Long) {
         historyShapeV2(owns(source) && sequence == header.sequence)
     }
 
-    fun requirePrior(source: NativeEmployeeEnrollmentHistorySource, header: RuntimeHistoryEventHeaderV2,
+    fun requirePrior(source: RuntimeEmployeeHistoryOrigin, header: RuntimeHistoryEventHeaderV2,
         evidence: RuntimeCommandAuthorizationEvidenceV1) {
         val session = checkNotNull(session)
-        historyShapeV2(session.employeeEnrollments.any { it === source })
+        historyShapeV2(source.matchesNativeSelection(session))
         requirePriorCoordinates(header, evidence)
     }
 
     /** Only the closed ordinary payment refusals may additionally register prefix proofs.
      * Founding provenance uses C1; enrolled provenance must own this actual earlier source. */
-    fun requirePriorFoodPaymentRejection(source: NativeEmployeeEnrollmentHistorySource?,
+    fun requirePriorFoodPaymentRejection(source: RuntimeEmployeeHistoryOrigin?,
         header: RuntimeHistoryEventHeaderV2, evidence: RuntimeCommandAuthorizationEvidenceV1) {
         val session = checkNotNull(session)
         val coordinates = session.original.record.allocation.coordinates
         historyShapeV2(RuntimeHistoricalFoodPaymentRejectionProfile.fromEvidence(evidence)
             ?.matches(header, evidence) == true)
         if (source == null) historyShapeV2(evidence.authorization.actorId == coordinates.firstActorId)
-        else historyShapeV2(session.employeeEnrollments.any { it === source } &&
-            source.requested.request.targetId == evidence.authorization.actorId &&
+        else historyShapeV2(source.matchesNativeSelection(session) &&
+            source.actorId == evidence.authorization.actorId &&
             source.child.historySequence < header.sequence && source.child.commandSequence < header.commandSequence &&
             source.child.commandEpoch == header.commandEpoch && source.child.installationGenesisDigest == header.installationGenesisDigest)
         requirePriorCoordinates(header, evidence)
@@ -1320,7 +1537,7 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
         lastOrdinaryCommandSequence = header.commandSequence
     }
 
-    fun clear() { session = null }
+    fun clear() { session = null; source = null; awaitingCreatedOrigin = false }
 
     companion object {
         fun create(session: SelfOwnedNativeHistoryReadSession, header: RuntimeHistoryEventHeaderV2,
@@ -1331,23 +1548,25 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
             val authorization = evidence.authorization
             val source = if (authorization.actorId == coordinates.firstActorId) null else
                 session.employeeEnrollments.singleOrNull { it.requested.request.targetId == authorization.actorId }
-                    ?: throw RuntimeHistoryFormatRejectedV2(RuntimeHistoryFormatFailureV2.MALFORMED)
             historyShapeV2((session.hasEmployeeSeedTraversal || session.employeeEnrollments.isEmpty()) && session.hasChronologicalAccountImageTraversal &&
                 header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY && evidence.purposeTag == header.purpose.tag &&
                 evidence.actionApprovalId == null && evidence.capturedChanges == header.changeCount &&
                 header.scope == coordinates.scope.storageKey() && header.assignmentId == coordinates.assignmentId &&
                 authorization.scope == coordinates.scope && authorization.deviceId == coordinates.deviceId)
-            if (source == null) historyShapeV2(authorization.actorId == coordinates.firstActorId &&
-                header.sequence > 1L && header.commandSequence > 0L &&
+            // These are coordinates of the actual original, independent of whether the
+            // nonfounding target has a preselected enrollment or a future completed creation.
+            historyShapeV2(header.sequence > 1L && header.commandSequence > 0L &&
                 header.installationGenesisDigest == native.receipt?.genesis &&
                 header.installationGenesisDigest == native.firstChild?.installationGenesisDigest &&
                 header.commandEpoch == native.definition?.definition?.authorityEpoch?.value &&
                 header.commandEpoch == native.firstChild?.commandEpoch?.value)
-            else historyShapeV2(authorization.actorId != coordinates.firstActorId && source.originalCohostDeviceId == coordinates.deviceId &&
+            if (source != null) historyShapeV2(authorization.actorId != coordinates.firstActorId && source.originalCohostDeviceId == coordinates.deviceId &&
                 source.requested.request.scope == coordinates.scope && source.child.historySequence < header.sequence &&
                 source.child.commandSequence < header.commandSequence && source.child.commandEpoch == header.commandEpoch &&
                 source.child.installationGenesisDigest == header.installationGenesisDigest)
-            return RuntimeEarlierOrdinaryCommandReplayTarget(session, source, header, eventDigest, evidence)
+            val founding = authorization.actorId == coordinates.firstActorId
+            return RuntimeEarlierOrdinaryCommandReplayTarget(session, source?.let(RuntimeEmployeeHistoryOrigin::nativeEnrollment),
+                founding, !founding && source == null, header, eventDigest, evidence)
         }
     }
 }

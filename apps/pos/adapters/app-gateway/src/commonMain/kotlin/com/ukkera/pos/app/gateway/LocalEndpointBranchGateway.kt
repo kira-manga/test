@@ -463,7 +463,7 @@ public class LocalEndpointBranchGateway private constructor(
                             is LocalSessionViewResult.Current -> {
                                 if (!sameSession(row, view.view) || !session.acceptPolicy(view.view.policy)) {
                                     session.end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED); null
-                                } else lease(session, row.access)
+                                } else lease(session, row)
                             }
                             LocalSessionViewResult.Denied -> if (allowRefresh) refreshOwned(session, state, row)
                                 else { session.end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED); null }
@@ -518,7 +518,7 @@ public class LocalEndpointBranchGateway private constructor(
             }
             when (val verified = currentView(session.connection, row.access)) {
                 is LocalSessionViewResult.Current -> if (sameSession(row, verified.view) &&
-                    session.acceptPolicy(verified.view.policy, renewed = true)) return lease(session, row.access)
+                    session.acceptPolicy(verified.view.policy, renewed = true)) return lease(session, row)
                 else -> Unit
             }
             session.end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED)
@@ -526,13 +526,14 @@ public class LocalEndpointBranchGateway private constructor(
         } finally { retained?.destroy(); result.tokens.destroy() }
     }
 
-    private fun lease(session: EndpointSession, access: OpaqueCredential): CheckedCredential? {
+    private fun lease(session: EndpointSession, row: StoredClientSessionV1): CheckedCredential? {
         val attachment = session.attachmentKey ?: return null
         if (!session.attachmentCurrent(attachment)) return null
         val fence = session.leaseFence.value
-        val lease = LocalWorkflowCredentialLease(ownedCredential(session.connection, access)) {
-            session.attachmentCurrent(attachment) && session.leaseFence.value === fence
-        }
+        val lease = LocalWorkflowCredentialLease(ownedCredential(session.connection, row.access),
+            currentLifetime = { session.attachmentCurrent(attachment) && session.leaseFence.value === fence },
+            retireOriginalSession = { session.retireOriginalAttachment(attachment) },
+            originalSession = LocalWorkflowSessionAssociation(row))
         return CheckedCredential(lease, session.display, attachment)
     }
 
@@ -696,10 +697,7 @@ public class LocalEndpointBranchGateway private constructor(
             val administration: LocalAdministrationUiGateway = business?.fullConnection?.let { full ->
                 if (full.administrationClient == null) UnavailableLocalAdministration
                 else LocalEndpointAdministrationGateway(full, credentials, identity, source,
-                    retireOriginalSession = {
-                        // Late administration cleanup belongs to the original adapter only.
-                        if (attachmentOwner.compareAndSet(key, null)) end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED)
-                    })
+                    retireOriginalSession = { retireOriginalAttachment(key) })
             } ?: UnavailableLocalAdministration
             val companyCatalog: LocalCompanyCatalogGateway = business?.let { actual ->
                 actual.fullConnection?.companyPublications?.let { publications ->
@@ -825,6 +823,10 @@ public class LocalEndpointBranchGateway private constructor(
                 retainFailedDenial()
                 throw it
             }
+        }
+        /** Late observations belong to their exact original attachment, never a successor. */
+        fun retireOriginalAttachment(key: LocalSessionAttachmentKey) {
+            if (attachmentOwner.compareAndSet(key, null)) end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED)
         }
         fun end(reason: LocalSessionLifecycle) {
             attachmentOwner.value = null

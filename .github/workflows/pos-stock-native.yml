@@ -61,11 +61,9 @@ jobs:
           set -e
           printf '%s\n' "$status" > ../../stock-native-output/gradle-exit-status.txt
           exit "$status"
-      - name: Retain actual results and sanitize diagnostics
+      - name: Collect actual result XML without modifying diagnostics
         if: always()
         shell: bash
-        env:
-          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
         run: |
           set -euo pipefail
           mkdir -p stock-native-output
@@ -76,15 +74,23 @@ jobs:
               find "$directory" -maxdepth 1 -type f -name '*.xml' -exec cp {} "stock-native-output/results/$module/" \;
             fi
           done
-          python3 scripts/pos/sanitize_diagnostics.py --root stock-native-output
-          python3 scripts/pos/artifact_manifest.py --root stock-native-output \
-            --label stock-native-existing-regressions \
-            --metadata "source_revision=$EXPECTED_SOURCE_REVISION" \
-            --metadata "run_id=${GITHUB_RUN_ID}" \
-            --metadata "run_attempt=${GITHUB_RUN_ATTEMPT}"
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "stock-native" \
+            --diagnostics "native=stock-native-output" \
+            --output "build/pos-public-artifacts/stock-native"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-stock-native-${{ github.run_id }}-${{ github.run_attempt }}
-          path: stock-native-output
+          path: build/pos-public-artifacts/stock-native
           retention-days: 14

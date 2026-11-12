@@ -1,9 +1,12 @@
 package com.ukkera.pos.app
 
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import com.ukkera.pos.app.navigation.GuardHandle
 import com.ukkera.pos.app.navigation.LeaveGuard
 import com.ukkera.pos.app.navigation.NavigationToken
 import com.ukkera.pos.security.LocalAdministrationAction
+import com.ukkera.pos.security.LocalAdministrationReactivationRevisions
+import com.ukkera.pos.security.LocalAdministrationActivationRevisions
 import com.ukkera.pos.security.LocalAdministrationCommand
 import com.ukkera.pos.security.LocalAdministrationDirectory
 import com.ukkera.pos.security.LocalAdministrationQuery
@@ -42,13 +45,16 @@ internal data class LocalAdministrationWorkspace(
     val preparationUncertain: Boolean = false,
     val acknowledgementAttempted: Boolean = false,
     val passwordEntryOpen: Boolean = false,
+    /** Keep the exact protected original for recovery without redisplaying denied metadata. */
+    val originalDetailsRestricted: Boolean = false,
 ) {
+    val displayedOriginal: LocalAdministrationCommand? get() = original.takeUnless { originalDetailsRestricted }
     val working: Boolean get() = busy != LocalAdministrationBusy.NONE
     val canPrepare: Boolean get() = !working && pendingLoaded && pendingProblem == null && original == null &&
         pending == null && view != null && readProblem == null && !restartRequired
-    val canSubmit: Boolean get() = !working && !preparationUncertain && operationProblem == null &&
+    val canSubmit: Boolean get() = !working && !originalDetailsRestricted && !preparationUncertain && operationProblem == null &&
         pending?.let { !it.terminal && !it.cancellationRequested &&
-            (it.command.action != LocalAdministrationAction.RESET_CREDENTIAL || it.phase == LocalAdministrationPhase.PREPARED) } == true
+            (!it.command.action.requiresNewPassword || it.phase == LocalAdministrationPhase.PREPARED) } == true
 }
 
 /**
@@ -145,6 +151,19 @@ internal class LocalAdministrationController(
         token.rootGeneration == owner.rootGeneration && token.entryId == owner.entryId && token.area == owner.area
     fun displayCurrent(token: NavigationToken): Boolean = accepts(token)
 
+    /** A bounded navigation hint from this exact displayed detail, never an effect permit. */
+    fun employeePolicyTarget(displayed: LocalAdministrationView, token: NavigationToken):
+        LocalSetupEmployeePolicyTarget? {
+        if (!accepts(token) || !state.value.canPrepare || state.value.passwordEntryOpen ||
+            state.value.view !== displayed || displayed.directory != LocalAdministrationDirectory.ACCOUNTS) return null
+        val detail = displayed.accountDetail ?: return null
+        val account = detail.account
+        if (state.value.query.targetId != account.actorId || detail.policy.scope != displayed.scope ||
+            detail.policy.actorId != account.actorId || detail.policy.revision != account.policyRevision ||
+            account.policyRevision.value == Long.MAX_VALUE) return null
+        return LocalSetupEmployeePolicyTarget(displayed.scope, account.actorId, account.policyRevision)
+    }
+
     fun refresh(token: NavigationToken, firstPage: Boolean = false, nextPage: Boolean = false) {
         if (!accepts(token) || state.value.working || state.value.passwordEntryOpen) return
         val query = when {
@@ -200,9 +219,19 @@ internal class LocalAdministrationController(
             if (displayed.directory != LocalAdministrationDirectory.ACCOUNTS) return
             if (action == LocalAdministrationAction.REVOKE_SESSION) {
                 if (detail.retainedSessions.none { it.sessionId == sessionId && it.status == SessionStatus.ACTIVE }) return
+            } else if (action == LocalAdministrationAction.ACTIVATE_ACCOUNT) {
+                if (detail.account.enabled || detail.account.credentialPresent || detail.account.actorId == operatorId ||
+                    sessionId != null || detail.retainedSessions.any { it.status == SessionStatus.ACTIVE }) return
+            } else if (action == LocalAdministrationAction.REACTIVATE_ACCOUNT) {
+                if (detail.account.enabled || !detail.account.credentialPresent || detail.account.actorId == operatorId ||
+                    sessionId != null || detail.retainedSessions.any { it.status == SessionStatus.ACTIVE }) return
             } else if (!detail.account.enabled || sessionId != null) return
             LocalAdministrationCommand(DomainId.random(), action, detail.account.actorId, detail.account.accountRevision,
-                sessionId, detail.account.credentialRevision.takeIf { action == LocalAdministrationAction.RESET_CREDENTIAL })
+                sessionId, detail.account.credentialRevision.takeIf { action.requiresNewPassword },
+                if (action == LocalAdministrationAction.REACTIVATE_ACCOUNT) LocalAdministrationReactivationRevisions(
+                    detail.account.credentialRevision, detail.account.policyRevision, detail.account.configurationRevision) else null,
+                if (action == LocalAdministrationAction.ACTIVATE_ACCOUNT) LocalAdministrationActivationRevisions(
+                    detail.account.policyRevision, detail.account.configurationRevision) else null)
         }
         mutableState.value = state.value.copy(original = command, pending = null, operationProblem = null,
             preparationUncertain = true, acknowledgementAttempted = false)
@@ -223,7 +252,7 @@ internal class LocalAdministrationController(
     }
 
     fun openPasswordEntry(token: NavigationToken) {
-        if (!accepts(token) || !state.value.canSubmit || state.value.original?.action != LocalAdministrationAction.RESET_CREDENTIAL) return
+        if (!accepts(token) || !state.value.canSubmit || state.value.original?.action?.requiresNewPassword != true) return
         mutableState.value = state.value.copy(passwordEntryOpen = true)
         syncGuard()
     }
@@ -240,8 +269,8 @@ internal class LocalAdministrationController(
         try {
             if (!accepts(token) || !state.value.canSubmit) return
             val original = state.value.original ?: return
-            val reset = original.action == LocalAdministrationAction.RESET_CREDENTIAL
-            if (reset != (password != null) || (reset && (!state.value.passwordEntryOpen || password!!.size !in 4..1024))) return
+            val secretRequired = original.action.requiresNewPassword
+            if (secretRequired != (password != null) || (secretRequired && (!state.value.passwordEntryOpen || password!!.size !in 4..1024))) return
             owned = password?.copyOf()
             mutableState.value = state.value.copy(passwordEntryOpen = false, operationProblem = null)
             val input = owned
@@ -268,7 +297,7 @@ internal class LocalAdministrationController(
     }
 
     fun cancel(token: NavigationToken) {
-        if (!accepts(token) || state.value.working || state.value.passwordEntryOpen || state.value.pending?.terminal == true) return
+        if (!accepts(token) || state.value.working || state.value.passwordEntryOpen || state.value.originalDetailsRestricted || state.value.pending?.terminal == true) return
         val original = state.value.original ?: return
         launchWork(LocalAdministrationBusy.CANCELLING) { ticket ->
             val result = gateway.cancel(original.requestId)
@@ -284,7 +313,8 @@ internal class LocalAdministrationController(
             val acknowledged = gateway.acknowledge(original.requestId)
             if (current(ticket)) {
                 if (acknowledged) mutableState.value = state.value.copy(original = null, pending = null,
-                    pendingLoaded = true, pendingProblem = null, operationProblem = null, acknowledgementAttempted = false)
+                    pendingLoaded = true, pendingProblem = null, operationProblem = null, acknowledgementAttempted = false,
+                    originalDetailsRestricted = false)
                 else mutableState.value = state.value.copy(operationProblem = LocalServiceProblem.STORAGE_UNCERTAIN)
                 // Old target revisions are not reused after an applied operation or an uncertain ACK.
                 mutableState.value = state.value.copy(view = null)
@@ -300,7 +330,8 @@ internal class LocalAdministrationController(
                 if (result.operation == null && previous != null && !state.value.acknowledgementAttempted)
                     state.value.copy(pendingLoaded = true, pendingProblem = null, operationProblem = LocalServiceProblem.STORAGE_UNCERTAIN)
                 else state.value.copy(pendingLoaded = true, pendingProblem = null, original = result.operation?.command,
-                    pending = result.operation, operationProblem = null, preparationUncertain = false, acknowledgementAttempted = false)
+                    pending = result.operation, operationProblem = null, preparationUncertain = false, acknowledgementAttempted = false,
+                    originalDetailsRestricted = false)
             }
             is LocalAdministrationPendingResult.Unavailable -> state.value.copy(pendingLoaded = false, pendingProblem = result.problem)
         }
@@ -312,11 +343,13 @@ internal class LocalAdministrationController(
             is LocalAdministrationResult.Known -> {
                 check(result.operation.command == expected)
                 state.value.copy(original = expected, pending = result.operation, pendingLoaded = true, pendingProblem = null,
-                    operationProblem = null, preparationUncertain = false, view = if (result.operation.terminal) null else state.value.view)
+                    operationProblem = null, preparationUncertain = false, originalDetailsRestricted = false,
+                    view = if (result.operation.terminal) null else state.value.view)
             }
             is LocalAdministrationResult.NotPrepared -> {
                 check(state.value.busy == LocalAdministrationBusy.PREPARING)
-                state.value.copy(original = null, pending = null, preparationUncertain = false, operationProblem = result.problem, view = null)
+                state.value.copy(original = null, pending = null, preparationUncertain = false, operationProblem = result.problem,
+                    originalDetailsRestricted = false, view = null)
             }
             is LocalAdministrationResult.Unresolved -> {
                 check(result.requestId == expected.requestId)
@@ -341,11 +374,18 @@ internal class LocalAdministrationController(
                 else -> LocalServiceProblem.UNAVAILABLE
             })
         }
+        if (result == LocalAdministrationReadResult.Denied) handleSessionProblem(LocalServiceProblem.DENIED)
     }
 
     private fun handleSessionProblem(problem: LocalServiceProblem) {
-        if (problem == LocalServiceProblem.DENIED) mutableState.value = state.value.copy(view = null, original = null, pending = null,
-            pendingLoaded = false, pendingProblem = problem, preparationUncertain = false, passwordEntryOpen = false)
+        if (problem == LocalServiceProblem.DENIED) mutableState.value = state.value.copy(
+            query = LocalAdministrationQuery(state.value.query.directory), view = null,
+            targetInput = "", invalidTarget = false, readProblem = problem, restartRequired = false,
+            // A denied observation cannot erase or acknowledge an already selected original.
+            // Its exact metadata stays negative recovery custody; only an authorized original
+            // lookup may expose it again. Directory recovery alone does not restore that grant.
+            pending = null, pendingLoaded = false, pendingProblem = problem, operationProblem = problem,
+            originalDetailsRestricted = true, preparationUncertain = false, passwordEntryOpen = false)
         if (problem == LocalServiceProblem.SESSION_ENDED) endSession(problem)
     }
 

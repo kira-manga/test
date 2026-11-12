@@ -11,13 +11,24 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 
-private val canonicalUuid = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+/** Exact ASCII UUID spelling only; version/variant semantics remain unchanged. */
+private fun isCanonicalUuid(value: String): Boolean {
+    if (value.length != 36) return false
+    for (index in value.indices) {
+        val character = value[index]
+        when (index) {
+            8, 13, 18, 23 -> if (character != '-') return false
+            else -> if (character !in '0'..'9' && character !in 'a'..'f') return false
+        }
+    }
+    return true
+}
 
 @Serializable(with = DomainIdSerializer::class)
 @JvmInline
 public value class DomainId(public val value: String) {
     init {
-        require(canonicalUuid.matches(value)) { "Domain ID must be a canonical lowercase UUID" }
+        require(isCanonicalUuid(value)) { "Domain ID must be a canonical lowercase UUID" }
     }
 
     public companion object {
@@ -31,7 +42,7 @@ public value class DomainId(public val value: String) {
 @JvmInline
 public value class OperationId(public val value: String) {
     init {
-        require(canonicalUuid.matches(value)) { "Operation ID must be a canonical lowercase UUID" }
+        require(isCanonicalUuid(value)) { "Operation ID must be a canonical lowercase UUID" }
     }
 
     public companion object {

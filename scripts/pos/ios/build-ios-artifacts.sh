@@ -173,8 +173,8 @@ trap cleanup EXIT
 finalize_artifacts() {
   BUILD_STATUS="${BUILD_STATUS:-unknown}"
   mkdir -p "$OUT_DIR/diagnostics"
-  cp -R "$DIAG/." "$OUT_DIR/diagnostics/" 2>/dev/null || true
-  "$PYTHON" "$SANITIZER" --root "$OUT_DIR/diagnostics" || true
+  cp -R "$DIAG/." "$OUT_DIR/diagnostics/"
+  "$PYTHON" "$SANITIZER" --root "$OUT_DIR/diagnostics"
 
   cat > "$OUT_DIR/SOURCE-REVISION.txt" <<EOF
 original_source_revision=$SOURCE_REVISION

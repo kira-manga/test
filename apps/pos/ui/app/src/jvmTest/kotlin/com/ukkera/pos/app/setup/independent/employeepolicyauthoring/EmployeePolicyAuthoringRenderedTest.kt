@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsProperties
 import com.ukkera.pos.app.setup.LocalSetupController
 import com.ukkera.pos.app.setup.LocalSetupEmployeePolicies
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyStage
 import com.ukkera.pos.app.setup.LocalSetupFirstAccountInput
 import com.ukkera.pos.app.setup.LocalSetupNewCompanyInput
@@ -58,6 +59,12 @@ class EmployeePolicyAuthoringRenderedTest {
 
     @Test fun epaC01EnglishCompleteEditorAndReview() = completeEditorAndReview(AppLanguage.ENGLISH)
     @Test fun epaC01ArabicCompleteEditorAndReview() = completeEditorAndReview(AppLanguage.ARABIC)
+
+    // Additional EPA-C01 executors using the same frozen target/predecessor and complete replacement.
+    @Test fun epaC01EnglishSelectedEmployeeCompleteEditorAndReview() =
+        completeEditorAndReview(AppLanguage.ENGLISH, selectedEmployee = true)
+    @Test fun epaC01ArabicSelectedEmployeeCompleteEditorAndReview() =
+        completeEditorAndReview(AppLanguage.ARABIC, selectedEmployee = true)
 
     @Test fun epaC02AbsentEmployeeOrPredecessorCannotPrepare() {
         editor()
@@ -293,9 +300,18 @@ class EmployeePolicyAuthoringRenderedTest {
         // Controlled view replacement only; genuine native/session retirement is not bound.
     }
 
-    private fun completeEditorAndReview(language: AppLanguage) {
-        editor(language)
-        fillPolicy("replacement_policy")
+    private fun completeEditorAndReview(language: AppLanguage, selectedEmployee: Boolean = false) {
+        if (selectedEmployee) {
+            val definition = fixtures.definition()
+            val target = LocalSetupEmployeePolicyTarget(fixtures.scope, fixtures.employee, definition.previousPolicyRevision)
+            show(LocalSetupView(phase = LocalSetupPhase.EMPLOYEE_POLICY, localClientConnected = true,
+                employeePolicy = fixtures.editor().copy(suggestedTarget = target)), language)
+            assertEquals(fixtures.employee.value,
+                visible(hasText(labels.employee) and hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            assertEquals(definition.previousPolicyRevision.value.toString(),
+                visible(hasText(labels.predecessor) and hasSetTextAction()).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+        } else editor(language)
+        fillPolicy("replacement_policy", identify = !selectedEmployee)
         val selectedReview = assertNotNull(controller.state.value.employeePolicy).reviewId
         clickCheckedConsent(labels.prepareConsent)
         click(labels.prepare)
@@ -330,8 +346,8 @@ class EmployeePolicyAuthoringRenderedTest {
         replace(labels.predecessor, "7")
     }
 
-    private fun fillPolicy(name: String) {
-        identifyEmployee()
+    private fun fillPolicy(name: String, identify: Boolean = true) {
+        if (identify) identifyEmployee()
         val value = fixtures.input(name)
         var currentAction = "ORDER_CREATE"
         var currentVerb = "PERFORM"

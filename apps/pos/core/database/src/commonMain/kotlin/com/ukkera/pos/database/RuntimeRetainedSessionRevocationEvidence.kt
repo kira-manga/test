@@ -168,36 +168,51 @@ internal class RuntimeSessionRevocationHistoryEvidence private constructor(
     val retained: RuntimeRetainedSessionRevocationEvidenceV1?,
     val disable: RuntimeAccountDisableEvidenceV1?,
     val reset: RuntimeCredentialResetEvidenceV1?,
+    val reactivation: RuntimeAccountReactivationEvidenceV1?,
+    val activation: RuntimeAccountActivationEvidenceV1?,
+    val credentialFreeDisable: RuntimeCredentialFreeAccountDisableEvidenceV1?,
 ) {
-    init { check(listOf(self, retained, disable, reset).count { it != null } == 1) }
-    val command: LocalAdministrationCommand get() = self?.command ?: retained?.command ?: disable?.command ?: checkNotNull(reset).command
-    val authorization: RuntimeCommandAuthorizationSnapshotV1 get() = self?.authorization ?: retained?.authorization ?: disable?.authorization ?: checkNotNull(reset).authorization
-    val purpose: RuntimeWritePurposeV2 get() = self?.purpose ?: retained?.purpose ?: disable?.purpose ?: checkNotNull(reset).purpose
-    val semanticDigest: PayloadDigest get() = self?.semanticDigest ?: retained?.semanticDigest ?: disable?.semanticDigest ?: checkNotNull(reset).semanticDigest
-    val images: List<RuntimeAuthenticationImageV1> get() = self?.images ?: retained?.images ?: disable?.images ?: checkNotNull(reset).images
+    init { check(listOf(self, retained, disable, reset, reactivation, activation, credentialFreeDisable).count { it != null } == 1) }
+    val command: LocalAdministrationCommand get() = self?.command ?: retained?.command ?: disable?.command ?: reset?.command ?: reactivation?.command ?: activation?.command ?: checkNotNull(credentialFreeDisable).command
+    val authorization: RuntimeCommandAuthorizationSnapshotV1 get() = self?.authorization ?: retained?.authorization ?: disable?.authorization ?: reset?.authorization ?: reactivation?.authorization ?: activation?.authorization ?: checkNotNull(credentialFreeDisable).authorization
+    val purpose: RuntimeWritePurposeV2 get() = self?.purpose ?: retained?.purpose ?: disable?.purpose ?: reset?.purpose ?: reactivation?.purpose ?: activation?.purpose ?: checkNotNull(credentialFreeDisable).purpose
+    val semanticDigest: PayloadDigest get() = self?.semanticDigest ?: retained?.semanticDigest ?: disable?.semanticDigest ?: reset?.semanticDigest ?: reactivation?.semanticDigest ?: activation?.semanticDigest ?: checkNotNull(credentialFreeDisable).semanticDigest
+    val images: List<RuntimeAuthenticationImageV1> get() = self?.images ?: retained?.images ?: disable?.images ?: reset?.images ?: reactivation?.images ?: activation?.images ?: checkNotNull(credentialFreeDisable).images
     fun protectedFinalDeclaration(): NativeHistoryProtectedFinalDeclaration =
         self?.protectedFinalDeclaration() ?: retained?.protectedFinalDeclaration() ?: disable?.protectedFinalDeclaration()
-            ?: checkNotNull(reset).protectedFinalDeclaration()
+            ?: reset?.protectedFinalDeclaration() ?: reactivation?.protectedFinalDeclaration() ?: activation?.protectedFinalDeclaration() ?: checkNotNull(credentialFreeDisable).protectedFinalDeclaration()
     fun encode(): ByteArray = self?.let { RuntimeSessionRevocationEvidenceCodec.encode(it) }
         ?: retained?.let { RuntimeRetainedSessionRevocationEvidenceCodec.encode(it) }
         ?: disable?.let { RuntimeAccountDisableEvidenceCodec.encode(it) }
-        ?: RuntimeCredentialResetEvidenceCodec.encode(checkNotNull(reset))
+        ?: reset?.let { RuntimeCredentialResetEvidenceCodec.encode(it) }
+        ?: reactivation?.let { RuntimeAccountReactivationEvidenceCodec.encode(it) }
+        ?: activation?.let { RuntimeAccountActivationEvidenceCodec.encode(it) }
+        ?: RuntimeCredentialFreeAccountDisableEvidenceCodec.encode(checkNotNull(credentialFreeDisable))
     fun dependencies(): ByteArray = self?.let { RuntimeSessionRevocationEvidenceCodec.dependencies(it) }
         ?: retained?.let { RuntimeRetainedSessionRevocationEvidenceCodec.dependencies(it) }
         ?: disable?.let { RuntimeAccountDisableEvidenceCodec.dependencies(it) }
-        ?: RuntimeCredentialResetEvidenceCodec.dependencies(checkNotNull(reset))
+        ?: reset?.let { RuntimeCredentialResetEvidenceCodec.dependencies(it) }
+        ?: reactivation?.let { RuntimeAccountReactivationEvidenceCodec.dependencies(it) }
+        ?: activation?.let { RuntimeAccountActivationEvidenceCodec.dependencies(it) }
+        ?: RuntimeCredentialFreeAccountDisableEvidenceCodec.dependencies(checkNotNull(credentialFreeDisable))
     override fun toString(): String = "RuntimeSessionRevocationHistoryEvidence([REDACTED])"
 
     companion object {
+        fun credentialFreeDisable(value: RuntimeCredentialFreeAccountDisableEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
+            RuntimeSessionRevocationHistoryEvidence(null, null, null, null, null, null, value.also { it.validate() })
+        fun activation(value: RuntimeAccountActivationEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
+            RuntimeSessionRevocationHistoryEvidence(null, null, null, null, null, value.also { it.validate() }, null)
+        fun reactivation(value: RuntimeAccountReactivationEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
+            RuntimeSessionRevocationHistoryEvidence(null, null, null, null, value.also { it.validate() }, null, null)
         const val MAX_IMAGES: Int = 2
         fun self(value: RuntimeSessionRevocationEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
-            RuntimeSessionRevocationHistoryEvidence(value.also { it.validate() }, null, null, null)
+            RuntimeSessionRevocationHistoryEvidence(value.also { it.validate() }, null, null, null, null, null, null)
         fun retained(value: RuntimeRetainedSessionRevocationEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
-            RuntimeSessionRevocationHistoryEvidence(null, value.also { it.validate() }, null, null)
+            RuntimeSessionRevocationHistoryEvidence(null, value.also { it.validate() }, null, null, null, null, null)
         fun disable(value: RuntimeAccountDisableEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
-            RuntimeSessionRevocationHistoryEvidence(null, null, value.also { it.validate() }, null)
+            RuntimeSessionRevocationHistoryEvidence(null, null, value.also { it.validate() }, null, null, null, null)
         fun reset(value: RuntimeCredentialResetEvidenceV1): RuntimeSessionRevocationHistoryEvidence =
-            RuntimeSessionRevocationHistoryEvidence(null, null, null, value.also { it.validate() })
+            RuntimeSessionRevocationHistoryEvidence(null, null, null, value.also { it.validate() }, null, null, null)
     }
 }
 
@@ -206,30 +221,42 @@ internal class RuntimeSessionRevocationHistoryCapture private constructor(
     private val retained: RuntimeRetainedSessionRevocationCapture?,
     private val disable: RuntimeAccountDisableCapture?,
     private val reset: RuntimeCredentialResetCapture?,
+    private val reactivation: RuntimeAccountReactivationCapture?,
+    private val activation: RuntimeAccountActivationCapture?,
+    private val credentialFreeDisable: RuntimeCredentialFreeAccountDisableCapture?,
 ) {
-    init { check(listOf(self, retained, disable, reset).count { it != null } == 1) }
-    val scope: BranchScope get() = self?.scope ?: retained?.scope ?: disable?.scope ?: checkNotNull(reset).scope
-    val actorId: DomainId get() = self?.actorId ?: retained?.actorId ?: disable?.actorId ?: checkNotNull(reset).actorId
-    val requestId: DomainId get() = self?.requestId ?: retained?.requestId ?: disable?.requestId ?: checkNotNull(reset).requestId
-    val semanticDigest: PayloadDigest get() = self?.semanticDigest ?: retained?.semanticDigest ?: disable?.semanticDigest ?: checkNotNull(reset).semanticDigest
-    val images: MutableList<RuntimeAuthenticationImageV1> get() = self?.images ?: retained?.images ?: disable?.images ?: checkNotNull(reset).images
+    init { check(listOf(self, retained, disable, reset, reactivation, activation, credentialFreeDisable).count { it != null } == 1) }
+    val scope: BranchScope get() = self?.scope ?: retained?.scope ?: disable?.scope ?: reset?.scope ?: reactivation?.scope ?: activation?.scope ?: checkNotNull(credentialFreeDisable).scope
+    val actorId: DomainId get() = self?.actorId ?: retained?.actorId ?: disable?.actorId ?: reset?.actorId ?: reactivation?.actorId ?: activation?.actorId ?: checkNotNull(credentialFreeDisable).actorId
+    val requestId: DomainId get() = self?.requestId ?: retained?.requestId ?: disable?.requestId ?: reset?.requestId ?: reactivation?.requestId ?: activation?.requestId ?: checkNotNull(credentialFreeDisable).requestId
+    val semanticDigest: PayloadDigest get() = self?.semanticDigest ?: retained?.semanticDigest ?: disable?.semanticDigest ?: reset?.semanticDigest ?: reactivation?.semanticDigest ?: activation?.semanticDigest ?: checkNotNull(credentialFreeDisable).semanticDigest
+    val images: MutableList<RuntimeAuthenticationImageV1> get() = self?.images ?: retained?.images ?: disable?.images ?: reset?.images ?: reactivation?.images ?: activation?.images ?: checkNotNull(credentialFreeDisable).images
     val retainedTarget: RuntimeRetainedSessionRevocationTargetV1? get() = retained?.target
     fun evidence(): RuntimeSessionRevocationHistoryEvidence =
         self?.let { RuntimeSessionRevocationHistoryEvidence.self(it.evidence()) }
             ?: retained?.let { RuntimeSessionRevocationHistoryEvidence.retained(it.evidence()) }
             ?: disable?.let { RuntimeSessionRevocationHistoryEvidence.disable(it.evidence()) }
-            ?: RuntimeSessionRevocationHistoryEvidence.reset(checkNotNull(reset).evidence())
+            ?: reset?.let { RuntimeSessionRevocationHistoryEvidence.reset(it.evidence()) }
+            ?: reactivation?.let { RuntimeSessionRevocationHistoryEvidence.reactivation(it.evidence()) }
+            ?: activation?.let { RuntimeSessionRevocationHistoryEvidence.activation(it.evidence()) }
+            ?: RuntimeSessionRevocationHistoryEvidence.credentialFreeDisable(checkNotNull(credentialFreeDisable).evidence())
     override fun toString(): String = "RuntimeSessionRevocationHistoryCapture([REDACTED])"
 
     companion object {
+        fun credentialFreeDisable(value: RuntimeCredentialFreeAccountDisableCapture): RuntimeSessionRevocationHistoryCapture =
+            RuntimeSessionRevocationHistoryCapture(null, null, null, null, null, null, value)
+        fun activation(value: RuntimeAccountActivationCapture): RuntimeSessionRevocationHistoryCapture =
+            RuntimeSessionRevocationHistoryCapture(null, null, null, null, null, value, null)
+        fun reactivation(value: RuntimeAccountReactivationCapture): RuntimeSessionRevocationHistoryCapture =
+            RuntimeSessionRevocationHistoryCapture(null, null, null, null, value, null, null)
         fun self(value: RuntimeSessionRevocationCapture): RuntimeSessionRevocationHistoryCapture =
-            RuntimeSessionRevocationHistoryCapture(value, null, null, null)
+            RuntimeSessionRevocationHistoryCapture(value, null, null, null, null, null, null)
         fun retained(value: RuntimeRetainedSessionRevocationCapture): RuntimeSessionRevocationHistoryCapture =
-            RuntimeSessionRevocationHistoryCapture(null, value, null, null)
+            RuntimeSessionRevocationHistoryCapture(null, value, null, null, null, null, null)
         fun disable(value: RuntimeAccountDisableCapture): RuntimeSessionRevocationHistoryCapture =
-            RuntimeSessionRevocationHistoryCapture(null, null, value, null)
+            RuntimeSessionRevocationHistoryCapture(null, null, value, null, null, null, null)
         fun reset(value: RuntimeCredentialResetCapture): RuntimeSessionRevocationHistoryCapture =
-            RuntimeSessionRevocationHistoryCapture(null, null, null, value)
+            RuntimeSessionRevocationHistoryCapture(null, null, null, value, null, null, null)
     }
 }
 

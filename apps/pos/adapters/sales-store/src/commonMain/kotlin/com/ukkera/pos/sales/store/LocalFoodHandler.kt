@@ -53,6 +53,15 @@ public class LocalFoodHandler(private val stock: LocalStockRepository, private v
             setOf(orderResource(orderId), orderResource(owner)), PreparedMutationAdmissionRestriction.SOURCE_UNAVAILABLE) {
             error("food.legacy_quote_requires_original")
         }
+        // Fresh handoff history and recipient funding continuation are not installed.
+        // Hold before any offer/owner/responsibility write, including fully paid work.
+        // Existing originals still use the kernel's retained-result recovery path.
+        if (request is LocalFoodRequestV1.OfferHandoff || request is LocalFoodRequestV1.AcceptHandoff ||
+            request is LocalFoodRequestV1.CancelHandoff) return FoodPrepared(context, action, target,
+            request.foodOrderRevision(), owner, setOf(orderResource(orderId), orderResource(owner)),
+            PreparedMutationAdmissionRestriction.SOURCE_UNAVAILABLE) {
+            error("food.handoff.current_history_required")
+        }
         fun refusal(code: String): PreparedMutation = FoodPrepared(context, action, target, request.foodOrderRevision(), owner,
             setOf(orderResource(orderId), orderResource(owner), RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, owner))) { _ -> foodReject(code) }
         if (request !is LocalFoodRequestV1.Create && observed == null) return refusal("food.order.unavailable")

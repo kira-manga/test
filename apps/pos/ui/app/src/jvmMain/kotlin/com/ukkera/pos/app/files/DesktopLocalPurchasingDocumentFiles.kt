@@ -5,7 +5,8 @@ import com.ukkera.pos.app.LocalPurchasingDocumentFileDestinationSelection
 import com.ukkera.pos.app.LocalPurchasingDocumentFileIoResult
 import com.ukkera.pos.app.LocalPurchasingDocumentFileProblem
 import com.ukkera.pos.app.LocalPurchasingDocumentFileSelection
-import com.ukkera.pos.app.LocalPurchasingDocumentFiles
+import com.ukkera.pos.app.LocalNativePurchasingDocumentFiles
+import com.ukkera.pos.app.LocalPurchasingDocumentNativeCleanup
 import com.ukkera.pos.app.MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES
 import com.ukkera.pos.app.localPurchasingDocumentMediaMatches
 import com.ukkera.pos.app.validLocalPurchasingDocumentFileName
@@ -45,22 +46,28 @@ import kotlinx.coroutines.sync.withLock
 
 /** Native desktop document selection. No cached source, persisted permission or media rewrite.
  * Output is created exclusively: selecting an existing file never truncates it. */
-class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCloseable {
+class DesktopLocalPurchasingDocumentFiles : LocalNativePurchasingDocumentFiles, AutoCloseable {
     private class Host(val window: Window) {
         val alive = AtomicBoolean(true)
         val visible = AtomicBoolean(window.isShowing)
         val generation = AtomicReference(Any())
     }
     private class Choice(val path: Path, val host: Host, val generation: Any)
-    private class Picker(val host: Host, val dialog: FileDialog)
+    private class Picker(val host: Host, val dialog: FileDialog, val cleanupLease: LocalPurchasingDocumentNativeCleanup.Lease)
     private val host = AtomicReference<Host?>(null)
     private val dialog = AtomicReference<Picker?>(null)
     private val closed = AtomicBoolean(false)
-    private val cleanupUncertain = AtomicBoolean(false)
     private val destinations = ConcurrentHashMap.newKeySet<Destination>()
     private val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    override val bound: Boolean get() = !closed.get() && !cleanupUncertain.get() &&
+    override val bound: Boolean get() = !closed.get() && !nativeCleanup.hasUnconfirmed &&
         host.get()?.let { it.alive.get() && it.visible.get() } == true
+
+    private fun retainCleanupFailure(holder: Any) {
+        when (holder) {
+            is LocalPurchasingDocumentFileDestination -> nativeCleanup.unconfirmed(holder) { holder.abort() }
+            else -> nativeCleanup.unconfirmed(holder)
+        }
+    }
 
     fun bind(window: Window): AutoCloseable {
         check(EventQueue.isDispatchThread())
@@ -91,7 +98,7 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
         value.generation.set(Any())
         if (end) { value.alive.set(false); host.compareAndSet(value, null) }
         EventQueue.invokeLater {
-            dialog.get()?.takeIf { it.host === value }?.let { if (dialog.compareAndSet(it, null)) it.dialog.dispose() }
+            dialog.get()?.takeIf { it.host === value }?.let(::disposePicker)
         }
         destinations.filter { it.choice.host === value }.forEach { cleanup.launch { it.abort() } }
     }
@@ -100,23 +107,43 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
         host.get() === choice.host && choice.host.alive.get() && choice.host.visible.get() &&
         choice.host.generation.get() === choice.generation && safeCurrent(access)
 
+    private fun disposePicker(picker: Picker): Boolean = try {
+        picker.dialog.dispose()
+        check(!picker.dialog.isDisplayable)
+        dialog.compareAndSet(picker, null)
+        nativeCleanup.resolved(picker)
+        picker.cleanupLease.completed()
+        true
+    } catch (_: Exception) {
+        nativeCleanup.unconfirmed(picker) {
+            suspendCancellableCoroutine<Unit> { continuation ->
+                EventQueue.invokeLater {
+                    disposePicker(picker)
+                    if (continuation.isActive) continuation.resume(Unit)
+                }
+            }
+        }
+        false
+    }
+
     private suspend fun choose(save: Boolean, name: String?, access: () -> Boolean): Choice? =
         suspendCancellableCoroutine { continuation ->
+            val lease = nativeCleanup.retain(this)
             val captured = host.get()
             val generation = captured?.generation?.get()
             val owned = AtomicReference<Picker?>(null)
             continuation.invokeOnCancellation { EventQueue.invokeLater {
-                owned.getAndSet(null)?.let { dialog.compareAndSet(it, null); it.dialog.dispose() }
+                owned.get()?.let { if (disposePicker(it)) owned.compareAndSet(it, null) }
             } }
             EventQueue.invokeLater {
-                if (!continuation.isActive) return@invokeLater
-                if (captured == null || generation == null || !bound || !safeCurrent(access)) {
-                    continuation.resumeWith(Result.failure(DocumentFailure(LocalPurchasingDocumentFileProblem.NOT_BOUND)))
-                    return@invokeLater
-                }
                 var chooser: FileDialog? = null
                 var picker: Picker? = null
                 try {
+                    if (!continuation.isActive) return@invokeLater
+                    if (captured == null || generation == null || !bound || !safeCurrent(access)) {
+                        continuation.resumeWith(Result.failure(DocumentFailure(LocalPurchasingDocumentFileProblem.NOT_BOUND)))
+                        return@invokeLater
+                    }
                     val title = if (save) "Save original document / حفظ المستند الأصلي" else "Open original document / فتح المستند الأصلي"
                     val mode = if (save) FileDialog.SAVE else FileDialog.LOAD
                     chooser = when (val window = captured.window) {
@@ -124,9 +151,9 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
                         is Dialog -> FileDialog(window, title, mode)
                         else -> throw DocumentFailure(LocalPurchasingDocumentFileProblem.NOT_BOUND)
                     }
-                    picker = Picker(captured, chooser)
-                    if (!dialog.compareAndSet(null, picker)) throw DocumentFailure(LocalPurchasingDocumentFileProblem.BUSY)
+                    picker = Picker(captured, chooser, lease)
                     owned.set(picker)
+                    if (!dialog.compareAndSet(null, picker)) throw DocumentFailure(LocalPurchasingDocumentFileProblem.BUSY)
                     chooser.isMultipleMode = false
                     if (name != null) chooser.file = name
                     chooser.isVisible = true
@@ -142,19 +169,25 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
                 } catch (failure: Exception) {
                     if (continuation.isActive) continuation.resumeWith(Result.failure(failure))
                 } finally {
-                    picker?.let { dialog.compareAndSet(it, null); owned.compareAndSet(it, null) }
-                    chooser?.dispose()
+                    val retained = picker
+                    if (retained == null) lease.completed()
+                    else if (disposePicker(retained)) owned.compareAndSet(retained, null)
                 }
             }
         }
 
-    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
+    override val nativeCleanup = LocalPurchasingDocumentNativeCleanup()
+
+    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection =
+        nativeCleanup.during(this) { importNativeOriginal(isCurrent) }
+
+    private suspend fun importNativeOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
         var selected: LocalPurchasingDocumentFileSelection.Selected? = null
         var delivered = false
         try {
             val choice = choose(false, null, isCurrent) ?: return LocalPurchasingDocumentFileSelection.Cancelled
             val result = withContext(Dispatchers.IO) {
-                val bytes = readBounded(choice.path) { checkCurrent(choice, isCurrent) }
+                val bytes = readBounded(choice.path, ::retainCleanupFailure) { checkCurrent(choice, isCurrent) }
                 try {
                     val media = PurchasingEvidenceMediaV1.entries.firstOrNull { localPurchasingDocumentMediaMatches(it, bytes) }
                         ?: throw DocumentFailure(LocalPurchasingDocumentFileProblem.UNSUPPORTED_MEDIA)
@@ -171,6 +204,10 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
     }
 
     override suspend fun chooseDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
+        isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection =
+        nativeCleanup.during(this) { chooseNativeDestination(originalFileName, media, isCurrent) }
+
+    private suspend fun chooseNativeDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
         isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection {
         return try {
             if (!validLocalPurchasingDocumentFileName(originalFileName))
@@ -199,6 +236,7 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
         val mutex = Mutex()
         var expected: ByteArray? = null
         var output: FileChannel? = null
+        var closeUnproved = false
         var fileKey: Any? = null
         var created = false
         var attempted = false
@@ -253,10 +291,10 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
                     requireCurrent()
                     checkNotNull(output).force(true)
                     try { checkNotNull(output).close(); output = null }
-                    catch (_: Exception) { throw DocumentFailure(LocalPurchasingDocumentFileProblem.CLOSE_FAILED) }
+                    catch (_: Exception) { closeUnproved = true; throw DocumentFailure(LocalPurchasingDocumentFileProblem.CLOSE_FAILED) }
                     requireCurrent()
                     check(attributes(choice.path).fileKey() == fileKey)
-                    val actual = readBounded(choice.path, ::requireCurrent)
+                    val actual = readBounded(choice.path, ::retainCleanupFailure, ::requireCurrent)
                     try {
                         if (!actual.contentEquals(checkNotNull(expected)))
                             throw DocumentFailure(LocalPurchasingDocumentFileProblem.OUTPUT_MISMATCH)
@@ -276,21 +314,23 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
         }
 
         override suspend fun abort(): LocalPurchasingDocumentFileIoResult = withContext(NonCancellable + Dispatchers.IO) {
-            mutex.withLock { if (completed) unavailable(LocalPurchasingDocumentFileProblem.ALREADY_USED) else abortResult ?: abortLocked() }
+            mutex.withLock { if (completed) unavailable(LocalPurchasingDocumentFileProblem.ALREADY_USED) else abortResult?.takeIf { it == LocalPurchasingDocumentFileIoResult.Succeeded } ?: abortLocked() }
         }
 
         private fun abortLocked(): LocalPurchasingDocumentFileIoResult {
-            var confirmed = true
-            try { output?.close() } catch (_: Exception) { confirmed = false }
-            finally { output = null; expected?.fill(0); expected = null; writeCurrent = null }
+            var confirmed = !closeUnproved
+            if (!closeUnproved) try { output?.close(); output = null }
+            catch (_: Exception) { closeUnproved = true; confirmed = false }
+            expected?.fill(0); expected = null; writeCurrent = null
             try {
                 if (created) {
                     check(fileKey != null && attributes(choice.path).fileKey() == fileKey)
                     Files.delete(choice.path)
+                    created = false
                 }
             } catch (_: Exception) { confirmed = false }
-            if (!confirmed) cleanupUncertain.set(true)
-            destinations.remove(this@Destination)
+            if (confirmed) nativeCleanup.resolved(this) else retainCleanupFailure(this)
+            if (confirmed) destinations.remove(this@Destination)
             return (if (confirmed) LocalPurchasingDocumentFileIoResult.Succeeded
                 else unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)).also { abortResult = it }
         }
@@ -298,6 +338,7 @@ class DesktopLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCl
 
     override fun close() {
         if (closed.compareAndSet(false, true)) host.get()?.let { invalidate(it, end = true) }
+        EventQueue.invokeLater { dialog.get()?.let(::disposePicker) }
         destinations.forEach { cleanup.launch { it.abort() } }
     }
 }
@@ -313,14 +354,18 @@ private fun safeCurrent(access: () -> Boolean): Boolean = try { access() } catch
 private fun attributes(path: Path): BasicFileAttributes = Files.readAttributes(path, BasicFileAttributes::class.java, NOFOLLOW_LINKS).also {
     if (!it.isRegularFile || it.isSymbolicLink) throw DocumentFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
 }
-private suspend fun readBounded(path: Path, current: () -> Unit): ByteArray {
+private suspend fun readBounded(path: Path, unprovedClose: (Any) -> Unit, current: () -> Unit): ByteArray {
     current()
     val before = attributes(path)
     if (before.size() !in 1..MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES.toLong())
         throw DocumentFailure(if (before.size()==0L) LocalPurchasingDocumentFileProblem.EMPTY_FILE else LocalPurchasingDocumentFileProblem.TOO_LARGE)
     val bytes = ByteArray(before.size().toInt())
     try {
-        FileChannel.open(path, StandardOpenOption.READ, NOFOLLOW_LINKS).use { input ->
+        val input = FileChannel.open(path, StandardOpenOption.READ, NOFOLLOW_LINKS)
+        val closing = AutoCloseable {
+            try { input.close() } catch (failure: Exception) { unprovedClose(input); throw failure }
+        }
+        closing.use {
             val buffer = ByteBuffer.wrap(bytes)
             while (buffer.hasRemaining()) {
                 currentCoroutineContext().ensureActive(); current()

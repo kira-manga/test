@@ -52,7 +52,7 @@ internal class RuntimeHistoricalLocalHandoffRecipientTimeline(
     private val coordinates = native.allocation.coordinates
     private val scope = coordinates.scope
     private val expectedActors = (listOf(coordinates.firstActorId) +
-        session.employeeEnrollments.map { it.requested.request.targetId }).toSet()
+        session.employeeEnrollments.map { it.requested.request.targetId }).toMutableSet()
     private class Point(val sequence: Long, facts: RuntimeHistoricalLocalHandoffRecipientFacts) {
         val revision = facts.accountRevision
         val enabled = facts.enabled
@@ -88,7 +88,17 @@ internal class RuntimeHistoricalLocalHandoffRecipientTimeline(
         replay: RuntimeEmployeeAuthenticationReplay) {
         if (!enabled) return
         requireEvent(header)
-        addOrigin(header.sequence, replay.nativeHandoffRecipientOrigin(session, header, eventDigest))
+        val facts = replay.nativeHandoffRecipientOrigin(session, header, eventDigest)
+        val origin = replay.origin
+        if (origin.eventPurpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION) {
+            // Only this exact replay's completed native creation origin can extend the
+            // expected recipient set. A current actor, parsed facts or callback cannot.
+            historyShapeV2(origin.matchesNativeSelection(session) && facts.actorId == origin.actorId &&
+                facts.actorId != coordinates.firstActorId && facts.actorId !in expectedActors)
+            historyCapacityV2(expectedActors.size < 4096)
+            expectedActors += facts.actorId
+        } else historyShapeV2(origin.eventPurpose == RuntimeWritePurposeV2.PROVISIONING)
+        addOrigin(header.sequence, facts)
     }
 
     fun accountAfter(header: RuntimeHistoryEventHeaderV2, replay: RuntimeOriginalAuthenticationReplay) {

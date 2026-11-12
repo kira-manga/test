@@ -1,5 +1,6 @@
 package com.ukkera.pos.rpc
 
+import com.ukkera.pos.security.LocalEmployeeCreationConfigurationV1
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.GrantEffect
@@ -36,6 +37,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.builtins.ByteArraySerializer
 import kotlinx.serialization.builtins.CharArraySerializer
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
@@ -413,12 +415,14 @@ internal class LocalRpcSessionView(
     }
 }
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 internal class LocalRpcPolicy(
     val scope: BranchScope, val actorId: DomainId, val revision: Revision, val grants: List<LocalRpcGrant>,
     val maximumConcurrentSessions: Int, val freeFailures: Int, val initialDelayMillis: Long,
     val maximumDelayMillis: Long, val attemptTimeoutMillis: Long,
     val approvalValidForMillis: Long? = null, val namedSelfApprovalActions: Set<String>? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val employeeCreationConfigurationV1: ByteArray? = null,
 ) {
     fun value(): ActivatedLocalPolicy {
         require(grants.size <= 1024)
@@ -430,7 +434,8 @@ internal class LocalRpcPolicy(
         }
         return ActivatedLocalPolicy(scope, actorId, revision, grants.map { it.value() },
             LocalSessionPolicy(maximumConcurrentSessions),
-            ThrottlePolicy(freeFailures, initialDelayMillis, maximumDelayMillis, attemptTimeoutMillis), approval)
+            ThrottlePolicy(freeFailures, initialDelayMillis, maximumDelayMillis, attemptTimeoutMillis), approval,
+            employeeCreationConfigurationV1?.let(LocalEmployeeCreationConfigurationV1::decode))
     }
     override fun toString(): String = "LocalRpcPolicy([REDACTED])"
     companion object {
@@ -438,7 +443,8 @@ internal class LocalRpcPolicy(
             policy.revision, policy.grants.map { LocalRpcGrant.capture(it) }, policy.sessionPolicy.maximumConcurrentSessions,
             policy.throttlePolicy.freeFailures, policy.throttlePolicy.initialDelayMillis, policy.throttlePolicy.maximumDelayMillis,
             policy.throttlePolicy.attemptTimeoutMillis, policy.approvalPolicy?.validForMillis,
-            policy.approvalPolicy?.namedSelfApprovalActions?.map { it.name }?.toSet())
+            policy.approvalPolicy?.namedSelfApprovalActions?.map { it.name }?.toSet(),
+            policy.employeeCreationConfiguration?.copyWireBytes())
     }
 }
 

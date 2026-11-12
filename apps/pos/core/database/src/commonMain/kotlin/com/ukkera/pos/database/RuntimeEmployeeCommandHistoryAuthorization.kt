@@ -1,6 +1,5 @@
 package com.ukkera.pos.database
 
-import com.ukkera.pos.security.NativeEmployeeEnrollmentHistorySource
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
 
@@ -13,7 +12,7 @@ import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
  */
 internal class RuntimeEmployeeCommandHistoryAuthorization internal constructor(
     private val owner: RuntimeEmployeeAuthenticationReplay,
-    private val source: NativeEmployeeEnrollmentHistorySource,
+    private val source: RuntimeEmployeeHistoryOrigin,
     private val header: RuntimeHistoryEventHeaderV2,
     private val eventDigest: PayloadDigest,
     val evidence: RuntimeCommandAuthorizationEvidenceV1,
@@ -63,9 +62,9 @@ internal class RuntimeEmployeeCommandHistoryAuthorization internal constructor(
         owner.requireCommandSession(session)
         val coordinates = session.original.record.allocation.coordinates
         val authorization = evidence.authorization
-        historyShapeV2(session.employeeEnrollments.any { it === source } &&
-            source.requested.request.scope == coordinates.scope && authorization.scope == coordinates.scope &&
-            source.requested.request.targetId == authorization.actorId && authorization.actorId != coordinates.firstActorId &&
+        historyShapeV2(source.matchesNativeSelection(session) &&
+            source.scope == coordinates.scope && authorization.scope == coordinates.scope &&
+            source.actorId == authorization.actorId && authorization.actorId != coordinates.firstActorId &&
             source.originalCohostDeviceId == coordinates.deviceId && authorization.deviceId == source.originalCohostDeviceId &&
             source.child.historySequence < header.sequence && source.child.commandSequence < header.commandSequence &&
             source.child.commandEpoch == header.commandEpoch && source.child.installationGenesisDigest == header.installationGenesisDigest &&
@@ -73,7 +72,7 @@ internal class RuntimeEmployeeCommandHistoryAuthorization internal constructor(
             header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY && evidence.purposeTag == header.purpose.tag &&
             evidence.capturedChanges == header.changeCount && evidence.actionApprovalId == null &&
             authorization.dependencies.policy == capturedPolicyDigest &&
-            authorization.dependencies.admission == source.evidence.admissionDigests.single {
+            authorization.dependencies.admission == source.admissionDigests.single {
                 it.first == source.originalCohostDeviceId }.second)
     }
 

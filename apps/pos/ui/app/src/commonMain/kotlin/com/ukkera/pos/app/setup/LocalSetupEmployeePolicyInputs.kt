@@ -19,6 +19,8 @@ import com.ukkera.pos.app.ui.touchTarget
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.LocalApprovalPolicy
+import com.ukkera.pos.security.LocalEmployeeCreationConfigurationV1
+import com.ukkera.pos.security.LocalEmployeeCreationAuthenticationProfileV1
 import com.ukkera.pos.security.LocalSessionPolicy
 import com.ukkera.pos.security.PermissionGrant
 import com.ukkera.pos.security.ThrottlePolicy
@@ -29,8 +31,13 @@ import com.ukkera.pos.types.Revision
 @Composable
 internal fun LocalSetupEmployeePolicyInputs(review: LocalSetupEmployeePolicyView, enabled: Boolean,
     prepare: (DomainId, ActivatedLocalPolicy) -> Unit) {
-    var actorText by remember(review.reviewId) { mutableStateOf("") }
-    var predecessorText by remember(review.reviewId) { mutableStateOf("") }
+    var actorText by remember(review.reviewId) { mutableStateOf(review.suggestedTarget?.actorId?.value.orEmpty()) }
+    var predecessorText by remember(review.reviewId) {
+        mutableStateOf(review.suggestedTarget?.expectedPolicyRevision?.value?.toString().orEmpty())
+    }
+    if (review.suggestedTarget != null) Notice(t(
+        "Employee and predecessor were selected from a protected read. They may now be stale; review them explicitly. No current grants or approval were transferred.",
+        "اختير الموظف والمراجعة السابقة من قراءة محمية، وقد تكونان قديمتين الآن؛ راجعهما صراحةً. لم تُنقل صلاحيات حالية أو موافقة."))
     SetupInput(actorText, { actorText = it }, t("Exact existing employee UUID", "معرّف UUID الدقيق للموظف الموجود"), enabled, 36)
     SetupInput(predecessorText, { predecessorText = it }, t("Expected existing policy revision", "مراجعة السياسة الموجودة المتوقعة"), enabled, 19)
     val actor = actorText.takeIf { policyTargetUuid.matches(it) }?.let(::DomainId)
@@ -55,6 +62,7 @@ internal fun LocalSetupEmployeePolicyInputs(review: LocalSetupEmployeePolicyView
 private fun EmployeePolicySelections(scope: BranchScope, actor: DomainId, revision: Revision, enabled: Boolean,
     prepare: (ActivatedLocalPolicy) -> Unit) {
     var grants by remember { mutableStateOf<List<PermissionGrant>>(emptyList()) }
+    var creationProfiles by remember { mutableStateOf<List<LocalEmployeeCreationAuthenticationProfileV1>>(emptyList()) }
     var sessions by remember { mutableStateOf("") }
     var freeFailures by remember { mutableStateOf("") }
     var initialDelay by remember { mutableStateOf("") }
@@ -95,6 +103,8 @@ private fun EmployeePolicySelections(scope: BranchScope, actor: DomainId, revisi
         SetupInput(approvalMillis, { approvalMillis = it; consent = false }, t("Approval lifetime in ms (1–600000)", "مدة الموافقة بالمللي ثانية (1–600000)"), enabled, 19)
         SetupLines(selfApprovals, { selfApprovals = it; consent = false }, t("Exact self-approval action codes, one per line; empty means none", "رموز إجراءات الموافقة الذاتية الدقيقة، واحد في كل سطر؛ فارغ يعني لا شيء"), enabled, 8192)
     } else ReviewField(t("Manager approval policy", "سياسة موافقة المدير"), t("Absent; none inherited", "غير موجودة؛ دون وراثة"), code = false)
+    LocalSetupEmployeeCreationConfigurationInputs(creationProfiles, enabled,
+        changed = { creationProfiles = it; consent = false }, editing = { consent = false })
     if (invalid) Notice(t("Enter every session, throttle and approval field within its displayed bounds. Self-approval codes must be distinct existing local-employee action names.",
         "أدخل جميع حقول الجلسة والتأخير والموافقة ضمن الحدود المعروضة. يجب أن تكون رموز الموافقة الذاتية أسماء إجراءات الموظف المحلي الموجودة والمختلفة."), caution = true)
     Consent(t("Prepare exactly this complete replacement, including every grant and explicit empty selection", "تحضير هذه السياسة البديلة كاملةً بعينها، بجميع الصلاحيات والاختيارات الفارغة الصريحة"), consent, enabled) { consent = it }
@@ -103,7 +113,8 @@ private fun EmployeePolicySelections(scope: BranchScope, actor: DomainId, revisi
             val approval = if (approvalEnabled) LocalApprovalPolicy(policyUnsigned(approvalMillis), actionCodes(selfApprovals)) else null
             ActivatedLocalPolicy(scope, actor, revision, grants, LocalSessionPolicy(policyUnsigned(sessions).toInt()),
                 ThrottlePolicy(policyUnsigned(freeFailures).toInt(), policyUnsigned(initialDelay), policyUnsigned(maximumDelay),
-                    policyUnsigned(attemptTimeout)), approval)
+                    policyUnsigned(attemptTimeout)), approval,
+                creationProfiles.takeIf { it.isNotEmpty() }?.let(LocalEmployeeCreationConfigurationV1::capture))
         } catch (_: Exception) { invalid = true; null }
         if (policy != null) { consent = false; invalid = false; prepare(policy) }
     }, enabled = enabled && consent, modifier = Modifier.fillMaxWidth().touchTarget()) {

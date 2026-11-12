@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.gateway.setup
 
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import com.ukkera.pos.app.LocalEnrollmentResult
 import com.ukkera.pos.app.setup.LocalSetupEmployeeEnrollmentStage
 import com.ukkera.pos.app.setup.LocalSetupEmployeeEnrollmentView
@@ -1346,16 +1347,22 @@ public class LocalSetupCoordinator(
         }
     }
 
-    override fun openEmployeePolicies() {
+    override fun openEmployeePolicies(): Unit = openEmployeePoliciesSelection(null)
+
+    override fun openEmployeePolicies(target: LocalSetupEmployeePolicyTarget): Unit =
+        openEmployeePoliciesSelection(target)
+
+    private fun openEmployeePoliciesSelection(selection: LocalSetupEmployeePolicyTarget?) {
         start(LocalSetupWork.READING_EMPLOYEE_POLICY, EMPLOYEE_POLICY_OPEN_PHASES) {
             val target = requirePolicyTarget()
             val client = requireNotNull(target.localClient)
             operation {
+                requireOriginal(selection == null || selection.scope == target.context.materialAtOpen.coordinates.scope)
                 val originals = policyOriginals(target, client) ?: return@operation
                 val retained = target.employeePolicyOriginal
                 change { it.copy(phase = LocalSetupPhase.EMPLOYEE_POLICY,
                     employeePolicies = LocalSetupEmployeePolicies(originals,
-                        retained == null && originals.all { original -> original.phase in TERMINAL_EMPLOYEE_POLICY_PHASES }),
+                        retained == null && originals.all { original -> original.phase in TERMINAL_EMPLOYEE_POLICY_PHASES }, selection),
                     employeePolicy = retained?.let { original ->
                         view.employeePolicy?.takeIf { selected -> selected.originalRequestId == original.requestId }
                             ?: original.projection(LocalSetupEmployeePolicyStage.ORIGINAL_UNRESOLVED)
@@ -1384,8 +1391,9 @@ public class LocalSetupCoordinator(
                 if (!policyOwnerCurrent(target, client)) return@operation
                 val original = LocalSetupEmployeePolicyOriginal(DomainId.random(), target.context.materialAtOpen.coordinates.scope)
                 target.employeePolicyOriginal = original
-                change { it.copy(employeePolicies = LocalSetupEmployeePolicies(originals, false),
-                    employeePolicy = original.projection(LocalSetupEmployeePolicyStage.DEFINITION), problem = null) }
+                change { it.copy(employeePolicies = LocalSetupEmployeePolicies(originals, false, view.employeePolicies?.suggestedTarget),
+                    employeePolicy = original.projection(LocalSetupEmployeePolicyStage.DEFINITION).copy(
+                        suggestedTarget = view.employeePolicies?.suggestedTarget), problem = null) }
             }
         }
     }

@@ -143,6 +143,10 @@ public enum class LocalAuthEventKind {
     SERIAL_PUBLICATION_REQUEST,
     /** Explicit current-authority intentional STOP or same-original RESUME audit. */
     MASTER_LIFECYCLE,
+    /** Explicit delegated first credential plus enablement; no session is issued. */
+    ACCOUNT_ACTIVATED,
+    /** Separate delegated creation audit; sessionId identifies the creator, not a new login. */
+    ACCOUNT_CREATED,
 }
 
 /** Private durable authentication audit. No password, verifier, secret or bearer is retained. */
@@ -165,6 +169,9 @@ public class LocalAuthEvent(
     init {
         require((kind == LocalAuthEventKind.BRANCH_INSTALLED) == (installation != null))
         require((kind == LocalAuthEventKind.MASTER_LIFECYCLE) == (lifecycle != null))
+        if (kind == LocalAuthEventKind.ACCOUNT_CREATED)
+            require(operatorId != null && operatorId != targetId && sessionId != null &&
+                accountRevision == Revision(0) && contentDigest != null)
         if (kind == LocalAuthEventKind.ADMINISTRATION_CANCELLED)
             require(operatorId != null && contentDigest != null && accountRevision == null)
         if (kind == LocalAuthEventKind.ACTION_APPROVAL_RETIRED)

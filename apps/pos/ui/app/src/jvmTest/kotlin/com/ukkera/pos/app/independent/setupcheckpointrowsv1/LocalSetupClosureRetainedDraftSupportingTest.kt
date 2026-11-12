@@ -420,6 +420,119 @@ class LocalSetupClosureRetainedDraftSupportingTest {
         }
     }
 
+    /** Implementer L1 wiring of frozen STC-S10: terminal observations retire private
+     * presentation without waiting for a notification. The gateway/session are controlled
+     * DATA; these methods do not qualify Master authorization or durable business effects. */
+    @Test
+    fun stcS10CheckpointSessionEndedRetiresTheEntirePrivateSetupPresentation() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            gateway.checkpoints = checkpointView(listOf(catalog(1)), listOf(stock(11)), listOf(float(21)))
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertNotNull(controller.state.value.result)
+            assertNotNull(controller.state.value.checkpoints)
+            gateway.checkpointProblem = LocalServiceProblem.SESSION_ENDED
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertTerminalPresentation(controller, runtime)
+            val dispatched = gateway.lastOperation
+            controller.goLive(token)
+            controller.addCatalogReference(token, catalog(2))
+            runCurrent()
+            assertEquals(dispatched, gateway.lastOperation)
+            assertTerminalPresentation(controller, runtime)
+        }
+    }
+
+    @Test
+    fun stcS10NotStagedSessionEndedRetiresBeforeAdoptingTheResponse() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            controller.addCatalogReference(token, catalog(1))
+            gateway.nextMutation = LocalSetupMutationResult.NotStaged(OperationId.random(),
+                LocalServiceProblem.SESSION_ENDED, LocalSetupOperationKind.CATALOG_IMPORT_ROW)
+            controller.recordCatalogRow(token, catalog(2))
+            runCurrent()
+            assertNotNull(gateway.lastOperation)
+            assertTerminalPresentation(controller, runtime)
+        }
+    }
+
+    @Test
+    fun stcS10UnresolvedSessionEndedRetiresAndRetainsTheExactOriginal() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            controller.addCatalogReference(token, catalog(1))
+            gateway.nextMutation = LocalSetupMutationResult.Unresolved(OperationId.random(),
+                LocalServiceProblem.SESSION_ENDED, LocalSetupOperationKind.CATALOG_IMPORT_ROW)
+            controller.recordCatalogRow(token, catalog(2))
+            runCurrent()
+            val original = assertNotNull(gateway.lastOperation)
+            assertEquals(original, controller.state.value.catalogRowOperation)
+            assertTerminalPresentation(controller, runtime)
+            controller.recordCatalogRow(token, catalog(3))
+            runCurrent()
+            assertEquals(original, gateway.lastOperation)
+            assertEquals(original, controller.state.value.catalogRowOperation)
+        }
+    }
+
+    @Test
+    fun stcS10RecoverySessionEndedRetiresWithoutReplacingThePendingOriginal() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            gateway.nextMutation = LocalSetupMutationResult.Pending(OperationId.random(),
+                LocalSetupOperationKind.ACKNOWLEDGE)
+            controller.acknowledge(token)
+            runCurrent()
+            val original = assertNotNull(controller.state.value.acknowledgeOperation)
+            gateway.nextMutation = LocalSetupMutationResult.Unresolved(original,
+                LocalServiceProblem.SESSION_ENDED, LocalSetupOperationKind.ACKNOWLEDGE)
+            controller.lookup(token, original)
+            runCurrent()
+            assertEquals(original, gateway.lastOperation)
+            assertEquals(original, controller.state.value.acknowledgeOperation)
+            assertTerminalPresentation(controller, runtime)
+        }
+    }
+
+    @Test
+    fun stcS10ResultAcknowledgementSessionEndedRetiresPrivateSetupState() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            controller.addCatalogReference(token, catalog(1))
+            gateway.acknowledgementProblem = LocalServiceProblem.SESSION_ENDED
+            controller.acknowledgeRecorded(token, OperationId.random())
+            runCurrent()
+            assertTerminalPresentation(controller, runtime)
+        }
+    }
+
+    @Test
+    fun stcS10OrdinaryCheckpointDenialPreservesTheUnrelatedCurrentSessionAndDraft() = runTest {
+        withControllerAndRuntime { gateway, controller, token, runtime ->
+            controller.addCatalogReference(token, catalog(1))
+            val originalDisplay = assertNotNull(runtime.presentation.value.display)
+            gateway.checkpointProblem = LocalServiceProblem.DENIED
+            controller.loadCheckpoints(token)
+            runCurrent()
+            assertEquals(originalDisplay, runtime.presentation.value.display)
+            assertNotNull(controller.state.value.result)
+            assertEquals(listOf(catalog(1)), controller.state.value.catalogRows)
+            assertEquals(LocalServiceProblem.DENIED, controller.state.value.checkpointProblem)
+            assertTrue(runtime.navigator.isCurrent(token))
+        }
+    }
+
+    private fun assertTerminalPresentation(controller: LocalSetupClosureController, runtime: UkkeraRuntime) {
+        assertNull(runtime.presentation.value.display)
+        assertNull(controller.state.value.result)
+        assertNull(controller.state.value.checkpoints)
+        assertNull(controller.state.value.lastRecorded)
+        assertNull(controller.state.value.lastMessage)
+        assertTrue(controller.state.value.pending.isEmpty())
+        assertTrue(controller.state.value.catalogRows.isEmpty())
+        assertTrue(controller.state.value.openingStockRows.isEmpty())
+        assertTrue(controller.state.value.openingFloatRows.isEmpty())
+        assertTrue(!controller.state.value.busy)
+    }
+
     private suspend fun TestScope.withController(
         body: suspend TestScope.(ControlledSetupGateway, LocalSetupClosureController,
             com.ukkera.pos.app.navigation.NavigationToken) -> Unit,
@@ -503,6 +616,7 @@ private class ControlledSetupSession(private val displayValue: SessionDisplayCon
 private class ControlledSetupGateway : LocalSetupClosureUiGateway {
     var checkpoints: LocalSetupCheckpointView = LocalSetupCheckpointView(null, null, null)
     var checkpointProblem: LocalServiceProblem? = null
+    var acknowledgementProblem: LocalServiceProblem = LocalServiceProblem.UNAVAILABLE
     var nextMutation: LocalSetupMutationResult = LocalSetupMutationResult.NotStaged(
         OperationId.random(), LocalServiceProblem.UNAVAILABLE, LocalSetupOperationKind.UNKNOWN)
     var lastOperation: OperationId? = null
@@ -537,7 +651,7 @@ private class ControlledSetupGateway : LocalSetupClosureUiGateway {
     override suspend fun lookup(operationId: OperationId): LocalSetupMutationResult = record(operationId)
     override suspend fun resume(operationId: OperationId): LocalSetupMutationResult = record(operationId)
     override suspend fun acknowledgeRecorded(operationId: OperationId): LocalAcknowledgementResult =
-        LocalAcknowledgementResult.Unresolved(operationId, LocalServiceProblem.UNAVAILABLE)
+        LocalAcknowledgementResult.Unresolved(operationId, acknowledgementProblem)
     override fun catalogManifestPreview(rows: List<LocalSetupCatalogRow>): LocalSetupManifestPreview =
         preview("catalog", rows.map {
             "${it.sourceId.value}/${it.skuId.value}/${it.catalogOperationId.value}"

@@ -1523,7 +1523,7 @@ internal class LocalEndpointRetailPhysicalGateway(
     private suspend fun <T> withLease(lease: LocalWorkflowCredentialLease, body: suspend (GatewayAccess) -> T): T {
         currentCoroutineContext().ensureActive()
         if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val current = endpoint.current(lease.credentials)
+        val current = lease.observeSession(endpoint)
         currentCoroutineContext().ensureActive()
         if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
         val view = when (current) {

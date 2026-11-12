@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.ui
 
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -205,7 +206,8 @@ private fun workflowTitle(workflow: LocalWorkflow): String = when (workflow) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun LocalWorkflowScreen(runtime: UkkeraRuntime, route: AppRoute, model: EntryViewModel, token: NavigationToken) {
+internal fun LocalWorkflowScreen(runtime: UkkeraRuntime, route: AppRoute, model: EntryViewModel, token: NavigationToken,
+    onEmployeePolicyRequest: ((LocalSetupEmployeePolicyTarget) -> Unit)? = null) {
     val area = RouteRegistry.area(route)
     val runtimePresentation by runtime.presentation.collectAsState()
     val supplierOnly = runtimePresentation.display?.workspaceMode == LocalSessionWorkspaceMode.SUPPLIER_ONLY
@@ -233,7 +235,7 @@ internal fun LocalWorkflowScreen(runtime: UkkeraRuntime, route: AppRoute, model:
     }
     // Administration has its own protected endpoint/control journal, never generic business DTOs.
     if (area == AppArea.PEOPLE || area == AppArea.DEVICES) {
-        LocalAdministrationScreen(runtime, area, model, token)
+        LocalAdministrationScreen(runtime, area, model, token, onEmployeePolicyRequest)
         return
     }
     val workflows = localWorkflows(area, runtimePresentation.display?.workspaceMode ?: LocalSessionWorkspaceMode.POLICY_FILTERED)

@@ -62,19 +62,64 @@ import com.ukkera.pos.types.Revision
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
 
 /** An owned credential snapshot bound to the SAME interactive session lifetime. */
-public class LocalWorkflowCredentialLease(
+public class LocalWorkflowCredentialLease internal constructor(
     public val credentials: LocalGatewayCredentials,
     private val currentLifetime: () -> Boolean,
+    private val retireOriginalSession: () -> Unit,
+    private val originalSession: LocalWorkflowSessionAssociation?,
 ) {
+    public constructor(credentials: LocalGatewayCredentials, currentLifetime: () -> Boolean) :
+        this(credentials, currentLifetime, {}, null)
+
+    private val terminalObserved = MutableStateFlow(false)
     public fun isCurrent(): Boolean = currentLifetime()
     public fun destroy(): Unit = credentials.bearer.destroy()
+
+    /** Denial or conflicting session metadata ends only the original installed attachment.
+     * This negative signal precedes caller cancellation checks. Scoped operation refusals and
+     * policy-only changes never substitute for a session denial. */
+    internal suspend fun observeSession(endpoint: LocalMasterClient): LocalSessionViewResult {
+        val observation = endpoint.current(credentials)
+        val conflictingSession = observation is LocalSessionViewResult.Current &&
+            originalSession?.matches(observation.view) == false
+        if ((observation == LocalSessionViewResult.Denied || conflictingSession) &&
+            terminalObserved.compareAndSet(false, true)) {
+            try { retireOriginalSession() } catch (_: Exception) {
+                // The installed owner fences its lifecycle in finally. Exact failed negative
+                // holders remain in that owner's existing retry custody; this is not close.
+            }
+        }
+        if (conflictingSession) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+        return observation
+    }
+
     override fun toString(): String = "LocalWorkflowCredentialLease([REDACTED])"
+}
+
+/** Immutable nonsecret association, copied before the journal snapshot destroys its tokens.
+ * Policy revision and resource grants can change within the same original session. */
+internal class LocalWorkflowSessionAssociation(row: StoredClientSessionV1) {
+    private val identity = row.identity
+    private val login = row.login
+    private val sessionId = row.sessionId
+    private val generation = row.generation
+    private val accessExpiresAt = row.accessExpiresAt
+    private val workExpiresAt = row.workExpiresAt
+
+    fun matches(view: LocalSessionView): Boolean =
+        identity == LocalClientIdentity(view.scope, view.actorId, view.deviceId) &&
+            login == view.login && sessionId == view.sessionId && generation == view.generation &&
+            accessExpiresAt == view.accessExpiresAt && workExpiresAt == view.workExpiresAt &&
+            view.policy.actorId == identity.actorId && view.policy.scope == identity.scope
+
+    override fun toString(): String = "LocalWorkflowSessionAssociation([REDACTED])"
 }
 
 /** The root must not return a login for a different actor or retain a lease after lock/close. */
@@ -533,7 +578,16 @@ public class LocalEndpointWorkflowGateway(
                 }
             }
         } catch (cancelled: CancellationException) {
-            withContext(NonCancellable) { try { destination?.abort() } catch (_: Exception) { /* No success claim. */ } }
+            withContext(NonCancellable) {
+                try {
+                    val cleanup = destination?.abort()
+                    if (destination != null && cleanup != LocalPurchasingDocumentFileIoResult.Succeeded)
+                        cancelled.addSuppressed(IllegalStateException("Document output cleanup remains unresolved"))
+                } catch (failure: Exception) {
+                    if (failure !== cancelled) cancelled.addSuppressed(failure)
+                }
+            }
+            // The runtime-owned destination registry retains failed cleanup across retirement.
             throw cancelled
         } catch (failure: GatewayFailure) { LocalPurchasingDocumentDownloadResult.Unavailable(documentId, failure.problem) }
         catch (_: Exception) { LocalPurchasingDocumentDownloadResult.Unavailable(documentId, LocalServiceProblem.STORAGE_UNCERTAIN) }
@@ -1209,7 +1263,7 @@ public class LocalEndpointWorkflowGateway(
         val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
         try {
             if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            val current = endpoint.current(lease.credentials)
+            val current = lease.observeSession(endpoint)
             currentCoroutineContext().ensureActive()
             if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
             val view = when (current) {

@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package com.ukkera.pos.security
 
 import com.ukkera.pos.types.DomainId
@@ -5,7 +7,27 @@ import com.ukkera.pos.types.Revision
 import kotlinx.serialization.Serializable
 
 @Serializable
-public enum class LocalAdministrationAction { DISABLE_ACCOUNT, REVOKE_SESSION, RESET_CREDENTIAL, REVOKE_DEVICE }
+public enum class LocalAdministrationAction {
+    DISABLE_ACCOUNT, REVOKE_SESSION, RESET_CREDENTIAL, REVOKE_DEVICE, REACTIVATE_ACCOUNT, ACTIVATE_ACCOUNT;
+
+    /** Password-bearing originals become lookup/cancel-only after their first dispatch. */
+    public val requiresNewPassword: Boolean get() = this == RESET_CREDENTIAL || this == ACTIVATE_ACCOUNT
+}
+
+/** Exact current dependencies for a newer explicit resolution; never a grant or a session. */
+@Serializable
+public data class LocalAdministrationReactivationRevisions(
+    public val credential: Revision,
+    public val policy: Revision,
+    public val configuration: Revision,
+)
+
+/** Current policy/configuration of a disabled credential-free activation target. */
+@Serializable
+public data class LocalAdministrationActivationRevisions(
+    public val policy: Revision,
+    public val configuration: Revision,
+)
 
 /**
  * One immutable, caller-retained administrative intent. Scope and operator come from the
@@ -21,10 +43,18 @@ public data class LocalAdministrationCommand(
     public val expectedRevision: Revision,
     public val sessionId: DomainId? = null,
     public val expectedCredentialRevision: Revision? = null,
+    // Preserve the canonical bytes of every pre-existing command, including codecs that
+    // encode defaults/nulls. Only the new action carries this additional dependency set.
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    public val reactivationRevisions: LocalAdministrationReactivationRevisions? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    public val activationRevisions: LocalAdministrationActivationRevisions? = null,
 ) {
     init {
+        require((action == LocalAdministrationAction.REACTIVATE_ACCOUNT) == (reactivationRevisions != null))
         require((action == LocalAdministrationAction.REVOKE_SESSION) == (sessionId != null))
-        require((action == LocalAdministrationAction.RESET_CREDENTIAL) == (expectedCredentialRevision != null))
+        require(action.requiresNewPassword == (expectedCredentialRevision != null))
+        require((action == LocalAdministrationAction.ACTIVATE_ACCOUNT) == (activationRevisions != null))
     }
     override fun toString(): String = "LocalAdministrationCommand([REDACTED])"
 }
@@ -127,6 +157,10 @@ public sealed interface LocalAdministrationStatus {
  * Input credentials/passwords remain caller-owned. Missing runtime/custody never yields a pass.
  */
 public interface LocalAdministrationService {
+    /** Protected, no-effect input review only. A checked result cannot dispatch or recover a
+     * creation. Missing providers remain unavailable; native creation is a separate operation. */
+    public suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 = LocalEmployeeCreationReviewV1.Unavailable
     public suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult
     public suspend fun administer(operator: LocalGatewayCredentials, command: LocalAdministrationCommand,
         newPassword: CharArray? = null): LocalCredentialAdministrationResult
@@ -139,7 +173,20 @@ public interface LocalAdministrationService {
 public fun localAdministrationRequestDigest(scope: BranchScope, operatorId: DomainId,
     command: LocalAdministrationCommand): PayloadDigest {
     // Preserve the existing device-revocation audit domain and byte framing.
-    val fields = if (command.action == LocalAdministrationAction.REVOKE_DEVICE) listOf(
+    val fields = if (command.action == LocalAdministrationAction.ACTIVATE_ACCOUNT) {
+        val expected = checkNotNull(command.activationRevisions)
+        listOf("ukkera.local-administration-activation-intent/v1", scope.organizationId.value,
+            scope.companyId.value, scope.branchId.value, operatorId.value, command.requestId.value,
+            command.action.name, command.targetId.value, command.expectedRevision.value.toString(),
+            checkNotNull(command.expectedCredentialRevision).value.toString(), expected.policy.value.toString(),
+            expected.configuration.value.toString())
+    } else if (command.action == LocalAdministrationAction.REACTIVATE_ACCOUNT) {
+        val expected = checkNotNull(command.reactivationRevisions)
+        listOf("ukkera.local-administration-reactivation-intent/v1", scope.organizationId.value,
+            scope.companyId.value, scope.branchId.value, operatorId.value, command.requestId.value,
+            command.action.name, command.targetId.value, command.expectedRevision.value.toString(),
+            expected.credential.value.toString(), expected.policy.value.toString(), expected.configuration.value.toString())
+    } else if (command.action == LocalAdministrationAction.REVOKE_DEVICE) listOf(
         "ukkera.revoke-local-device/v1", "${scope.organizationId.value}/${scope.companyId.value}/${scope.branchId.value}",
         operatorId.value, command.requestId.value, command.targetId.value, command.expectedRevision.value.toString(),
     ) else listOf("ukkera.local-administration-intent/v1", scope.organizationId.value, scope.companyId.value,

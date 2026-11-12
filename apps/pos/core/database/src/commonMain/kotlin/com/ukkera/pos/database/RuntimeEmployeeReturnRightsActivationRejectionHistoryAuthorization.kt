@@ -1,6 +1,5 @@
 package com.ukkera.pos.database
 
-import com.ukkera.pos.security.NativeEmployeeEnrollmentHistorySource
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
 
@@ -11,7 +10,7 @@ import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
  * and every nonbusiness mutation; neither current grants nor other refusal proofs suffice. */
 internal class RuntimeEmployeeReturnRightsActivationRejectionHistoryAuthorization internal constructor(
     private val owner: RuntimeEmployeeAuthenticationReplay,
-    private val source: NativeEmployeeEnrollmentHistorySource,
+    private val source: RuntimeEmployeeHistoryOrigin,
     private val header: RuntimeHistoryEventHeaderV2,
     private val eventDigest: PayloadDigest,
     val profile: RuntimeHistoricalReturnRightsActivationRejectionProfile,
@@ -50,16 +49,16 @@ internal class RuntimeEmployeeReturnRightsActivationRejectionHistoryAuthorizatio
     private fun requireOriginalSource(session: SelfOwnedNativeHistoryReadSession) {
         val coordinates = session.original.record.allocation.coordinates
         val authorization = evidence.authorization
-        historyShapeV2(session.employeeEnrollments.any { it === source } &&
-            source.requested.request.scope == coordinates.scope && authorization.scope == coordinates.scope &&
-            source.requested.request.targetId == authorization.actorId && authorization.actorId != coordinates.firstActorId &&
+        historyShapeV2(source.matchesNativeSelection(session) &&
+            source.scope == coordinates.scope && authorization.scope == coordinates.scope &&
+            source.actorId == authorization.actorId && authorization.actorId != coordinates.firstActorId &&
             source.originalCohostDeviceId == coordinates.deviceId && authorization.deviceId == source.originalCohostDeviceId &&
             source.child.historySequence < header.sequence && source.child.commandSequence < header.commandSequence &&
             source.child.commandEpoch == header.commandEpoch && source.child.installationGenesisDigest == header.installationGenesisDigest &&
             header.scope == coordinates.scope.storageKey() && header.assignmentId == coordinates.assignmentId &&
             profile.matches(header, evidence) &&
             authorization.dependencies.policy == capturedPolicyDigest &&
-            authorization.dependencies.admission == source.evidence.admissionDigests.single {
+            authorization.dependencies.admission == source.admissionDigests.single {
                 it.first == source.originalCohostDeviceId }.second)
     }
 

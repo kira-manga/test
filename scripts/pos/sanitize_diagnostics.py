@@ -10,6 +10,8 @@ import sys
 
 TEXT_SUFFIXES = (
     ".csv",
+    ".cs",
+    ".crash",
     ".ips",
     ".json",
     ".log",
@@ -45,36 +47,47 @@ def main() -> int:
     parser.add_argument("--root", required=True, help="diagnostics directory")
     arguments = parser.parse_args()
     root = os.path.abspath(arguments.root)
-    if not os.path.isdir(root):
+    if os.path.islink(root) or not os.path.isdir(root):
         print(f"error: diagnostics directory does not exist: {root}", file=sys.stderr)
         return 2
 
     home = os.path.expanduser("~")
     changed = 0
-    skipped = 0
     for directory, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames.sort()
+        for name in dirnames:
+            if os.path.islink(os.path.join(directory, name)):
+                raise ValueError("diagnostic directory symlinks are not publishable")
         for filename in sorted(filenames):
             path = os.path.join(directory, filename)
-            if os.path.islink(path):
-                continue
-            if not filename.lower().endswith(TEXT_SUFFIXES):
-                continue
+            if os.path.islink(path) or not os.path.isfile(path):
+                raise ValueError("diagnostics must be regular files")
             size = os.path.getsize(path)
             if size > MAX_TEXT_BYTES:
-                print(f"warning: diagnostic text too large to sanitize: {path}", file=sys.stderr)
-                skipped += 1
+                raise ValueError("diagnostic exceeds the sanitization size limit")
+            if filename.lower().endswith(".png"):
+                with open(path, "rb") as handle:
+                    if handle.read(8) != b"\x89PNG\r\n\x1a\n":
+                        raise ValueError("invalid diagnostic PNG signature")
                 continue
-            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+            if not filename.lower().endswith(TEXT_SUFFIXES):
+                raise ValueError("unsupported diagnostic file type")
+            with open(path, "r", encoding="utf-8", errors="strict") as handle:
                 original = handle.read()
+            if "\x00" in original:
+                raise ValueError("non-text diagnostic content")
             sanitized = redact(original, home)
             if sanitized != original:
                 with open(path, "w", encoding="utf-8", newline="\n") as handle:
                     handle.write(sanitized)
                 changed += 1
-    print(f"diagnostics_root={root} changed={changed} skipped={skipped}")
+    print(f"sanitized_diagnostic_files_changed={changed}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except (OSError, UnicodeError, ValueError):
+        print("error: diagnostics sanitization failed; publication refused", file=sys.stderr)
+        raise SystemExit(2)

@@ -122,7 +122,7 @@ private fun Header(state: LocalSetupClosureState, controller: LocalSetupClosureC
         t("Separate protected reads and actions for the actual saved installation. ACK is voluntary and is not required for go-live. Neither action installs, signs in, starts RUN, repairs or qualifies a native API.",
             "قراءات وإجراءات محمية منفصلة للتثبيت المحفوظ الفعلي. التأكيد اختياري وليس شرطًا لبدء العمل. لا ينفذ أي منهما تثبيتًا أو تسجيل دخول أو بدء تشغيل أو إصلاحًا أو تأهيلًا لواجهة أصلية."))
     if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         StatusPill(t("Saved-result read: SETUP_RESULT_READ", "قراءة النتيجة المحفوظة: SETUP_RESULT_READ"))
         StatusPill(t("Checkpoints: SETUP_CHECKPOINTS_READ", "نقاط التحقق: SETUP_CHECKPOINTS_READ"), caution = true)
         OutlinedButton(onClick = { controller.refresh(token) }, enabled = !state.busy, modifier = Modifier.touchTarget()) {

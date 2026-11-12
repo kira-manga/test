@@ -26,6 +26,8 @@ internal class RoomLocalAccountAdministrationFrame(
     originalObservation: RoomLocalAuthorizationObservation? = null,
     retainedSessionAccess: LocalAccessIssuance? = null,
     retainedSessionRefresh: LocalRefreshIssuance? = null,
+    resolutionPolicy: ActivatedLocalPolicy? = null,
+    resolutionConfiguration: LocalAuthConfiguration? = null,
 ) {
     private enum class Phase { NEW, INITIALIZING, BODY, PREPARING, PREPARED, FINISHED, CLOSED }
     private var phase = Phase.NEW
@@ -39,6 +41,8 @@ internal class RoomLocalAccountAdministrationFrame(
     private val eventDigest = accountAdministrationDigest(LocalAuthenticationCodec.encodeEvent(event))
     private val archiveId = archiveBefore?.session?.sessionId
     private val archiveDigest = archiveBefore?.let { accountAdministrationDigest(LocalAuthenticationCodec.encodeArchive(it)) }
+    private val targetPolicyDigest = resolutionPolicy?.let { accountAdministrationDigest(LocalEffectivePolicyCodec.encodePolicy(it)) }
+    private val targetConfigurationDigest = resolutionConfiguration?.let { accountAdministrationDigest(LocalAuthenticationCodec.encodeConfiguration(it)) }
     private var historyRevocation: RuntimeSessionRevocationHistoryCapture? = null
 
     init {
@@ -82,6 +86,31 @@ internal class RoomLocalAccountAdministrationFrame(
                     ?: protectedLocalUnavailable()
                 ProtectedLocalAccount(next, targetBefore.credentialRevision, targetBefore.credential)
             }
+            LocalAuthEventKind.ACCOUNT_ACTIVATED -> {
+                check(event.sessionId == null && archiveBefore == null && targetId != principal.actorId &&
+                    !before.enabled && targetBefore.credential == null && targetAfter.credential != null &&
+                    targetBefore.credentialRevision.value < Long.MAX_VALUE && resolutionPolicy != null && resolutionConfiguration != null)
+                val command = checkNotNull(originalCommand)
+                val expected = checkNotNull(command.activationRevisions)
+                check(command.action == LocalAdministrationAction.ACTIVATE_ACCOUNT &&
+                    command.expectedCredentialRevision == targetBefore.credentialRevision && expected.policy == resolutionPolicy.revision &&
+                    expected.configuration == resolutionConfiguration.revision && resolutionPolicy.scope == before.scope &&
+                    resolutionPolicy.actorId == targetId && resolutionConfiguration.scope == before.scope &&
+                    resolutionConfiguration.actorId == targetId)
+                val next = (LocalSessions.reactivate(before) as? SessionTransition.Applied)?.state ?: protectedLocalUnavailable()
+                ProtectedLocalAccount(next, targetBefore.credentialRevision.next(), targetAfter.credential)
+            }
+            LocalAuthEventKind.ACCOUNT_REACTIVATED -> {
+                check(event.sessionId == null && archiveBefore == null && targetId != principal.actorId &&
+                    targetBefore.credential != null && resolutionPolicy != null && resolutionConfiguration != null)
+                val expected = checkNotNull(originalCommand?.reactivationRevisions)
+                check(expected.credential == targetBefore.credentialRevision && expected.policy == resolutionPolicy.revision &&
+                    expected.configuration == resolutionConfiguration.revision && resolutionPolicy.scope == before.scope &&
+                    resolutionPolicy.actorId == targetId && resolutionConfiguration.scope == before.scope &&
+                    resolutionConfiguration.actorId == targetId)
+                val next = (LocalSessions.reactivate(before) as? SessionTransition.Applied)?.state ?: protectedLocalUnavailable()
+                ProtectedLocalAccount(next, targetBefore.credentialRevision, targetBefore.credential)
+            }
             LocalAuthEventKind.ACCOUNT_DISABLED -> {
                 check(event.sessionId == null && archiveBefore == null)
                 val next = (LocalSessions.disable(before) as? SessionTransition.Applied)?.state
@@ -108,9 +137,23 @@ internal class RoomLocalAccountAdministrationFrame(
             historyRevocation = RuntimeRetainedSessionRevocationCapture.capture(principal, original, authorization,
                 originalCommand, originalObservation, event, targetBefore, retainedSessionAccess, retainedSessionRefresh)
                 ?.let { RuntimeSessionRevocationHistoryCapture.retained(it) }
+        } else if (originalCommand != null && originalObservation != null && event.kind == LocalAuthEventKind.ACCOUNT_ACTIVATED &&
+            archiveBefore == null) {
+            historyRevocation = RuntimeAccountActivationCapture.capture(principal, original, authorization,
+                originalCommand, originalObservation, event, targetBefore, checkNotNull(resolutionPolicy), checkNotNull(resolutionConfiguration))
+                ?.let { RuntimeSessionRevocationHistoryCapture.activation(it) }
+        } else if (originalCommand != null && originalObservation != null && event.kind == LocalAuthEventKind.ACCOUNT_REACTIVATED &&
+            archiveBefore == null) {
+            historyRevocation = RuntimeAccountReactivationCapture.capture(principal, original, authorization,
+                originalCommand, originalObservation, event, targetBefore, checkNotNull(resolutionPolicy), checkNotNull(resolutionConfiguration))
+                ?.let { RuntimeSessionRevocationHistoryCapture.reactivation(it) }
         } else if (originalCommand != null && originalObservation != null && event.kind == LocalAuthEventKind.ACCOUNT_DISABLED &&
             archiveBefore == null) {
-            historyRevocation = RuntimeAccountDisableCapture.capture(principal, original, authorization,
+            historyRevocation = if (targetBefore.credential == null) {
+                RuntimeCredentialFreeAccountDisableCapture.capture(principal, original, authorization,
+                    originalCommand, originalObservation, event, targetBefore)
+                    ?.let { RuntimeSessionRevocationHistoryCapture.credentialFreeDisable(it) }
+            } else RuntimeAccountDisableCapture.capture(principal, original, authorization,
                 originalCommand, originalObservation, event, targetBefore)
                 ?.let { RuntimeSessionRevocationHistoryCapture.disable(it) }
         } else if (originalCommand != null && originalObservation != null && event.kind == LocalAuthEventKind.CREDENTIAL_RESET &&
@@ -133,6 +176,7 @@ internal class RoomLocalAccountAdministrationFrame(
         if (!original.sameDependencies(actual)) transaction.refuse()
         val target = transaction.readProtectedAccount(principal.scope, targetId) ?: transaction.refuse()
         if (accountAdministrationDigest(ProtectedLocalSecurityCodec.encodeAccount(target)) != beforeDigest) transaction.refuse()
+        checkResolutionDependencies(transaction)
         checkArchive(transaction)
         checkRetainedIssuances(transaction)
         historyRevocation?.let(transaction::beginHistorySessionRevocation)
@@ -147,6 +191,7 @@ internal class RoomLocalAccountAdministrationFrame(
         if (expectedOperator?.sameDependencies(actual) != true) transaction.refuse()
         val target = transaction.readProtectedAccount(principal.scope, targetId) ?: transaction.refuse()
         if (accountAdministrationDigest(ProtectedLocalSecurityCodec.encodeAccount(target)) != afterDigest) transaction.refuse()
+        checkResolutionDependencies(transaction)
         checkArchive(transaction)
         checkRetainedIssuances(transaction)
         val recorded = transaction.readAuthEvent(principal.scope, event.eventId) ?: transaction.refuse()
@@ -179,6 +224,17 @@ internal class RoomLocalAccountAdministrationFrame(
     fun close() {
         phase = Phase.CLOSED; owner = null; expectedOperator = null
         historyRevocation?.images?.clear(); historyRevocation = null
+    }
+
+    private suspend fun checkResolutionDependencies(transaction: RoomLocalSecurityTransaction) {
+        targetPolicyDigest?.let { expected ->
+            val actual = transaction.readPolicy(principal.scope, targetId) ?: transaction.refuse()
+            if (accountAdministrationDigest(LocalEffectivePolicyCodec.encodePolicy(actual)) != expected) transaction.refuse()
+        }
+        targetConfigurationDigest?.let { expected ->
+            val actual = transaction.readAuthConfiguration(principal.scope, targetId) ?: transaction.refuse()
+            if (accountAdministrationDigest(LocalAuthenticationCodec.encodeConfiguration(actual)) != expected) transaction.refuse()
+        }
     }
 
     private suspend fun checkArchive(transaction: RoomLocalSecurityTransaction) {

@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets
  * Native restart identity and elapsed time for an original macOS owner. Neither wall time nor
  * a process-generated identifier is used. The full kernel boot UUID binds prior key intents;
  * mach_continuous_time includes sleep and is used only for invocation-local expiry.
+ * A failed observation permanently retires this observer. Retained identity is DATA, and fresh
+ * observation is still required; this class supplies no namespace, key, history or Master grant.
  */
 internal class MacOriginalBootSession private constructor(
     private val session: SelfOwnedNativeBootSessionV2.Mac,
@@ -21,19 +23,31 @@ internal class MacOriginalBootSession private constructor(
     private val denominator: Long,
     private var lastTicks: BigInteger,
 ) {
+    private var retired = false
+
+    /** Retained original DATA only; currentness requires a fresh elapsedMillis observation. */
     val identity: SelfOwnedNativeBootSessionV2.Mac get() = session
 
     @Synchronized
     fun elapsedMillis(): Long {
-        check(readBootId() == session) { "The original macOS boot session changed" }
-        val ticks = unsignedTicks()
-        check(ticks >= lastTicks) { "Native continuous time moved backwards" }
-        val millis = ticks.multiply(BigInteger.valueOf(numerator))
-            .divide(BigInteger.valueOf(denominator).multiply(MILLION))
-        check(millis.signum() >= 0 && millis.bitLength() < 64) { "Native elapsed time exceeds capacity" }
-        lastTicks = ticks
-        return millis.toLong()
+        check(!retired) { "The macOS boot observer is retired" }
+        return try {
+            check(readBootId() == session) { "The original macOS boot session changed" }
+            val ticks = unsignedTicks()
+            check(ticks >= lastTicks) { "Native continuous time moved backwards" }
+            val millis = ticks.multiply(BigInteger.valueOf(numerator))
+                .divide(BigInteger.valueOf(denominator).multiply(MILLION))
+            check(millis.signum() >= 0 && millis.bitLength() < 64) { "Native elapsed time exceeds capacity" }
+            check(readBootId() == session) { "The original macOS boot session changed during observation" }
+            lastTicks = ticks
+            millis.toLong()
+        } catch (failure: Throwable) {
+            retired = true
+            throw failure
+        }
     }
+
+    override fun toString(): String = "MacOriginalBootSession([REDACTED])"
 
     companion object {
         private val MILLION = BigInteger.valueOf(1_000_000L)

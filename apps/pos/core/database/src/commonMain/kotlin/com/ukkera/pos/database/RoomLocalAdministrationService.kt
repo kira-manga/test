@@ -23,6 +23,17 @@ internal class RoomLocalAdministrationService(
     private val slots = Semaphore(1)
     init { check(source.belongsTo(store)) }
 
+    override suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 =
+        bounded(LocalEmployeeCreationReviewV1.Busy, LocalEmployeeCreationReviewV1.Denied,
+            LocalEmployeeCreationReviewV1.Unavailable, LocalEmployeeCreationReviewV1.StorageUncertain) {
+            val (principal, peer) = authenticate(operator)
+            if (original.scope != scope || original.operatorId != principal.actorId) return@bounded LocalEmployeeCreationReviewV1.Denied
+            authorizedRead(principal, peer, original.authorizationRequirement()) { transaction, _ ->
+                reviewLocalEmployeeCreationInputs(transaction, principal, original)
+            }
+        }
+
     override suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult =
         bounded(LocalAdministrationReadResult.Busy, LocalAdministrationReadResult.Denied,
             LocalAdministrationReadResult.Unavailable, LocalAdministrationReadResult.StorageUncertain) {
@@ -97,7 +108,7 @@ internal class RoomLocalAdministrationService(
         newPassword: CharArray?): LocalCredentialAdministrationResult = bounded(LocalCredentialAdministrationResult.Busy,
         LocalCredentialAdministrationResult.Denied, LocalCredentialAdministrationResult.Unavailable,
         LocalCredentialAdministrationResult.StorageUncertain) {
-        if ((command.action == LocalAdministrationAction.RESET_CREDENTIAL) != (newPassword != null) ||
+        if (command.action.requiresNewPassword != (newPassword != null) ||
             (newPassword != null && newPassword.size !in 4..1024)) return@bounded LocalCredentialAdministrationResult.Denied
         if (command.action == LocalAdministrationAction.REVOKE_DEVICE)
             return@bounded legacy.revokeDevice(operator, command.requestId, command.targetId, command.expectedRevision)
@@ -113,11 +124,16 @@ internal class RoomLocalAdministrationService(
                 val mayStart = authorizedRead(principal, peer, requirement) { transaction, _ ->
                     if (transaction.readAuthEvent(scope, command.requestId) != null) false else {
                         val target = transaction.readProtectedAccount(scope, command.targetId)
-                        target != null && target.state.enabled && target.state.revision == command.expectedRevision &&
-                            target.credentialRevision == revision
+                        target != null && target.state.revision == command.expectedRevision &&
+                            target.credentialRevision == revision && if (command.action == LocalAdministrationAction.ACTIVATE_ACCOUNT) {
+                                val expected = checkNotNull(command.activationRevisions)
+                                !target.state.enabled && target.credential == null && target.state.actorId != principal.actorId &&
+                                    transaction.readPolicy(scope, command.targetId)?.revision == expected.policy &&
+                                    transaction.readAuthConfiguration(scope, command.targetId)?.revision == expected.configuration
+                            } else target.state.enabled
                     }
                 }
-                // A prior reset is lookup-only: another supplied secret is never assumed equal.
+                // A prior password-bearing original is lookup-only; another secret is never assumed equal.
                 if (!mayStart) return@bounded LocalCredentialAdministrationResult.Denied
                 when (val hashed = passwords.create(owned, CredentialBinding(scope, command.targetId, revision.next()), pepper)) {
                     is PasswordHashingResult.Created -> hashed.record
@@ -141,7 +157,7 @@ internal class RoomLocalAdministrationService(
             val permitted = authorize(transaction, principal, peer, requirement)
             val prior = transaction.readAuthEvent(scope, command.requestId)
             if (prior != null) {
-                if (command.action == LocalAdministrationAction.RESET_CREDENTIAL || !matches(prior, principal, command, digest))
+                if (command.action.requiresNewPassword || !matches(prior, principal, command, digest))
                     return@transaction false
                 // Recover the immutable original before testing today's target revision/state.
                 val frame = readFrame(principal, peer, permitted)
@@ -158,7 +174,21 @@ internal class RoomLocalAdministrationService(
                     it.session.actorId == command.targetId && it.session.scope == scope
                 } ?: return@transaction false
             } else null
+            val reactivation = command.reactivationRevisions
+            val activation = command.activationRevisions
+            val targetPolicy = if (reactivation != null || activation != null)
+                transaction.readPolicy(scope, command.targetId) ?: return@transaction false else null
+            val targetConfiguration = if (reactivation != null || activation != null)
+                transaction.readAuthConfiguration(scope, command.targetId) ?: return@transaction false else null
+            if (activation != null && (command.targetId == principal.actorId || state.enabled || before.credential != null ||
+                before.credentialRevision != command.expectedCredentialRevision || targetPolicy?.revision != activation.policy ||
+                targetConfiguration?.revision != activation.configuration)) return@transaction false
+            if (reactivation != null && (command.targetId == principal.actorId || before.credential == null ||
+                before.credentialRevision != reactivation.credential || targetPolicy?.revision != reactivation.policy ||
+                targetConfiguration?.revision != reactivation.configuration)) return@transaction false
             val next = when (command.action) {
+                LocalAdministrationAction.ACTIVATE_ACCOUNT -> LocalSessions.reactivate(state)
+                LocalAdministrationAction.REACTIVATE_ACCOUNT -> LocalSessions.reactivate(state)
                 LocalAdministrationAction.DISABLE_ACCOUNT -> LocalSessions.disable(state)
                 LocalAdministrationAction.REVOKE_SESSION -> LocalSessions.revoke(state, checkNotNull(command.sessionId))
                 LocalAdministrationAction.RESET_CREDENTIAL -> {
@@ -183,10 +213,18 @@ internal class RoomLocalAdministrationService(
             val frame = RoomLocalAccountAdministrationFrame(principal, permitted.facts, permitted.authorization, source, peer,
                 currentCoroutineContext(), before, after, event, archived,
                 originalCommand = command, originalObservation = permitted.observation,
-                retainedSessionAccess = retainedAccess, retainedSessionRefresh = retainedRefresh)
+                retainedSessionAccess = retainedAccess, retainedSessionRefresh = retainedRefresh,
+                resolutionPolicy = targetPolicy, resolutionConfiguration = targetConfiguration)
             mutation = frame
             transaction.attachAccountAdministrationFrame(frame)
-            if (password == null) {
+            if (activation != null) {
+                if (transaction.activateCredential(LocalAccountReactivation(scope, command.targetId, command.expectedRevision,
+                    checkNotNull(command.expectedCredentialRevision), activation.policy, activation.configuration),
+                    checkNotNull(password)) == null) transaction.refuse()
+            } else if (reactivation != null) {
+                if (transaction.reactivateAccount(LocalAccountReactivation(scope, command.targetId, command.expectedRevision,
+                    reactivation.credential, reactivation.policy, reactivation.configuration)) == null) transaction.refuse()
+            } else if (password == null) {
                 if (!transaction.replaceAccount(state.revision, next.state)) transaction.refuse()
             } else if (transaction.resetCredential(scope, command.targetId, state.revision, before.credentialRevision, password) == null)
                 transaction.refuse()
@@ -301,7 +339,7 @@ internal class RoomLocalAdministrationService(
             true, facts.admission.admitted, facts.issuance.authenticationPurpose, facts.policy.grants)
         val allowed = AuthorizationEvaluator.evaluate(principal, snapshot, requirement) as? AuthorizationDecision.Allowed
             ?: currentLocalAuthorizationDenied()
-        return Permitted(facts, allowed.authorization, now)
+        return Permitted(facts, allowed.authorization, now, snapshot)
     }
 
     private fun requirement(command: LocalAdministrationCommand, digest: PayloadDigest): AuthorizationRequirement {
@@ -327,6 +365,8 @@ internal class RoomLocalAdministrationService(
             event.accountRevision == null && event.sessionId == command.sessionId && event.contentDigest == digest
 
     private fun eventKind(action: LocalAdministrationAction): LocalAuthEventKind = when (action) {
+        LocalAdministrationAction.ACTIVATE_ACCOUNT -> LocalAuthEventKind.ACCOUNT_ACTIVATED
+        LocalAdministrationAction.REACTIVATE_ACCOUNT -> LocalAuthEventKind.ACCOUNT_REACTIVATED
         LocalAdministrationAction.DISABLE_ACCOUNT -> LocalAuthEventKind.ACCOUNT_DISABLED
         LocalAdministrationAction.REVOKE_SESSION -> LocalAuthEventKind.SESSION_REVOKED
         LocalAdministrationAction.RESET_CREDENTIAL -> LocalAuthEventKind.CREDENTIAL_RESET
@@ -347,7 +387,7 @@ internal class RoomLocalAdministrationService(
     }
 
     private class Permitted(val facts: RoomLocalAuthorizationFacts, val authorization: AuthorizedAction,
-        val observation: RoomLocalAuthorizationObservation)
+        val observation: RoomLocalAuthorizationObservation, val snapshot: AuthorizationSnapshot)
     private fun digestText(vararg fields: String): PayloadDigest {
         val bytes = fields.joinToString("") { "${it.length}:$it" }.encodeToByteArray(throwOnInvalidSequence = true)
         return try { sha256(bytes) } finally { bytes.fill(0) }

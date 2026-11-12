@@ -108,7 +108,24 @@ internal data class EmployeeDefinitionFieldsV1(
 }
 
 internal object LocalEmployeeEnrollmentDefinitionWireV1 {
-    fun encode(value: EmployeeDefinitionFieldsV1): ByteArray = selfOwnedEncode("full-local-employee-enrollment-definition/v1",
+    private const val EXTENDED_DOMAIN = "full-local-employee-enrollment-definition/v2"
+
+    fun encode(value: EmployeeDefinitionFieldsV1): ByteArray {
+        val configuration = value.definition.policy.employeeCreationConfiguration
+        if (configuration == null) return encodeLegacy(value)
+        val definition = value.definition
+        val legacy = encodeLegacy(value.copy(definition = LocalAccountProvisioning(definition.actorId,
+            definition.login, definition.policy.withEmployeeCreationConfiguration(null), definition.tokenPolicy,
+            definition.admittedDeviceIds)))
+        val extension = configuration.copyWireBytes()
+        return try {
+            selfOwnedEncode(EXTENDED_DOMAIN, LocalEmployeeEnrollmentProfileV1.MAXIMUM_DEFINITION_BYTES) {
+                field(legacy); field(extension)
+            }
+        } finally { legacy.fill(0); extension.fill(0) }
+    }
+
+    private fun encodeLegacy(value: EmployeeDefinitionFieldsV1): ByteArray = selfOwnedEncode("full-local-employee-enrollment-definition/v1",
         LocalEmployeeEnrollmentProfileV1.MAXIMUM_DEFINITION_BYTES) {
         string(LocalEmployeeEnrollmentProfileV1.PURPOSE)
         val request = value.request; val definition = value.definition; val policy = definition.policy
@@ -139,6 +156,20 @@ internal object LocalEmployeeEnrollmentDefinitionWireV1 {
 
     fun decode(bytes: ByteArray): EmployeeDefinitionFieldsV1 {
         require(bytes.size in 1..LocalEmployeeEnrollmentProfileV1.MAXIMUM_DEFINITION_BYTES)
+        if (selfOwnedDefinitionDomain(bytes) == EXTENDED_DOMAIN) return selfOwnedDecode(bytes, EXTENDED_DOMAIN) {
+            val legacy = field(LocalEmployeeEnrollmentProfileV1.MAXIMUM_DEFINITION_BYTES)
+            val extension = field(LocalEmployeeCreationConfigurationV1.MAXIMUM_BYTES)
+            try {
+                // Reject nested envelopes rather than accepting unbounded recursive decoding.
+                require(selfOwnedDefinitionDomain(legacy) == "full-local-employee-enrollment-definition/v1")
+                val value = decode(legacy)
+                val configuration = LocalEmployeeCreationConfigurationV1.decode(extension)
+                val definition = value.definition
+                value.copy(definition = LocalAccountProvisioning(definition.actorId, definition.login,
+                    definition.policy.withEmployeeCreationConfiguration(configuration), definition.tokenPolicy,
+                    definition.admittedDeviceIds))
+            } finally { legacy.fill(0); extension.fill(0) }
+        }
         return selfOwnedDecode(bytes, "full-local-employee-enrollment-definition/v1") {
             require(string(128) == LocalEmployeeEnrollmentProfileV1.PURPOSE)
             val branch = scope(); val requestId = id(); val actor = id(); val digest = PayloadDigest(string(64))

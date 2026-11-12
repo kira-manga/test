@@ -5,6 +5,7 @@ import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.GrantEffect
 import com.ukkera.pos.security.LocalAccountProvisioning
 import com.ukkera.pos.security.LocalApprovalPolicy
+import com.ukkera.pos.security.LocalEmployeeCreationConfigurationV1
 import com.ukkera.pos.security.LocalLoginIdentifier
 import com.ukkera.pos.security.LocalSessionPolicy
 import com.ukkera.pos.security.LocalTokenPolicy
@@ -21,11 +22,14 @@ import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Money
 import com.ukkera.pos.types.Revision
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 
 @Serializable
 internal enum class StoredEnrollmentOutcomeV1 { PENDING, APPLIED, REJECTED }
 
 /** Requested DATA only, encrypted with the client journal. No permit, password or verifier. */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 internal data class StoredClientEnrollmentV1(
     val version: Int = 1,
@@ -47,16 +51,19 @@ internal data class StoredClientEnrollmentV1(
     val credentialWasProvided: Boolean,
     val outcome: StoredEnrollmentOutcomeV1 = StoredEnrollmentOutcomeV1.PENDING,
     val eventId: DomainId? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val employeeCreationConfigurationV1: ByteArray? = null,
 ) {
     fun definition(): LocalAccountProvisioning = LocalAccountProvisioning(actorId, LocalLoginIdentifier(login),
         ActivatedLocalPolicy(scope, actorId, Revision(0), grants.map { it.grant(scope) },
             LocalSessionPolicy(maximumConcurrentSessions),
             ThrottlePolicy(freeFailures, initialDelayMillis, maximumDelayMillis, attemptTimeoutMillis),
-            approvalLifetimeMillis?.let { LocalApprovalPolicy(it, namedSelfApprovalActions.map(SecurityAction::valueOf).toSet()) }),
+            approvalLifetimeMillis?.let { LocalApprovalPolicy(it, namedSelfApprovalActions.map(SecurityAction::valueOf).toSet()) },
+            employeeCreationConfigurationV1?.let(LocalEmployeeCreationConfigurationV1::decode)),
         LocalTokenPolicy(accessLifetimeMillis, workLifetimeMillis), admittedDeviceIds)
 
     fun validate(owner: LocalClientDeviceIdentity) {
-        require(version == 1 && scope == owner.scope && owner.deviceId in admittedDeviceIds)
+        require(version in 1..2 && (version == 2) == (employeeCreationConfigurationV1 != null))
+        require(scope == owner.scope && owner.deviceId in admittedDeviceIds)
         require(credentialWasProvided && grants.size <= 1024)
         require((outcome == StoredEnrollmentOutcomeV1.APPLIED) == (eventId != null))
         require(approvalLifetimeMillis != null || namedSelfApprovalActions.isEmpty())
@@ -69,7 +76,8 @@ internal data class StoredClientEnrollmentV1(
         fun capture(requestId: DomainId, definition: LocalAccountProvisioning): StoredClientEnrollmentV1 {
             val policy = definition.policy
             val throttle = policy.throttlePolicy
-            return StoredClientEnrollmentV1(requestId = requestId, scope = policy.scope, actorId = definition.actorId,
+            return StoredClientEnrollmentV1(version = if (policy.employeeCreationConfiguration == null) 1 else 2,
+                requestId = requestId, scope = policy.scope, actorId = definition.actorId,
                 login = definition.login.value, grants = policy.grants.map { StoredRequestedGrantV1.capture(it) },
                 maximumConcurrentSessions = policy.sessionPolicy.maximumConcurrentSessions,
                 freeFailures = throttle.freeFailures, initialDelayMillis = throttle.initialDelayMillis,
@@ -78,7 +86,8 @@ internal data class StoredClientEnrollmentV1(
                 namedSelfApprovalActions = policy.approvalPolicy?.namedSelfApprovalActions.orEmpty().map { it.name }.toSet(),
                 accessLifetimeMillis = definition.tokenPolicy.accessLifetimeMillis,
                 workLifetimeMillis = definition.tokenPolicy.workLifetimeMillis,
-                admittedDeviceIds = definition.admittedDeviceIds, credentialWasProvided = true)
+                admittedDeviceIds = definition.admittedDeviceIds, credentialWasProvided = true,
+                employeeCreationConfigurationV1 = policy.employeeCreationConfiguration?.copyWireBytes())
         }
     }
 }

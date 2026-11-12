@@ -51,9 +51,23 @@ jobs:
             :ui:app:compileKotlinIosArm64 \
             :ui:app:compileKotlinIosSimulatorArm64 \
             --console=plain 2>&1 | tee ../../apple-compile-output/gradle.txt
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "apple-compile" \
+            --diagnostics "native=apple-compile-output" \
+            --output "build/pos-public-artifacts/apple-compile"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-apple-compile-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apple-compile-output
+          path: build/pos-public-artifacts/apple-compile
           retention-days: 14

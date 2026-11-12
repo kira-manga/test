@@ -28,6 +28,7 @@ import com.ukkera.pos.app.setup.LocalMasterOperatingNotice
 import com.ukkera.pos.app.setup.LocalSetupConnectionScreen
 import com.ukkera.pos.app.setup.LocalSetupConnectionPhase
 import com.ukkera.pos.app.setup.LocalSetupModeSelectionScreen
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import com.ukkera.pos.app.setup.LocalSetupScreen
 import com.ukkera.pos.app.setup.LocalSetupLanRole
 import com.ukkera.pos.app.setup.LocalSetupLanStatus
@@ -138,6 +139,9 @@ class MainActivity : ComponentActivity() {
     private var visible = false
     private var route by mutableStateOf(EntryRoute.CHOICE)
     private var language by mutableStateOf(AppLanguage.ENGLISH)
+    // Explicit selection DATA only; never saved in Bundle, journal, Intent or logs.
+    private var liveEmployeePolicyTarget by mutableStateOf<LocalSetupEmployeePolicyTarget?>(null)
+    private var trainingEmployeePolicyTarget by mutableStateOf<LocalSetupEmployeePolicyTarget?>(null)
     private var trainingSlot by mutableStateOf<LocalTrainingCompositionSlot?>(null)
 
     private enum class EntryRoute { CHOICE, SETUP_MODE, SETUP, TRAINING_SETUP, EMPLOYEE, TRAINING_EMPLOYEE }
@@ -192,6 +196,8 @@ class MainActivity : ComponentActivity() {
                         LocalSetupScreen(owner.controller, language, { language = it },
                             onBack = { owner.lockPresentation(); choose(EntryRoute.CHOICE) },
                             compositionMode = LocalSetupCompositionMode.TRAINING,
+                            employeePolicyTarget = trainingEmployeePolicyTarget,
+                            onEmployeePolicyTargetCleared = { trainingEmployeePolicyTarget = null },
                             lanPermissionGranted = lanPermissionGranted, onRequestLanPermission = ::requestLanPermission)
                         BackHandler { owner.lockPresentation(); choose(EntryRoute.CHOICE) }
                     }
@@ -204,14 +210,24 @@ class MainActivity : ComponentActivity() {
                         onBack = { choose(EntryRoute.CHOICE) })
                     else LocalSetupScreen(actual, language, { language = it },
                         onBack = { choose(EntryRoute.CHOICE) },
+                        employeePolicyTarget = liveEmployeePolicyTarget,
+                        onEmployeePolicyTargetCleared = { liveEmployeePolicyTarget = null },
                         lanPermissionGranted = lanPermissionGranted, onRequestLanPermission = ::requestLanPermission)
                     BackHandler { choose(EntryRoute.CHOICE) }
                 }
                 EntryRoute.EMPLOYEE -> UkkeraApp(runtime, onExitRequest = { choose(EntryRoute.CHOICE) },
-                    onLocalSetupRequest = { choose(EntryRoute.SETUP_MODE) })
+                    onLocalSetupRequest = { choose(EntryRoute.SETUP_MODE) },
+                    onEmployeePolicyRequest = if (localRole == LocalClientRole.MASTER) ({ target ->
+                        choose(EntryRoute.SETUP)
+                        liveEmployeePolicyTarget = target
+                    }) else null)
                 EntryRoute.TRAINING_EMPLOYEE -> UkkeraApp((application as PosApplication).trainingRuntime,
                     onExitRequest = { choose(EntryRoute.CHOICE) },
-                    onLocalSetupRequest = { choose(EntryRoute.SETUP_MODE) })
+                    onLocalSetupRequest = { choose(EntryRoute.SETUP_MODE) },
+                    onEmployeePolicyRequest = if (trainingRole == LocalClientRole.MASTER && trainingSlot != null) ({ target ->
+                        choose(EntryRoute.TRAINING_SETUP)
+                        trainingEmployeePolicyTarget = target
+                    }) else null)
             }
             LocalMasterOperatingNotice(hosting, language)
         }
@@ -274,6 +290,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        liveEmployeePolicyTarget = null
+        trainingEmployeePolicyTarget = null
         visible = false
         setup.disconnect() // presentation/client attachment only, not the native setup lifetime
         reportFileHost?.close()
@@ -335,6 +353,8 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun choose(next: EntryRoute) {
+        liveEmployeePolicyTarget = null
+        trainingEmployeePolicyTarget = null
         if (route == EntryRoute.SETUP && next != EntryRoute.SETUP) setup.controller.value?.lockPresentation()
         if (route == EntryRoute.TRAINING_SETUP && next != EntryRoute.TRAINING_SETUP) {
             trainingSlot?.let { (application as PosApplication).lockTrainingPresentation(it) }

@@ -62,15 +62,28 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           script: bash scripts/pos/android/run-native-io-slices.sh testing-inputs/ukkera-pos-testing.apk testing-inputs/ukkera-pos-runtime-tests.apk native-cold-output testing-inputs/apk-pair.json
-      - name: Retain exact inputs and bounded nonsecret outcome
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "android-cold-original" \
+            --diagnostics "native=native-cold-output" \
+            --apk "testing-inputs/ukkera-pos-testing.apk" \
+            --apk "testing-inputs/ukkera-pos-runtime-tests.apk" \
+            --diagnostic-file "testing-inputs/artifact.json" \
+            --diagnostic-file "testing-inputs/apk-pair.json" \
+            --output "build/pos-public-artifacts/android-cold-original"
+      - name: Retain exact inputs and bounded nonsecret outcome
+        if: always() && steps.public_safe.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: pos-android-cold-original-api${{ inputs.api_level }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            native-cold-output
-            testing-inputs/ukkera-pos-testing.apk
-            testing-inputs/ukkera-pos-runtime-tests.apk
-            testing-inputs/artifact.json
-            testing-inputs/apk-pair.json
+          path: build/pos-public-artifacts/android-cold-original
           retention-days: 14

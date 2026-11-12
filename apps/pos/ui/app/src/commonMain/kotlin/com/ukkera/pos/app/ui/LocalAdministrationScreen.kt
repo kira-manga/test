@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.ui
 
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -71,7 +72,8 @@ import com.ukkera.pos.security.SessionStatus
 /** Real protected administration, deliberately separate from the generic business-command UI. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, model: EntryViewModel, token: NavigationToken) {
+internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, model: EntryViewModel, token: NavigationToken,
+    onEmployeePolicyRequest: ((LocalSetupEmployeePolicyTarget) -> Unit)? = null) {
     val runtimePresentation by runtime.presentation.collectAsState()
     val controller = model.localAdministration(runtime, token, runtimePresentation.localAttachment)
     if (controller == null) { LiveUnavailableScreen(area); return }
@@ -96,8 +98,8 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                     else adminText("Branch devices", "أجهزة الفرع"),
                     adminText("Current protected local records. Company identities and central services are separate.",
                         "السجلات المحلية المحمية الحالية. هويات الشركة والخدمات المركزية منفصلة."))
-                Notice(adminText("These actions do not pair a new device, publish grants, reactivate a disabled account or provide the full archived audit history. Those workflows remain separate.",
-                    "لا تُقرن هذه الإجراءات جهازًا جديدًا ولا تنشر صلاحيات ولا تعيد تفعيل حساب معطّل ولا تعرض سجل التدقيق المؤرشف الكامل. هذه مسارات منفصلة."))
+                Notice(adminText("Device pairing, grant publication and full archived audit history use separate workflows.",
+                    "تستخدم إقران الأجهزة ونشر الصلاحيات وسجل التدقيق المؤرشف الكامل مسارات منفصلة."))
             }
             if (state.working) item {
                 Column(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -113,6 +115,19 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                 }
             }
             item { AdministrationPending(state, controller, token) }
+            if (area == AppArea.PEOPLE && detail != null && onEmployeePolicyRequest != null) item {
+                Notice(adminText(
+                    "Continue to local setup to author this employee’s complete policy. This locks the employee presentation. The named company head must review and approve; activation is a separate decision.",
+                    "انتقل إلى الإعداد المحلي لتعريف سياسة هذا الموظف كاملةً. سيُقفل عرض الموظف. يجب أن يراجع رئيس الشركة المسمّى ويعتمد؛ والتفعيل قرار منفصل."))
+                OutlinedButton(onClick = {
+                    val target = controller.employeePolicyTarget(view, token) ?: return@OutlinedButton
+                    runtime.lock(token) // Retire private presentation before handing over only selection DATA.
+                    onEmployeePolicyRequest(target)
+                }, enabled = state.canPrepare && !state.passwordEntryOpen,
+                    modifier = Modifier.fillMaxWidth().touchTarget()) {
+                    Text(adminText("Review this employee’s policy in local setup", "مراجعة سياسة هذا الموظف في الإعداد المحلي"))
+                }
+            }
             item {
                 OutlinedTextField(state.targetInput, { controller.changeTarget(it, token) }, singleLine = true,
                     label = { Text(adminText("Exact employee / device UUID", "معرّف UUID الدقيق للموظف / الجهاز")) },
@@ -183,6 +198,18 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                                 Text(if (detail.account.credentialPresent) adminText("Prepare password reset", "تحضير إعادة تعيين كلمة المرور")
                                     else adminText("Prepare credential activation", "تحضير تفعيل بيانات الدخول"))
                             }
+                            OutlinedButton(onClick = { controller.prepare(LocalAdministrationAction.ACTIVATE_ACCOUNT, view, token) },
+                                enabled = state.canPrepare && !detail.account.enabled && !detail.account.credentialPresent &&
+                                    detail.account.actorId != controller.operatorId && detail.account.activeSessionCount == 0,
+                                modifier = Modifier.touchTarget()) {
+                                Text(adminText("Prepare first credential and account activation", "تحضير بيانات الدخول الأولى وتفعيل الحساب"))
+                            }
+                            OutlinedButton(onClick = { controller.prepare(LocalAdministrationAction.REACTIVATE_ACCOUNT, view, token) },
+                                enabled = state.canPrepare && !detail.account.enabled && detail.account.credentialPresent &&
+                                    detail.account.actorId != controller.operatorId && detail.account.activeSessionCount == 0,
+                                modifier = Modifier.touchTarget()) {
+                                Text(adminText("Prepare account reactivation", "تحضير إعادة تفعيل الحساب"))
+                            }
                             OutlinedButton(onClick = { controller.prepare(LocalAdministrationAction.DISABLE_ACCOUNT, view, token) },
                                 enabled = state.canPrepare && detail.account.enabled, modifier = Modifier.touchTarget()) {
                                 Text(adminText("Prepare account disable", "تحضير تعطيل الحساب"))
@@ -193,9 +220,13 @@ internal fun LocalAdministrationScreen(runtime: UkkeraRuntime, area: AppArea, mo
                     }
                     item {
                         SectionHeading(adminText("Activated policy — read only", "السياسة المفعّلة — للقراءة فقط"))
-                        ReviewField(adminText("Concurrent session limit", "حد الجلسات المتزامنة"), detail.policy.sessionPolicy.maximumConcurrentSessions.toString())
-                        ReviewField(adminText("Access lifetime (milliseconds)", "مدة الوصول (مللي ثانية)"), detail.tokenPolicy.accessLifetimeMillis.toString())
-                        ReviewField(adminText("Work lifetime (milliseconds)", "مدة العمل (مللي ثانية)"), detail.tokenPolicy.workLifetimeMillis.toString())
+                        ScopeDetails(detail.policy.scope)
+                        ReviewField(adminText("Policy employee ID", "معرّف موظف السياسة"), detail.policy.actorId.value)
+                        ReviewField(adminText("Activated policy revision", "مراجعة السياسة المفعّلة"), detail.policy.revision.value.toString())
+                        ReviewField(adminText("Complete grant count", "عدد الصلاحيات الكامل"), grants.size.toString())
+                        PolicyConfigurationDetails(detail.policy, detail.tokenPolicy)
+                        Notice(adminText("These are the values observed at the last protected read. Refresh before preparing a policy replacement in local setup, and enter the exact employee ID and policy revision. Preparation and activation recheck the current policy; this view does not approve or activate a replacement.",
+                            "هذه هي القيم المرصودة عند آخر قراءة محمية. حدّث العرض قبل تحضير سياسة بديلة في الإعداد المحلي، وأدخل معرّف الموظف ومراجعة السياسة بدقة. يعيد التحضير والتفعيل فحص السياسة الحالية؛ لا يعتمد هذا العرض سياسة بديلة ولا يفعّلها."))
                         AdministrationCheck(adminText("Show every activated grant and its exact scope/limits", "عرض كل صلاحية مفعّلة ونطاقها وحدودها الدقيقة"),
                             showGrants, enabled = !state.working) { showGrants = it }
                         if (showGrants && grants.isEmpty()) Notice(adminText("No activated grants.", "لا توجد صلاحيات مفعّلة."))
@@ -267,7 +298,7 @@ private fun RetainedSession(session: LocalSessionRecord, view: LocalAdministrati
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AdministrationPending(state: LocalAdministrationWorkspace, controller: LocalAdministrationController, token: NavigationToken) {
-    val command = state.original
+    val command = state.displayedOriginal
     val pending = state.pending
     var reviewed by remember(command, pending, state.operationProblem) { mutableStateOf(false) }
     AdministrationCard {
@@ -276,7 +307,11 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
             "تنتظر الإجراءات الجديدة حتى تُعرف نتيجة طلبك السابق وتقر بها. المغادرة أو تسجيل الخروج لا يحذف الطلب المحفوظ."))
         state.pendingProblem?.let { Notice(localProblem(it), caution = true) }
         state.operationProblem?.let { Notice(localProblem(it), caution = true) }
-        if (command == null) {
+        if (state.originalDetailsRestricted) {
+            state.original?.requestId?.let { ReviewField(adminText("Request ID", "معرّف الطلب"), it.value) }
+            Notice(adminText("Access to the saved request details was denied. Recover the original request after authorization is restored.",
+                "رُفض الوصول إلى تفاصيل الطلب المحفوظ. استعد الطلب الأصلي بعد استعادة التفويض."), caution = true)
+        } else if (command == null) {
             if (state.pendingLoaded && state.pendingProblem == null) Text(adminText("No unacknowledged request for this employee on this client.", "لا يوجد طلب غير مقرّ به لهذا الموظف على هذا العميل."))
             else Notice(adminText("Recovery has not established a clear client journal. No new request is enabled.", "لم تثبت الاستعادة خلو سجل العميل. لا يُسمح بطلب جديد."), caution = true)
         } else {
@@ -302,9 +337,9 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
             if (command.targetId == controller.operatorId) Notice(adminText(
                 "You selected your own account. Reset/disable or revoking your current session can end this screen before the result arrives. No cash or order ownership is transferred.",
                 "اخترت حسابك. قد تنهي إعادة التعيين أو التعطيل أو إلغاء جلستك الحالية هذه الشاشة قبل وصول النتيجة. لا تنتقل ملكية النقد أو الطلبات."), caution = true)
-            if (command.action == LocalAdministrationAction.RESET_CREDENTIAL) Notice(adminText(
-                "A dispatched reset is never resent with another password. If no outcome is known, resolve or cancel its original ID before preparing a different reset.",
-                "لا تُعاد إعادة التعيين المرسلة بكلمة مرور أخرى. إذا كانت النتيجة غير معروفة، احسم المعرّف الأصلي أو ألغِه قبل تحضير إعادة تعيين مختلفة."))
+            if (command.action.requiresNewPassword) Notice(adminText(
+                "A dispatched password-bearing request is never resent with another password. If no outcome is known, resolve or cancel its original ID before preparing a different request.",
+                "لا يُعاد إرسال طلب يتضمن كلمة مرور بكلمة مرور أخرى. إذا كانت النتيجة غير معروفة، احسم المعرّف الأصلي أو ألغِه قبل تحضير طلب مختلف."))
             AdministrationCheck(adminText("I reviewed this exact action, target, revisions and original ID", "راجعت هذا الإجراء والهدف والمراجعات والمعرّف الأصلي بدقة"),
                 reviewed, enabled = !state.working) { reviewed = it }
         }
@@ -315,9 +350,9 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
                 if (state.preparationUncertain) OutlinedButton(onClick = { controller.retryPreparation(token) }, enabled = !state.working,
                     modifier = Modifier.touchTarget()) { Text(adminText("Retry exact preparation only", "إعادة التحضير الدقيق فقط")) }
                 if (state.canSubmit) Button(onClick = {
-                    if (command.action == LocalAdministrationAction.RESET_CREDENTIAL) controller.openPasswordEntry(token) else controller.submit(token)
+                    if (command.action.requiresNewPassword) controller.openPasswordEntry(token) else controller.submit(token)
                 }, enabled = reviewed && !state.passwordEntryOpen, modifier = Modifier.touchTarget()) {
-                    Text(if (command.action == LocalAdministrationAction.RESET_CREDENTIAL) adminText("Enter new password and confirm", "إدخال كلمة المرور الجديدة والتأكيد")
+                    Text(if (command.action.requiresNewPassword) adminText("Enter new password and confirm", "إدخال كلمة المرور الجديدة والتأكيد")
                         else adminText("Confirm original action", "تأكيد الإجراء الأصلي"))
                 }
                 if (pending?.terminal != true) OutlinedButton(onClick = { controller.cancel(token) },
@@ -337,6 +372,8 @@ private fun AdministrationPending(state: LocalAdministrationWorkspace, controlle
 private fun AdministrationRequest(command: LocalAdministrationCommand) {
     ReviewField(adminText("Request ID", "معرّف الطلب"), command.requestId.value)
     ReviewField(adminText("Action", "الإجراء"), when (command.action) {
+        LocalAdministrationAction.ACTIVATE_ACCOUNT -> adminText("Establish first credential and enable this account; require a new login", "تعيين بيانات الدخول الأولى وتفعيل هذا الحساب؛ يلزم تسجيل دخول جديد")
+        LocalAdministrationAction.REACTIVATE_ACCOUNT -> adminText("Reactivate this branch account; require a new login", "إعادة تفعيل حساب الفرع هذا؛ يلزم تسجيل دخول جديد")
         LocalAdministrationAction.DISABLE_ACCOUNT -> adminText("Disable this branch account", "تعطيل حساب الفرع هذا")
         LocalAdministrationAction.REVOKE_SESSION -> adminText("Revoke the selected retained session", "إلغاء الجلسة المحفوظة المختارة")
         LocalAdministrationAction.RESET_CREDENTIAL -> adminText("Establish/reset credential and revoke account sessions", "تعيين بيانات الدخول أو إعادة تعيينها وإلغاء جلسات الحساب")
@@ -346,6 +383,19 @@ private fun AdministrationRequest(command: LocalAdministrationCommand) {
     ReviewField(adminText("Expected account / admission revision", "مراجعة الحساب / القبول المتوقعة"), command.expectedRevision.value.toString())
     command.sessionId?.let { ReviewField(adminText("Exact session ID", "معرّف الجلسة الدقيق"), it.value) }
     command.expectedCredentialRevision?.let { ReviewField(adminText("Expected credential revision", "مراجعة بيانات الدخول المتوقعة"), it.value.toString()) }
+    command.activationRevisions?.let { expected ->
+        ReviewField(adminText("Expected activated policy revision", "مراجعة السياسة المفعّلة المتوقعة"), expected.policy.value.toString())
+        ReviewField(adminText("Expected authentication configuration revision", "مراجعة إعدادات المصادقة المتوقعة"), expected.configuration.value.toString())
+        Notice(adminText("This activates only this disabled account with no existing credential. Its grants and revoked sessions are unchanged; the employee must sign in separately. The password is not retained for another dispatch.",
+            "يُفعّل هذا الإجراء هذا الحساب المعطّل الذي لا يملك بيانات دخول فقط. لا تتغير صلاحياته أو جلساته الملغاة؛ وعلى الموظف تسجيل الدخول بشكل منفصل. لا تُحفظ كلمة المرور لإرسال آخر."))
+    }
+    command.reactivationRevisions?.let { expected ->
+        ReviewField(adminText("Expected credential revision", "مراجعة بيانات الدخول المتوقعة"), expected.credential.value.toString())
+        ReviewField(adminText("Expected activated policy revision", "مراجعة السياسة المفعّلة المتوقعة"), expected.policy.value.toString())
+        ReviewField(adminText("Expected authentication configuration revision", "مراجعة إعدادات المصادقة المتوقعة"), expected.configuration.value.toString())
+        Notice(adminText("This is a newer explicit resolution. Revoked sessions stay revoked; the employee must sign in again. Existing cash, orders, responsibility and unresolved results are preserved.",
+            "هذا قرار صريح أحدث. تبقى الجلسات الملغاة ملغاة؛ وعلى الموظف تسجيل الدخول مجددًا. تُحفظ الأموال والطلبات والمسؤولية والنتائج غير المحسومة الموجودة."))
+    }
 }
 
 @Composable
@@ -369,7 +419,10 @@ private fun AdministrationPassword(command: LocalAdministrationCommand, dismiss:
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 AdministrationRequest(command)
-                Text(adminText("The new password is transient and not saved for retry. This revokes the account's sessions; it does not enable a disabled account or grant permissions.",
+                Text(if (command.action == LocalAdministrationAction.ACTIVATE_ACCOUNT)
+                    adminText("The transient password establishes this account's first credential and enables it atomically. No session or permission is created; a fresh employee login is required. A lost reply is recovered by the same original ID, never by entering another password for dispatch.",
+                        "تُنشئ كلمة المرور المؤقتة بيانات الدخول الأولى لهذا الحساب وتُفعّله ذريًا. لا تُنشأ جلسة أو صلاحية؛ يلزم تسجيل دخول جديد للموظف. تُستعاد الاستجابة المفقودة بمعرّف الطلب الأصلي نفسه، وليس بإدخال كلمة مرور أخرى لإرسال جديد.")
+                else adminText("The new password is transient and not saved for retry. This revokes the account's sessions; it does not enable a disabled account or grant permissions.",
                     "كلمة المرور الجديدة مؤقتة ولا تُحفظ لإعادة المحاولة. يُلغي هذا جلسات الحساب ولا يفعّل حسابًا معطّلًا ولا يمنح صلاحيات."))
                 OutlinedTextField(password, { if (it.length <= 1024) password = it }, singleLine = true,
                     label = { Text(adminText("New password (4–1024 characters)", "كلمة المرور الجديدة (4–1024 محرفًا)")) },

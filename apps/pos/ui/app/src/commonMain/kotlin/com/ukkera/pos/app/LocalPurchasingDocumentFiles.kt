@@ -2,7 +2,9 @@ package com.ukkera.pos.app
 
 import com.ukkera.pos.security.PurchasingEvidenceMediaV1
 
-/** Native file access only. These ports neither grant Master access nor capture a document. */
+/** File source/output access only. Genuine native adapters also implement
+ * [LocalNativePurchasingDocumentFiles] so cancelled callers cannot hide OS ownership.
+ * These ports neither grant Master access nor capture a document. */
 interface LocalPurchasingDocumentFiles {
     val bound: Boolean
 

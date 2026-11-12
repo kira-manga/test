@@ -700,7 +700,7 @@ public object AuthorizationEvaluator {
         }
     }
 
-    private fun localRealmAllows(action: SecurityAction): Boolean = action !in setOf(
+    internal fun localRealmAllows(action: SecurityAction): Boolean = action !in setOf(
         SecurityAction.COMPANY_STRUCTURE, SecurityAction.COMPANY_PEOPLE, SecurityAction.COMPANY_CATALOG,
         SecurityAction.COMPANY_POLICY, SecurityAction.COMPANY_REPORT, SecurityAction.DEVICE_STATUS,
         SecurityAction.MASTER_COMMIT, SecurityAction.CENTRAL_INGESTION,

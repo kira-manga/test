@@ -72,15 +72,28 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           script: bash scripts/pos/android/run-native-io-slices.sh testing-inputs/ukkera-pos-testing.apk testing-inputs/ukkera-pos-runtime-tests.apk native-io-output testing-inputs/apk-pair.json
-      - name: Retain exact inputs and native results
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "android-native-io" \
+            --diagnostics "native=native-io-output" \
+            --apk "testing-inputs/ukkera-pos-testing.apk" \
+            --apk "testing-inputs/ukkera-pos-runtime-tests.apk" \
+            --diagnostic-file "testing-inputs/artifact.json" \
+            --diagnostic-file "testing-inputs/apk-pair.json" \
+            --output "build/pos-public-artifacts/android-native-io"
+      - name: Retain exact inputs and native results
+        if: always() && steps.public_safe.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: pos-android-native-${{ inputs.slice_group }}-api${{ matrix.api }}-${{ inputs.emulator_arch }}-${{ inputs.page_profile }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            native-io-output
-            testing-inputs/ukkera-pos-testing.apk
-            testing-inputs/ukkera-pos-runtime-tests.apk
-            testing-inputs/artifact.json
-            testing-inputs/apk-pair.json
+          path: build/pos-public-artifacts/android-native-io
           retention-days: 14

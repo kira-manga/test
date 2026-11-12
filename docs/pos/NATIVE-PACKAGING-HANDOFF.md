@@ -1,5 +1,47 @@
 # Native packaging and handoff — macOS, Windows, iPhone/iPad
 
+## Combined owner test packages — 12 November 2026
+
+`.github/workflows/pos-owner-test-packages.yml` provides one manual auxiliary
+workflow for Apple silicon/Intel DMGs, Windows x64 MSI and Android test APKs.
+It is restricted to public `kira-manga/test`, uses read-only permissions, and
+validates each upload through the existing public-safe staging boundary. Desktop
+startup can be checked with `desktop_smoke=true`.
+
+Android signing stays local with the retained test certificate. Stage the exact
+clean application/runtime-test APK pair, `apk-pair.json`, and the complete
+`apps/pos` source inventory as `testing-inputs/application-source-files.json` in
+the auxiliary snapshot. Each inventory entry has a tracked application path and
+its SHA-256; the inventory carries the Android pair's source revision. CI verifies
+all application sources, APK hashes/sizes, expected signer, v2/v3 signatures,
+16-KiB alignment, SDK/package identity and debuggability. It also builds the
+matching unsigned source and runs fatal lint. It publishes the retained signed
+bytes only after both stages succeed. A fresh signature is not substituted, and
+private signing material is never placed in the snapshot or uploaded.
+
+```sh
+gh workflow run pos-owner-test-packages.yml --repo kira-manga/test --ref main \
+  -f source_revision=<snapshot-source-sha> \
+  -f android_source_revision=<retained-apk-source-sha> \
+  -f android_signer_sha256=<retained-certificate-sha256> \
+  -f desktop_smoke=true
+```
+
+The snapshot source SHA and Android source SHA may differ when only packaging or
+documentation changed. The complete `apps/pos` inventory must still match exactly.
+Artifacts are named `pos-owner-macos-arm64-<run>-<attempt>`,
+`pos-owner-macos-x64-<run>-<attempt>`, `pos-owner-windows-x64-<run>-<attempt>` and
+`pos-owner-android-<run>-<attempt>`. Retention is 14 days. Select the application
+APK for ordinary owner inspection; the separate runtime-test APK is for explicitly
+chosen disposable synthetic instrumentation.
+
+DMG/MSI packages remain unsigned; macOS packages are unnotarized. Desktop launchers
+remain unconfigured for trusted native setup/Master/Client composition. A packaged
+startup check does not establish full POS workflows or owner acceptance. Android
+creation remains unavailable while its history family is held. This workflow runs
+no financial originals, installed Android instrumentation or central services.
+
+
 **Prepared from parent `37f8285b` for root integration.** This document is a
 runbook and a record of prepared source/config, not a claim that the native
 builds already ran. No remote repository, Actions run, upload, push or PR was
@@ -36,6 +78,28 @@ installed behavior or owner acceptance covered by the jobs below.
 
 Do not edit security/common identity code, `IosAppHost`, or desktop `Main.kt`
 business dependencies as part of packaging. Those remain with their owners.
+
+
+### Public native-test diagnostics
+
+Every POS artifact upload now depends on a successful `public_safe` validation
+step and selects only its validated `build/pos-public-artifacts/` directory.
+Native-test/probe jobs use `scripts/pos/stage_native_diagnostics.py` before upload;
+local raw diagnostics remain unchanged when validation succeeds or fails. JUnit
+XML and sanitized logs/source diagnostics are retained; HTML/JavaScript reports
+and Gradle binary result caches are excluded. Existing Android APK selections
+remain byte-identical and have hashes. Copied JSON input metadata can be redacted,
+so its bytes are not claimed identical to the local originals. Missing inputs are
+listed explicitly, not credited as passing tests. A failed underlying job may
+still publish safe failure diagnostics; staging success is not a test verdict.
+
+A sanitizer/hygiene/I/O failure prevents upload. Inspect the retained local/job
+evidence; do not fall back to a raw directory. All current workflows remain
+manual and auxiliary-repository guarded; the auxiliary repository stays PUBLIC
+by owner instruction. No new dispatch is authorized by this handoff.
+[Exact source and local supporting checks](../../qa/pos/traceability/native-diagnostic-publication-20261111/README.md)
+do not qualify native execution, actual uploaded artifacts or complete secret
+scanning.
 
 ## 2. Exact task and command paths
 
@@ -445,3 +509,15 @@ The installed instrumentation APK is not executed. The API24/35/37 matrix runs
 at most two jobs concurrently. This is bounded packaging/startup evidence only:
 zero instrumentation methods and no continuous-liveness, rendered-UI, original
 setup, key custody, employee login, LAN, business or owner acceptance claim.
+
+## Public staging validation — 11 November 2026
+
+Desktop and iOS workflows stage public artifacts separately with
+`scripts/pos/publish_public_artifact.py`. Upload and public summary steps require
+that validation step to succeed and read only `build/pos-public-artifacts/`.
+Sanitization or hygiene failure withholds the candidate. Symlinks, special files,
+unsupported diagnostic formats, invalid UTF-8 and diagnostics over32MiB fail
+publication. Native packages remain opaque binaries; this is not a claim of
+comprehensive secret detection. The raw candidate remains local. New manifests
+and checksums describe the sanitized staging contents. The auxiliary repository
+remains public. These local workflow corrections have not been dispatched.

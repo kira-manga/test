@@ -29,6 +29,10 @@ internal class AuthV1SyntheticKeyPorts(
     private val storageKey = ByteArray(32).also(random::nextBytes)
     private val pepperKey = ByteArray(32).also(random::nextBytes)
     private val active = AtomicBoolean(true)
+    private val pepperUnavailable = AtomicBoolean(false)
+
+    /** Negative synthetic port observation only; never substitutes an HMAC or verifier result. */
+    fun setPepperUnavailable(value: Boolean) { pepperUnavailable.set(value) }
 
     override val protectionStatus: KeyProtectionStatus
         get() = if (active.get()) KeyProtectionStatus.QUALIFIED_SUPERVISED_SERVICE_CONTEXT
@@ -94,7 +98,7 @@ internal class AuthV1SyntheticKeyPorts(
     }
 
     override suspend fun hmacSha256(reference: ProtectedPepperReference, message: ByteArray): PepperMacResult {
-        if (!active.get() || reference != pepperReference) {
+        if (!active.get() || pepperUnavailable.get() || reference != pepperReference) {
             return PepperMacResult.Unavailable(ProtectedKeyFailure.KEY_UNAVAILABLE)
         }
         return try {

@@ -32,10 +32,24 @@ jobs:
       - name: Observe disposable persisted AES-GCM capabilities
         shell: pwsh
         run: scripts/pos/windows/probe-cng-persisted-aead.ps1 -OutputDirectory cng-capability-output
-      - name: Retain nonsecret capability observations
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "windows-cng-capabilities" \
+            --diagnostics "native=cng-capability-output" \
+            --output "build/pos-public-artifacts/windows-cng-capabilities"
+      - name: Retain nonsecret capability observations
+        if: always() && steps.public_safe.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: pos-windows-cng-capabilities-${{ github.run_id }}-${{ github.run_attempt }}
-          path: cng-capability-output
+          path: build/pos-public-artifacts/windows-cng-capabilities
           retention-days: 14

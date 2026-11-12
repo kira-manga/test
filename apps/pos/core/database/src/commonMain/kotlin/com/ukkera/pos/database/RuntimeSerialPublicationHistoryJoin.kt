@@ -189,9 +189,9 @@ internal class RuntimeSerialPublicationHistoryJoin(private val session: SelfOwne
         account(proof)
     }
 
-    internal fun accountEmployee(proof: RuntimeSerialPublicationHistoryRequest, source: NativeEmployeeEnrollmentHistorySource) {
-        historyShapeV2(session.employeeEnrollments.any { it === source } && source.requested.request.targetId == proof.actorId &&
-            source.requested.request.scope == scope && source.originalCohostDeviceId == coordinates.deviceId &&
+    internal fun accountEmployee(proof: RuntimeSerialPublicationHistoryRequest, source: RuntimeEmployeeHistoryOrigin) {
+        historyShapeV2(source.matchesNativeSelection(session) && source.actorId == proof.actorId &&
+            source.scope == scope && source.originalCohostDeviceId == coordinates.deviceId &&
             source.child.historySequence < proof.header.sequence && source.child.commandEpoch == proof.header.commandEpoch)
         account(proof)
     }
@@ -233,7 +233,7 @@ internal class RuntimeSerialPublicationHistoryRequest private constructor(
 ) {
     val actorId: DomainId get() = evidence.authorization.actorId
     fun accountFounding(original: OriginalNativeHistorySnapshot) = owner.accountFounding(this, original)
-    fun accountEmployee(source: NativeEmployeeEnrollmentHistorySource) = owner.accountEmployee(this, source)
+    fun accountEmployee(source: RuntimeEmployeeHistoryOrigin) = owner.accountEmployee(this, source)
 
     companion object {
         fun capture(owner: RuntimeSerialPublicationHistoryJoin, header: RuntimeHistoryEventHeaderV2, digest: PayloadDigest,

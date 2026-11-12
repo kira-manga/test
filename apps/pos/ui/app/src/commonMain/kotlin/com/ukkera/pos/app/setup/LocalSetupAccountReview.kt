@@ -1,9 +1,9 @@
 package com.ukkera.pos.app.setup
 
 import androidx.compose.runtime.Composable
+import com.ukkera.pos.app.ui.PolicyConfigurationDetails
 import com.ukkera.pos.app.ui.ReviewField
 import com.ukkera.pos.app.ui.ScopeDetails
-import com.ukkera.pos.app.ui.SectionHeading
 import com.ukkera.pos.security.LocalAccountProvisioning
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.LocalTokenPolicy
@@ -30,21 +30,5 @@ internal fun LocalSetupAccountConfigurationReview(account: LocalAccountProvision
 /** Complete scalar policy review shared by account enrollment and policy replacement. */
 @Composable
 internal fun LocalSetupPolicyConfigurationReview(policy: ActivatedLocalPolicy, tokenPolicy: LocalTokenPolicy? = null) {
-    SectionHeading(t("Complete local configuration", "الإعداد المحلي الكامل"))
-    ReviewField(t("Concurrent sessions", "الجلسات المتزامنة"), policy.sessionPolicy.maximumConcurrentSessions.toString())
-    tokenPolicy?.let {
-        ReviewField(t("Access lifetime (ms)", "مدة الوصول بالمللي ثانية"), it.accessLifetimeMillis.toString())
-        ReviewField(t("Work lifetime (ms)", "مدة العمل بالمللي ثانية"), it.workLifetimeMillis.toString())
-    }
-    ReviewField(t("Free authentication failures", "إخفاقات الدخول قبل التأخير"), policy.throttlePolicy.freeFailures.toString())
-    ReviewField(t("Initial delay (ms)", "التأخير الأولي بالمللي ثانية"), policy.throttlePolicy.initialDelayMillis.toString())
-    ReviewField(t("Maximum delay (ms)", "أقصى تأخير بالمللي ثانية"), policy.throttlePolicy.maximumDelayMillis.toString())
-    ReviewField(t("Attempt timeout (ms)", "مهلة المحاولة بالمللي ثانية"), policy.throttlePolicy.attemptTimeoutMillis.toString())
-    val approval = policy.approvalPolicy
-    if (approval == null) ReviewField(t("Manager approval policy", "سياسة موافقة المدير"), t("Absent", "غير موجودة"), code = false)
-    else {
-        ReviewField(t("Approval validity (ms)", "صلاحية الموافقة بالمللي ثانية"), approval.validForMillis.toString())
-        ReviewField(t("Named self-approval actions", "إجراءات الموافقة الذاتية المسمّاة"),
-            approval.namedSelfApprovalActions.sortedBy { it.name }.joinToString("\n") { it.name }.ifEmpty { t("None", "لا شيء") })
-    }
+    PolicyConfigurationDetails(policy, tokenPolicy)
 }

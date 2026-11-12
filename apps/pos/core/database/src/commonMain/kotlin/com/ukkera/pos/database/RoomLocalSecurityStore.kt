@@ -940,7 +940,30 @@ internal class RoomLocalSecurityTransaction internal constructor(
         return next.state
     }
 
-    /** The sole enable path; the caller must hold current explicit digest-bound ceremony authority. */
+    /** Atomic first credential and enablement under the attached target-bound administration
+     * frame. Existing verifier, policy, throttle and revoked-token history are never replaced. */
+    suspend fun activateCredential(target: com.ukkera.pos.security.LocalAccountReactivation,
+        credential: PasswordHashRecord): LocalAccountSessionState? {
+        val account = readProtectedAccount(target.scope, target.actorId) ?: return null
+        val before = account.state
+        val policy = readPolicy(target.scope, target.actorId) ?: return null
+        val configuration = readAuthConfiguration(target.scope, target.actorId) ?: return null
+        if (before.enabled || account.credential != null || before.revision != target.expectedAccountRevision ||
+            account.credentialRevision != target.expectedCredentialRevision || policy.revision != target.expectedPolicyRevision ||
+            configuration.revision != target.expectedConfigurationRevision || account.credentialRevision.value == Long.MAX_VALUE ||
+            before.revision.value >= Long.MAX_VALUE - 1 || before.generation.value >= Long.MAX_VALUE - 1 ||
+            before.sessions.any { it.status == SessionStatus.ACTIVE }) return null
+        if (readThrottle(ThrottleKey(target.scope, target.actorId, ThrottleDimension.Account)) == null) refuse()
+        for (device in readAdmissions(target.scope)) {
+            if (readThrottle(ThrottleKey(target.scope, target.actorId, ThrottleDimension.Device(device.deviceId))) == null) refuse()
+        }
+        val next = (LocalSessions.reactivate(before) as? SessionTransition.Applied)?.state ?: return null
+        val after = validated { ProtectedLocalAccount(next, account.credentialRevision.next(), credential) }
+        if (!writeAccount(before.revision, after, account.credentialRevision)) refuse()
+        return after.state
+    }
+
+    /** The sole enable write; the attached frame must prove current explicit authority. */
     suspend fun reactivateAccount(target: com.ukkera.pos.security.LocalAccountReactivation): LocalAccountSessionState? {
         val account = readProtectedAccount(target.scope, target.actorId) ?: return null
         val before = account.state
@@ -954,8 +977,7 @@ internal class RoomLocalSecurityTransaction internal constructor(
         for (device in readAdmissions(target.scope)) {
             if (readThrottle(ThrottleKey(target.scope, target.actorId, ThrottleDimension.Device(device.deviceId))) == null) refuse()
         }
-        val next = LocalAccountSessionState(before.scope, before.actorId, true, before.revision.next(),
-            before.generation.next(), before.sessions)
+        val next = (LocalSessions.reactivate(before) as? SessionTransition.Applied)?.state ?: return null
         if (!writeAccount(before.revision, ProtectedLocalAccount(next, account.credentialRevision, account.credential), account.credentialRevision)) refuse()
         return next
     }

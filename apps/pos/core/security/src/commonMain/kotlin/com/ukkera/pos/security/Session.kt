@@ -144,6 +144,7 @@ public enum class SessionTransitionDenial {
     GENERATION_EXHAUSTED,
     SESSION_HISTORY_FULL,
     SESSION_NOT_ACTIVE,
+    ACCOUNT_ALREADY_ENABLED,
 }
 
 /**
@@ -229,6 +230,17 @@ public object LocalSessions {
                 state.sessions.map { if (it.sessionId == previousSessionId) it.copy(status = SessionStatus.REVOKED) else it } + next),
             next, setOf(previousSessionId),
         )
+    }
+
+    /** A newer explicit administrative resolution preserves every revoked identity. The
+     * protected adapter must separately prove current authority and dependency revisions. */
+    public fun reactivate(state: LocalAccountSessionState): SessionTransition {
+        if (state.enabled) return SessionTransition.Denied(SessionTransitionDenial.ACCOUNT_ALREADY_ENABLED)
+        if (state.revision.value >= Long.MAX_VALUE - 1 || state.generation.value >= Long.MAX_VALUE - 1)
+            return SessionTransition.Denied(SessionTransitionDenial.GENERATION_EXHAUSTED)
+        check(state.sessions.none { it.status == SessionStatus.ACTIVE })
+        return SessionTransition.Applied(LocalAccountSessionState(state.scope, state.actorId, true,
+            state.revision.next(), state.generation.next(), state.sessions), null, emptySet())
     }
 
     public fun disable(state: LocalAccountSessionState): SessionTransition =

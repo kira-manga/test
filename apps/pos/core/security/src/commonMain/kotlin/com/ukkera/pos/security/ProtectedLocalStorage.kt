@@ -236,6 +236,7 @@ public class ActivatedLocalPolicy(
     public val sessionPolicy: LocalSessionPolicy,
     public val throttlePolicy: ThrottlePolicy,
     public val approvalPolicy: LocalApprovalPolicy? = null,
+    public val employeeCreationConfiguration: LocalEmployeeCreationConfigurationV1? = null,
 ) {
     init {
         require(grants.size <= 1024) { "Effective policy exceeds supported bounds" }

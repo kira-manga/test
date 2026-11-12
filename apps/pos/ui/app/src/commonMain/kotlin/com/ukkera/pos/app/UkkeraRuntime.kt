@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koin.core.qualifier.named
 import org.koin.core.scope.Scope
@@ -76,6 +77,9 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
     val navigator = AppNavigator { entryId -> rootScope.clearDepartingEntry(entryId) }
     private val mutablePresentation = MutableStateFlow(RuntimePresentation())
     val presentation: StateFlow<RuntimePresentation> = mutablePresentation.asStateFlow()
+    internal val documentFiles = LocalPurchasingDocumentCleanup(dependencies.documentFiles) {
+        mutablePresentation.update { it.copy(cleanupNeedsAttention = true) }
+    }
     private val container = koinApplication { modules(clientModule()) }
     private var branchSession: BranchUiSession? = null
     private var centralSession: CentralUiSession? = null
@@ -131,6 +135,10 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
             if (closed || !navigator.isCurrent(token) || presentation.value.signingIn) return
             val root = navigator.state.value.root
             if (root !in setOf(SecurityRoot.BRANCH_SIGN_IN, SecurityRoot.COMPANY_SIGN_IN)) return
+            if (!documentFiles.clear) {
+                mutablePresentation.value = presentation.value.copy(signInFailure = SignInFailure.UNAVAILABLE, cleanupNeedsAttention = true)
+                return
+            }
             val configured = if (root == SecurityRoot.BRANCH_SIGN_IN) dependencies.branchGateway.configured
                 else dependencies.centralServicesEnabled && dependencies.centralGateway.configured
             if (!configured) {
@@ -464,12 +472,13 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
                 cleanup.attempt { denyRetailPhysical() }
                 cleanup.attempt { drainPendingUiCleanup() }
                 cleanup.throwIfFailed()
+                check(documentFiles.retryCleanup()) { "Document output cleanup remains pending" }
                 otherCleanupNeedsAttention = false
             }
             val status = if (retry) dependencies.branchGateway.retryCleanup() else dependencies.branchGateway.cleanupStatus()
             currentCoroutineContext().ensureActive()
             if (!closed && navigator.isCurrent(token)) mutablePresentation.value = presentation.value.copy(
-                cleanupStatus = status, cleanupNeedsAttention = otherCleanupNeedsAttention || !status.clear)
+                cleanupStatus = status, cleanupNeedsAttention = otherCleanupNeedsAttention || documentFiles.needsAttention || !status.clear)
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) {
             if (!closed && navigator.isCurrent(token)) mutablePresentation.value = presentation.value.copy(
@@ -619,6 +628,7 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
         retainCurrentUiCleanup()
         val cleanup = LocalSessionCleanup()
         cleanup.attempt { denyRetailPhysical() }
+        if (display != null) cleanup.attempt { check(documentFiles.clear) { "Document output cleanup remains pending" } }
         val requestedRoot = root.takeUnless { cleanup.failed } ?: SecurityRoot.BOOTSTRAP
         val requestedDisplay = display.takeUnless { cleanup.failed }
         val previousGeneration = navigator.state.value.rootGeneration
@@ -660,6 +670,7 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
     }
 
     private fun retainCurrentUiCleanup() {
+        documentFiles.retire()
         val outgoingRoot = rootScope
         pendingUiCleanup += { outgoingRoot.close() }
         branchSession?.let { outgoing -> pendingUiCleanup += { outgoing.close() } }
@@ -695,6 +706,7 @@ class UkkeraRuntime(val dependencies: AppDependencies) {
         val cleanup = LocalSessionCleanup()
         cleanup.attempt { denyRetailPhysical() }
         if (!wasClosed) {
+            cleanup.attempt { closeCapability { documentFiles.close() } }
             retainCurrentUiCleanup()
             cleanup.attempt {
                 navigator.replaceRoot(SecurityRoot.BOOTSTRAP, null) {

@@ -10,14 +10,16 @@ import java.nio.file.Path
  * compositions. It owns one private APFS/HFS target directory, its fixed lock file, its fixed
  * database directory, the cross-process exclusive lease and the exact intent/journal files.
  *
- * This is native custody of files only. It is not an installation approval, P1 registry,
- * target key, boot-session observation, history owner or current Master. [openExisting] never
+ * The retained native boot observer brackets continuity checks and refuses a changed boot or
+ * regressing elapsed observation. This is namespace custody plus observed boot DATA, not an
+ * installation approval, P1 registry, target key, history owner or current Master. [openExisting] never
  * creates a missing target, lock, database directory or intent; [createNew] is the only entry
  * that may create the original namespace, and only with an explicit new source/nonce. A remnant
  * that is missing, unreadable, unknown or conflicting is preserved and reported as unresolved.
  */
 internal class MacSelfOwnedOriginalNamespace private constructor(
     private val expectedTarget: SelfOwnedMacUiIdentityV2,
+    private val boot: MacOriginalBootSession,
     private val supportDirectory: Path,
     private val directory: Path,
     private val databaseDirectory: Path,
@@ -45,6 +47,13 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
     fun identity(): SelfOwnedNativeNamespaceV2.Mac {
         assertContinuity()
         return currentIdentity()
+    }
+
+    /** Freshly checked boot DATA for this namespace lifetime; it grants no original authority. */
+    @Synchronized
+    fun bootSession(): SelfOwnedNativeBootSessionV2.Mac {
+        assertContinuity()
+        return boot.identity
     }
 
     /** The one fixed database directory. It remains owned by this retained namespace lease. */
@@ -96,14 +105,20 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
         replaceFile(JOURNAL, bytes, SelfOwnedNativeIdentityProfileV2.MAXIMUM_STATE_BYTES)
     }
 
-    /** Namespace/file continuity only; it does not prove a valid Room schema or a current Master. */
+    /**
+     * Namespace/file and retained-boot continuity; no Room-schema or Master proof.
+     * These synchronous native observations must never serve as an independent watchdog clock:
+     * a future invocation owner must supervise stalled native calls without this namespace lock.
+     */
     @Synchronized
     fun assertContinuity() {
         MacOriginalCloseState.requireConfirmed()
         macOriginalKnown(phase == Phase.OPEN)
+        boot.elapsedMillis()
         assertBase(null)
         checkSnapshotFiles()
         assertBase(null)
+        boot.elapsedMillis()
     }
 
     /**
@@ -481,6 +496,8 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
         ): MacSelfOwnedOriginalNamespace {
             MacOriginalNative.requireSupported()
             MacOriginalCloseState.requireConfirmed()
+            // Observe before acquiring namespace descriptors or creating persistent remnants.
+            val boot = MacOriginalBootSession.observe()
             requireCurrentTarget(expectedTarget)
             if (nonce.size != SelfOwnedNativeIdentityProfileV2.NONCE_BYTES) {
                 selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_INPUT)
@@ -544,11 +561,15 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
                 val volumeUuid = MacOriginalNative.requireLocalVolume(directory).uuid
                 macOriginalKnown(volumeUuid == supportVolume.uuid)
                 val namespace = MacSelfOwnedOriginalNamespace(
-                    expectedTarget, support, directory, databaseDirectory, lockFile,
+                    expectedTarget, boot, support, directory, databaseDirectory, lockFile,
                     supportStamp, directoryStamp, lockStamp, databaseStamp, volumeUuid,
                     null, null, null, supportDescriptor, directoryDescriptor,
                     createdLock, databaseDescriptor, true,
                 )
+                // Custody transfers once. Initialization failure is closed by the namespace;
+                // the acquisition catch must not attempt descriptor or lease cleanup again.
+                descriptors.clear()
+                leaseDescriptor = null
                 try {
                     namespace.initializeNewIntent(source, nonce)
                     requireCurrentTarget(expectedTarget)
@@ -589,6 +610,8 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
         ): MacSelfOwnedOriginalNamespace {
             MacOriginalNative.requireSupported()
             MacOriginalCloseState.requireConfirmed()
+            // Observe before acquiring namespace descriptors or creating persistent remnants.
+            val boot = MacOriginalBootSession.observe()
             requireCurrentTarget(expectedTarget)
             val targetName = targetDirectoryName(profile)
             val support = canonicalSupport(supportDirectory)
@@ -639,11 +662,15 @@ internal class MacSelfOwnedOriginalNamespace private constructor(
                     databaseStamp.device == directoryStamp.device)
 
                 val namespace = MacSelfOwnedOriginalNamespace(
-                    expectedTarget, support, directory, databaseDirectory, lockFile,
+                    expectedTarget, boot, support, directory, databaseDirectory, lockFile,
                     supportStamp, directoryStamp, lockStamp, databaseStamp, volumeUuid,
                     null, null, null, supportDescriptor, directoryDescriptor,
                     lockDescriptor, databaseDescriptor, false,
                 )
+                // Custody transfers once. Initialization failure is closed by the namespace;
+                // the acquisition catch must not attempt descriptor or lease cleanup again.
+                descriptors.clear()
+                leaseDescriptor = null
                 try {
                     namespace.loadExisting()
                     requireCurrentTarget(expectedTarget)

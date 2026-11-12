@@ -50,20 +50,7 @@ public object AuthV1Main {
                 try {
                     runBlocking {
                         authV1ObserveFreshSchema(privateDirectory.resolve("fresh-schema.db"), run, journal)
-                        val logout = AuthV1Fixture("logout", privateDirectory.resolve("logout.db"), design, journal)
-                        try {
-                            logout.start()
-                            boundarySlices(logout, journal)
-                            logoutSlices(logout, journal)
-                        } finally { logout.dispose() }
-                        val administrative = AuthV1Fixture("administrative", privateDirectory.resolve("administrative.db"), design, journal)
-                        try {
-                            administrative.start()
-                            administrativeSlices(administrative, journal)
-                        } finally { administrative.dispose() }
-                        authV1ExpandedSessionSlices(privateDirectory, design, journal)
-                        authV1ExpandedAdministrationSlices(privateDirectory, design, journal)
-                        authV1DeviceSlices(privateDirectory, design, journal)
+                        runFrozenHostSlices(privateDirectory, design, journal)
                     }
                     journal.requireAllSlices()
                     journal.event("terminal", "harness-finished", "PARTIAL_AUTH_SLICES_NOT_ACCEPTANCE")
@@ -83,6 +70,25 @@ public object AuthV1Main {
         }
         if (exit == 0) println("PARTIAL_AUTH_SLICES_NOT_ACCEPTANCE")
         exitProcess(exit)
+    }
+
+    /** Reusable orchestration of the unchanged auth-only slices. This does not run the
+     * sealed executor entry, approve a schema or qualify native onboarding/history. */
+    internal suspend fun runFrozenHostSlices(privateDirectory: Path, design: JsonObject, journal: AuthV1Journal) {
+        val logout = AuthV1Fixture("logout", privateDirectory.resolve("logout.db"), design, journal)
+        try {
+            logout.start()
+            boundarySlices(logout, journal)
+            logoutSlices(logout, journal)
+        } finally { logout.dispose() }
+        val administrative = AuthV1Fixture("administrative", privateDirectory.resolve("administrative.db"), design, journal)
+        try {
+            administrative.start()
+            administrativeSlices(administrative, journal)
+        } finally { administrative.dispose() }
+        authV1ExpandedSessionSlices(privateDirectory, design, journal)
+        authV1ExpandedAdministrationSlices(privateDirectory, design, journal)
+        authV1DeviceSlices(privateDirectory, design, journal)
     }
 
     private suspend fun boundarySlices(f: AuthV1Fixture, journal: AuthV1Journal) {

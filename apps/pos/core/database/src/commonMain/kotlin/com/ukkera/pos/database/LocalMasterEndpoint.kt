@@ -9,6 +9,8 @@ import com.ukkera.pos.security.LocalMasterLifecycleResult
 import com.ukkera.pos.security.LocalMasterLifecycleService
 import com.ukkera.pos.security.LocalAuthenticationResult
 import com.ukkera.pos.security.LocalAdministrationCommand
+import com.ukkera.pos.security.LocalDelegatedEmployeeCreationV1
+import com.ukkera.pos.security.LocalEmployeeCreationReviewV1
 import com.ukkera.pos.security.LocalAdministrationQuery
 import com.ukkera.pos.security.LocalAdministrationReadResult
 import com.ukkera.pos.security.LocalAdministrationService
@@ -502,6 +504,10 @@ public class LocalMasterEndpoint internal constructor(
         operator: LocalGatewayCredentials, actorId: DomainId, expectedRevision: Revision,
     ): LocalCredentialAdministrationResult =
         submit(DisableAccountWork(operator.copyOwned(), actorId, expectedRevision))
+
+    override public suspend fun reviewEmployeeCreation(operator: LocalGatewayCredentials,
+        original: LocalDelegatedEmployeeCreationV1): LocalEmployeeCreationReviewV1 =
+        submit(EmployeeCreationReviewWork(operator.copyOwned(), original))
 
     override public suspend fun readAdministration(operator: LocalGatewayCredentials, query: LocalAdministrationQuery): LocalAdministrationReadResult =
         submit(AdministrationReadWork(operator.copyOwned(), query))
@@ -1144,6 +1150,16 @@ public class LocalMasterEndpoint internal constructor(
         override suspend fun perform(): LocalCredentialAdministrationResult =
             administration?.administer(operator, command, password) ?: LocalCredentialAdministrationResult.Unavailable
         override fun clearInput() { operator.bearer.destroy(); password?.fill('\u0000') }
+    }
+
+    private inner class EmployeeCreationReviewWork(val operator: LocalGatewayCredentials,
+        val original: LocalDelegatedEmployeeCreationV1) : Work<LocalEmployeeCreationReviewV1>() {
+        override fun unavailable(): LocalEmployeeCreationReviewV1 = LocalEmployeeCreationReviewV1.Unavailable
+        override fun busy(): LocalEmployeeCreationReviewV1 = LocalEmployeeCreationReviewV1.Busy
+        override fun uncertain(value: LocalEmployeeCreationReviewV1): Boolean = value is LocalEmployeeCreationReviewV1.StorageUncertain
+        override suspend fun perform(): LocalEmployeeCreationReviewV1 =
+            administration?.reviewEmployeeCreation(operator, original) ?: LocalEmployeeCreationReviewV1.Unavailable
+        override fun clearInput() { operator.bearer.destroy() }
     }
 
     private inner class AdministrationReadWork(val operator: LocalGatewayCredentials,

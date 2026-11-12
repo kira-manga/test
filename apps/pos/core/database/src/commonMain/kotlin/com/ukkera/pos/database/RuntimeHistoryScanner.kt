@@ -286,6 +286,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
 
     private suspend fun scan(): RuntimeHistoryReadSelection {
         historyShapeV2(earlierTarget == null && cold == null)
+        historyShapeV2(!session.hasChronologicalProtectedSeedTraversal || session.hasChronologicalAccountImageTraversal)
         historyShapeV2(native.database != null && attempt.approvals != null)
         if (!pendingOriginalRecovery) historyShapeV2(firstChild.originalAllocationDigest == allocation.digest &&
             firstChild.definitionDigest == definition.definitionDigest)
@@ -401,10 +402,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 // generic route or broaden its allowlist to skip the actual seed checks.
                 return
             }
-            if (expected.pass == NativeHistoryReadPassV2.EVENT_MUTATIONS) {
-                historyShapeV2(session.hasChronologicalAccountImageTraversal && value is ProtectedLocalAccount)
-                requireNotNull(event).accountPlaintext(expected.binding, item.bytes, value as ProtectedLocalAccount)
-            }
+            if (expected.pass == NativeHistoryReadPassV2.EVENT_MUTATIONS)
+                requireNotNull(event).protectedEventPlaintext(expected.binding, item.bytes, value)
             if (expected.pass == NativeHistoryReadPassV2.LINEAGE_IMAGE)
                 employees.lineageSourcePlaintext(requireNotNull(lineage).row, expected.binding, item.bytes)
             if (expected.pass == NativeHistoryReadPassV2.LINEAGE_IMAGE)
@@ -509,15 +508,13 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     }
                     NativeHistoryReadPassV2.EVENTS -> startEvent(item.row.event())
                     NativeHistoryReadPassV2.EVENT_MUTATIONS -> {
-                        if (metadata.kind == NativeHistoryRowKindV2.PHYSICAL) {
-                            historyShapeV2(item.row.table == RuntimeHistoryTableV2.ROW_VERSION)
+                        if (metadata.kind == NativeHistoryRowKindV2.PHYSICAL && item.row.table == RuntimeHistoryTableV2.ROW_VERSION) {
                             val version = item.row.version()
                             try { requireNotNull(event).mutation(version); eventMutationCount = addCount(eventMutationCount) }
                             finally { version.key.fill(0) }
                         } else {
-                            historyShapeV2(session.hasChronologicalAccountImageTraversal && metadata.kind == NativeHistoryRowKindV2.IMAGE &&
-                                item.row.table == RuntimeHistoryTableV2.ACCOUNT)
-                            requireNotNull(event).accountImage(item.row, item.encodedBytes, requireNotNull(expectedPlaintext).binding)
+                            requireNotNull(event).protectedEventImage(item.row, item.encodedBytes,
+                                requireNotNull(expectedPlaintext).binding, metadata.kind)
                         }
                     }
                     NativeHistoryReadPassV2.EVENT_CHUNKS -> {
@@ -819,11 +816,13 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         private val approvalRetirementMutations = mutableListOf<RuntimeHistoryRowVersionRowV2>()
         private val serialPublicationMutations = mutableListOf<RuntimeHistoryRowVersionRowV2>()
         private var decodedColdNativeOriginal: RuntimeNativeOriginalImportEvidenceV1? = null
-        // One announced native ACCOUNT image at a time. No next mutation or boundary may
-        // pass it unopened. All images stream; only C1 or ordinal-zero bounded admin AFTER
-        // survives as a private candidate until this complete event's verified replay cut.
-        private var accountImageVersion: RuntimeHistoryRowVersionRowV2? = null
-        private var accountImageBinding: ProtectedLocalBinding? = null
+        // One announced native protected image at a time. No next mutation or boundary
+        // may pass it unopened. Immutable seed rows additionally require their exact group
+        // end. No credential map is retained; existing ACCOUNT candidate rules stay bounded.
+        private var eventImageVersion: RuntimeHistoryRowVersionRowV2? = null
+        private var eventImageBinding: ProtectedLocalBinding? = null
+        private var retainedSeedEnd: RuntimeHistoryTableV2? = null
+        private val creationImages = RuntimeDelegatedEmployeeCreationSeedJoin.InitialImages.observe(session, header)
         private var accountCandidate: ProtectedLocalAccount? = null
         private var accountCandidateBinding: ProtectedLocalBinding? = null
         private var accountCandidateDigest: PayloadDigest? = null
@@ -831,8 +830,9 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         private var chunks = 0
         var mutationsEnded = false
         fun mutation(value: RuntimeHistoryRowVersionRowV2) {
-            historyShapeV2(!mutationsEnded && accountImageVersion == null && accountImageBinding == null)
+            historyShapeV2(!mutationsEnded && eventImageVersion == null && eventImageBinding == null && retainedSeedEnd == null)
             stream.appendMutation(value); mutations++
+            creationImages?.mutation(value)
             // Authentication plus the separately bounded ordinary candidate. Unknown/large
             // histories still stream fully and retain holds; they are never truncated.
             if ((header.changeCount in 1..2 && header.purpose in setOf(RuntimeWritePurposeV2.THROTTLE_RESERVE,
@@ -867,25 +867,49 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             if (header.purpose == RuntimeWritePurposeV2.SERIAL_PUBLICATION_REQUEST && header.changeCount == 1)
                 serialPublicationMutations += value.copy(key = value.key.copyOf())
             if (header.sequence == 1L) historyShapeV2(value.mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag && value.version == 1L)
-            if (session.hasChronologicalAccountImageTraversal && value.tableTag == RuntimeHistoryTableV2.ACCOUNT.tag &&
-                value.afterKind == RuntimeHistoryAfterKindV2.IMAGE.tag)
-                accountImageVersion = value.copy(key = value.key.copyOf())
+            val table = RuntimeHistoryTableV2.fromTag(value.tableTag)
+            val protectedSeed = session.hasChronologicalProtectedSeedTraversal && table.protectedTable != null &&
+                value.version == 1L && value.mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag
+            if ((session.hasChronologicalAccountImageTraversal && table == RuntimeHistoryTableV2.ACCOUNT &&
+                value.afterKind == RuntimeHistoryAfterKindV2.IMAGE.tag) || protectedSeed) {
+                historyShapeV2(value.afterKind == if (table.immutable) RuntimeHistoryAfterKindV2.RETAINED_IMMUTABLE.tag
+                    else RuntimeHistoryAfterKindV2.IMAGE.tag)
+                eventImageVersion = value.copy(key = value.key.copyOf())
+            }
         }
-        fun accountImage(value: RuntimeHistoryRowViewV2, encodedBytes: Long, binding: ProtectedLocalBinding) {
-            val version = requireNotNull(accountImageVersion)
-            historyShapeV2(session.hasChronologicalAccountImageTraversal && !mutationsEnded && accountImageBinding == null &&
-                version.tableTag == RuntimeHistoryTableV2.ACCOUNT.tag && version.afterKind == RuntimeHistoryAfterKindV2.IMAGE.tag &&
-                value.table == RuntimeHistoryTableV2.ACCOUNT && value.rowId == version.afterRowId &&
-                value.digest().value == version.afterDigest && encodedBytes == requireNotNull(version.imageBytes).toLong())
+        fun protectedEventImage(value: RuntimeHistoryRowViewV2, encodedBytes: Long,
+            binding: ProtectedLocalBinding, kind: NativeHistoryRowKindV2) {
+            val version = requireNotNull(eventImageVersion)
+            val seed = session.hasChronologicalProtectedSeedTraversal && version.version == 1L &&
+                version.mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag
+            historyShapeV2(!mutationsEnded && eventImageBinding == null && retainedSeedEnd == null &&
+                value.table.protectedTable != null && value.table.tag == version.tableTag &&
+                value.rowId == version.afterRowId && value.digest().value == version.afterDigest &&
+                binding.key.scope == scope && binding.revision == Revision(value.number("revision")))
+            if (version.afterKind == RuntimeHistoryAfterKindV2.IMAGE.tag) {
+                historyShapeV2(kind == NativeHistoryRowKindV2.IMAGE && !value.table.immutable &&
+                    encodedBytes == requireNotNull(version.imageBytes).toLong() &&
+                    (seed || session.hasChronologicalAccountImageTraversal && value.table == RuntimeHistoryTableV2.ACCOUNT))
+            } else historyShapeV2(seed && value.table.immutable && kind == NativeHistoryRowKindV2.PHYSICAL &&
+                version.afterKind == RuntimeHistoryAfterKindV2.RETAINED_IMMUTABLE.tag)
             val key = value.key()
             try { historyShapeV2(key.contentEquals(version.key)) } finally { key.fill(0) }
-            historyShapeV2(binding.key == ProtectedLocalRecordKey.Account(scope, DomainId(value.text("actorId"))) &&
-                binding.revision == Revision(value.number("revision")))
-            accountImageBinding = binding
+            eventImageBinding = binding
         }
-        fun accountPlaintext(binding: ProtectedLocalBinding, bytes: ByteArray, value: ProtectedLocalAccount) {
-            val version = requireNotNull(accountImageVersion)
-            historyShapeV2(session.hasChronologicalAccountImageTraversal && !mutationsEnded && accountImageBinding == binding)
+        fun protectedEventPlaintext(binding: ProtectedLocalBinding, bytes: ByteArray, value: Any) {
+            val version = requireNotNull(eventImageVersion)
+            historyShapeV2(!mutationsEnded && eventImageBinding == binding && retainedSeedEnd == null)
+            if (version.tableTag == RuntimeHistoryTableV2.ACCOUNT.tag)
+                retainAccountCandidate(version, binding, bytes, value as? ProtectedLocalAccount ?: malformed())
+            else historyShapeV2(session.hasChronologicalProtectedSeedTraversal && version.version == 1L &&
+                version.mutationKind == RuntimeHistoryMutationKindV2.INSERT.tag)
+            creationImages?.plaintext(version, binding, bytes)
+            if (version.afterKind == RuntimeHistoryAfterKindV2.RETAINED_IMMUTABLE.tag)
+                retainedSeedEnd = RuntimeHistoryTableV2.fromTag(version.tableTag)
+            version.key.fill(0); eventImageVersion = null; eventImageBinding = null
+        }
+        private fun retainAccountCandidate(version: RuntimeHistoryRowVersionRowV2,
+            binding: ProtectedLocalBinding, bytes: ByteArray, value: ProtectedLocalAccount) {
             if (header.sequence == 1L) {
                 val state = value.state
                 historyShapeV2(accountCandidate == null && binding.key == ProtectedLocalRecordKey.Account(scope, coordinates.firstActorId) &&
@@ -899,22 +923,27 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 historyShapeV2(accountCandidate == null)
                 accountCandidate = value; accountCandidateBinding = binding; accountCandidateDigest = sha256(bytes)
             }
-            // Explicit IMAGE length/cells and immediate protected metadata consumed above
-            // close this object; ImageNode emits no GROUP_END. Keep no historical credential map.
-            version.key.fill(0); accountImageVersion = null; accountImageBinding = null
+        }
+        fun endRetainedSeed(table: RuntimeHistoryTableV2) {
+            historyShapeV2(session.hasChronologicalProtectedSeedTraversal && !mutationsEnded &&
+                eventImageVersion == null && eventImageBinding == null && retainedSeedEnd == table &&
+                table.protectedTable != null && table.immutable)
+            retainedSeedEnd = null
         }
         fun chunk(value: RuntimeHistoryChunkRowV2) {
-            historyShapeV2(mutationsEnded && accountImageVersion == null && accountImageBinding == null)
+            historyShapeV2(mutationsEnded && eventImageVersion == null && eventImageBinding == null && retainedSeedEnd == null)
             stream.appendChunk(value)
             capsule.append(value)
             chunks++
         }
         fun endMutations() {
-            historyShapeV2(!mutationsEnded && mutations == header.changeCount && accountImageVersion == null && accountImageBinding == null)
+            historyShapeV2(!mutationsEnded && mutations == header.changeCount &&
+                eventImageVersion == null && eventImageBinding == null && retainedSeedEnd == null)
             mutationsEnded = true
         }
         suspend fun finish() {
-            historyShapeV2(mutationsEnded && chunks == header.chunkCount && accountImageVersion == null && accountImageBinding == null)
+            historyShapeV2(mutationsEnded && chunks == header.chunkCount &&
+                eventImageVersion == null && eventImageBinding == null && retainedSeedEnd == null)
             val commitment = stream.finish()
             historyShapeV2(commitment.digest.value == row.eventDigest && commitment.encodedBytes == row.encodedBytes)
             val decoded = capsule.finish()
@@ -942,6 +971,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             var recipientEnrollment = false
             var changedRecipientActors: Set<DomainId> = emptySet()
             var changedRecipientPolicies: Set<DomainId> = emptySet()
+            val delegatedCreation = boundDelegatedCreation(header, capsule, decoded)
             val approvalIssuance = boundApprovalIssuance(header, capsule, decoded)
             val approvalRetirement = boundApprovalRetirement(header, capsule, decoded)
             val approvedCommand = boundApprovedCommand(header, capsule, decoded)
@@ -974,7 +1004,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 val lane = when (header.purpose) {
                     RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION, RuntimeWritePurposeV2.DEVICE_ADMINISTRATION -> {
                         historyShapeV2(decoded.originalOperationId == null && decoded.resources.isEmpty() &&
-                            approvalIssuance == null && approvalRetirement == null && approvedCommand == null)
+                            approvalIssuance == null && approvalRetirement == null && approvedCommand == null &&
+                            (delegatedCreation == null || decision.declaration == delegatedCreation.protectedFinalDeclaration()))
                         ProtectedFinalRequestLane.ADMINISTRATION
                     }
                     RuntimeWritePurposeV2.APPROVAL_ISSUE -> {
@@ -1046,16 +1077,28 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 // cohost device binder, never a generic device effect/old two-image profile.
                 historyShapeV2(protectedDecision == null || approvalIssuance != null || approvalRetirement != null || approvedCommand != null ||
                     serialPublication != null || administrationCancellation != null || deviceRevocation != null || additionalDeviceRevocation != null ||
-                    sessionRevocation != null && header.purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION)
+                    (sessionRevocation != null || delegatedCreation != null) && header.purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION)
                 if (throttle != null || authentication != null || sessionRevocation != null || administrationCancellation != null ||
                     deviceRevocation != null || additionalDeviceRevocation != null || employeeEnrollment || employeePolicyActivation != null || deviceAdmission != null || approvalIssuance != null ||
-                    approvalRetirement != null || serialPublication != null) {
+                    approvalRetirement != null || serialPublication != null || delegatedCreation != null) {
                     val previous = requireNotNull(previousEvent)
                     historyShapeV2(header.commandEpoch == previous.commandEpoch && header.commandSequence == previous.commandSequence &&
                         header.commandDigest == previous.commandDigest && header.roleCommitment == previous.roleCommitment &&
                         header.recoveryCommitment == previous.recoveryCommitment)
                 }
-                if (serialPublication != null) {
+                if (delegatedCreation != null) {
+                    historyShapeV2(throttle == null && authentication == null && sessionRevocation == null &&
+                        administrationCancellation == null && deviceRevocation == null && additionalDeviceRevocation == null &&
+                        !employeeEnrollment && employeePolicyActivation == null && deviceAdmission == null &&
+                        approvalIssuance == null && approvalRetirement == null && serialPublication == null && approvedCommand == null)
+                    val created = employees.creationSeed(header, commitment.digest, requireNotNull(previousEvent),
+                        requireNotNull(previousEventDigest), delegatedCreation, creationImages, protectedDecision, authenticationReplay)
+                    recipientEnrollment = created
+                    // Completed origin/replay/lineage/recipient connections supply no
+                    // accepting family. Guarded creation writer/original recovery and full
+                    // cold-closure qualification remain unfinished; preserve this hold.
+                    holdUnjoinedAuthorization()
+                } else if (serialPublication != null) {
                     val joined = protectedDecision != null && serialPublications.event(header, commitment.digest,
                         serialPublication, serialPublicationMutations, protectedDecision, authenticationReplay, employees)
                     if (!joined) holdUnjoinedAuthorization()
@@ -1142,7 +1185,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         authorizationMutations.size == header.changeCount)
                     for ((index, image) in sessionRevocation.images.withIndex()) {
                         requireSessionRevocationMutation(authorizationMutations[index], image, index)
-                        if (sessionRevocation.retained != null || sessionRevocation.disable != null || sessionRevocation.reset != null)
+                        if (sessionRevocation.retained != null || sessionRevocation.disable != null || sessionRevocation.reset != null || sessionRevocation.reactivation != null || sessionRevocation.activation != null || sessionRevocation.credentialFreeDisable != null)
                             requireAccountAdministrationPredecessor(authorizationMutations[index], sessionRevocation.command.expectedRevision, index)
                     }
                     protectedDecision?.let { historyShapeV2(it.declaration == sessionRevocation.protectedFinalDeclaration()) }
@@ -1150,18 +1193,31 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     val selfRevocation = sessionRevocation.self
                     val retainedRevocation = sessionRevocation.retained
                     val accountDisable = sessionRevocation.disable
+                    val credentialFreeAccountDisable = sessionRevocation.credentialFreeDisable
                     val credentialReset = sessionRevocation.reset
+                    val accountActivation = sessionRevocation.activation
+                    val accountReactivation = sessionRevocation.reactivation
                     if (credentialReset != null && session.hasChronologicalAccountImageTraversal) {
                         historyShapeV2(accountCandidate != null && credentialReset.images[0].matches(requireNotNull(accountCandidateBinding)) &&
                             accountCandidateDigest == credentialReset.images[0].plaintextDigest)
+                    }
+                    if (accountActivation != null && session.hasChronologicalAccountImageTraversal) {
+                        historyShapeV2(accountCandidate != null && accountActivation.images[0].matches(requireNotNull(accountCandidateBinding)) &&
+                            accountCandidateDigest == accountActivation.images[0].plaintextDigest)
                     }
                     // These distinct two-image profiles require a real native final witness;
                     // no target reducer is advanced when it is missing or interrupted.
                     val targetOwner = when {
                         retainedRevocation != null && protectedDecision != null ->
                             employees.retainedSessionRevocation(retainedRevocation, protectedDecision, replay)
+                        accountReactivation != null && protectedDecision != null ->
+                            employees.accountReactivation(accountReactivation, protectedDecision, replay)
                         accountDisable != null && protectedDecision != null ->
                             employees.accountDisable(accountDisable, protectedDecision, replay)
+                        credentialFreeAccountDisable != null && protectedDecision != null ->
+                            employees.credentialFreeAccountDisable(credentialFreeAccountDisable, protectedDecision, replay)
+                        accountActivation != null && protectedDecision != null && session.hasChronologicalAccountImageTraversal ->
+                            employees.accountActivation(accountActivation, protectedDecision, replay, requireNotNull(accountCandidate))
                         credentialReset != null && protectedDecision != null && session.hasChronologicalAccountImageTraversal ->
                             employees.credentialReset(credentialReset, protectedDecision, replay, requireNotNull(accountCandidate))
                         else -> null
@@ -1749,7 +1805,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             decodedColdNativeOriginal?.canonicalRequirement?.bytes()?.fill(0)
             decodedColdNativeOriginal?.certificate?.bytes()?.fill(0)
             decodedColdNativeOriginal = null
-            accountImageVersion?.key?.fill(0); accountImageVersion = null; accountImageBinding = null
+            eventImageVersion?.key?.fill(0); eventImageVersion = null; eventImageBinding = null; retainedSeedEnd = null
+            creationImages?.clear()
             accountCandidate = null; accountCandidateBinding = null; accountCandidateDigest = null
             authorizationMutations.forEach { it.key.fill(0) }; authorizationMutations.clear()
             businessMutations.forEach { it.key.fill(0) }; businessMutations.clear()
@@ -1761,6 +1818,22 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             serialPublicationMutations.forEach { it.key.fill(0) }; serialPublicationMutations.clear()
             if (!retainedByScanner) coldScanMemory?.memory?.release(workspaceBytes)
         }
+    }
+
+    /** Recognize only the canonical creation profile, never a purpose/count heuristic.
+     * This selects a negative-only seed comparison, not an accepting history family. */
+    private fun boundDelegatedCreation(header: RuntimeHistoryEventHeaderV2, capsule: RuntimeHistoryCapsule,
+        intent: NativeHistoryOriginalIntentV2): RuntimeDelegatedEmployeeCreationEvidenceV1? {
+        if (!RuntimeDelegatedEmployeeCreationWireV1.hasProfile(capsule.facts)) return null
+        val evidence = RuntimeDelegatedEmployeeCreationWireV1.decode(capsule.facts)
+        val original = evidence.original()
+        historyShapeV2(header.sequence > 1 && header.purpose == RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION &&
+            header.changeCount == evidence.images.size && original.scope == scope &&
+            intent.originalRequestId == original.requestId && intent.originalRequestDigest == original.contentDigest &&
+            intent.originalActorId == original.operatorId && intent.originalOperationId == null && intent.resources.isEmpty())
+        val dependencies = RuntimeDelegatedEmployeeCreationWireV1.dependencies(evidence)
+        try { historyShapeV2(dependencies.contentEquals(capsule.dependencies)) } finally { dependencies.fill(0) }
+        return evidence
     }
 
     /** Exact additive approval profiles are bound before any chronological reducer.
@@ -1910,8 +1983,14 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 RuntimeSessionRevocationHistoryEvidence.self(RuntimeSessionRevocationEvidenceCodec.decode(capsule.facts))
             RuntimeRetainedSessionRevocationEvidenceCodec.hasProfile(capsule.facts) ->
                 RuntimeSessionRevocationHistoryEvidence.retained(RuntimeRetainedSessionRevocationEvidenceCodec.decode(capsule.facts))
+            RuntimeAccountReactivationEvidenceCodec.hasProfile(capsule.facts) ->
+                RuntimeSessionRevocationHistoryEvidence.reactivation(RuntimeAccountReactivationEvidenceCodec.decode(capsule.facts))
             RuntimeAccountDisableEvidenceCodec.hasProfile(capsule.facts) ->
                 RuntimeSessionRevocationHistoryEvidence.disable(RuntimeAccountDisableEvidenceCodec.decode(capsule.facts))
+            RuntimeCredentialFreeAccountDisableEvidenceCodec.hasProfile(capsule.facts) ->
+                RuntimeSessionRevocationHistoryEvidence.credentialFreeDisable(RuntimeCredentialFreeAccountDisableEvidenceCodec.decode(capsule.facts))
+            RuntimeAccountActivationEvidenceCodec.hasProfile(capsule.facts) ->
+                RuntimeSessionRevocationHistoryEvidence.activation(RuntimeAccountActivationEvidenceCodec.decode(capsule.facts))
             RuntimeCredentialResetEvidenceCodec.hasProfile(capsule.facts) ->
                 RuntimeSessionRevocationHistoryEvidence.reset(RuntimeCredentialResetEvidenceCodec.decode(capsule.facts))
             else -> return null
@@ -2827,7 +2906,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         when (pass) {
             NativeHistoryReadPassV2.CENSUS, NativeHistoryReadPassV2.LINEAGE_IMAGE, NativeHistoryReadPassV2.LINEAGE_CURRENT -> Unit
             NativeHistoryReadPassV2.EVENT_MUTATIONS -> historyShapeV2(
-                session.hasChronologicalAccountImageTraversal && value is ProtectedLocalAccount)
+                session.hasChronologicalProtectedSeedTraversal ||
+                    session.hasChronologicalAccountImageTraversal && value is ProtectedLocalAccount)
             NativeHistoryReadPassV2.ACCOUNT_RELATIONS -> {
                 historyShapeV2(accountRelations == null)
                 accountRelations = AccountRelations(value as? ProtectedLocalAccount ?: malformed())
@@ -2905,7 +2985,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 historyShapeV2(table == RuntimeHistoryTableV2.EVENT); employees.endSeed()
             }
             NativeHistoryReadPassV2.EVENT_MUTATIONS -> {
-                historyShapeV2(table == RuntimeHistoryTableV2.ROW_VERSION); requireNotNull(event).endMutations()
+                if (table == RuntimeHistoryTableV2.ROW_VERSION) requireNotNull(event).endMutations()
+                else requireNotNull(event).endRetainedSeed(table)
             }
             NativeHistoryReadPassV2.EVENT_CHUNKS -> {
                 historyShapeV2(table == RuntimeHistoryTableV2.CHUNK)
@@ -2923,6 +3004,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     active.eventEnded && !active.capsuleEnded)
                 val capsule = requireNotNull(active.capsule)
                 val intent = capsule.finish()
+                employees.lineageSourceCapsule(active.row, checkNotNull(active.eventHeader),
+                    checkNotNull(active.eventDigest), capsule, intent)
                 policies.lineageSourceCapsule(active.row,capsule,intent)
                 deviceAdmissions.lineageSourceCapsule(active.row,capsule,intent)
                 val header = checkNotNull(active.eventHeader)
@@ -2990,6 +3073,18 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         requireAccountAdministrationPredecessor(active.row, it.command.expectedRevision, active.row.ordinal)
                         if (active.row.ordinal == 0) historyShapeV2(active.previousAccountDigest == it.target.accountBeforeDigest)
                     }
+                    sessionRevocation.credentialFreeDisable?.let {
+                        requireAccountAdministrationPredecessor(active.row, it.command.expectedRevision, active.row.ordinal)
+                        if (active.row.ordinal == 0) historyShapeV2(active.previousAccountDigest == it.target.accountBeforeDigest)
+                    }
+                    sessionRevocation.reactivation?.let {
+                        requireAccountAdministrationPredecessor(active.row, it.command.expectedRevision, active.row.ordinal)
+                        if (active.row.ordinal == 0) historyShapeV2(active.previousAccountDigest == it.target.accountBeforeDigest)
+                    }
+                    sessionRevocation.activation?.let {
+                        requireAccountAdministrationPredecessor(active.row, it.command.expectedRevision, active.row.ordinal)
+                        if (active.row.ordinal == 0) historyShapeV2(active.previousAccountDigest == it.target.accountBeforeDigest)
+                    }
                     sessionRevocation.reset?.let {
                         requireAccountAdministrationPredecessor(active.row, it.command.expectedRevision, active.row.ordinal)
                         if (active.row.ordinal == 0) historyShapeV2(active.previousAccountDigest == it.target.accountBeforeDigest)
@@ -2997,7 +3092,10 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     active.sessionRevocationImage = expected
                     active.employeeSessionRevocationImage = sessionRevocation.self?.let(employees::matchesSessionRevocation)
                         ?: sessionRevocation.retained?.let(employees::matchesRetainedSessionRevocationTarget)
+                        ?: sessionRevocation.reactivation?.let(employees::matchesAccountReactivationTarget)
                         ?: sessionRevocation.disable?.let(employees::matchesAccountDisableTarget)
+                        ?: sessionRevocation.credentialFreeDisable?.let(employees::matchesCredentialFreeAccountDisableTarget)
+                        ?: sessionRevocation.activation?.let(employees::matchesAccountActivationTarget)
                         ?: employees.matchesCredentialResetTarget(checkNotNull(sessionRevocation.reset))
                 } else if (administrationCancellation != null) {
                     val expected = administrationCancellation.images.single()

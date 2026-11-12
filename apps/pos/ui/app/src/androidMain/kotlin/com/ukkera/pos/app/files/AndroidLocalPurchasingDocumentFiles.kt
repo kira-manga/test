@@ -19,7 +19,8 @@ import com.ukkera.pos.app.LocalPurchasingDocumentFileDestinationSelection
 import com.ukkera.pos.app.LocalPurchasingDocumentFileIoResult
 import com.ukkera.pos.app.LocalPurchasingDocumentFileProblem
 import com.ukkera.pos.app.LocalPurchasingDocumentFileSelection
-import com.ukkera.pos.app.LocalPurchasingDocumentFiles
+import com.ukkera.pos.app.LocalNativePurchasingDocumentFiles
+import com.ukkera.pos.app.LocalPurchasingDocumentNativeCleanup
 import com.ukkera.pos.app.MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES
 import com.ukkera.pos.app.localPurchasingDocumentMediaMatches
 import com.ukkera.pos.app.validLocalPurchasingDocumentFileName
@@ -43,7 +44,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** API24+ Storage Access Framework. No persisted URI grant, private file cache or media rewrite. */
-class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDocumentFiles {
+class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalNativePurchasingDocumentFiles {
     private val application = context.applicationContext
     private val main = Handler(Looper.getMainLooper())
     private val cleanup = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -51,7 +52,6 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
     // A cancelled OS request stays outstanding until its actual result; a new request cannot
     // mistake a late result (including an Activity recreation result) for a new user's choice.
     private val pending = AtomicReference<Request?>(null)
-    private val unconfirmedCleanup = AtomicBoolean(false)
 
     private class Host(val activity: Activity, val launch: (Intent) -> Unit, val invalidated: () -> Unit) {
         val alive = AtomicBoolean(true)
@@ -59,9 +59,12 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
         var screenOff: BroadcastReceiver? = null
     }
     private class Request(val host: Host, val output: Boolean, val current: () -> Boolean,
-        val continuation: CancellableContinuation<NativeChoice>) {
+        val continuation: CancellableContinuation<NativeChoice>,
+        val cleanupLease: LocalPurchasingDocumentNativeCleanup.Lease) {
         val cleanupStarted = AtomicBoolean(false)
         val resultHandled = AtomicBoolean(false)
+        val cleanupMutex = Mutex()
+        var cleanupConfirmed = false
         var launched = false
         var outstanding = true
         var result: NativeChoice? = null
@@ -129,9 +132,15 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
         deliver(request)
     }
 
-    override val bound: Boolean get() = Build.VERSION.SDK_INT >= 24 && host.get()?.let(::hostCurrent) == true
+    override val bound: Boolean get() = !nativeCleanup.hasUnconfirmed && Build.VERSION.SDK_INT >= 24 && host.get()?.let(::hostCurrent) == true
 
-    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
+    override val nativeCleanup = LocalPurchasingDocumentNativeCleanup()
+
+    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection =
+        nativeCleanup.during(this) { importNativeOriginal(isCurrent) }
+
+    private suspend fun importNativeOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
+        if (nativeCleanup.hasUnconfirmed) return LocalPurchasingDocumentFileSelection.Unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
         val captured = host.get() ?: return LocalPurchasingDocumentFileSelection.Unavailable(LocalPurchasingDocumentFileProblem.NOT_BOUND)
         val choice = choose(captured, output = false, isCurrent, Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
@@ -154,14 +163,14 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
                 var name: String? = null
                 var advertised: Long? = null
                 application.contentResolver.query(choice.uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
-                    null, null, null)?.use { cursor ->
+                    null, null, null)?.let { cursor -> useNativeRead(cursor, ::retainCleanupFailure) { cursor ->
                     check()
                     if (!cursor.moveToFirst() || cursor.count != 1) documentFileFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
                     val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     if (nameIndex >= 0 && !cursor.isNull(nameIndex)) name = cursor.getString(nameIndex)
                     val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
                     if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) advertised = cursor.getLong(sizeIndex).takeIf { it >= 0 }
-                } ?: documentFileFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
+                } } ?: documentFileFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
                 val originalName = name?.takeIf(::validLocalPurchasingDocumentFileName)
                     ?: documentFileFailure(LocalPurchasingDocumentFileProblem.INVALID_FILE_NAME)
                 if (advertised != null && checkNotNull(advertised) > MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES)
@@ -171,7 +180,12 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
                     ?: documentFileFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
                 var bytes: ByteArray? = null
                 try {
-                    ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
+                    val stream = try { ParcelFileDescriptor.AutoCloseInputStream(descriptor) }
+                    catch (failure: Exception) {
+                        try { descriptor.close() } catch (_: Exception) { retainCleanupFailure(descriptor) }
+                        throw failure
+                    }
+                    useNativeRead(stream, ::retainCleanupFailure) { stream ->
                         bytes = readBoundedDocument(stream, check)
                     }
                     val original = checkNotNull(bytes)
@@ -191,9 +205,13 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
     }
 
     override suspend fun chooseDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
+        isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection =
+        nativeCleanup.during(this) { chooseNativeDestination(originalFileName, media, isCurrent) }
+
+    private suspend fun chooseNativeDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
         isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection {
         if (!validLocalPurchasingDocumentFileName(originalFileName)) return LocalPurchasingDocumentFileDestinationSelection.Unavailable(LocalPurchasingDocumentFileProblem.INVALID_FILE_NAME)
-        if (unconfirmedCleanup.get()) return LocalPurchasingDocumentFileDestinationSelection.Unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
+        if (nativeCleanup.hasUnconfirmed) return LocalPurchasingDocumentFileDestinationSelection.Unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
         val captured = host.get() ?: return LocalPurchasingDocumentFileDestinationSelection.Unavailable(LocalPurchasingDocumentFileProblem.NOT_BOUND)
         val choice = choose(captured, output = true, isCurrent, Intent(Intent.ACTION_CREATE_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE).setType(mimeForMedia(media)).putExtra(Intent.EXTRA_TITLE, originalFileName)
@@ -203,12 +221,12 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
             is NativeChoice.Unavailable -> LocalPurchasingDocumentFileDestinationSelection.Unavailable(choice.problem)
             is NativeChoice.File -> {
                 val destination = AndroidPurchasingDocumentDestination(application, choice.uri, media,
-                    onCleanupFailure = { unconfirmedCleanup.set(true) }) {
-                    if (unconfirmedCleanup.get()) documentFileFailure(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
+                    onCleanupFailure = ::retainCleanupFailure, onCleanupResolved = nativeCleanup::resolved) {
+                    if (nativeCleanup.hasUnconfirmed) documentFileFailure(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
                     requireCurrent(captured, isCurrent)
                 }
                 try {
-                    if (unconfirmedCleanup.get()) documentFileFailure(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
+                    if (nativeCleanup.hasUnconfirmed) documentFileFailure(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
                     requireCurrent(captured, isCurrent); requireDocumentUri(choice.uri)
                     LocalPurchasingDocumentFileDestinationSelection.Chosen(destination)
                 } catch (failure: Exception) {
@@ -220,29 +238,49 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
         }
     }
 
-    private suspend fun choose(captured: Host, output: Boolean, current: () -> Boolean, intent: Intent): NativeChoice =
-        suspendCancellableCoroutine { continuation ->
-            val request = Request(captured, output, current, continuation)
+    private suspend fun choose(captured: Host, output: Boolean, current: () -> Boolean, intent: Intent): NativeChoice {
+        lateinit var request: Request
+        val result = suspendCancellableCoroutine { continuation ->
+            request = Request(captured, output, current, continuation, nativeCleanup.retain(this))
             continuation.invokeOnCancellation { main.post {
                 if (!request.outstanding) {
                     pending.compareAndSet(request, null)
                     discardOutput(request, request.result)
                 }
+                // A launched Activity result remains owned even though this wait ended.
             } }
-            main.post {
-                when {
-                    !continuation.isActive -> Unit
-                    !hostCurrent(captured) -> continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.NOT_BOUND))
-                    !safeCurrent(current) -> continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.ACCESS_CHANGED))
-                    !pending.compareAndSet(null, request) -> continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.BUSY))
-                    else -> try { captured.launch(intent); request.launched = true }
-                    catch (failure: Exception) {
-                        pending.compareAndSet(request, null)
-                        continuation.resume(NativeChoice.Unavailable(documentProblem(failure)))
-                    }
+            val posted = main.post {
+                val refusal = when {
+                    !continuation.isActive -> LocalPurchasingDocumentFileProblem.ACCESS_CHANGED
+                    !hostCurrent(captured) -> LocalPurchasingDocumentFileProblem.NOT_BOUND
+                    !safeCurrent(current) -> LocalPurchasingDocumentFileProblem.ACCESS_CHANGED
+                    !pending.compareAndSet(null, request) -> LocalPurchasingDocumentFileProblem.BUSY
+                    else -> null
+                }
+                if (refusal != null) {
+                    request.cleanupLease.completed() // No OS request was launched.
+                    if (continuation.isActive) continuation.resume(NativeChoice.Unavailable(refusal))
+                } else try {
+                    request.launched = true
+                    captured.launch(intent)
+                } catch (failure: Exception) {
+                    // A throwing launch is not proof that a partially launched request ended.
+                    // Retain the exact request, including a possible late Activity result.
+                    retainCleanupFailure(request)
+                    if (continuation.isActive) continuation.resume(NativeChoice.Unavailable(documentProblem(failure)))
                 }
             }
+            if (!posted) {
+                request.cleanupLease.completed() // Rejected before any native launch.
+                if (continuation.isActive) continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.NOT_BOUND))
+            }
         }
+        // Result delivery was claimed. The encompassing native-call lease bridges into
+        // source I/O or the returned destination; abandoned delivery settles separately.
+        nativeCleanup.resolved(request)
+        request.cleanupLease.completed()
+        return result
+    }
 
     private fun deliver(request: Request) {
         val result = request.result ?: return
@@ -281,12 +319,38 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
     }
 
     private fun discardOutput(request: Request, choice: NativeChoice?, onComplete: ((Boolean) -> Unit)? = null) {
-        if (!request.output || choice !is NativeChoice.File) { onComplete?.invoke(true); return }
+        if (!request.output || choice !is NativeChoice.File) {
+            nativeCleanup.resolved(request)
+            request.cleanupLease.completed()
+            onComplete?.invoke(true)
+            return
+        }
         if (!request.cleanupStarted.compareAndSet(false, true)) { onComplete?.invoke(false); return }
         cleanup.launch {
-            val confirmed = deleteDocument(application, choice.uri)
-            if (!confirmed) unconfirmedCleanup.set(true)
+            val confirmed = cleanDiscardedOutput(request, choice.uri)
+            request.cleanupLease.completed()
             if (onComplete != null) main.post { onComplete(confirmed) }
+        }
+    }
+
+    /** Exact abandoned output only. Never retries a consumed descriptor or reads data. */
+    private suspend fun cleanDiscardedOutput(request: Request, uri: Uri): Boolean =
+        withContext(NonCancellable + Dispatchers.IO) {
+            request.cleanupMutex.withLock {
+                if (request.cleanupConfirmed) return@withLock true
+                val confirmed = try { deleteDocument(application, uri) } catch (_: Exception) { false }
+                if (confirmed) {
+                    request.cleanupConfirmed = true
+                    nativeCleanup.resolved(request)
+                } else nativeCleanup.unconfirmed(request) { cleanDiscardedOutput(request, uri) }
+                confirmed
+            }
+        }
+
+    private fun retainCleanupFailure(holder: Any) {
+        when (holder) {
+            is LocalPurchasingDocumentFileDestination -> nativeCleanup.unconfirmed(holder) { holder.abort() }
+            else -> nativeCleanup.unconfirmed(holder)
         }
     }
 
@@ -309,10 +373,13 @@ class AndroidLocalPurchasingDocumentFiles(context: Context) : LocalPurchasingDoc
 }
 
 private class AndroidPurchasingDocumentDestination(private val context: Context, private val uri: Uri,
-    private val media: PurchasingEvidenceMediaV1, private val onCleanupFailure: () -> Unit,
+    private val media: PurchasingEvidenceMediaV1, private val onCleanupFailure: (Any) -> Unit,
+    private val onCleanupResolved: (Any) -> Unit,
     private val ownerCurrent: () -> Unit) : LocalPurchasingDocumentFileDestination {
     private val mutex = Mutex()
     private var output: ParcelFileDescriptor.AutoCloseOutputStream? = null
+    private var deleted = false
+    private var closeUnproved = false
     private var expected: ByteArray? = null
     private var writeCurrent: (() -> Boolean)? = null
     private var finalized = false
@@ -370,13 +437,18 @@ private class AndroidPurchasingDocumentDestination(private val context: Context,
                 requireCurrent()
                 checkNotNull(output).flush()
                 try { checkNotNull(output).close(); output = null }
-                catch (_: Exception) { documentFileFailure(LocalPurchasingDocumentFileProblem.CLOSE_FAILED) }
+                catch (_: Exception) { closeUnproved = true; documentFileFailure(LocalPurchasingDocumentFileProblem.CLOSE_FAILED) }
                 requireCurrent()
                 val descriptor = context.contentResolver.openFileDescriptor(uri, "r")
                     ?: documentFileFailure(LocalPurchasingDocumentFileProblem.IO_FAILED)
                 var actual: ByteArray? = null
                 try {
-                    ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { stream ->
+                    val stream = try { ParcelFileDescriptor.AutoCloseInputStream(descriptor) }
+                    catch (failure: Exception) {
+                        try { descriptor.close() } catch (_: Exception) { onCleanupFailure(descriptor) }
+                        throw failure
+                    }
+                    useNativeRead(stream, onCleanupFailure) { stream ->
                         actual = readBoundedDocument(stream, ::requireCurrent)
                     }
                     requireCurrent()
@@ -395,7 +467,7 @@ private class AndroidPurchasingDocumentDestination(private val context: Context,
     override suspend fun abort(): LocalPurchasingDocumentFileIoResult = withContext(NonCancellable + Dispatchers.IO) {
         mutex.withLock {
             if (finalized) unavailable(LocalPurchasingDocumentFileProblem.ALREADY_USED)
-            else aborted ?: abortLocked()
+            else aborted?.takeIf { it == LocalPurchasingDocumentFileIoResult.Succeeded } ?: abortLocked()
         }
     }
 
@@ -406,11 +478,13 @@ private class AndroidPurchasingDocumentDestination(private val context: Context,
 
     /** Cleanup is allowed after session loss; this does not read/release any protected bytes. */
     private fun abortLocked(): LocalPurchasingDocumentFileIoResult {
-        var closed = true
-        try { output?.close() } catch (_: Exception) { closed = false }
-        finally { output = null; expected?.fill(0); expected = null; writeCurrent = null }
-        val confirmed = deleteDocument(context, uri) && closed
-        if (!confirmed) onCleanupFailure()
+        var closed = !closeUnproved
+        if (!closeUnproved) try { output?.close(); output = null }
+        catch (_: Exception) { closeUnproved = true; closed = false }
+        expected?.fill(0); expected = null; writeCurrent = null
+        if (!deleted) deleted = deleteDocument(context, uri)
+        val confirmed = deleted && closed
+        if (confirmed) onCleanupResolved(this) else onCleanupFailure(this)
         return (if (confirmed) LocalPurchasingDocumentFileIoResult.Succeeded
             else unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)).also { aborted = it }
     }
@@ -460,3 +534,15 @@ private fun documentProblem(failure: Exception): LocalPurchasingDocumentFileProb
     else -> LocalPurchasingDocumentFileProblem.IO_FAILED
 }
 private fun unavailable(problem: LocalPurchasingDocumentFileProblem) = LocalPurchasingDocumentFileIoResult.Unavailable(problem)
+
+private inline fun <T : AutoCloseable, R> useNativeRead(
+    value: T, crossinline unprovedClose: (Any) -> Unit, action: (T) -> R,
+): R {
+    val close = AutoCloseable {
+        try { value.close() } catch (failure: Exception) {
+            unprovedClose(value)
+            throw failure
+        }
+    }
+    return close.use { action(value) }
+}

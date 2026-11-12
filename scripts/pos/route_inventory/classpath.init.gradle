@@ -1,0 +1,17 @@
+// Opt-in diagnostic task. Does not alter production/test sources or run tests.
+gradle.projectsEvaluated {
+    def target = gradle.rootProject.project(':adapters:catalog-store')
+    target.tasks.register('posRouteInventoryClasspath') {
+        def dependencies = target.configurations.getByName('jvmRuntimeClasspath')
+        def jar = target.tasks.named('jvmJar')
+        dependsOn(jar, dependencies)
+        doLast {
+            def destination = target.findProperty('posInventoryClasspathOutput')
+            if (!destination) throw new GradleException('posInventoryClasspathOutput is required')
+            def output = new File(destination.toString())
+            if (output.exists()) throw new GradleException('Refusing to overwrite an inventory classpath record')
+            output.parentFile.mkdirs()
+            output.text = target.files(jar, dependencies).asPath
+        }
+    }
+}

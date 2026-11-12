@@ -50,5 +50,12 @@ public typealias Sha256Digest = PayloadDigest
 /** Platform-reviewed digest primitive, not password hashing, encryption, signing, or key storage. */
 public expect fun sha256(bytes: ByteArray): PayloadDigest
 
-internal fun ByteArray.hexDigest(): PayloadDigest =
-    PayloadDigest(joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') })
+private const val LOWERCASE_HEXADECIMAL = "0123456789abcdef"
+
+internal fun ByteArray.hexDigest(): PayloadDigest = PayloadDigest(buildString {
+    for (byte in this@hexDigest) {
+        val value = byte.toInt() and 0xff
+        append(LOWERCASE_HEXADECIMAL[value ushr 4])
+        append(LOWERCASE_HEXADECIMAL[value and 0x0f])
+    }
+})

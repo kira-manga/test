@@ -175,6 +175,9 @@ public class SelfOwnedNativeHistoryReadSession internal constructor(
     /** Selected by this actual internal controller, never a caller/constructor flag. It
      * announces a closed additive row grammar, not authority or traversal completeness. */
     public val hasChronologicalAccountImageTraversal: Boolean get() = controller.hasChronologicalAccountImageTraversal
+    /** Closed additive grammar: actual version-one protected INSERT images at their event
+     * cut, including retained immutable rows. Availability grants no origin or authority. */
+    public val hasChronologicalProtectedSeedTraversal: Boolean get() = controller.hasChronologicalProtectedSeedTraversal
     /** Availability only. It neither certifies a captured history nor grants admission. */
     public val hasDataWorkspace: Boolean get() = controller.hasDataWorkspace
     public val employeeEnrollments: List<NativeEmployeeEnrollmentHistorySource> get() = employeeSelection?.sources.orEmpty().toList()
@@ -338,6 +341,8 @@ internal interface SelfOwnedNativeHistoryController {
 internal interface SelfOwnedNativeHistoryReadController {
     /** Older source controllers keep their exact traversal and cannot supply reset images. */
     val hasChronologicalAccountImageTraversal: Boolean get() = false
+    /** Older controllers retain the old exact ACCOUNT-only grammar. */
+    val hasChronologicalProtectedSeedTraversal: Boolean get() = false
     val hasDataWorkspace: Boolean get() = false
     suspend fun readSchemaPage(): NativeHistorySchemaPageV2?
     suspend fun nextRowMetadata(): NativeHistoryRowMetadataV2?

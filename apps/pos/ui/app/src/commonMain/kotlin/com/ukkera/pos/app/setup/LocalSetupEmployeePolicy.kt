@@ -24,6 +24,8 @@ public data class LocalSetupEmployeePolicyView(
     public val scope: BranchScope,
     public val stage: LocalSetupEmployeePolicyStage,
     public val actorId: DomainId? = null,
+    /** Unsaved selection only. It never supplies a current policy or an approval. */
+    public val suggestedTarget: LocalSetupEmployeePolicyTarget? = null,
     public val originalActionId: DomainId? = null,
     public val nativePhase: LocalEmployeePolicyActivationPhase? = null,
     /** Entered data retained after an unknown prepare; it is not a successful native review. */
@@ -40,6 +42,7 @@ public data class LocalSetupEmployeePolicyView(
     public val eventId: DomainId? = null,
 ) {
     init {
+        suggestedTarget?.let { require(it.scope == scope) }
         submittedPolicy?.let { require(it.scope == scope && it.actorId == actorId && it.revision.value > 0L) }
         requested?.let {
             require(it.request.requestId == originalRequestId && it.request.scope == scope &&
@@ -54,6 +57,7 @@ public data class LocalSetupEmployeePolicyView(
 public class LocalSetupEmployeePolicies(
     public val originals: List<LocalEmployeePolicyActivationReference> = emptyList(),
     public val newDefinitionAvailable: Boolean = false,
+    public val suggestedTarget: LocalSetupEmployeePolicyTarget? = null,
 ) {
     override fun toString(): String = "LocalSetupEmployeePolicies([REDACTED])"
 }

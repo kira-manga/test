@@ -66,21 +66,19 @@ internal class RoomLocalCredentialAdministration(
                     val nativeFrame = permit.nativeEmployee?.let { transaction.bindOriginalEmployeeFrame(it) }
                     val now = observe().moment
                     if (!configuration.tokens.canStartAt(now)) return@transaction false
-                    val account = ProtectedLocalAccount(LocalAccountSessionState(scope, definition.actorId, true,
-                        Revision(0), SessionGeneration(0), emptyList()), Revision(0), credential)
-                    val event = LocalAuthEvent(scope, requestId, LocalAuthEventKind.ACCOUNT_PROVISIONED, definition.actorId,
-                        null, null, account.state.revision, now, requested.contentDigest)
+                    val seed = RuntimeEmployeeCreationSeed.companyHead(requested, definition, credential, now, admissions)
+                    val account = seed.account
+                    val event = seed.event
                     val frame = RoomLocalProvisioningFrame.provisionAccount(requested, permit, source, currentCoroutineContext(),
                         definition, account, configuration, admissions, event, nativeFrame)
                     finalization = frame
                     transaction.attachProvisioningFrame(frame)
                     transaction.insertAccount(account)
-                    transaction.insertPolicy(definition.policy)
-                    transaction.insertAuthConfiguration(configuration)
-                    transaction.insertThrottle(initialThrottle(definition.actorId, ThrottleDimension.Account, now))
-                    // Also initialize a NEW account's buckets for retained revoked devices. A later
-                    // explicit re-admission must never invent/reset a bucket for an existing account.
-                    for (device in admissions) transaction.insertThrottle(initialThrottle(definition.actorId, ThrottleDimension.Device(device.deviceId), now))
+                    transaction.insertPolicy(seed.policy)
+                    transaction.insertAuthConfiguration(seed.configuration)
+                    // The shared initial reduction includes retained revoked-device buckets too;
+                    // subsequent re-admission cannot invent/reset an existing account's bucket.
+                    for (throttle in seed.throttles) transaction.insertThrottle(throttle)
                     transaction.insertAuthEvent(event)
                     true
                 }

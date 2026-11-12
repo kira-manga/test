@@ -21,6 +21,7 @@ import com.ukkera.pos.app.gateway.LocalWorkflowInstallation
 import com.ukkera.pos.app.gateway.StoredSessionPhaseV1
 import com.ukkera.pos.database.DeferredReason
 import com.ukkera.pos.database.LocalMasterClient
+import com.ukkera.pos.database.LocalMasterAdministrationClient
 import com.ukkera.pos.database.LocalMasterEndpointHealth
 import com.ukkera.pos.database.LookupReply
 import com.ukkera.pos.database.MutationReply
@@ -153,6 +154,8 @@ internal class SessionGatewayFixture private constructor(
             identitySample: LocalClientIdentity? = null,
             initialSessionSample: DomainId? = null,
             skuInputSample: DomainId? = null,
+            // Test-only explicit negative administration port; existing fixtures stay unchanged.
+            administrationSample: ((ControlledSessionClient) -> LocalMasterClient)? = null,
         ): SessionGatewayFixture {
             val root = privateDirectory()
             val authDirectory = Files.createDirectory(root.resolve("credentials"), privateAttribute())
@@ -182,9 +185,12 @@ internal class SessionGatewayFixture private constructor(
                 val client = ControlledSessionClient(identity, initialPolicySample, initialSessionSample)
                 val peer = LocalAuthenticatedPeer(client.connectionSample, scope, device,
                     "controlled-session-contract-sample", null, live::get)
-                val connection = LocalMasterClientConnection(client, peer, DomainId.random(),
+                val endpoint = administrationSample?.invoke(client) ?: client
+                val administration = if (administrationSample == null) null else
+                    checkNotNull(endpoint as? LocalMasterAdministrationClient) { "Explicit administration sample is missing its read port" }
+                val connection = LocalMasterClientConnection(endpoint, peer, DomainId.random(),
                     LocalWorkflowInstallation(emptySet(), installedReadSamples),
-                    LocalBranchDisplayLabels(scope, "COMPANY-1 sample", "BRANCH-A sample"), live::get)
+                    LocalBranchDisplayLabels(scope, "COMPANY-1 sample", "BRANCH-A sample"), null, administration, live::get)
                 val connections = MutableStateFlow<LocalMasterClientConnection?>(connection)
                 val source = LocalClientIntentJournalSource { requested -> openedIntent.takeIf { it.owner == requested } }
                 val gateway = LocalEndpointBranchGateway(connections, auth, source, dispatcher)

@@ -57,7 +57,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     private val retired = AtomicBoolean(false)
     private val exclusionRequested = AtomicBoolean(false)
     private val lastElapsed = AtomicLong(SystemClock.elapsedRealtime())
-    private val segment = AtomicReference<Segment?>(null)
+    private val segment = AtomicReference<SelfOwnedNativeOperationBudget?>(null)
     private var invocation: Invocation<*>? = null
     private var roomInvocation: RoomInvocation<*>? = null
     private var closing = false
@@ -80,7 +80,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 try {
                     synchronized(gate) {
                         val watched = segment.get()
-                        if (watched != null && clock() >= watched.deadlineMillis && segment.get() === watched) {
+                        if (watched != null && watched.isExpiredAt(clock()) && segment.get() === watched) {
                             requestProcessExclusion(ExclusionReason.WATCHDOG_DEADLINE_REACHED)
                         }
                     }
@@ -109,7 +109,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
 
     fun requireActive() {
         val now = clock(); val watched = segment.get()
-        if (watched != null && now >= watched.deadlineMillis) requestProcessExclusion(ExclusionReason.ACTIVE_DEADLINE_REACHED)
+        if (watched != null && watched.isExpiredAt(now)) requestProcessExclusion(ExclusionReason.ACTIVE_DEADLINE_REACHED)
         if (retired.get() || synchronized(gate) { closing }) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
     }
 
@@ -118,7 +118,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     internal fun requireWatchedRoom(token: Any) {
         val now = clock()
         val watched = segment.get()
-        if (watched == null || watched.token !== token || now >= watched.deadlineMillis || exclusionRequested.get() ||
+        if (watched == null || !watched.isOwnedBy(token) || watched.isExpiredAt(now) || exclusionRequested.get() ||
             synchronized(gate) { actualLifetimeClosed }) {
             requestProcessExclusion(ExclusionReason.WATCHED_ROOM_GUARD_REFUSED); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         }
@@ -161,19 +161,37 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         }
     }
 
-    private fun arm(token: Any, phase: String) {
+    private fun arm(token: Any, phase: SelfOwnedNativeOperationPhase) {
         if (exclusionRequested.get()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         val now = clock()
-        if (now > Long.MAX_VALUE - SelfOwnedInstallationProfileV1.NATIVE_OPERATION_MILLIS) {
+        val admitted = SelfOwnedNativeOperationBudget.admit(token, phase, now)
+        if (admitted == null) {
             requestProcessExclusion(ExclusionReason.DEADLINE_OVERFLOW_RISK); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         }
-        segment.set(Segment(token, phase, now + SelfOwnedInstallationProfileV1.NATIVE_OPERATION_MILLIS))
+        segment.set(admitted)
+    }
+
+    /** Disposal is part of the admitted invocation; only its diagnostic phase changes. */
+    private fun enterDiscard(token: Any) {
+        synchronized(gate) {
+            val admitted = segment.get()?.forUndeliveredDiscard(token)
+            if (admitted == null) {
+                requestProcessExclusion(ExclusionReason.DISCARD_GUARD_REFUSED)
+                selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            }
+            // Keep the admission deadline even after cancellation or a late native return.
+            segment.set(admitted)
+            if (exclusionRequested.get() || admitted.isExpiredAt(clock())) {
+                requestProcessExclusion(ExclusionReason.DISCARD_GUARD_REFUSED)
+                selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            }
+        }
     }
 
     private fun disarm(token: Any) {
         if (exclusionRequested.get()) return // Keep the watchdog/lease after an unproved exclusion request.
         val previous = segment.get()
-        if (previous?.token === token) segment.compareAndSet(previous, null)
+        if (previous?.isOwnedBy(token) == true) segment.compareAndSet(previous, null)
     }
 
     /** prepare MUST only copy bounded already-validated inputs; no IO or externally supplied code. */
@@ -199,7 +217,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             }
             owned = Invocation(task)
             invocation = owned
-            try { arm(owned, "execute-and-delivery") } catch (failure: Throwable) {
+            try { arm(owned, SelfOwnedNativeOperationPhase.EXECUTE_AND_DELIVERY) } catch (failure: Throwable) {
                 try { task.clearInputs() } finally { invocation = null; requestProcessExclusion(ExclusionReason.ACTION_ARM_FAILED) }
                 throw failure
             }
@@ -295,7 +313,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             try {
                 active?.finished?.await()
                 roomActive?.finished?.await()
-                arm(token, "actual-native-owner-close")
+                arm(token, SelfOwnedNativeOperationPhase.OWNER_CLOSE)
                 // Room.close cancels without joining. The real parent, children, detached
                 // cleanup jobs and runnable tails must finish BEFORE any raw descriptor close.
                 cleanupPhase("room-drain-entered")
@@ -311,7 +329,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 }
                 synchronized(gate) {
                     val current = segment.get()
-                    if (current == null || current.token !== token || clock() >= current.deadlineMillis || exclusionRequested.get()) {
+                    if (current == null || !current.isOwnedBy(token) || current.isExpiredAt(clock()) || exclusionRequested.get()) {
                         requestProcessExclusion(ExclusionReason.FINAL_CLOSE_GUARD_REFUSED); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
                     }
                     // Serialize final lease release with watchdog retirement: an old, already
@@ -345,7 +363,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             if (invocation != null || roomInvocation != null) selfOwnedFail(SelfOwnedInstallationFailureV1.BUSY)
             call = RoomInvocation(block, discard)
             roomInvocation = call
-            arm(call, "room-jobs-through-native-settlement-and-delivery")
+            arm(call, SelfOwnedNativeOperationPhase.ROOM_SETTLEMENT_AND_DELIVERY)
         }
         try {
             roomCoroutines.beginInvocation(call)
@@ -506,7 +524,7 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 else posted = true
             }
             completionPhase(if (dispose) "disposal-selected" else "result-posting")
-            if (dispose) disposeAndFinish(alreadyArmed = false)
+            if (dispose) disposeAndFinish()
             else continuation!!.resume(outcome) { _, _, _ -> abandon() }
         }
 
@@ -519,9 +537,8 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
                 if (launch) disposing = true
             }
             if (launch) {
-                // No raw scope.async { discard(...) }: arming occurs before dispatch.
-                try { arm(this, "undelivered-discard") } catch (_: Throwable) { requestProcessExclusion(ExclusionReason.DISCARD_ARM_FAILED) }
-                scope.launch { disposeAndFinish(alreadyArmed = true) }
+                // Admission remains watched while disposal waits for its worker.
+                scope.launch { disposeAndFinish() }
             }
         }
 
@@ -545,13 +562,13 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
             return accepted
         }
 
-        private fun disposeAndFinish(alreadyArmed: Boolean) {
+        private fun disposeAndFinish() {
             try {
-                if (!alreadyArmed) arm(this, "undelivered-discard")
+                enterDiscard(this)
                 val value = result
                 if (value is AndroidOwnedResult.Value) task.discard(value.value)
                 val watched = segment.get()
-                if (watched == null || watched.token !== this || clock() >= watched.deadlineMillis) {
+                if (watched == null || !watched.isOwnedBy(this) || watched.isExpiredAt(clock())) {
                     requestProcessExclusion(ExclusionReason.DISCARD_GUARD_REFUSED)
                 }
             } catch (_: Throwable) {
@@ -574,8 +591,6 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         }
     }
 
-    private class Segment(val token: Any, val phase: String, val deadlineMillis: Long)
-
     private enum class ExclusionReason {
         WATCHDOG_DEADLINE_REACHED,
         WATCHDOG_CALLBACK_FAILED,
@@ -590,7 +605,6 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
         FINAL_CLOSE_GUARD_REFUSED,
         FINAL_CLOSE_PATH_FAILED,
         ACTION_INPUT_CLEAR_FAILED,
-        DISCARD_ARM_FAILED,
         DISCARD_GUARD_REFUSED,
         DISCARD_PATH_FAILED,
     }
@@ -598,11 +612,11 @@ internal class AndroidOwnedInstallationWork(private val processLease: AndroidPro
     private fun logProcessExclusionAsync(reason: ExclusionReason, origin: String?) {
         try {
             val watched = segment.get()
-            val phase = watched?.phase
+            val phase = watched?.phase?.diagnosticName
             val deadlineMillis = watched?.deadlineMillis
             // Direct OS sampling cannot recursively request exclusion through clock().
             val elapsedMillis = try { SystemClock.elapsedRealtime() } catch (_: Throwable) { null }
-            // Capture scalars only, never the Segment/token or native inputs. This is best
+            // Capture scalars only, never the budget/token or native inputs. This is best
             // effort: asynchronous logging can lose the race with SIG9 and proves no closure.
             scope.launch {
                 try {

@@ -50,6 +50,18 @@ internal class RuntimeActionApprovalHistoryActorFacts private constructor(
         }
     }
 
+    /** Creator-side comparison only. The actual event-cut factory supplies the chronological
+     * ACCOUNT/POLICY/ADMISSION/access prefix; parsed creation facts cannot substitute for it.
+     * This neither registers a new actor nor accepts a target seed or native history family. */
+    fun employeeCreation(selected: SelfOwnedNativeHistoryReadSession, cut: RuntimeHistoryEventHeaderV2,
+        evidence: RuntimeDelegatedEmployeeCreationEvidenceV1, observed: LocalAuthenticationObservation): Boolean {
+        evidence.validateStructure()
+        if (!interactiveAccess(selected, cut, evidence.authorization, observed)) return false
+        val original = evidence.original()
+        return LocalEmployeeDelegationReviewV1.historicalFailure(policy, account.actorId, original) == null &&
+            policy.employeeCreationConfiguration?.permits(original.copyRequestedDefinition().definition) == true
+    }
+
     private fun interactiveAccess(selected: SelfOwnedNativeHistoryReadSession, cut: RuntimeHistoryEventHeaderV2,
         supplied: RuntimeCommandAuthorizationSnapshotV1, observed: LocalAuthenticationObservation): Boolean {
         historyShapeV2(selected === session && cut == header)
@@ -103,12 +115,12 @@ internal class RuntimeActionApprovalHistoryActorFacts private constructor(
             return RuntimeActionApprovalHistoryActorFacts(selected, header, account, credentialRevision, credentialPresent,
                 policy, admission, dependencies, issuances.toMap())
         }
-        fun enrolled(selected: SelfOwnedNativeHistoryReadSession, source: NativeEmployeeEnrollmentHistorySource,
+        fun employee(selected: SelfOwnedNativeHistoryReadSession, source: RuntimeEmployeeHistoryOrigin,
             header: RuntimeHistoryEventHeaderV2, account: LocalAccountSessionState, credentialRevision: Revision,
             credentialPresent: Boolean, policy: ActivatedLocalPolicy, admission: LocalDeviceAdmission,
             dependencies: RuntimeThrottleDependenciesV1, issuances: Map<DomainId, LocalAccessIssuance>): RuntimeActionApprovalHistoryActorFacts {
             val coordinates = selected.original.record.allocation.coordinates
-            historyShapeV2(selected.employeeEnrollments.any { it === source } && account.actorId == source.requested.request.targetId &&
+            historyShapeV2(source.matchesNativeSelection(selected) && account.actorId == source.actorId &&
                 account.actorId != coordinates.firstActorId && account.scope == coordinates.scope && admission.deviceId == coordinates.deviceId &&
                 source.child.commandEpoch == header.commandEpoch && source.child.installationGenesisDigest == header.installationGenesisDigest)
             requireCut(selected, header, source.child.historySequence)

@@ -349,7 +349,7 @@ public class LocalEndpointReturnRightsPublicationGateway(
     /** Refresh identity/policy only; this lease's owner and lifetime never change. */
     private suspend fun currentAccess(lease: LocalWorkflowCredentialLease): GatewayAccess {
         if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val view = when (val current = endpoint.current(lease.credentials)) {
+        val view = when (val current = lease.observeSession(endpoint)) {
             is LocalSessionViewResult.Current -> current.view
             LocalSessionViewResult.Denied -> throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
             LocalSessionViewResult.Busy -> throw GatewayFailure(LocalServiceProblem.RETRY_LATER)

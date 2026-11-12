@@ -592,7 +592,7 @@ internal class LocalEndpointSetupClosureGateway(
         val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
         try {
             if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            val current = endpoint.current(lease.credentials)
+            val current = lease.observeSession(endpoint)
             currentCoroutineContext().ensureActive()
             if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
             val view = when (current) {

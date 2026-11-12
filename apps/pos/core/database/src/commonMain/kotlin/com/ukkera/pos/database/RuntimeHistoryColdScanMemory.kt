@@ -45,9 +45,14 @@ internal class RuntimeHistoryColdScanMemory(val memory: RuntimeHistoryColdMemory
             NativeHistoryReadPassV2.EMPLOYEE_ENROLLMENT_IMAGE -> retain(allowance)
             // Seed capsules allocate at the seed header, before chunks arrive.
             NativeHistoryReadPassV2.EMPLOYEE_ENROLLMENT_CHUNKS -> Unit
-            // A native ACCOUNT seed/reset AFTER can outlive the complete event.
+            // Existing ACCOUNT candidates can outlive the complete event. Other initial
+            // protected images are decoded and retired in this input loan; reserve their
+            // transient overlap without accumulating every historical audit/session seed.
             NativeHistoryReadPassV2.EVENT_MUTATIONS ->
-                if (item is RuntimeHistoryReadItem.Plaintext) retain(allowance)
+                if (item is RuntimeHistoryReadItem.Plaintext && m.table == RuntimeHistoryTableV2.ACCOUNT)
+                    retain(allowance)
+                else if (m.table?.protectedTable != null)
+                    beforeTraversalAllocation(allowance, retainInGroup = false)
             NativeHistoryReadPassV2.EVENTS, NativeHistoryReadPassV2.EVENT_CHUNKS -> Unit
             else -> {
                 if (m.pass in GROUP_STARTS) traversalGroup = 0L

@@ -1,5 +1,6 @@
 package com.ukkera.pos.app
 
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,7 +82,8 @@ import org.koin.core.parameter.parametersOf
 
 /** Shared native CMP root. The caller owns and retains [runtime] across ordinary recomposition. */
 @Composable
-fun UkkeraApp(runtime: UkkeraRuntime, onExitRequest: () -> Unit = {}, onLocalSetupRequest: (() -> Unit)? = null) {
+fun UkkeraApp(runtime: UkkeraRuntime, onExitRequest: () -> Unit = {}, onLocalSetupRequest: (() -> Unit)? = null,
+    onEmployeePolicyRequest: ((LocalSetupEmployeePolicyTarget) -> Unit)? = null) {
     val navigation by runtime.navigator.state.collectAsState()
     val presentation by runtime.presentation.collectAsState()
     val token = runtime.navigator.token()
@@ -131,7 +133,7 @@ fun UkkeraApp(runtime: UkkeraRuntime, onExitRequest: () -> Unit = {}, onLocalSet
                             Box(Modifier.weight(1f).fillMaxWidth()) {
                                 // Root reset discards all old protected animations/saveable owners, not an overlay.
                                 if (!runtime.closed) key(navigation.rootGeneration) {
-                                    NavigationHost(runtime, navigation, onExitRequest, onLocalSetupRequest)
+                                    NavigationHost(runtime, navigation, onExitRequest, onLocalSetupRequest, onEmployeePolicyRequest)
                                 }
                             }
                         }
@@ -248,7 +250,8 @@ private fun CompactAreas(runtime: UkkeraRuntime, state: NavigationState, token: 
 }
 
 @Composable
-private fun NavigationHost(runtime: UkkeraRuntime, state: NavigationState, exit: () -> Unit, onLocalSetupRequest: (() -> Unit)?) {
+private fun NavigationHost(runtime: UkkeraRuntime, state: NavigationState, exit: () -> Unit, onLocalSetupRequest: (() -> Unit)?,
+    onEmployeePolicyRequest: ((LocalSetupEmployeePolicyTarget) -> Unit)?) {
     val rootScope = runtime.rootScope
     val token = runtime.navigator.token()
     // All stacks remain decorated while only one is displayed: tab switches retain intended VMs.
@@ -272,7 +275,7 @@ private fun NavigationHost(runtime: UkkeraRuntime, state: NavigationState, exit:
                             val entryToken = runtime.navigator.token().copy(
                                 rootGeneration = entryNavigation.rootGeneration, revision = entryNavigation.revision,
                                 entryId = current.id, area = RouteRegistry.area(current.route))
-                            EntryAdapter(runtime, current.route, model, entryToken, exit, onLocalSetupRequest)
+                            EntryAdapter(runtime, current.route, model, entryToken, exit, onLocalSetupRequest, onEmployeePolicyRequest)
                         }
                     }
                 },
@@ -310,7 +313,8 @@ private data class NoBackPreviewScene(val entry: NavEntry<NavigationEntry>) : Sc
 }
 
 @Composable
-private fun EntryAdapter(runtime: UkkeraRuntime, route: AppRoute, model: EntryViewModel, token: NavigationToken, exit: () -> Unit, onLocalSetupRequest: (() -> Unit)?) {
+private fun EntryAdapter(runtime: UkkeraRuntime, route: AppRoute, model: EntryViewModel, token: NavigationToken, exit: () -> Unit, onLocalSetupRequest: (() -> Unit)?,
+    onEmployeePolicyRequest: ((LocalSetupEmployeePolicyTarget) -> Unit)?) {
     val entryState by model.state.collectAsState()
     val training = runtime.rootScope.session.training
     if (route == AppRoute.SessionAccess) {
@@ -322,7 +326,7 @@ private fun EntryAdapter(runtime: UkkeraRuntime, route: AppRoute, model: EntryVi
             LocalSetupClosureScreen(runtime, token, model)
             return
         }
-        LocalWorkflowScreen(runtime, route, model, token)
+        LocalWorkflowScreen(runtime, route, model, token, onEmployeePolicyRequest)
         return
     }
     when (route) {

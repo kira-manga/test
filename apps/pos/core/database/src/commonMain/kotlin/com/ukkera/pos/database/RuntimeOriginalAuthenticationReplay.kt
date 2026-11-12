@@ -379,6 +379,26 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
         return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
     }
 
+    internal fun credentialFreeAccountDisableAuthority(value: RuntimeCredentialFreeAccountDisableEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        value.validate()
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
+    /** Explicit newer resolution; operator proof remains separate from the disabled target. */
+    internal fun accountReactivationAuthority(value: RuntimeAccountReactivationEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        value.validate()
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
+    internal fun accountActivationAuthority(value: RuntimeAccountActivationEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        value.validate()
+        if (account.credential == null) return false
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
     /** Reset never authorizes through its replacement credential or a null credential. The
      * operator proof is the identical original event-cut/native-final authority as disable. */
     internal fun credentialResetAuthority(value: RuntimeCredentialResetEvidenceV1,
@@ -587,6 +607,112 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
             LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_DISABLED, actor, value.authorization.actorId,
                 null, account.state.revision, value.at, value.semanticDigest)))
         historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
+    /** Reduce this target's own enabled credential-free prefix before first activation.
+     * Existing credentials and session/issuance histories cannot use this distinct profile. */
+    internal fun credentialFreeAccountDisableTarget(value: RuntimeCredentialFreeAccountDisableEvidenceV1): Boolean {
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != coordinates.deviceId) return false
+        val before = account.state
+        val target = value.target
+        historyShapeV2(account.credential == null && account.credentialRevision == Revision(0) &&
+            before.enabled && before.sessions.isEmpty() && issuances.isEmpty() &&
+            before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == coordinates.deviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val revoked = before.sessions.filter { it.status == SessionStatus.ACTIVE }.map { it.sessionId }.toSet()
+        val transition = LocalSessions.disable(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(!transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions.all { it.status == SessionStatus.REVOKED } && transition.revokedSessionIds == revoked)
+        val images = mutableListOf<RuntimeAuthenticationImageV1>()
+        replaceAccount(transition.state, images)
+        images += image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+            LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_DISABLED, actor, value.authorization.actorId,
+                null, account.state.revision, value.at, value.semanticDigest)))
+        historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
+    /** Reduce only this target's genuine disabled prefix; retained tokens stay revoked. */
+    internal fun accountReactivationTarget(value: RuntimeAccountReactivationEvidenceV1): Boolean {
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != coordinates.deviceId) return false
+        val before = account.state
+        val target = value.target
+        val expected = checkNotNull(value.command.reactivationRevisions)
+        historyShapeV2(!before.enabled && policy.revision == expected.policy && configuration.revision == expected.configuration &&
+            account.credentialRevision == expected.credential &&
+            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == target.policyDigest &&
+            digest(LocalAuthenticationCodec.encodeConfiguration(configuration)) == target.configurationDigest)
+        historyShapeV2(account.credential != null && before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == coordinates.deviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val transition = LocalSessions.reactivate(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions == before.sessions && transition.revokedSessionIds.isEmpty())
+        val images = mutableListOf<RuntimeAuthenticationImageV1>()
+        replaceAccount(transition.state, images)
+        images += image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+            LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_REACTIVATED, actor, value.authorization.actorId,
+                null, account.state.revision, value.at, value.semanticDigest)))
+        historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
+    /** First credential comes only from the genuinely opened chronological ACCOUNT AFTER.
+     * The disabled credential-free BEFORE, unchanged policy/configuration and both images
+     * are reduced from this target's own prefix; no issuance or operator grant is created. */
+    internal fun accountActivationTarget(value: RuntimeAccountActivationEvidenceV1,
+        actualAfter: ProtectedLocalAccount): Boolean {
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != coordinates.deviceId) return false
+        val before = account.state
+        val target = value.target
+        val required = checkNotNull(value.command.activationRevisions)
+        historyShapeV2(!before.enabled && account.credential == null && policy.revision == required.policy &&
+            configuration.revision == required.configuration &&
+            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == target.policyDigest &&
+            digest(LocalAuthenticationCodec.encodeConfiguration(configuration)) == target.configurationDigest &&
+            before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == coordinates.deviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val replacement = actualAfter.credential ?: malformed()
+        historyShapeV2(actualAfter.state.scope == scope && actualAfter.state.actorId == actor &&
+            actualAfter.credentialRevision == account.credentialRevision.next())
+        val revoked = before.sessions.filter { it.status == SessionStatus.ACTIVE }.map { it.sessionId }.toSet()
+        val transition = LocalSessions.reactivate(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions.all { it.status == SessionStatus.REVOKED } && transition.revokedSessionIds == revoked)
+        val expected = ProtectedLocalAccount(transition.state, account.credentialRevision.next(), replacement)
+        historyShapeV2(digest(ProtectedLocalSecurityCodec.encodeAccount(expected)) ==
+            digest(ProtectedLocalSecurityCodec.encodeAccount(actualAfter)))
+        val images = listOf(
+            image(ProtectedLocalRecordKey.Account(scope, actor), expected.state.revision, ProtectedLocalSecurityCodec.encodeAccount(expected)),
+            image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+                LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_ACTIVATED, actor, value.authorization.actorId,
+                    null, expected.state.revision, value.at, value.semanticDigest))))
+        historyShapeV2(images == value.images)
+        account = expected
         accountImages(images)
         return true
     }

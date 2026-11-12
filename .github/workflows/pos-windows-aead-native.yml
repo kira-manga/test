@@ -62,12 +62,24 @@ jobs:
           counts = tuple(int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped'))
           assert counts == (5, 0, 0, 0), counts
           pathlib.Path('native-aead-output/summary.txt').write_text('PASS: five genuine Kotlin/JNA cipher supporting methods. No service identity, ACL, original intent/proof, custody, PEPPER, Master/Client or owner acceptance.\n')
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "windows-aead-native" \
+            --diagnostics "native=native-aead-output" \
+            --xml-results "core-security=apps/pos/core/security/build/test-results/jvmTest" \
+            --output "build/pos-public-artifacts/windows-aead-native"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-windows-aead-native-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            native-aead-output
-            apps/pos/core/security/build/test-results/jvmTest
-            apps/pos/core/security/build/reports/tests/jvmTest
+          path: build/pos-public-artifacts/windows-aead-native
           retention-days: 14

@@ -4,9 +4,10 @@ import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
 
-/** Separate bounded reducer for one genuinely native-enrolled employee. It is seeded
- * ONLY from the actual native-selected original enrollment images,
- * never a current account/credential or the founding employee's firstActor derivations.
+/** Separate bounded reducer for one genuinely joined native-origin employee. Enrollment
+ * uses its actual native-selected initial prepass; delegated creation uses only its private
+ * completed actual initial-event join. Neither uses a current account/credential or the
+ * founding employee's firstActor derivations.
  * Each actor retains at most its existing 256 session identities; immutable rows/archives
  * are fully scanned and counted after their complete native image joins. This is not a
  * session store: it restores no bearer, signs in nobody and executes no business command.
@@ -16,17 +17,18 @@ import com.ukkera.pos.types.Revision
  * policy/credential/admission/configuration and unjoined business
  * producers remain held by the full scanner rather than being guessed or re-seeded. */
 internal class RuntimeEmployeeAuthenticationReplay private constructor(
-    private val source: NativeEmployeeEnrollmentHistorySource,
+    private val source: RuntimeEmployeeHistoryOrigin,
     private var account: ProtectedLocalAccount,
     private var policy: ActivatedLocalPolicy,
     private val configuration: LocalAuthConfiguration,
     initialThrottles: Map<ThrottleKey, PersistentThrottleState>,
     private val earlierReplayTarget: RuntimeEarlierOrdinaryCommandReplayTarget?,
 ) {
-    private val scope = source.requested.request.scope
-    private val actor = source.requested.request.targetId
+    internal val origin: RuntimeEmployeeHistoryOrigin get() = source
+    private val scope = source.scope
+    private val actor = source.actorId
     private val cohostDeviceId = source.originalCohostDeviceId
-    private var admission = source.requested.admissions.single { it.deviceId == cohostDeviceId }
+    private var admission = source.admissions.single { it.deviceId == cohostDeviceId }
     // Each added device needs its exact joined native CONSUMED origin. Admissions after
     // enrollment supply their own bucket; earlier admissions bind the actual enrollment seed.
     // Current rows or a retained admission list alone cannot create either lane.
@@ -35,9 +37,9 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         val source: NativeDeviceAdmissionHistorySource, val admissionDigest: PayloadDigest,
         val throttleSeed: LocalEmployeeEnrollmentProtectedImage)
     private val enrollmentDeviceAdmissionOrigins = linkedMapOf<DomainId, EnrollmentDeviceAdmissionOrigin>()
-    private var policyDigest = source.evidence.images[1].plaintextDigest
-    private val configurationDigest = source.evidence.images[2].plaintextDigest
-    private val admissionDigest = source.evidence.admissionDigests.single { it.first == cohostDeviceId }.second
+    private var policyDigest = source.seedImages[1].plaintextDigest
+    private val configurationDigest = source.seedImages[2].plaintextDigest
+    private val admissionDigest = source.admissionDigests.single { it.first == cohostDeviceId }.second
     private data class Issuance(val access: LocalAccessIssuance, val refresh: LocalRefreshIssuance)
     private val issuances = linkedMapOf<DomainId, Issuance>()
     // Ordinary proofs are retained only while their exact original/core/producer join is
@@ -76,7 +78,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
                 RuntimeHistoryTableV2.CONFIGURATION,RuntimeHistoryTableV2.AUTH_EVENT)) counts[table.ordinal] = 1L
         counts[RuntimeHistoryTableV2.THROTTLE.ordinal] = initialThrottles.size.toLong()
     }
-    var mutationCount: Long = source.evidence.images.size.toLong()
+    var mutationCount: Long = source.seedImages.size.toLong()
         private set
     val sessionCount: Long get() = account.state.sessions.size.toLong()
     val tipCount: Long get() = rows.sum()
@@ -146,22 +148,22 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     internal fun enrollmentDeviceAdmission(session: SelfOwnedNativeHistoryReadSession,
         origin: NativeDeviceAdmissionHistorySource, commitment: PayloadDigest) {
         requireHandoffRecipientSource(session)
-        historyShapeV2(matchesEnrollmentDeviceAdmissionOrigin(session, source, origin, commitment))
-        val next = source.requested.admissions.single { it.deviceId == origin.requested.request.targetId }
+        historyShapeV2(matchesEmployeeSeedDeviceAdmissionOrigin(session, source, origin, commitment))
+        val next = source.admissions.single { it.deviceId == origin.requested.request.targetId }
         historyShapeV2(next.deviceId !in additionalAdmissions && next.deviceId !in enrollmentDeviceAdmissionOrigins &&
             additionalAdmissions.size < 255 &&
-            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == source.evidence.images[0].plaintextDigest &&
-            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == source.evidence.images[1].plaintextDigest &&
-            policyDigest == source.evidence.images[1].plaintextDigest &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == source.seedImages[0].plaintextDigest &&
+            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == source.seedImages[1].plaintextDigest &&
+            policyDigest == source.seedImages[1].plaintextDigest &&
             digest(LocalAuthenticationCodec.encodeConfiguration(configuration)) == configurationDigest)
         val accountKey = ThrottleKey(scope, actor, ThrottleDimension.Account)
         val deviceKey = ThrottleKey(scope, actor, ThrottleDimension.Device(next.deviceId))
-        val accountSeed = PersistentThrottleState(accountKey, Revision(0), 0, source.evidence.eventAt, 0, null)
-        val deviceSeed = PersistentThrottleState(deviceKey, Revision(0), 0, source.evidence.eventAt, 0, null)
-        val seed = source.evidence.images.single { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
+        val accountSeed = PersistentThrottleState(accountKey, Revision(0), 0, source.eventAt, 0, null)
+        val deviceSeed = PersistentThrottleState(deviceKey, Revision(0), 0, source.eventAt, 0, null)
+        val seed = source.seedImages.single { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
             it.dimension == ProtectedLocalRecordKey.Throttle(deviceKey).dimensionKey }
         historyShapeV2(throttles[accountKey] == accountSeed && throttles[deviceKey] == deviceSeed &&
-            source.evidence.images[3].plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(accountSeed)) &&
+            source.seedImages[3].plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(accountSeed)) &&
             seed.plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(deviceSeed)))
         additionalAdmissions[next.deviceId] = next
         enrollmentDeviceAdmissionOrigins[next.deviceId] = EnrollmentDeviceAdmissionOrigin(session, origin, commitment, seed)
@@ -176,20 +178,20 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         val device = additionalAdmissions[deviceId] ?: return false
         val key = ThrottleKey(scope, actor, ThrottleDimension.Device(deviceId))
         return enabled && binding.session === session && binding.source === origin && binding.admissionDigest == commitment &&
-            session.employeeEnrollments.any { it === source } && session.deviceAdmissions.any { it === origin } &&
+            source.matchesNativeSelection(session) && session.deviceAdmissions.any { it === origin } &&
             origin.child.historySequence < source.child.historySequence && source.child.historySequence < sequence &&
             device.admitted && device.revision == Revision(0) &&
             digest(ProtectedLocalSecurityCodec.encodeAdmission(device)) == commitment && throttles[key]?.key == key &&
-            source.evidence.images.singleOrNull { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
+            source.seedImages.singleOrNull { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
                 it.dimension == ProtectedLocalRecordKey.Throttle(key).dimensionKey } === binding.throttleSeed
     }
 
-    /** The coordinator calls this only after ordinary EVENTS activates this enrollment.
-     * Native prepass construction alone does not publish an earlier recipient origin. */
+    /** The coordinator calls this only after the exact initial event activates its origin.
+     * Native prepass or decoded creation DATA alone cannot publish a recipient origin. */
     internal fun nativeHandoffRecipientOrigin(session: SelfOwnedNativeHistoryReadSession,
         header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest): RuntimeHistoricalLocalHandoffRecipientFacts {
         requireHandoffRecipientSource(session)
-        historyShapeV2(header.purpose == RuntimeWritePurposeV2.PROVISIONING && header.transactionId == source.frameId &&
+        historyShapeV2(header.purpose == source.eventPurpose && header.transactionId == source.frameId &&
             NativeHistoryRecordedHeadV2(header.sequence, eventDigest, header.installationGenesisDigest, header.commandEpoch,
                 header.commandSequence, header.commandDigest, header.roleCommitment, header.recoveryCommitment) == source.child)
         return RuntimeHistoricalLocalHandoffRecipientFacts.capture(account, policy, configuration)
@@ -207,16 +209,16 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
 
     private fun requireHandoffRecipientSource(session: SelfOwnedNativeHistoryReadSession) {
         val coordinates = session.original.record.allocation.coordinates
-        historyShapeV2(enabled && session.employeeEnrollments.any { it === source } && scope == coordinates.scope &&
+        historyShapeV2(enabled && source.matchesNativeSelection(session) && scope == coordinates.scope &&
             actor != coordinates.firstActorId && cohostDeviceId == coordinates.deviceId)
     }
 
-    /** Called only by the enrollment coordinator after its prepass and ordinary original
-     * enrollment event have BOTH joined. No current credential/account seeds this DATA. */
+    /** Called only after the coordinator has joined the exact original seed event.
+     * No current credential/account seeds this historical DATA. */
     internal fun approvalActor(session: SelfOwnedNativeHistoryReadSession,
         header: RuntimeHistoryEventHeaderV2): RuntimeActionApprovalHistoryActorFacts {
         requireHandoffRecipientSource(session)
-        return RuntimeActionApprovalHistoryActorFacts.enrolled(session, source, header, account.state,
+        return RuntimeActionApprovalHistoryActorFacts.employee(session, source, header, account.state,
             account.credentialRevision, account.credential != null, policy, admission,
             RuntimeThrottleDependenciesV1(digest(ProtectedLocalSecurityCodec.encodeAccount(account)), policyDigest,
                 digest(ProtectedLocalSecurityCodec.encodeAdmission(admission)), configurationDigest),
@@ -1001,6 +1003,29 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
     }
 
+    internal fun credentialFreeAccountDisableAuthority(value: RuntimeCredentialFreeAccountDisableEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
+    /** Explicit newer resolution; operator proof remains separate from the disabled target. */
+    internal fun accountReactivationAuthority(value: RuntimeAccountReactivationEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
+    internal fun accountActivationAuthority(value: RuntimeAccountActivationEvidenceV1,
+        finalDecision: NativeHistoryProtectedFinalDecision): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        if (account.credential == null) return false
+        return accountAdministrationAuthority(value.authorization, value.requirement, value.protectedFinalDeclaration(), finalDecision)
+    }
+
     /** A genuine credential-free enrollment can be a reset TARGET, never its operator.
      * Authority still joins this original interactive issuance at both event/final cuts. */
     internal fun credentialResetAuthority(value: RuntimeCredentialResetEvidenceV1,
@@ -1218,6 +1243,115 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         return true
     }
 
+    /** Reduce this target's own enabled credential-free prefix before first activation.
+     * Existing credentials and session/issuance histories cannot use this distinct profile. */
+    internal fun credentialFreeAccountDisableTarget(value: RuntimeCredentialFreeAccountDisableEvidenceV1): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != cohostDeviceId) return false
+        val before = account.state
+        val target = value.target
+        historyShapeV2(account.credential == null && account.credentialRevision == Revision(0) &&
+            before.enabled && before.sessions.isEmpty() && issuances.isEmpty() &&
+            before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == cohostDeviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val revoked = before.sessions.filter { it.status == SessionStatus.ACTIVE }.map { it.sessionId }.toSet()
+        val transition = LocalSessions.disable(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(!transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions.all { it.status == SessionStatus.REVOKED } && transition.revokedSessionIds == revoked)
+        val images = mutableListOf<RuntimeAuthenticationImageV1>()
+        replaceAccount(transition.state, images)
+        images += image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+            LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_DISABLED, actor, value.authorization.actorId,
+                null, account.state.revision, value.at, value.semanticDigest)))
+        historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
+    /** Reduce only this target's genuine disabled prefix; retained tokens stay revoked. */
+    internal fun accountReactivationTarget(value: RuntimeAccountReactivationEvidenceV1): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != cohostDeviceId) return false
+        val before = account.state
+        val target = value.target
+        val expected = checkNotNull(value.command.reactivationRevisions)
+        historyShapeV2(!before.enabled && policy.revision == expected.policy && configuration.revision == expected.configuration &&
+            account.credentialRevision == expected.credential &&
+            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == target.policyDigest &&
+            digest(LocalAuthenticationCodec.encodeConfiguration(configuration)) == target.configurationDigest)
+        historyShapeV2(account.credential != null && before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == cohostDeviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val transition = LocalSessions.reactivate(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions == before.sessions && transition.revokedSessionIds.isEmpty())
+        val images = mutableListOf<RuntimeAuthenticationImageV1>()
+        replaceAccount(transition.state, images)
+        images += image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+            LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_REACTIVATED, actor, value.authorization.actorId,
+                null, account.state.revision, value.at, value.semanticDigest)))
+        historyShapeV2(images == value.images)
+        accountImages(images)
+        return true
+    }
+
+    /** First credential comes only from the genuinely opened chronological ACCOUNT AFTER.
+     * The disabled credential-free BEFORE, unchanged policy/configuration and both images
+     * are reduced from this target's own prefix; no issuance or operator grant is created. */
+    internal fun accountActivationTarget(value: RuntimeAccountActivationEvidenceV1,
+        actualAfter: ProtectedLocalAccount): Boolean {
+        historyShapeV2(enabled)
+        value.validate()
+        if (value.authorization.scope != scope || value.command.targetId != actor ||
+            value.authorization.deviceId != cohostDeviceId) return false
+        val before = account.state
+        val target = value.target
+        val required = checkNotNull(value.command.activationRevisions)
+        historyShapeV2(!before.enabled && account.credential == null && policy.revision == required.policy &&
+            configuration.revision == required.configuration &&
+            digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == target.policyDigest &&
+            digest(LocalAuthenticationCodec.encodeConfiguration(configuration)) == target.configurationDigest &&
+            before.revision == value.command.expectedRevision &&
+            before.generation == target.accountGeneration && account.credentialRevision == target.credentialRevision &&
+            digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == target.accountBeforeDigest &&
+            issuances.keys == before.sessions.map { it.sessionId }.toSet() && before.sessions.all {
+                it.scope == scope && it.actorId == actor && it.deviceId == cohostDeviceId &&
+                    it.authenticationPurpose == AuthenticationPurpose.INTERACTIVE
+            })
+        val replacement = actualAfter.credential ?: malformed()
+        historyShapeV2(actualAfter.state.scope == scope && actualAfter.state.actorId == actor &&
+            actualAfter.credentialRevision == account.credentialRevision.next())
+        val revoked = before.sessions.filter { it.status == SessionStatus.ACTIVE }.map { it.sessionId }.toSet()
+        val transition = LocalSessions.reactivate(before) as? SessionTransition.Applied ?: malformed()
+        historyShapeV2(transition.state.enabled && transition.newSession == null &&
+            transition.state.sessions.all { it.status == SessionStatus.REVOKED } && transition.revokedSessionIds == revoked)
+        val expected = ProtectedLocalAccount(transition.state, account.credentialRevision.next(), replacement)
+        historyShapeV2(digest(ProtectedLocalSecurityCodec.encodeAccount(expected)) ==
+            digest(ProtectedLocalSecurityCodec.encodeAccount(actualAfter)))
+        val images = listOf(
+            image(ProtectedLocalRecordKey.Account(scope, actor), expected.state.revision, ProtectedLocalSecurityCodec.encodeAccount(expected)),
+            image(ProtectedLocalRecordKey.AuthEvent(scope, value.command.requestId), Revision(0), LocalAuthenticationCodec.encodeEvent(
+                LocalAuthEvent(scope, value.command.requestId, LocalAuthEventKind.ACCOUNT_ACTIVATED, actor, value.authorization.actorId,
+                    null, expected.state.revision, value.at, value.semanticDigest))))
+        historyShapeV2(images == value.images)
+        account = expected
+        accountImages(images)
+        return true
+    }
+
     /** Own complete actual native enrollment prefix only, after operator/final authority.
      * Credential-free enabled seeds are legitimate. AFTER supplies only the replacement
      * credential; the real revokeAll reducer must predict the entire account and audit. */
@@ -1313,22 +1447,41 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             policy: ActivatedLocalPolicy, configuration: LocalAuthConfiguration,
             throttles: Map<ThrottleKey, PersistentThrottleState>,
             earlierReplayTarget: RuntimeEarlierOrdinaryCommandReplayTarget? = null): RuntimeEmployeeAuthenticationReplay =
-            RuntimeEmployeeAuthenticationReplay(source, account, policy, configuration, throttles, earlierReplayTarget)
+            RuntimeEmployeeAuthenticationReplay(RuntimeEmployeeHistoryOrigin.nativeEnrollment(source), account, policy, configuration, throttles, earlierReplayTarget)
+
+        /** Only the completed actual creation join supplies this distinct initial state.
+         * The completed object transfers its seed once; current rows are never a seed. */
+        fun fromCompletedCreation(completed: RuntimeDelegatedEmployeeCreationSeedJoin.Completed,
+            earlierReplayTarget: RuntimeEarlierOrdinaryCommandReplayTarget? = null): RuntimeEmployeeAuthenticationReplay {
+            val seed = completed.takeSeed()
+            return RuntimeEmployeeAuthenticationReplay(RuntimeEmployeeHistoryOrigin.delegatedCreation(completed),
+                seed.account, seed.policy, seed.configuration, seed.throttles.associateBy { it.key }, earlierReplayTarget)
+        }
 
         /** Immutable native-origin/image selection for admission BEFORE enrollment. This
          * grants no replay ownership or permission without the separate chronological bind. */
         internal fun matchesEnrollmentDeviceAdmissionOrigin(session: SelfOwnedNativeHistoryReadSession,
             enrollment: NativeEmployeeEnrollmentHistorySource, origin: NativeDeviceAdmissionHistorySource,
+            commitment: PayloadDigest): Boolean = matchesEmployeeSeedDeviceAdmissionOrigin(session,
+                RuntimeEmployeeHistoryOrigin.nativeEnrollment(enrollment), origin, commitment)
+
+        internal fun matchesEmployeeSeedDeviceAdmissionOrigin(session: SelfOwnedNativeHistoryReadSession,
+            enrollment: RuntimeEmployeeHistoryOrigin, origin: NativeDeviceAdmissionHistorySource,
             commitment: PayloadDigest): Boolean {
             val coordinates = session.original.record.allocation.coordinates
             val scope = coordinates.scope
-            val actor = enrollment.requested.request.targetId
+            val actor = enrollment.actorId
             val device = origin.requested.request.targetId
-            val retained = enrollment.requested.admissions.singleOrNull { it.deviceId == device } ?: return false
-            if (!session.hasEmployeeSeedTraversal || !session.hasDeviceAdmissionHistoryTraversal ||
-                !session.hasChronologicalAccountImageTraversal || !session.employeeEnrollments.any { it === enrollment } ||
+            val retained = enrollment.admissions.singleOrNull { it.deviceId == device } ?: return false
+            val hasInitialTraversal = when (enrollment.eventPurpose) {
+                RuntimeWritePurposeV2.PROVISIONING -> session.hasEmployeeSeedTraversal
+                RuntimeWritePurposeV2.ACCOUNT_ADMINISTRATION -> session.hasChronologicalProtectedSeedTraversal
+                else -> false
+            }
+            if (!hasInitialTraversal || !session.hasDeviceAdmissionHistoryTraversal ||
+                !session.hasChronologicalAccountImageTraversal || !enrollment.matchesNativeSelection(session) ||
                 !session.deviceAdmissions.any { it === origin } || actor == coordinates.firstActorId ||
-                device == coordinates.deviceId || enrollment.requested.request.scope != scope ||
+                device == coordinates.deviceId || enrollment.scope != scope ||
                 origin.requested.request.scope != scope || enrollment.originalCohostDeviceId != coordinates.deviceId ||
                 origin.originalCohostDeviceId != coordinates.deviceId ||
                 origin.child.historySequence >= enrollment.child.historySequence ||
@@ -1336,10 +1489,10 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
                 origin.child.installationGenesisDigest != enrollment.child.installationGenesisDigest ||
                 origin.evidence.accountDigests.any { it.first == actor } || retained.scope != scope ||
                 !retained.admitted || retained.revision != Revision(0) ||
-                enrollment.evidence.admissionDigests.singleOrNull { it.first == device }?.second != commitment ||
+                enrollment.admissionDigests.singleOrNull { it.first == device }?.second != commitment ||
                 origin.evidence.images.first().plaintextDigest != commitment) return false
             val key = ThrottleKey(scope, actor, ThrottleDimension.Device(device))
-            val seed = enrollment.evidence.images.singleOrNull { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
+            val seed = enrollment.seedImages.singleOrNull { it.table == ProtectedLocalTable.THROTTLE && it.recordId == actor &&
                 it.dimension == ProtectedLocalRecordKey.Throttle(key).dimensionKey } ?: return false
             val native = origin.requested.copyCanonicalServiceAdmission()
             val requested = ProtectedLocalSecurityCodec.encodeAdmission(origin.requested.admission)
@@ -1347,7 +1500,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             return try {
                 requested.contentEquals(native) && retainedBytes.contentEquals(native) && sha256(native) == commitment &&
                     seed.plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(
-                        PersistentThrottleState(key, Revision(0), 0, enrollment.evidence.eventAt, 0, null)))
+                        PersistentThrottleState(key, Revision(0), 0, enrollment.eventAt, 0, null)))
             } finally { native.fill(0); requested.fill(0); retainedBytes.fill(0) }
         }
         private fun digest(bytes: ByteArray): PayloadDigest = try { sha256(bytes) } finally { bytes.fill(0) }

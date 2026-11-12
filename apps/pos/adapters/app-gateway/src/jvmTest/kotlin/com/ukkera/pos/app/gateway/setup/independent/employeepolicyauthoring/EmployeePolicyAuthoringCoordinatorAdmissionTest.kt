@@ -12,6 +12,7 @@ import com.ukkera.pos.app.gateway.setup.LocalSetupIntentStorage
 import com.ukkera.pos.app.gateway.setup.LocalSetupMaster
 import com.ukkera.pos.app.gateway.setup.LocalSetupMasterOpenResult
 import com.ukkera.pos.app.gateway.setup.LocalSetupNativeServices
+import com.ukkera.pos.app.setup.LocalSetupEmployeePolicyTarget
 import com.ukkera.pos.app.setup.LocalSetupPhase
 import com.ukkera.pos.database.LocalMasterInstallationReceiptOpenResult
 import com.ukkera.pos.security.ActivatedLocalPolicy
@@ -136,6 +137,19 @@ class EmployeePolicyAuthoringCoordinatorAdmissionTest {
             recreated.assertNoNativeWorkOrProtectedPolicy()
             // This recreates the controller only. Native process/storage/history recovery is unbound.
         } finally { recreated.close() }
+    }
+
+    /** Additional EPA-C25 route-DATA binding; no valid native owner is supplied. */
+    @Test fun epaC25SelectedEmployeeAndPredecessorCannotGrantProtectedPresentation() = runTest {
+        val harness = Harness(testScheduler)
+        try {
+            val replacement = FrozenAdmissionFixture.replacement()
+            harness.coordinator.openEmployeePolicies(LocalSetupEmployeePolicyTarget(
+                replacement.scope, replacement.actorId, Revision(replacement.revision.value - 1)))
+            harness.coordinator.beginEmployeePolicy()
+            testScheduler.runCurrent()
+            harness.assertNoNativeWorkOrProtectedPolicy()
+        } finally { harness.close() }
     }
 
     private class Harness(private val scheduler: TestCoroutineScheduler) {

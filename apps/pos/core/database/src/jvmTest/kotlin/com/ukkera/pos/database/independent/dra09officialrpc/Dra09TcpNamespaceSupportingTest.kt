@@ -17,7 +17,7 @@ import kotlin.test.*
 import kotlin.time.Duration.Companion.seconds
 
 /**
- * Wires the frozen DR-A09-01/02 association, bridge and Receipt assertions to
+ * Wires the frozen DR-A09-01–08 association, bridge and Receipt assertions to
  * genuine official JVM LAN sockets in two isolated network namespaces. Synthetic
  * memory identity stores and out-of-band trust pins remain test-only inputs.
  * Explicit disposable-host opt-in; no native custody or POS enrollment claim.
@@ -35,7 +35,29 @@ class Dra09TcpNamespaceSupportingTest {
         runEndpoints(Dra09TcpBridgeEndpoint::class.java)
     }
 
-    private suspend fun runEndpoints(endpoint: Class<*>) {
+    @Test fun dra0903WithoutConsumerOverTwoGenuineTcpEndpoints() = runBlocking { runRemaining("03") }
+
+    @Test fun dra0904FailedAcceptanceAndLookupOverTwoGenuineTcpEndpoints() = runBlocking { runRemaining("04") }
+
+    @Test fun dra0905CancelledAcceptanceOverTwoGenuineTcpEndpoints() = runBlocking { runRemaining("05") }
+
+    @Test fun dra0906CurrentnessLossOverTwoGenuineTcpEndpoints() = runBlocking {
+        for (scenario in listOf("06-deny", "06-trust", "06-acceptance")) runRemaining(scenario)
+    }
+
+    @Test fun dra0907TypedMismatchOverTwoGenuineTcpEndpoints() = runBlocking {
+        for (scenario in listOf("07-actor", "07-operation")) runRemaining(scenario)
+    }
+
+    @Test fun dra0908V2OnlyHostOverTwoGenuineTcpEndpoints() = runBlocking { runRemaining("08") }
+
+    private suspend fun runRemaining(scenario: String) {
+        assumeTrue("Explicit disposable Linux namespace executor required",
+            System.getenv("POS_DISPOSABLE_TCP_NAMESPACE") == "true")
+        runEndpoints(Dra09TcpRefusalEndpoint::class.java, scenario)
+    }
+
+    private suspend fun runEndpoints(endpoint: Class<*>, scenario: String? = null) {
         val root = Files.createTempDirectory("dra09-tcp-")
         val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = checkNotNull(System.getProperty("ukkera.test.runtime.classpath"))
@@ -52,7 +74,8 @@ class Dra09TcpNamespaceSupportingTest {
             "unshare", "--net", "--", java, "-Xmx128m", "-XX:ActiveProcessorCount=2",
             "-cp", classpath, endpoint.name,
             role, root.toString(), iface, address,
-        ).redirectErrorStream(true).redirectOutput(root.resolve("$role.log").toFile()).start()
+        ).apply { if (scenario != null) this.command(this.command() + scenario) }
+            .redirectErrorStream(true).redirectOutput(root.resolve("$role.log").toFile()).start()
         try {
             val host = start("host", hostInterface, "10.203.4.1").also(children::add)
             val client = start("client", clientInterface, "10.203.4.2").also(children::add)
@@ -77,8 +100,13 @@ class Dra09TcpNamespaceSupportingTest {
                 val role = if (index == 0) "host" else "client"
                 assertEquals(0, process.exitValue(), Files.readString(root.resolve("$role.log")))
             }
-            assertEquals("receipt-after-durable", Files.readString(root.resolve("host.pass")))
-            assertEquals("exact-association", Files.readString(root.resolve("client.pass")))
+            if (scenario == null) {
+                assertEquals("receipt-after-durable", Files.readString(root.resolve("host.pass")))
+                assertEquals("exact-association", Files.readString(root.resolve("client.pass")))
+            } else {
+                assertEquals(scenario, Files.readString(root.resolve("host.pass")))
+                assertEquals(scenario, Files.readString(root.resolve("client.pass")))
+            }
         } finally {
             children.forEach { if (it.isAlive) it.destroyForcibly() }
             children.forEach { it.waitFor(5, TimeUnit.SECONDS) }

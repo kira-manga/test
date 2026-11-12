@@ -12,6 +12,7 @@ import com.ukkera.pos.types.UtcInstant
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.SecureRandom
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 
@@ -35,6 +36,11 @@ internal class AuthV1Fixture(
     private val design: JsonObject,
     private val journal: AuthV1Journal,
     private val setup: AuthV1FixtureSetup = AuthV1FixtureSetup(),
+    // Executor-only ports for already frozen controlled-clock/throttle variants.
+    private val controlledObservation: LocalAuthenticationEnvironment? = null,
+    private val controlledThrottlePolicy: ThrottlePolicy? = null,
+    private val observeHasher: (LocalPasswordHasher) -> LocalPasswordHasher = { it },
+    private val controlledTokenPolicy: LocalTokenPolicy? = null,
 ) {
     private val random = SecureRandom()
     private val fixtures = design.getValue("fixtures").jsonObject
@@ -48,13 +54,15 @@ internal class AuthV1Fixture(
         if (setup.includeUnactivatedU) put("U", id("U_UNACTIVATED_B1"))
     }
     private val devices = mapOf("A" to id("CLIENT_1_B1"), "B" to id("CLIENT_2_B1"), "M" to id("MASTER_B1"))
-    val connections: Map<String, DomainId> = (devices.keys + listOf("UNADMITTED", "WRONG_BRANCH"))
-        .associateWith { authV1EphemeralId() }
+    var connections: Map<String, DomainId> = freshConnections()
+        private set
+    private fun freshConnections(): Map<String, DomainId> =
+        (devices.keys + listOf("UNADMITTED", "WRONG_BRANCH")).associateWith { authV1EphemeralId() }
     private val descriptors = (devices.keys + "UNADMITTED").associateWith { "synthetic-key-${authV1EphemeralId().value}" }
     private val keys = AuthV1SyntheticKeyPorts(ProtectedStorageKeyReference(authV1EphemeralId()),
         ProtectedPepperReference(authV1EphemeralId()), random)
-    private val peers = AuthV1SyntheticPeers()
-    // No expiry boundary is exercised. New service compositions must use a new issuer ID.
+    private var peers = AuthV1SyntheticPeers()
+    // The default has no expiry boundary. New compositions use a new issuer ID.
     private val environment = AuthV1SyntheticEnvironment(authV1EphemeralId(), MonotonicMoment(authV1EphemeralId(), 0))
     private val admissionRequests = devices.keys.associateWith { authV1EphemeralId() }
     private val accountRequests = actors.keys.associateWith { authV1EphemeralId() }
@@ -77,6 +85,9 @@ internal class AuthV1Fixture(
     private val sessions = mutableMapOf<String, LocalSessionTokens>()
     private val ownedTokens = mutableListOf<LocalSessionTokens>()
     private var service: JvmLocalMasterService? = null
+    private lateinit var fixtureAuthority: AuthorityIdentity
+    private var serviceObservation = controlledObservation
+    private var serviceOpenOrdinal = 0
     private var retirementDiagnostic: AuthV1RetirementDiagnostic? = null
     private var closed = false
     val endpoint: LocalMasterEndpoint get() = checkNotNull(service).endpoint
@@ -88,6 +99,11 @@ internal class AuthV1Fixture(
     suspend fun syntheticPeerIsCurrent(connection: String): Boolean =
         peers.capture(connections.getValue(connection))?.isCurrent() == true
     fun login(who: String): LocalLoginIdentifier = logins.getValue(who)
+    /** Test-only adapters consume a copy; no password enters the observation journal. */
+    fun copyClientPassword(who: String): CharArray = passwords.getValue(who).copyOf()
+    suspend fun captureClientPeer(who: String): LocalAuthenticatedPeer =
+        checkNotNull(peers.capture(connections.getValue(who)))
+
     val accessLifetimeMillis: Long get() = time.getValue("access_lifetime_seconds").jsonPrimitive.long * 1000
     val workLifetimeMillis: Long get() = time.getValue("work_session_absolute_lifetime_seconds").jsonPrimitive.long * 1000
 
@@ -125,6 +141,7 @@ internal class AuthV1Fixture(
     suspend fun start() {
         check(!Files.exists(path)) { "Auth fixture must be a new disposable file" }
         val authority = AuthorityIdentity(authV1EphemeralId(), id("MASTER_B1"), Revision(0))
+        fixtureAuthority = authority
         seedInertInitialTrust(authority)
         devices.forEach { (who, device) ->
             peers.install(connections.getValue(who), scope, device, descriptors.getValue(who))
@@ -132,38 +149,25 @@ internal class AuthV1Fixture(
         peers.install(connections.getValue("UNADMITTED"), scope, id("UNADMITTED_DEVICE"), descriptors.getValue("UNADMITTED"))
         peers.install(connections.getValue("WRONG_BRANCH"), scopeB2, devices.getValue("A"), descriptors.getValue("A"))
         val parameters = PasswordHashParameters()
-        val throttle = ThrottlePolicy()
-        val retirementSlot = journal.prepareRetirementDiagnostic(name)
-        retirementDiagnostic = retirementSlot
-        service = openLocalMasterService(path, scope, authority, emptyList(), emptyList(),
-            LocalMasterSecurityDependencies(keys, keys.storageReference,
-                JvmLocalPasswordHasher(keys, parameters, random), keys.pepperReference,
-                JvmLocalAuthenticationEntropy(random), environment, peers, 2, ceremony),
-            UnqualifiedMasterRuntime,
-            // The external executor owns/reaps this disposable child. No file lock/custody
-            // is released and no replacement pool is opened on an uncertain retirement.
-            LocalMasterRetirement { reason ->
-                try { retirementSlot.record(reason) }
-                finally { Runtime.getRuntime().halt(75) }
-            },
-            MasterClock { UtcInstant.parseCanonical(time.getValue("t0_utc").jsonPrimitive.content) },
-            workers = 2, maximumQueuedRequests = 8, maximumRequestMillis = 30_000, maximumCloseMillis = 30_000)
-        recordDiagnosticCut(AuthV1RetirementCut.AFTER_SERVICE_OPEN_RETURN)
+        val throttle = controlledThrottlePolicy ?: ThrottlePolicy()
+        openGroupedService(parameters)
         journal.event("fixture", "$name-configuration", "SYNTHETIC_PORTS_REAL_AUTH_AND_ROOM", buildJsonObject {
             put("scope", scope.authV1ScopeJson())
             put("business_kernel", "UNQUALIFIED_NOT_EXERCISED")
             put("secret_ports", "EPHEMERAL_JCA_NOT_OS_QUALIFIED")
             put("peer_ports", "SYNTHETIC_NOT_PHYSICAL_PAIRING_OR_RPC")
-            put("clock", "FIXED_SYNTHETIC_MONOTONIC_NOT_TIMING_EVIDENCE")
+            put("clock", if (controlledObservation == null) "FIXED_SYNTHETIC_MONOTONIC_NOT_TIMING_EVIDENCE"
+                else "EXECUTOR_CONTROLLED_SYNTHETIC_NOT_NATIVE_CLOCK")
             put("password_hasher", "JvmLocalPasswordHasher")
             put("pbkdf2_iterations_observed_configuration", parameters.iterations)
             put("kdf_hardware_qualification", false)
-            put("access_lifetime_millis", time.getValue("access_lifetime_seconds").jsonPrimitive.long * 1000)
-            put("work_lifetime_millis", time.getValue("work_session_absolute_lifetime_seconds").jsonPrimitive.long * 1000)
+            put("access_lifetime_millis", controlledTokenPolicy?.accessLifetimeMillis ?: accessLifetimeMillis)
+            put("work_lifetime_millis", controlledTokenPolicy?.workLifetimeMillis ?: workLifetimeMillis)
             put("throttle_free_failures_wiring_only", throttle.freeFailures)
             put("throttle_initial_delay_millis_wiring_only", throttle.initialDelayMillis)
             put("throttle_maximum_delay_millis_wiring_only", throttle.maximumDelayMillis)
-            put("frozen_failed_credentials_before_lock_mapping", "UNRESOLVED_NOT_TESTED")
+            put("frozen_failed_credentials_before_lock_mapping", if (controlledThrottlePolicy == null)
+                "UNRESOLVED_NOT_TESTED" else "EXPLICIT_FROZEN_EXECUTOR_POLICY")
             put("initially_signed_in_actor_handles", JsonArray(setup.initiallySignedIn.sorted().map(::JsonPrimitive)))
             put("initial_unactivated_U", setup.includeUnactivatedU)
             put("initial_A_maximum_concurrent_sessions", setup.maximumConcurrentA)
@@ -191,7 +195,7 @@ internal class AuthV1Fixture(
             val definition = LocalAccountProvisioning(actor, logins.getValue(who),
                 ActivatedLocalPolicy(scope, actor, Revision(0), grants,
                     LocalSessionPolicy(if (who == "A") setup.maximumConcurrentA else 1), throttle),
-                LocalTokenPolicy(accessLifetimeMillis, workLifetimeMillis),
+                controlledTokenPolicy ?: LocalTokenPolicy(accessLifetimeMillis, workLifetimeMillis),
                 devices.values.toSet()) // Complete admitted set, never an account-preferred subset.
             val result = endpoint.provisionAccount(accountRequests.getValue(who), definition,
                 if (who == "U") null else passwords.getValue(who))
@@ -209,6 +213,54 @@ internal class AuthV1Fixture(
             sessions[who] = (result as LocalAuthenticationResult.Authenticated).tokens
             currentControl(who, "initial")
         }
+    }
+
+    /** Only constructs the real grouped service on the retained file. No account,
+     * admission, throttle or audit seed/provisioning operation occurs here. */
+    private fun openGroupedService(parameters: PasswordHashParameters) {
+        val retirementSlot = journal.prepareRetirementDiagnostic(if (serviceOpenOrdinal == 0) name else "$name-reopen-$serviceOpenOrdinal")
+        retirementDiagnostic = retirementSlot
+        // This auth-only executor deliberately owns a controlled schema-7 fixture. The
+        // public legacy opener cannot appoint it as native-owned history and remains refused.
+        val serviceDatabase = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(
+            path.toString(), MasterRoomConstructor::initialize))
+        service = try { JvmLocalMasterService(serviceDatabase, path, scope, fixtureAuthority, emptyList(), emptyList(),
+            LocalMasterSecurityDependencies(keys, keys.storageReference,
+                observeHasher(JvmLocalPasswordHasher(keys, parameters, random)), keys.pepperReference,
+                JvmLocalAuthenticationEntropy(random), serviceObservation ?: environment, peers, 2, ceremony),
+            UnqualifiedMasterRuntime,
+            // The external executor owns/reaps this disposable child. No file lock/custody
+            // is released and no replacement pool is opened on an uncertain retirement.
+            LocalMasterRetirement { reason ->
+                try { retirementSlot.record(reason) }
+                finally { Runtime.getRuntime().halt(75) }
+            },
+            MasterClock { UtcInstant.parseCanonical(time.getValue("t0_utc").jsonPrimitive.content) },
+            Dispatchers.Default, workers = 2, maximumQueuedRequests = 8,
+            maximumRequestMillis = 30_000, maximumCloseMillis = 30_000)
+        } catch (failure: Throwable) { serviceDatabase.close(); throw failure }
+        recordDiagnosticCut(AuthV1RetirementCut.AFTER_SERVICE_OPEN_RETURN)
+    }
+
+    /** Confirmed close followed by a fresh Room/service instance. Keys remain
+     * synthetic in this executor; this is not an OS process/native-key restart.
+     * Old synthetic connections are retired and cannot be adopted by scalar ID. */
+    fun reopenStoredService(observation: LocalAuthenticationEnvironment) {
+        check(closed && service != null && Files.isRegularFile(path))
+        check(serviceOpenOrdinal < 8)
+        peers.close()
+        peers = AuthV1SyntheticPeers()
+        connections = freshConnections()
+        devices.forEach { (who, device) ->
+            peers.install(connections.getValue(who), scope, device, descriptors.getValue(who))
+        }
+        peers.install(connections.getValue("UNADMITTED"), scope, id("UNADMITTED_DEVICE"), descriptors.getValue("UNADMITTED"))
+        peers.install(connections.getValue("WRONG_BRANCH"), scopeB2, devices.getValue("A"), descriptors.getValue("A"))
+        serviceObservation = observation
+        serviceOpenOrdinal++
+        service = null
+        openGroupedService(PasswordHashParameters())
+        closed = false
     }
 
     /** Lead-authorized initial trust only: no security/session/grant/stock/money rows. */
@@ -244,6 +296,23 @@ internal class AuthV1Fixture(
 
     suspend fun tryValidPasswordOnUnadmittedPeer(): LocalAuthenticationResult =
         endpoint.signIn(connections.getValue("UNADMITTED"), logins.getValue("A"), passwords.getValue("A"))
+
+    /** Test-only negative pepper port control; protected storage and real verifier stay installed. */
+    fun setPepperUnavailable(value: Boolean) { keys.setPepperUnavailable(value) }
+
+    /** Fresh protected reads of both frozen throttle dimensions; never a public endpoint. */
+    suspend fun throttleStates(who: String, connection: String = who): List<PersistentThrottleState> {
+        val database = buildControlledMasterRoomFixture(Room.databaseBuilder<MasterRoomDatabase>(
+            path.toString(), MasterRoomConstructor::initialize))
+        return try {
+            val store = RoomLocalSecurityStore(database, keys, keys.storageReference)
+            store.transaction { transaction ->
+                listOf(ThrottleDimension.Account, ThrottleDimension.Device(device(connection))).map { dimension ->
+                    checkNotNull(transaction.readThrottle(ThrottleKey(scope, actors.getValue(who), dimension)))
+                }
+            }
+        } finally { database.close() }
+    }
 
     /** An authorized executor inspection, NOT a new client read endpoint or an auth replacement. */
     suspend fun snapshot(label: String): AuthV1Snapshot {

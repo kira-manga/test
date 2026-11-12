@@ -72,7 +72,7 @@ internal object ProtectedLocalSecurityCodec {
 
     fun encodePolicy(value: ActivatedLocalPolicy): ByteArray = protectedCodec {
         // Keep the historical wire exact; do not silently discard an explicitly versioned extension.
-        require(!LocalEffectivePolicyCodec.requiresV2(value))
+        require(!LocalEffectivePolicyCodec.requiresExtension(value))
         val wire = PolicyWire.capture(value)
         wire.requireByteBudget()
         wire.value()

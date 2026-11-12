@@ -65,9 +65,23 @@ jobs:
           EXPECTED_INPUT_BYTES: ${{ inputs.input_zip_bytes }}
           GH_TOKEN: ${{ github.token }}
         run: scripts/pos/ios/run-ipad-artifact-smoke.sh
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "ios-ipad-smoke" \
+            --diagnostics "native=ipad-smoke-output" \
+            --output "build/pos-public-artifacts/ios-ipad-smoke"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-ipad-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ipad-smoke-output
+          path: build/pos-public-artifacts/ios-ipad-smoke
           retention-days: 14

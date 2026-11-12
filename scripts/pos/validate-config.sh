@@ -75,6 +75,9 @@ for workflow in .github/workflows/*.yml; do
   echo "ok workflow: $workflow"
 done
 
+echo "== public upload boundaries =="
+ruby scripts/pos/validate_publication_workflows.rb
+
 echo "== artifact hygiene =="
 python3 - <<'PY'
 import contextlib

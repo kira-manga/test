@@ -1,0 +1,218 @@
+name: POS owner test packages (manual, auxiliary)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Source revision recorded in SOURCE-REVISION.txt
+        required: true
+        type: string
+      android_source_revision:
+        description: Clean source revision of the retained signed Android pair
+        required: true
+        type: string
+      android_signer_sha256:
+        description: Expected retained Android test certificate SHA-256
+        required: true
+        type: string
+      desktop_smoke:
+        description: Launch packaged desktop apps with --smoke-exit
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pos-owner-test-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AUTHORIZED_REPOSITORY: kira-manga/test
+  GRADLE_OPTS: >-
+    -Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple silicon DMG
+            runner: macos-26
+            host: macos
+            arch: arm64
+            format: dmg
+          - name: macOS Intel DMG
+            runner: macos-26-intel
+            host: macos
+            arch: x64
+            format: dmg
+          - name: Windows x64 MSI
+            runner: windows-2025
+            host: windows
+            arch: x64
+            format: msi
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - name: Verify authorized repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "$AUTHORIZED_REPOSITORY" ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify snapshot source
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_REVISION" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          [[ "$(cat SOURCE-REVISION.txt)" == "$SOURCE_REVISION" ]] || exit 1
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-owner-desktop-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('apps/pos/gradle/wrapper/gradle-wrapper.properties', 'apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-desktop-${{ runner.os }}-${{ matrix.arch }}-
+      - name: Build installer and inspect packaged startup
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          DESKTOP_SMOKE: ${{ inputs.desktop_smoke && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          bash scripts/pos/desktop/package-desktop.sh \
+            --pos-root "$PWD/apps/pos" \
+            --format "${{ matrix.format }}" \
+            --arch "${{ matrix.arch }}" \
+            --source-revision "$SOURCE_REVISION"
+      - name: Validate public installer staging
+        id: public_safe
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/publish_public_artifact.py \
+            --candidate "build/pos-artifacts/desktop-${{ matrix.host }}-${{ matrix.arch }}" \
+            --output "build/pos-public-artifacts/owner-desktop-${{ matrix.host }}-${{ matrix.arch }}"
+      - name: Upload installer and validated diagnostics
+        if: always() && steps.public_safe.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-owner-${{ matrix.host }}-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-public-artifacts/owner-desktop-${{ matrix.host }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+      - name: Describe readiness
+        if: always() && steps.public_safe.outcome == 'success'
+        shell: bash
+        run: |
+          echo 'Unsigned local-test installer. Packaged startup is separate from setup, native Master/Client composition and owner acceptance.' >> "$GITHUB_STEP_SUMMARY"
+
+  android:
+    name: Android retained-signer APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Verify authorized repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == "$AUTHORIZED_REPOSITORY" ]] || exit 1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install the declared Android tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;37.0.0' 'platform-tools' \
+            'ndk;27.2.12479018' 'cmake;3.22.1'
+          # AGP's integer compileSdk 37 resolves android-37; Google's package uses 37.0.
+          if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+      - name: Verify retained APKs and complete application source binding
+        id: input_check
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          ANDROID_SOURCE_REVISION: ${{ inputs.android_source_revision }}
+          ANDROID_SIGNER_SHA256: ${{ inputs.android_signer_sha256 }}
+        run: |
+          set -euo pipefail
+          python3 scripts/pos/android/verify-owner-package.py \
+            --source-revision "$SOURCE_REVISION" \
+            --android-source-revision "$ANDROID_SOURCE_REVISION" \
+            --signer-sha256 "$ANDROID_SIGNER_SHA256" \
+            --inputs testing-inputs \
+            --output build/owner-android-verification.json
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: pos-owner-android-${{ runner.os }}-${{ hashFiles('apps/pos/gradle/wrapper/gradle-wrapper.properties', 'apps/pos/gradle/libs.versions.toml', 'apps/pos/**/*.gradle.kts') }}
+          restore-keys: |
+            pos-owner-android-${{ runner.os }}-
+      - name: Compile matching application source and run fatal lint
+        id: android_build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/pos
+          ./gradlew --no-daemon --max-workers=2 \
+            -Pkotlin.compiler.execution.strategy=in-process \
+            :apps:android:assembleLocalTesting \
+            :apps:android-runtime-tests:assembleLocalTesting \
+            :apps:android:lintVitalLocalTesting --console=plain
+      - name: Validate public signed Android package staging
+        id: public_safe
+        if: always()
+        shell: bash
+        env:
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          INPUT_CHECK: ${{ steps.input_check.outcome }}
+          ANDROID_BUILD: ${{ steps.android_build.outcome }}
+        run: |
+          set -euo pipefail
+          [[ "$INPUT_CHECK" == 'success' && "$ANDROID_BUILD" == 'success' ]] || exit 1
+          python3 scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$SOURCE_REVISION" \
+            --label owner-android-retained-signer \
+            --apk testing-inputs/ukkera-pos-testing.apk \
+            --apk testing-inputs/ukkera-pos-runtime-tests.apk \
+            --diagnostic-file testing-inputs/apk-pair.json \
+            --diagnostic-file testing-inputs/application-source-files.json \
+            --diagnostic-file build/owner-android-verification.json \
+            --output "build/pos-public-artifacts/owner-android"
+      - name: Upload retained-signer installable Android APKs
+        if: always() && steps.public_safe.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-owner-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-public-artifacts/owner-android
+          if-no-files-found: error
+          retention-days: 14
+      - name: Describe readiness
+        if: always() && steps.public_safe.outcome == 'success'
+        shell: bash
+        run: |
+          echo 'Install ukkera-pos-testing.apk for owner inspection. The separate runtime-test APK is for disposable synthetic instrumentation. Retained signing was performed locally; no private key is uploaded. No installed startup or full POS acceptance is established by this job.' >> "$GITHUB_STEP_SUMMARY"

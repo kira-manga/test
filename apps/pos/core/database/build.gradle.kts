@@ -50,6 +50,12 @@ kotlin {
             implementation(project(":adapters:sales-store"))
             implementation(project(":adapters:inventory-store"))
             implementation(project(":adapters:catalog-store"))
+            // Test-only reverse edge: real grouped auth/Room -> public client root and
+            // encrypted journals. No production database -> application dependency.
+            implementation(project(":adapters:app-gateway"))
+            // Test-only reverse edge for the production authentication wire codecs.
+            // Native RPC owners/registration are not constructed by this harness.
+            implementation(project(":adapters:local-rpc"))
         }
     }
 }
@@ -72,6 +78,15 @@ val securityJvmJar = project(":core:security").tasks.named<Jar>("jvmJar")
 tasks.named<KotlinCompile>("compileTestKotlinJvm") {
     friendPaths.from(securityJvmMain.flatMap { it.destinationDirectory })
     friendPaths.from(securityJvmJar.flatMap { it.archiveFile })
+}
+// Test-source friendship permits the unchanged production codecs only; it adds no
+// public runtime seam and supplies no native admission or original owner.
+evaluationDependsOn(":adapters:local-rpc")
+val localRpcJvmMain = project(":adapters:local-rpc").tasks.named<KotlinCompile>("compileKotlinJvm")
+val localRpcJvmJar = project(":adapters:local-rpc").tasks.named<Jar>("jvmJar")
+tasks.named<KotlinCompile>("compileTestKotlinJvm") {
+    friendPaths.from(localRpcJvmMain.flatMap { it.destinationDirectory })
+    friendPaths.from(localRpcJvmJar.flatMap { it.archiveFile })
 }
 tasks.withType<Test>().configureEach {
     maxHeapSize = "256m"

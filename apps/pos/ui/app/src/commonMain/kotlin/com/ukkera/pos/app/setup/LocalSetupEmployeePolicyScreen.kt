@@ -39,7 +39,8 @@ import com.ukkera.pos.types.DomainId
 /** Complete policy DATA and explicit separate decisions; authority remains on the native Master. */
 @Composable
 internal fun LocalSetupEmployeePolicyScreen(controller: LocalSetupController, view: LocalSetupView,
-    language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit, modifier: Modifier, onBack: (() -> Unit)?) {
+    language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit, modifier: Modifier, onBack: (() -> Unit)?,
+    employeePolicyTarget: LocalSetupEmployeePolicyTarget? = null, onEmployeePolicyTargetCleared: (() -> Unit)? = null) {
     val selected = view.employeePolicy
     val policy = selected?.requested?.nextPolicy ?: selected?.submittedPolicy
     val enabled = view.work == null && view.localClientConnected
@@ -67,6 +68,8 @@ internal fun LocalSetupEmployeePolicyScreen(controller: LocalSetupController, vi
                     }
                     view.problem?.let { Notice(problemText(it), caution = true,
                         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }) }
+                    if (selected == null) LocalSetupEmployeePolicySelection(employeePolicyTarget, enabled, controller,
+                        onEmployeePolicyTargetCleared)
                     if (selected == null) {
                         if (view.employeePolicies?.newDefinitionAvailable == true) Button(onClick = controller::beginEmployeePolicy,
                             enabled = enabled, modifier = Modifier.fillMaxWidth().touchTarget()) {

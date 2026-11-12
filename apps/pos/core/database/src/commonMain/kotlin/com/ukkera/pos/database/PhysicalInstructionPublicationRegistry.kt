@@ -344,11 +344,18 @@ internal class PhysicalInstructionPublicationRegistry(
                         // and any observed physical evidence remain owned by their original keys.
                         resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.targetId)
                     }
+                    LocalAuthEventKind.ACCOUNT_CREATED -> {
+                        // The event records the creator's EXISTING session; it neither issues
+                        // nor revokes it. Target account/policy INSERTs fence the new actor
+                        // independently. Do not retire the creator's unrelated instructions.
+                        actors += event.targetId
+                        resources += RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, event.eventId)
+                    }
                     LocalAuthEventKind.ACCOUNT_PROVISIONED, LocalAuthEventKind.DEVICE_ADMITTED,
                     LocalAuthEventKind.SIGNED_IN, LocalAuthEventKind.REFRESHED, LocalAuthEventKind.LOGGED_OUT,
                     LocalAuthEventKind.CREDENTIAL_RESET, LocalAuthEventKind.SESSION_REVOKED,
                     LocalAuthEventKind.ACCOUNT_DISABLED, LocalAuthEventKind.SESSIONS_ARCHIVED,
-                    LocalAuthEventKind.POLICY_ACTIVATED, LocalAuthEventKind.ACCOUNT_REACTIVATED,
+                    LocalAuthEventKind.POLICY_ACTIVATED, LocalAuthEventKind.ACCOUNT_REACTIVATED, LocalAuthEventKind.ACCOUNT_ACTIVATED,
                     LocalAuthEventKind.ACTION_APPROVAL_ISSUED, LocalAuthEventKind.ACTION_APPROVAL_CONSUMED,
                     LocalAuthEventKind.DEVICE_REVOKED -> {
                         // The closed event profile has actor/device/approval target variants.

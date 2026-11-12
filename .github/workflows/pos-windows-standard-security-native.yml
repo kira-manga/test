@@ -64,12 +64,24 @@ jobs:
           counts = {key:int(root.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
           (out / 'summary.json').write_text(json.dumps({'profile':'fresh genuine standard user','counts':counts,'scope':'SDK store only; no original/Master/client, other-user ACL, cross-process or power-loss acceptance'}, indent=2) + '\n')
           assert tuple(counts.values()) == (10, 0, 0, 0), counts
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "windows-standard-security-native" \
+            --diagnostics "native=native-security-output" \
+            --xml-results "core-security=apps/pos/core/security/build/test-results/jvmTest" \
+            --output "build/pos-public-artifacts/windows-standard-security-native"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-windows-standard-security-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            native-security-output
-            apps/pos/core/security/build/test-results/jvmTest
-            apps/pos/core/security/build/reports/tests/jvmTest
+          path: build/pos-public-artifacts/windows-standard-security-native
           retention-days: 14

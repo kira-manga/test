@@ -36,6 +36,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
     // This SAME retained native controller owns the additional finite event-image grammar.
     // Presence is not a close/custody proof and exposes no caller-selected read operation.
     override val hasChronologicalAccountImageTraversal: Boolean get() = true
+    override val hasChronologicalProtectedSeedTraversal: Boolean get() = true
     override val hasDataWorkspace: Boolean get() = true
     private enum class State { NEW, OPENING, READING, CLOSING, CLOSED, UNKNOWN }
     private var state = State.NEW
@@ -692,13 +693,23 @@ internal class AndroidSelfOwnedHistoryReadStorage(
                     val actual=version.physical()
                     try { admissionSource.observeOriginalMutation(actual) } finally { actual.clear() }
                 }
-                // Every actual mutable ACCOUNT AFTER is opened at its chronological cut.
-                // ImageNode derives the physical slice from this very native version row;
-                // its existing original-key/AAD path supplies immediate protected plaintext.
-                // No target/reset selector, current-account substitution or new wire pass.
-                if (version.number("tableTag") == NativeHistoryTableV2.ACCOUNT.tag.toLong() && version.number("afterKind") == 1L)
-                    listOf(ImageNode(version.copy(),NativeHistoryReadPassV2.EVENT_MUTATIONS))
-                else emptyList()
+                // Every mutable ACCOUNT AFTER and every actual initial protected INSERT
+                // is opened at its chronological cut. The native version selects the exact
+                // signed image slice or retained immutable row; no caller/current selector.
+                val table=NativeHistoryTableV2.fromTag(version.number("tableTag").toInt())
+                val protectedSeed=table.protectedTable!=null && version.number("version")==1L &&
+                    version.number("mutationKind")==1L
+                if ((table==NativeHistoryTableV2.ACCOUNT && version.number("afterKind")==1L) || protectedSeed) {
+                    when (version.number("afterKind")) {
+                        1L -> listOf(ImageNode(version.copy(),NativeHistoryReadPassV2.EVENT_MUTATIONS))
+                        2L -> {
+                            known(protectedSeed && table.immutable)
+                            listOf(Stream(table,NativeHistoryReadPassV2.EVENT_MUTATIONS,
+                                "WHERE rowid=?",listOf(Parameter.Number(version.number("afterRowId")))))
+                        }
+                        else -> uncertain()
+                    }
+                } else emptyList()
             },
                 Stream(NativeHistoryTableV2.CHUNK,NativeHistoryReadPassV2.EVENT_CHUNKS,"WHERE sequence=? ORDER BY ordinal",listOf(Parameter.Number(sequence))))
         }

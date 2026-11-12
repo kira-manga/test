@@ -16,8 +16,10 @@ import java.security.MessageDigest
  * followed by `RegFlushKey` and an exact readback before it is reported successful. The actual
  * target/lock/database handles and their 128-bit FileIdInfo identities remain retained.
  *
- * This is native custody of a namespace only. It is not an installation approval, P1 registry,
- * target key, boot-session observation, history owner or current Master. [openExisting] never
+ * The retained native boot observer brackets continuity checks and refuses a changed boot or
+ * regressing elapsed observation. Its version-sensitive NT query must be qualified on supported
+ * Windows builds. This is namespace custody plus observed boot DATA, not an installation approval,
+ * P1 registry, target key, history owner or current Master. [openExisting] never
  * creates a missing target, lock, database directory, registry key or control value; [createNew]
  * is the only entry that may create the original namespace, and only with an explicit new
  * source/nonce. A remnant that is missing, unreadable, unknown or conflicting is preserved and
@@ -25,6 +27,7 @@ import java.security.MessageDigest
  */
 internal class WindowsSelfOwnedOriginalNamespace private constructor(
     private val expectedTarget: SelfOwnedInstalledIdentityTargetV2,
+    private val boot: WindowsOriginalBootSession,
     private val serviceSid: String,
     private val accountSid: String,
     private val profileName: String,
@@ -59,6 +62,13 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
     fun identity(): SelfOwnedNativeNamespaceV2.Windows {
         assertContinuity()
         return currentIdentity()
+    }
+
+    /** Freshly checked boot DATA for this namespace lifetime; it grants no original authority. */
+    @Synchronized
+    fun bootSession(): SelfOwnedNativeBootSessionV2.Windows {
+        assertContinuity()
+        return boot.identity
     }
 
     /** The one fixed database directory. It remains owned by this retained namespace lease. */
@@ -136,15 +146,21 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
         }
     }
 
-    /** Namespace/registry continuity only; it does not prove a valid Room schema or Master. */
+    /**
+     * Namespace/registry and retained-boot continuity; no Room-schema or Master proof.
+     * These synchronous native observations must never serve as an independent watchdog clock:
+     * a future invocation owner must supervise stalled native calls without this namespace lock.
+     */
     @Synchronized
     fun assertContinuity() {
         WindowsOriginalCloseState.requireConfirmed()
         if (phase != Phase.OPEN) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+        boot.elapsedMillis()
         requireCurrentTarget(expectedTarget)
         assertBase()
         assertRegistry()
         assertBase()
+        boot.elapsedMillis()
     }
 
     /**
@@ -503,6 +519,9 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
         ): WindowsSelfOwnedOriginalNamespace {
             WindowsOriginalNative.requireSupported()
             WindowsOriginalCloseState.requireConfirmed()
+            // Observe before acquiring namespace handles or creating persistent remnants. If the
+            // native ABI is unavailable, no namespace/lease cleanup obligation has been acquired.
+            val boot = WindowsOriginalBootSession.observe()
             val (serviceSid, accountSid) = serviceCoordinates(expectedTarget)
             requireCurrentTarget(expectedTarget)
             if (nonce.size != SelfOwnedNativeIdentityProfileV2.NONCE_BYTES) {
@@ -561,7 +580,7 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
                 }
 
                 val created = WindowsSelfOwnedOriginalNamespace(
-                    expectedTarget, serviceSid, accountSid, profileName, targetName,
+                    expectedTarget, boot, serviceSid, accountSid, profileName, targetName,
                     support.observation.canonicalPath, targetCanonical, databaseCanonical, lockPath,
                     support.volumeUuid, support.observation, targetObservation, lockObservation,
                     databaseObservation, null, null, null, support.handle, targetHandle, lockHandle,
@@ -593,6 +612,9 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
         ): WindowsSelfOwnedOriginalNamespace {
             WindowsOriginalNative.requireSupported()
             WindowsOriginalCloseState.requireConfirmed()
+            // Observe before acquiring namespace handles or creating persistent remnants. If the
+            // native ABI is unavailable, no namespace/lease cleanup obligation has been acquired.
+            val boot = WindowsOriginalBootSession.observe()
             val (serviceSid, accountSid) = serviceCoordinates(expectedTarget)
             requireCurrentTarget(expectedTarget)
             val profileName = profileName(profile)
@@ -646,7 +668,7 @@ internal class WindowsSelfOwnedOriginalNamespace private constructor(
                 }
 
                 val existing = WindowsSelfOwnedOriginalNamespace(
-                    expectedTarget, serviceSid, accountSid, profileName, targetName,
+                    expectedTarget, boot, serviceSid, accountSid, profileName, targetName,
                     support.observation.canonicalPath, targetCanonical, databaseCanonical, lockPath,
                     support.volumeUuid, support.observation, targetObservation, lockObservation,
                     databaseObservation, null, null, null, support.handle, targetHandle, lockHandle,

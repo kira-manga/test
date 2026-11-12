@@ -500,6 +500,21 @@ internal class LocalSetupClosureController(
         val value = block()
         currentCoroutineContext().ensureActive()
         if (!current(token)) throw CancellationException("Setup presentation retired")
+        val problem = when (value) {
+            is LocalSetupReadResult.Unavailable -> value.problem
+            is LocalSetupMutationResult.NotStaged -> value.problem
+            is LocalSetupMutationResult.Unresolved -> value.problem
+            is LocalAcknowledgementResult.Unresolved -> value.problem
+            else -> null
+        }
+        if (problem == LocalServiceProblem.SESSION_ENDED) {
+            val cleanup = LocalSessionCleanup()
+            cleanup.attempt { deactivate() }
+            cleanup.attempt { runtime.localSessionEnded(session, problem) }
+            cleanup.throwIfFailed()
+            // The root is retired before any caller can republish the private projection.
+            throw CancellationException("Setup session ended")
+        }
         return value
     }
 

@@ -73,6 +73,8 @@ public fun LocalSetupScreen(
     compositionMode: LocalSetupCompositionMode = LocalSetupCompositionMode.LIVE,
     lanPermissionGranted: Boolean = true,
     onRequestLanPermission: (() -> Unit)? = null,
+    employeePolicyTarget: LocalSetupEmployeePolicyTarget? = null,
+    onEmployeePolicyTargetCleared: (() -> Unit)? = null,
 ) {
     val view by controller.state.collectAsState()
     val training = compositionMode == LocalSetupCompositionMode.TRAINING
@@ -82,7 +84,7 @@ public fun LocalSetupScreen(
         return
     }
     if (!view.locked && view.phase == LocalSetupPhase.EMPLOYEE_POLICY) {
-        LocalSetupEmployeePolicyScreen(controller, view, language, onLanguageChange, modifier, onBack)
+        LocalSetupEmployeePolicyScreen(controller, view, language, onLanguageChange, modifier, onBack, employeePolicyTarget, onEmployeePolicyTargetCleared)
         return
     }
     if (!view.locked && view.phase == LocalSetupPhase.DEVICE_ADMISSION) {
@@ -157,6 +159,8 @@ public fun LocalSetupScreen(
                     val editable = view.work == null && view.problem != LocalSetupProblem.CLOSE_UNCONFIRMED
                     if (view.phase == LocalSetupPhase.INSTALLATION_RETAINED || view.lan.role != null ||
                         view.lan.hostAvailable || view.lan.clientAvailable) LocalSetupLanSection(controller, view, lanPermissionGranted, onRequestLanPermission)
+                    if (view.phase == LocalSetupPhase.INSTALLATION_RETAINED) LocalSetupEmployeePolicySelection(
+                        employeePolicyTarget, editable && view.localClientConnected, controller, onEmployeePolicyTargetCleared)
                     when (view.phase) {
                         LocalSetupPhase.CHOOSE_ROUTE -> {
                             Notice(t("Create a NEW local company only when that is the intended action. Original recovery never falls back to a new company because files are missing.",

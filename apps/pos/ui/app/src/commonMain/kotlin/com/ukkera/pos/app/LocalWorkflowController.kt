@@ -557,6 +557,7 @@ internal class LocalWorkflowController(
         cleanup.attempt { clearPurchasingDocuments() }
         active = false
         activation++ // invalidate even a non-cooperative gateway's late reply before cleanup
+        cleanup.attempt { runtime.documentFiles.retireUnavailable() }
         cleanup.attempt { work?.cancel(); work = null }
         cleanup.attempt { heldActionApprovalLookup?.cancel(); heldActionApprovalLookup = null }
         cleanup.attempt { reportLifecycle?.cancel(); reportLifecycle = null }
@@ -816,7 +817,7 @@ internal class LocalWorkflowController(
 
     fun purchasingDocumentDisplayCurrent(token: NavigationToken): Boolean = documentaryCurrent() && acceptsEntry(token)
 
-    fun purchasingDocumentFilesBound(): Boolean = runtime.dependencies.documentFiles.bound
+    fun purchasingDocumentFilesBound(): Boolean = runtime.documentFiles.bound
 
     private fun acceptsDocumentary(token: NavigationToken, editing: Boolean = false): Boolean = documentaryCurrent() &&
         state.value.actionApproval == null && !state.value.attachmentReviewRequired && !configurationOwnsDraft && !retailPhysical.blocksParentWork &&
@@ -860,7 +861,7 @@ internal class LocalWorkflowController(
         if (!acceptsDocumentary(token) || state.value.purchasingDocuments.draft?.saveAttempted != false) return
         mutableState.value = state.value.copy(purchasingDocuments = state.value.purchasingDocuments.copy(fileProblem = null, importCancelled = false))
         run(LocalWorkBusy.DOCUMENT_IMPORT) { ticket ->
-            val chosen = runtime.dependencies.documentFiles.importOriginal { current(ticket) && documentaryCurrent() }
+            val chosen = runtime.documentFiles.importOriginal { current(ticket) && documentaryCurrent() }
             var adopted = false
             try {
                 currentCoroutineContext().ensureActive()
@@ -1080,7 +1081,7 @@ internal class LocalWorkflowController(
         val page = state.value.page
         mutableState.value = state.value.copy(purchasingDocuments = state.value.purchasingDocuments.copy(download = null, workingDocumentId = documentId))
         run(LocalWorkBusy.DOCUMENT_DOWNLOAD) { ticket ->
-            val result = gateway.downloadPurchasingDocument(documentId, runtime.dependencies.documentFiles) {
+            val result = gateway.downloadPurchasingDocument(documentId, runtime.documentFiles) {
                 current(ticket) && documentaryCurrent() && state.value.reference == selected && state.value.page === page
             }
             currentCoroutineContext().ensureActive()

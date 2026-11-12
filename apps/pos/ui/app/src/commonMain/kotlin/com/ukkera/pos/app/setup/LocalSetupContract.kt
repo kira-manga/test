@@ -65,6 +65,8 @@ public interface LocalSetupController {
     public fun finishEmployeeEnrollment(reviewId: DomainId) { }
     /** Complete existing-employee policy ceremony on the original native setup connection. */
     public fun openEmployeePolicies() { }
+    /** Selection DATA only; same native owner and explicit approval/activation are required. */
+    public fun openEmployeePolicies(target: LocalSetupEmployeePolicyTarget) { }
     public fun closeEmployeePolicies() { }
     public fun beginEmployeePolicy() { }
     public fun inspectEmployeePolicy(originalRequestId: DomainId) { }

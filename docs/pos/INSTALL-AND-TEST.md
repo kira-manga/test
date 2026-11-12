@@ -1,10 +1,132 @@
-# Local installation and testing — 11 November 2026
+# Local installation and testing — 12 November 2026
 
 These are synthetic local qualification builds. Epic 3 development and owner
 acceptance remain incomplete. Android has native setup/service integration;
 desktop and iOS currently launch an **unconfigured bootstrap**. Installing them
 does not provide a working branch Master, employee login, checkout or paired
 Client. Do not use production data or real payments.
+
+## Current retained Android app and runtime-test pair
+
+The retained signed application/runtime-test pair is bound to clean source
+**`a00d8303`**, including the scoped creation preflight. **Employee creation is
+unavailable**; its history family stays held. Assembly, fatal lint, retained single
+signer, v2/v3 signatures, 16-KiB alignment and min24/target37 checks passed. Application
+nondebuggable; runtime-test APK debuggable.
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `ukkera-pos-testing.apk` | 34,382,510 | `38308dcfc5672c4f26e061e9cb05cdee26f4d4c6af1d4cc3680c94161141ca33` |
+| `ukkera-pos-runtime-tests.apk` | 5,077,495 | `e5307fb1db61a2dfbc624e32c5067fb10edb4bf36bd70ea2351a24a3cfa24616` |
+
+[Exact source, sizes, hashes, signer and limitations](../../qa/pos/traceability/creation-preflight-transaction-20261112/android-package.json).
+Install only the application for ordinary owner testing; runtime-test installation
+requires an explicitly selected disposable synthetic campaign. **Neither was
+installed, launched, instrumented or uploaded here.** No native creation or owner
+acceptance is established. Public downloads retain their earlier source bindings.
+
+## Earlier retained Android pair — completed created-employee origin
+
+The signed application/runtime-test pair is retained locally from clean source
+**`634a9986`**, including completed creation-origin/replay/lineage connections.
+**Employee creation remains unavailable**; its history comparison still always holds.
+Assembly, fatal lint, retained single-signer equality, v2/v3 signatures, 16-KiB
+alignment and package/SDK checks passed. Min API24/target API37; application
+nondebuggable, runtime-test APK debuggable.
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `ukkera-pos-testing.apk` | 34,382,510 | `74bc91e4034e2aff86a183e3a3a8c0f03667eadc1970512c8d53105d2279155e` |
+| `ukkera-pos-runtime-tests.apk` | 5,077,495 | `f0a7d1447cab6dbb36d37b34d49a9208cd34ea7a2f426c5de322ad30079442e0` |
+
+[Exact source, hashes, sizes, signer and limits](../../qa/pos/traceability/created-employee-history-origin-20261112/android-package.json).
+Install only the application APK for ordinary owner testing. The runtime-test APK
+requires an explicitly selected disposable synthetic instrumentation campaign.
+**Neither package was installed, launched, instrumented or uploaded here.** This
+pair does not qualify created-actor recovery or complete platform behavior. Public
+downloads and earlier local packages retain their separate source bindings.
+
+## Earlier retained Android pair — native employee-history origin
+
+The signed application/runtime-test pair is retained locally from clean source
+**`66be469d`**, including the native employee-history origin extraction.
+**Employee creation remains unavailable**; its history comparison stays held.
+Assembly, fatal lint, retained single-signer equality, v2/v3 signatures, 16-KiB
+alignment and package/SDK checks passed. Min API24/target API37; application
+nondebuggable, runtime-test APK debuggable.
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `ukkera-pos-testing.apk` | 34,382,510 | `7bdbb9b64b89a575ae9e536a61438ab6b3fae6a968876b5e3ed335286043f37e` |
+| `ukkera-pos-runtime-tests.apk` | 5,077,495 | `15247fafe899518297f51d5e2a1e82956d8ed082a4e6f414e83f0243c6687a8c` |
+
+[Exact source, hashes, sizes, signer and limits](../../qa/pos/traceability/employee-history-origin-20261112/android-package.json).
+Install only the application APK for ordinary owner testing. The runtime-test APK
+requires an explicitly selected disposable synthetic instrumentation campaign.
+**Neither package was installed, launched, instrumented or uploaded here.** This
+package does not establish native creation history, complete platform behavior
+or owner acceptance. Public downloads and earlier local packages keep their own
+source-specific evidence.
+
+## Earlier retained Android pair — creation-event seeds
+
+The refreshed signed pair is retained locally from clean source **`f92bf8fa`**,
+including creation seed comparisons at the native historical event. **Employee
+creation remains unavailable**; its history remains held. Assembly, fatal lint,
+matching retained signer, v2/v3 signatures, alignment and package/SDK checks passed.
+Min API24/target API37; application nondebuggable, runtime-test APK debuggable.
+
+| File | Bytes | SHA-256 |
+|---|---:|---|
+| `ukkera-pos-testing.apk` | 34,382,510 | `6dbb8abceee56fe55036f4f1c84a64405f6370beb3e5e6f6481b60cfa4148702` |
+| `ukkera-pos-runtime-tests.apk` | 5,077,495 | `f9ce499935549a6925c72efe6ddfffa196e6ce5a731355737af0be7bd5924ab5` |
+
+[Source-bound manifest and limits](../../qa/pos/traceability/creation-event-seed-join-20261112/android-package.json).
+Install only the application APK for ordinary owner testing. The separate runtime-
+test APK requires an explicitly selected disposable synthetic instrumentation
+campaign. Neither package was installed, launched, instrumented or uploaded here;
+public downloads below retain their original source bindings. Earlier local pairs
+retain their separate evidence; no old result is attributed to this source.
+
+## Earlier retained Android follow-up candidate
+
+A newer signed APK is retained locally at
+`apps/pos/apps/android/build/outputs/local-testing-signed/ukkera-pos-testing.apk`.
+It includes immutable original-session association checks and exact original-lease
+retirement across the ten shared protected
+current-session observation sites, administration terminal-read retirement, complete
+activated employee-policy discovery, administrative permission-loss handling and prior review fixes, from `418792d2` plus the
+recorded working-source patch, now integrated as `78fca83f` on
+`implement/ukkera-pos-local`. Integration verified exact source/package bindings
+without rebuilding the APK. It is **not uploaded**;
+public downloads below still contain clean application source `59eb79f7`.
+
+Application: **34,267,822 bytes**, SHA-256
+`49c9eba0920e8aef13b2776e18ec56912b517656d7a8be4c8128b2515384eb1a`.
+Assembly, fatal lint, package/SDK/ABI checks, signatures and alignment passed.
+Minimum API24, target API37; ARM64, ARMv7, x86 and x86_64. The application is
+nondebuggable and uses the existing isolated testing package and signing key.
+The app verifies v2/v3; the byte-identical retained source51 executor verifies v2
+with the same single signer. The executor was not rebuilt or run.
+[Exact current source/package record](../../qa/pos/traceability/workflow-original-association-20261111/android-package-check-results.json).
+The prior `821ba5a9…` original-lease, `03d1e09d…` administration terminal-read candidate, `0080a1ef…` policy-discovery candidate and `7b957e26…` administration
+candidate, including recorded archive recovery, remain retained separately.
+
+This candidate was **not installed, launched or instrumented**. Use only an
+owner-designated disposable synthetic installation when execution is authorized;
+preserve existing unknown original/finalization state and do not erase app data
+or repeat financial originals to try this package. The prior local `44788c95…`
+candidate is retained separately and predates the administration correction.
+The local package, 1,308 passing gateway methods and preceding unchanged UI tests
+establish no complete native workflow,
+financial finalization, platform or owner acceptance.
+
+A subsequent **test-only** selection passed eight prepared-request retention
+methods using real encrypted JVM journals and controlled session replies. Recorded
+production sources and this APK remain unchanged; no rebuild, installation or
+financial run occurred. This adds prepared-row persistence evidence only, not
+physical observation, financial recovery or native custody qualification.
+[Source/results and retained failed setup attempts](../../qa/pos/traceability/retained-prepared-original-20261111/README.md).
 
 ## Download packages with their verification limits
 
@@ -19,13 +141,27 @@ requirement.
 
 | Platform | Download | Package and tested source |
 | --- | --- | --- |
-| Android, latest collected closed-ancestor inspection build | [Exact signed pair, run42976531281](https://github.com/kira-manga/test/actions/runs/42976531281/artifacts/13836173015) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `2f960d6b` (inventory implementation `e3203739`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips); Apple passed562 stock simulator methods. Exact retained executor3213c7a0 keeps source51 provenance. Android recorded original capture/import and financial application, then signal9 while finalization was pending. The native owner logged a guard-refusal exclusion request at the shared deadline. Finalization, final close and cold reopens remain unknown; zero completed methods and no observed cleanup. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. Does not contain later setup-closure UI retirement changes. |
+| Android, setup presentation retirement | [APK artifact, run42981690180](https://github.com/kira-manga/test/actions/runs/42981690180/artifacts/13837184092) | `testing-inputs/ukkera-pos-testing.apk`, clean source `59eb79f7`, including `c09ca783`. Signed packaging/fatal lint and API24/35/37 x86_64 bounded activity/original-PID startup passed. The 14 controlled setup/terminal methods and affected Android/both iOS UI compilations passed separately. Install only the application APK. No financial method rerun or full setup/business/LAN acceptance. Earlier unresolved originals/finalizations remain held. |
+| Windows x64, setup presentation retirement | [MSI artifact, run42980093390](https://github.com/kira-manga/test/actions/runs/42980093390/artifacts/13837995545) | `UkkeraPOS-0.1.0.msi`, source `59eb79f7`; package/content/architecture and bounded packaged startup passed, all15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap. |
+| macOS ARM64, setup presentation retirement | [ARM artifact, run42980093390](https://github.com/kira-manga/test/actions/runs/42980093390/artifacts/13837012820) | `UkkeraPOS-1.0.0.dmg`, source `59eb79f7`; mount/content/architecture and bounded packaged startup passed, all18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
+| macOS Intel, setup presentation retirement | [Intel artifact, run42980093390](https://github.com/kira-manga/test/actions/runs/42980093390/artifacts/13837606619) | `UkkeraPOS-1.0.0.dmg`, source `59eb79f7`; mount/content/architecture and bounded packaged startup passed, all18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
+| iOS Simulator, setup presentation retirement | [Apple artifact, run42980098590](https://github.com/kira-manga/test/actions/runs/42980098590/artifacts/13839012493) | `UkkeraPos-simulator.app.zip`, source `59eb79f7`; framework/Xcode linking and exact-PID startup on iPhone17 Pro / iOS26.5 passed. All42 manifest/43 checksums verified. Zero Kotlin methods ran. Exact-package iPad startup is separately pending. Unconfigured bootstrap; no native identity/custody/setup acceptance. |
+| Physical iPhone/iPad, setup retirement archive | Same Apple artifact | Release `UkkeraPos-unsigned-device.xcarchive.zip`, source `59eb79f7`; archive build passed, but it has no provisioning profile and **cannot install until signed/provisioned**. |
+
+<details>
+<summary>Previous package checkpoint, before setup presentation retirement</summary>
+
+| Platform | Download | Package and tested source |
+| --- | --- | --- |
+| iOS Simulator, preceding foreground/shutdown cleanup build | [Apple artifact, run42867498835](https://github.com/kira-manga/test/actions/runs/42867498835/artifacts/13791088633) | `UkkeraPos-simulator.app.zip`, source `8a7f7888`; framework/Xcode linking and exact-PID iPhone17 Pro startup passed. The exact ZIP also passed iPad Pro13-inch Simulator original-PID startup in [42876800066](https://github.com/kira-manga/test/actions/runs/42876800066). Includes both cleanup corrections. No Kotlin test rerun or native failure injection in this job. |
+| Physical iPhone/iPad, preceding cleanup archive | [Preceding Apple artifact](https://github.com/kira-manga/test/actions/runs/42867498835/artifacts/13791088633) | Debug `UkkeraPos-unsigned-device.xcarchive.zip`, source `8a7f7888`; native archive passed but requires authorized signing/provisioning before installation. |
+| Android, preceding closed-ancestor financial diagnostic | [Exact signed pair, run42976531281](https://github.com/kira-manga/test/actions/runs/42976531281/artifacts/13836173015) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `2f960d6b` (inventory implementation `e3203739`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips); Apple passed562 stock simulator methods. Exact retained executor3213c7a0 keeps source51 provenance. Android recorded original capture/import and financial application, then signal9 while finalization was pending. The native owner logged a guard-refusal exclusion request at the shared deadline. Finalization, final close and cold reopens remain unknown; zero completed methods and no observed cleanup. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. Does not contain later setup-closure UI retirement changes. |
 | Android, preceding financial-node stock proof build | [Exact signed pair, run42969676284](https://github.com/kira-manga/test/actions/runs/42969676284/artifacts/13832724738) | `testing-inputs/ukkera-pos-testing.apk`, clean application source `6593e72f` (same production tree as `b5e52af5`); install only the application APK. Signed packaging/fatal lint and1,835 JVM methods passed (two namespace skips). Exact retained executor keeps source51 provenance. Native capture/import, same-ID result recovery and financial application were recorded, then signal9 while finalization was pending. Finalization, final close and cold reopens remain unknown; zero completed methods. Synthetic diagnostics only; preserve unresolved finalization and all earlier unknown originals. |
 | Windows x64, updated presentation cleanup | [MSI artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13791457653) | `UkkeraPOS-0.1.0.msi`, source `b28638df`; package/content/architecture and packaged startup passed, including failed-old-binding lock correction. All15 manifest/16 checksum entries verified. Unsigned, unconfigured bootstrap; no native cleanup-failure injection or complete branch workflow qualification. |
 | macOS ARM64, current presentation cleanup build | [ARM artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792366363) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed, including the failed-old-binding lock correction. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
 | macOS Intel, current presentation cleanup build | [Intel artifact, run 42875573982](https://github.com/kira-manga/test/actions/runs/42875573982/artifacts/13792331313) | `UkkeraPOS-1.0.0.dmg`, source `b28638df`; mount/content/architecture and packaged startup passed. All18 manifest/19 checksum entries verified. Unsigned, unnotarized, unconfigured bootstrap. |
-| iOS Simulator, current foreground/shutdown cleanup build | [Apple artifact, run42867498835](https://github.com/kira-manga/test/actions/runs/42867498835/artifacts/13791088633) | `UkkeraPos-simulator.app.zip`, source `8a7f7888`; framework/Xcode linking and exact-PID iPhone17 Pro startup passed. The exact ZIP also passed iPad Pro13-inch Simulator original-PID startup in [42876800066](https://github.com/kira-manga/test/actions/runs/42876800066). Includes both cleanup corrections. No Kotlin test rerun or native failure injection in this job. |
-| Physical iPhone/iPad, current cleanup archive | Same current Apple artifact | Debug `UkkeraPos-unsigned-device.xcarchive.zip`, source `8a7f7888`; native archive passed but requires authorized signing/provisioning before installation. |
+
+</details>
 
 <details>
 <summary>Retained earlier Android diagnostic packages</summary>
@@ -91,6 +227,12 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 | Package | SHA-256 |
 | --- | --- |
+| Setup-retirement iOS Simulator ZIP (`59eb79f7`) | `4fe2c43914eceb730eb6c50c29ab0370d8233f5c5359fd257efb49ff106e98d9` |
+| Setup-retirement unsigned Release archive ZIP (`59eb79f7`) | `f306a292d0455913f62f4addeaf882c94bc766db8bcf62a6a1009d61555960f6` |
+| Setup-retirement Android APK (`59eb79f7`) | `49e7c44472093b8358abdf91b75458421b8febfc4a7dd8bfd01941b32f6712f1` |
+| Setup-retirement Windows x64 MSI (`59eb79f7`) | `77a0a3d38f2264ff0637771b958f38994f9b8059d8e276cd9389bd34b5d07d01` |
+| Setup-retirement macOS ARM64 DMG (`59eb79f7`) | `0890b1719609dbce938cfd46cafeaba2fdab1e7e37925eb961c4ce4918cc4368` |
+| Setup-retirement macOS Intel DMG (`59eb79f7`) | `56e7a164504fc55788c6fbbe3f2599f4facffc965324c76ba2915ceb2c73859a` |
 | Closed-ancestor inspection Android APK (`2f960d6b`) | `f41301888c7717a23221dc31ed05540566db6cdf78e9f0a499d9cbe572847946` |
 | Preceding financial-node stock Android APK (`6593e72f`) | `6f9401ac562f99765b24de7597df05e0edacbd5c94e6a40aa387dde98afd1b8b` |
 | Prior native-payment Android APK (`99e8ba9e`) | `9aa9dcde1b1971a62974b520879e87237be726e0f92db20d3b1ca256457c9ae9` |
@@ -105,8 +247,8 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 | Prior stock direct-source Android APK (`0833f397`) | `31f04129cf856ee261c9ef059d60d438c74c995d04124086f5865824f8a3f360` |
 | Current macOS ARM64 DMG (`b28638df`) | `d6afdb08684905211cbf6f40b8490a57ca17ec6516df3a2d3847afcad732cb92` |
 | Current macOS Intel DMG (`b28638df`) | `34ec21f2f83ba1053381a1002d80cd7e6301fbbb735527f306e6e09cc29bea89` |
-| Current foreground/shutdown iOS Simulator ZIP (`8a7f7888`) | `81fe8cdc1d4c6e11e45f0fc63be608482134522aa1232b2e34ca699594d57788` |
-| Current foreground/shutdown unsigned Debug ZIP (`8a7f7888`) | `b92ce3cf99a7b8612d0bb5fe1e8a1f506f395b4dfb40b63a60606410a04ee728` |
+| Preceding foreground/shutdown iOS Simulator ZIP (`8a7f7888`) | `81fe8cdc1d4c6e11e45f0fc63be608482134522aa1232b2e34ca699594d57788` |
+| Preceding foreground/shutdown unsigned Debug ZIP (`8a7f7888`) | `b92ce3cf99a7b8612d0bb5fe1e8a1f506f395b4dfb40b63a60606410a04ee728` |
 | Current Windows MSI (`b28638df`) | `813d73ddad0ca46e8d6b05d9969de693a3d82fcd4358190f0788cb320c738f88` |
 
 <details>
@@ -136,7 +278,7 @@ On macOS/Linux use `shasum -a 256 <package>`. On Windows use
 
 ## Android
 
-Latest Android application SHA-256: `f41301888c7717a23221dc31ed05540566db6cdf78e9f0a499d9cbe572847946` (34,251,438 bytes). The runtime-test APK is an executor for disposable automated runs and is not needed for owner installation.
+Latest Android application SHA-256: `49e7c44472093b8358abdf91b75458421b8febfc4a7dd8bfd01941b32f6712f1` (34,251,438 bytes). The runtime-test APK is an executor for disposable automated runs and is not needed for owner installation.
 
 1. Use a disposable test device/profile on API 24 or later. Preserve existing test
    data unless an independently agreed clean-install case requires clearing it.
@@ -305,6 +447,11 @@ xcrun simctl launch booted com.ukkera.pos.local
 ```
 
 Use an explicit simulator UDID instead of `booted` if more than one is running.
+The current source`59eb79f7` ZIP passed the iPhone17 Pro original-PID startup check
+in run42980098590. The exact same ZIP passed iPad Pro 13-inch (M5) / iOS26.5 original-PID startup in run42986166153; [exact evidence](../../qa/pos/traceability/setup-closure-retirement-20261111/ipad-native-results.json). The earlier iPad passes below
+belong to their predecessor packages. All42 manifest/43 checksum entries were
+verified on download. No setup or authentication is configured in this bootstrap.
+
 This app ZIP targets the ARM64 iOS Simulator; it is not an iPhone/iPad IPA and
 cannot run on physical hardware. The hosted launch used iOS 26.5. Other runtime
 versions remain unverified. A separate exact-artifact startup check passed on an
@@ -313,7 +460,7 @@ five seconds and the entry screen rendered **on predecessor source `038c115e`**.
 The refreshed `7f5320aa` artifact also passed [the exact-package iPad check](https://github.com/kira-manga/test/actions/runs/42764846715), with original PID 5245 visible after five seconds. The predecessor `53f496da` ZIP also
 passed [run 42783159441](https://github.com/kira-manga/test/actions/runs/42783159441),
 with original PID 3723 visible after five seconds and the unconfigured chooser in
-the retained screenshot. The prior `631df201` ZIP passed [run 42793999046](https://github.com/kira-manga/test/actions/runs/42793999046), retaining original PID 3541 after five seconds. The current `8a7f7888` ZIP from packaging run42867498835/artifact13791088633 passed [the exact-package iPad check42876800066](https://github.com/kira-manga/test/actions/runs/42876800066): original PID5290 remained visible after five seconds on iPad Pro13-inch (M5), iOS26.5. [Source-bound package and startup evidence](../../qa/pos/traceability/ios-presentation-peer-cleanup-20261110/ipad-native-results.json). This proves bounded startup only; native identity, custody, setup and complete workflow remain unverified. Interactions, rotation, accessibility
+the retained screenshot. The prior `631df201` ZIP passed [run 42793999046](https://github.com/kira-manga/test/actions/runs/42793999046), retaining original PID 3541 after five seconds. The preceding `8a7f7888` ZIP from packaging run42867498835/artifact13791088633 passed [the exact-package iPad check42876800066](https://github.com/kira-manga/test/actions/runs/42876800066): original PID5290 remained visible after five seconds on iPad Pro13-inch (M5), iOS26.5. [Source-bound package and startup evidence](../../qa/pos/traceability/ios-presentation-peer-cleanup-20261110/ipad-native-results.json). This proves bounded startup only; native identity, custody, setup and complete workflow remain unverified. Interactions, rotation, accessibility
 and full iPad presentation remain unverified.
 
 Check the visible unconfigured bootstrap, rotate the simulator, background and
@@ -392,3 +539,22 @@ Paired-device workflows, employee revocation versus commit, native original
 close/reopen, interrupted physical operations, peripherals and power-loss tests
 remain required in the broader [#61 owner campaign](https://github.com/ukkera/kmp-apps/issues/61).
 This checklist does not replace their independent frozen cases.
+
+## Setup-screen retirement check for source59eb79f7
+
+Use an authorized synthetic employee and the ordinary installed setup screen.
+
+1. Load the protected setup result/checkpoints and enter a manifest draft. Record
+   the actual displayed source/operation IDs. Leave the screen and return: private
+   projections must refresh from authorized reads. Unsaved, unsubmitted presentation
+   drafts must not return. Persisted checkpoint rows may reload only through a fresh
+   authorized read; leaving the screen does not delete durable setup work.
+2. If an operation is unresolved, retain its exact original ID. Use only its
+   existing lookup/resume path. Leaving the screen must not create a replacement.
+3. Sign out or replace the session while a read is pending. A late response must
+   not restore the old private result/checkpoint/draft into the next session.
+4. Record exact action, outcome and original ID. These are manual checks to run,
+   not assertions that installed setup retirement or the full workflow passed.
+
+The three API startup checks do not execute this manual checklist. Desktop/iOS
+bootstrap packages cannot currently perform the production setup steps.

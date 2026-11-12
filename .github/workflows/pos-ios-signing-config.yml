@@ -52,9 +52,23 @@ jobs:
               configs[config] = {key:settings.get(key,'') for key in ('CODE_SIGN_ENTITLEMENTS','PRODUCT_BUNDLE_IDENTIFIER','CODE_SIGN_STYLE','TARGETED_DEVICE_FAMILY')}
           (out / 'settings.json').write_text(json.dumps({'result':'PASS','configurations':configs,'entitlements':expected,'limits':'Configuration only; no signing, profile, native Keychain execution or app build'},indent=2)+'\n')
           PY
-      - uses: actions/upload-artifact@v4
+      - name: Validate public native diagnostics
+        id: public_safe
         if: always()
+        shell: bash
+        env:
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+        run: |
+          set -euo pipefail
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+            --source-revision "$EXPECTED_SOURCE_REVISION" \
+            --label "ios-signing-config" \
+            --diagnostics "native=signing-config-output" \
+            --output "build/pos-public-artifacts/ios-signing-config"
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.public_safe.outcome == 'success'
         with:
           name: pos-ios-signing-config-${{ github.run_id }}-${{ github.run_attempt }}
-          path: signing-config-output
+          path: build/pos-public-artifacts/ios-signing-config
           retention-days: 14

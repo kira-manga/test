@@ -1,16 +1,41 @@
 {
-  "source_revision": "59eb79f7559c1d5251a24bc11e651c74d7fb9a13",
-  "runtime_tests_source_revision": "51ae7d7c1cb67b42c18e36f58c84bec5d8cdfa41",
+  "status": "PACKAGED_NOT_EXECUTED_NOT_UPLOADED",
+  "source_revision": "a00d830336e21ecd4d251845646b6eef91c8b3f8",
+  "runtime_tests_source_revision": "a00d830336e21ecd4d251845646b6eef91c8b3f8",
+  "working_tree_dirty": false,
+  "packaged_utc": "2026-11-12T07:39:50.897917+00:00",
   "signer_certificate_sha256": "54f974f83a806bd08dfebd647615e31c3c11866ba9f81a78774aee544dc9e08f",
-  "limits": "Source revisions are build provenance, not native or owner acceptance.",
+  "android_build_tools": "36.0.0",
+  "build_tasks": [
+    ":apps:android:assembleLocalTesting",
+    ":apps:android-runtime-tests:assembleLocalTesting",
+    ":apps:android:lintVitalLocalTesting"
+  ],
   "app": {
     "filename": "ukkera-pos-testing.apk",
-    "sha256": "49e7c44472093b8358abdf91b75458421b8febfc4a7dd8bfd01941b32f6712f1",
-    "bytes": 34251438
+    "sha256": "38308dcfc5672c4f26e061e9cb05cdee26f4d4c6af1d4cc3680c94161141ca33",
+    "bytes": 34382510,
+    "package": "com.ukkera.pos.local.testing",
+    "min_sdk": 24,
+    "target_sdk": 37,
+    "v2": true,
+    "v3": true,
+    "debuggable": false,
+    "signature_report_sha256": "6d50a99c127011fe911b0d68e3f83072fe2f39fe9466a32b2f785222a3f1fae0",
+    "badging_report_sha256": "bb6a327a44ae92557806800169d176ef3169378e1b760de76b483cb3116357a8"
   },
   "runtime_tests": {
     "filename": "ukkera-pos-runtime-tests.apk",
-    "sha256": "3213c7a0ef87e8c736bbcab99f58e9899dfa59d762312c8365d296f584bb9240",
-    "bytes": 5406403
-  }
+    "sha256": "e5307fb1db61a2dfbc624e32c5067fb10edb4bf36bd70ea2351a24a3cfa24616",
+    "bytes": 5077495,
+    "package": "com.ukkera.pos.local.testing.test",
+    "min_sdk": 24,
+    "target_sdk": 37,
+    "v2": true,
+    "v3": true,
+    "debuggable": true,
+    "signature_report_sha256": "6d50a99c127011fe911b0d68e3f83072fe2f39fe9466a32b2f785222a3f1fae0",
+    "badging_report_sha256": "afddbeeef265227f0403536af079b66c4e117be176ac1aa72d4e2c74e68a1d5d"
+  },
+  "limits": "Existing signer reused; ordinary native checks. No installation, launch, instrumentation, creation-preflight/native qualification, financial redispatch, Actions or owner acceptance."
 }

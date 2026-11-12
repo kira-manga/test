@@ -369,7 +369,7 @@ internal class LocalEndpointSerialRegistrationPublicationGateway(
     }
     private suspend fun current(lease: LocalWorkflowCredentialLease): GatewayAccess {
         if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val view = when (val result = endpoint.current(lease.credentials)) {
+        val view = when (val result = lease.observeSession(endpoint)) {
             is LocalSessionViewResult.Current -> result.view
             LocalSessionViewResult.Denied -> throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
             LocalSessionViewResult.Busy -> throw GatewayFailure(LocalServiceProblem.RETRY_LATER)

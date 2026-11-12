@@ -7,7 +7,8 @@ import com.ukkera.pos.app.LocalPurchasingDocumentFileDestinationSelection
 import com.ukkera.pos.app.LocalPurchasingDocumentFileIoResult
 import com.ukkera.pos.app.LocalPurchasingDocumentFileProblem
 import com.ukkera.pos.app.LocalPurchasingDocumentFileSelection
-import com.ukkera.pos.app.LocalPurchasingDocumentFiles
+import com.ukkera.pos.app.LocalNativePurchasingDocumentFiles
+import com.ukkera.pos.app.LocalPurchasingDocumentNativeCleanup
 import com.ukkera.pos.app.MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES
 import com.ukkera.pos.app.localPurchasingDocumentMediaMatches
 import com.ukkera.pos.app.validLocalPurchasingDocumentFileName
@@ -87,7 +88,7 @@ import platform.posix.stat
  * app-private cache, persisted bookmark, invented provider or bytes-as-file fallback.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoCloseable {
+class IosLocalPurchasingDocumentFiles : LocalNativePurchasingDocumentFiles, AutoCloseable {
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val activeHost = AtomicReference<Host?>(null)
@@ -95,7 +96,26 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
     private val pending = AtomicReference<Request?>(null)
     private val destinations = AtomicReference<List<Destination>>(emptyList())
     private val closed = AtomicInt(0)
-    private val cleanupUncertain = AtomicInt(0)
+    // Consumed descriptor numbers are negative evidence only, never handles to retry.
+    private val unprovedReadCloses = AtomicReference<List<Int>>(emptyList())
+
+    private fun retainCleanupFailure(holder: Any) {
+        when (holder) {
+            is LocalPurchasingDocumentFileDestination -> nativeCleanup.unconfirmed(holder) { holder.abort() }
+            is Request -> nativeCleanup.unconfirmed(holder) {
+                withContext(Dispatchers.Main) { dismissPicker(holder) }
+            }
+            else -> nativeCleanup.unconfirmed(holder)
+        }
+    }
+
+    private fun retainUnprovedReadClose(descriptor: Int) {
+        while (true) {
+            val before = unprovedReadCloses.value
+            if (unprovedReadCloses.compareAndSet(before, before + descriptor)) break
+        }
+        retainCleanupFailure(this)
+    }
 
     private class Host(val controller: UIViewController) {
         val alive = AtomicInt(1)
@@ -110,6 +130,12 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
         var picker: UIDocumentPickerViewController? = null
         var delegate: PickerDelegate? = null
         var result: NativeChoice? = null
+        lateinit var cleanupLease: LocalPurchasingDocumentNativeCleanup.Lease
+        var presentationStarted = false
+        var presentationCompleted = false
+        var dismissalStarted = false
+        var settled = false
+        var afterDismissal: (() -> Unit)? = null
     }
 
     private sealed interface NativeChoice {
@@ -132,14 +158,20 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
 
     override val bound: Boolean
         get() {
-            if (closed.value != 0 || !NSThread.isMainThread) return false
+            if (closed.value != 0 || nativeCleanup.hasUnconfirmed || !NSThread.isMainThread) return false
             val host = activeHost.value ?: return false
             // Availability for the composed form; every actual choice still rechecks current
             // application/presentation/session lifetime and the mounted presenting window.
             return host.alive.value != 0 && host.controller.viewLoaded
         }
 
-    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
+    override val nativeCleanup = LocalPurchasingDocumentNativeCleanup()
+
+    override suspend fun importOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection =
+        nativeCleanup.during(this) { importNativeOriginal(isCurrent) }
+
+    private suspend fun importNativeOriginal(isCurrent: () -> Boolean): LocalPurchasingDocumentFileSelection {
+        if (nativeCleanup.hasUnconfirmed) return LocalPurchasingDocumentFileSelection.Unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
         val host = activeHost.value ?: return LocalPurchasingDocumentFileSelection.Unavailable(
             LocalPurchasingDocumentFileProblem.NOT_BOUND)
         val choice = choose(host, output = false, isCurrent)
@@ -180,12 +212,16 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
     }
 
     override suspend fun chooseDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
+        isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection =
+        nativeCleanup.during(this) { chooseNativeDestination(originalFileName, media, isCurrent) }
+
+    private suspend fun chooseNativeDestination(originalFileName: String, media: PurchasingEvidenceMediaV1,
         isCurrent: () -> Boolean): LocalPurchasingDocumentFileDestinationSelection {
         if (!validIosDocumentFileName(originalFileName)) {
             return LocalPurchasingDocumentFileDestinationSelection.Unavailable(
                 LocalPurchasingDocumentFileProblem.INVALID_FILE_NAME)
         }
-        if (cleanupUncertain.value != 0) {
+        if (nativeCleanup.hasUnconfirmed) {
             return LocalPurchasingDocumentFileDestinationSelection.Unavailable(
                 LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
         }
@@ -219,9 +255,13 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
     }
 
     override fun close() {
-        if (!closed.compareAndSet(0, 1)) return
+        closed.compareAndSet(0, 1)
         activeHost.getAndSet(null)?.let { it.alive.value = 0 }
-        mainScope.launch { failPending(LocalPurchasingDocumentFileProblem.ACCESS_CHANGED) }
+        mainScope.launch {
+            val request = pending.value
+            if (request != null && request.resultHandled.value != 0) dismissPicker(request)
+            else failPending(LocalPurchasingDocumentFileProblem.ACCESS_CHANGED)
+        }
         destinations.value.forEach { destination -> cleanupScope.launch { destination.abort() } }
     }
 
@@ -229,22 +269,29 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
         withContext(Dispatchers.Main) {
             suspendCancellableCoroutine { continuation ->
                 val request = Request(host, current, continuation)
+                request.cleanupLease = nativeCleanup.retain(request)
                 continuation.invokeOnCancellation { mainScope.launch { cancelPending(request) } }
+                if (!continuation.isActive) {
+                    settlePicker(request) // Cancellation preceded any native presentation.
+                    return@suspendCancellableCoroutine
+                }
                 val initial = choiceProblem(host, current)
                 if (initial != null) {
+                    request.cleanupLease.completed()
                     continuation.resume(NativeChoice.Unavailable(initial))
                     return@suspendCancellableCoroutine
                 }
                 if (host.controller.viewIfLoaded?.window == null) {
+                    request.cleanupLease.completed()
                     continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.ACCESS_CHANGED))
                     return@suspendCancellableCoroutine
                 }
                 if (pending.value != null || host.controller.presentedViewController != null) {
+                    request.cleanupLease.completed()
                     continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.BUSY))
                     return@suspendCancellableCoroutine
                 }
                 val delegate = PickerDelegate(request)
-                var picker: UIDocumentPickerViewController? = null
                 try {
                     val created = if (output) {
                         UIDocumentPickerViewController(
@@ -253,7 +300,6 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
                         UIDocumentPickerViewController(forOpeningContentTypes = listOf(
                             UTTypeJPEG, UTTypePNG, UTTypePDF), asCopy = false)
                     }
-                    picker = created
                     created.delegate = delegate
                     created.allowsMultipleSelection = false
                     configurePresentation(created, host.controller)
@@ -261,21 +307,24 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
                     request.picker = created
                     request.delegate = delegate
                     if (!pending.compareAndSet(null, request)) {
+                        settlePicker(request)
                         continuation.resume(NativeChoice.Unavailable(LocalPurchasingDocumentFileProblem.BUSY))
                         return@suspendCancellableCoroutine
                     }
                     if (!continuation.isActive) {
-                        pending.compareAndSet(request, null)
+                        settlePicker(request) // No presentation was started.
                         return@suspendCancellableCoroutine
                     }
+                    request.presentationStarted = true
                     host.controller.presentViewController(created, animated = true) {
+                        if (request.settled) return@presentViewController
+                        request.presentationCompleted = true
                         request.picker?.presentationController?.delegate = delegate
+                        if (request.resultHandled.value != 0) dismissPicker(request)
                     }
                 } catch (failure: Exception) {
-                    pending.compareAndSet(request, null)
-                    request.picker = null
-                    request.delegate = null
-                    picker?.delegate = null
+                    if (request.presentationStarted) retainCleanupFailure(request)
+                    else settlePicker(request)
                     if (continuation.isActive) {
                         continuation.resume(NativeChoice.Unavailable(documentProblem(failure)))
                     }
@@ -296,41 +345,64 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
 
     private fun cancelPending(request: Request) {
         if (!request.resultHandled.compareAndSet(0, 1)) return
-        pending.compareAndSet(request, null)
         dismissPicker(request)
     }
 
     private fun failPending(problem: LocalPurchasingDocumentFileProblem) {
-        val request = pending.getAndSet(null) ?: return
+        val request = pending.value ?: return
         if (!request.resultHandled.compareAndSet(0, 1)) return
-        dismissPicker(request)
-        if (request.continuation.isActive) request.continuation.resume(NativeChoice.Unavailable(problem))
+        dismissPicker(request) {
+            if (request.continuation.isActive) request.continuation.resume(NativeChoice.Unavailable(problem))
+        }
     }
 
-    private fun dismissPicker(request: Request) {
-        val picker = request.picker
+    private fun settlePicker(request: Request) {
+        if (request.settled) return
+        request.settled = true
+        pending.compareAndSet(request, null)
+        request.picker?.delegate = null
+        request.picker?.presentationController?.delegate = null
         request.picker = null
         request.delegate = null
-        picker?.delegate = null
-        picker?.presentingViewController?.dismissViewControllerAnimated(false, completion = null)
+        nativeCleanup.resolved(request)
+        request.cleanupLease.completed()
+        val after = request.afterDismissal
+        request.afterDismissal = null
+        after?.invoke()
+    }
+
+    private fun dismissPicker(request: Request, after: (() -> Unit)? = null) {
+        if (request.settled) return
+        if (after != null) request.afterDismissal = after
+        if (!request.presentationStarted) { settlePicker(request); return }
+        // Cancellation during presentation is retained until its actual completion callback.
+        if (!request.presentationCompleted || request.dismissalStarted) return
+        val picker = request.picker ?: run { retainCleanupFailure(request); return }
+        fun detached(): Boolean = picker.presentingViewController == null &&
+            request.host.controller.presentedViewController !== picker &&
+            !picker.isBeingPresented() && !picker.isBeingDismissed()
+        if (detached()) { settlePicker(request); return }
+        request.dismissalStarted = true
+        try {
+            picker.dismissViewControllerAnimated(false) {
+                request.dismissalStarted = false
+                if (detached()) settlePicker(request) else retainCleanupFailure(request)
+            }
+        } catch (_: Exception) {
+            request.dismissalStarted = false
+            retainCleanupFailure(request)
+        }
     }
 
     private fun deliver(request: Request) {
         val result = request.result ?: return
         if (!request.resultHandled.compareAndSet(0, 1)) return
-        pending.compareAndSet(request, null)
-        val picker = request.picker
-        request.picker = null
-        request.delegate = null
-        picker?.delegate = null
-        if (choiceProblem(request.host, request.current) != null) {
-            if (request.continuation.isActive) {
-                request.continuation.resume(NativeChoice.Unavailable(
+        dismissPicker(request) {
+            if (choiceProblem(request.host, request.current) != null) {
+                if (request.continuation.isActive) request.continuation.resume(NativeChoice.Unavailable(
                     LocalPurchasingDocumentFileProblem.ACCESS_CHANGED))
-            }
-            return
+            } else if (request.continuation.isActive) request.continuation.resume(result)
         }
-        if (request.continuation.isActive) request.continuation.resume(result)
     }
 
     private fun picked(request: Request, controller: UIDocumentPickerViewController, urls: List<*>) {
@@ -405,7 +477,7 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
             ?: fail(LocalPurchasingDocumentFileProblem.INVALID_FILE_NAME)
         val media = mediaForFileName(name)
             ?: fail(LocalPurchasingDocumentFileProblem.UNSUPPORTED_MEDIA)
-        val read = coordinatedRead(url, MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES, check)
+        val read = coordinatedRead(url, MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES, check, ::retainUnprovedReadClose)
         val actual = read.bytes
         return try {
             check()
@@ -465,6 +537,11 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
         private var abortResult: LocalPurchasingDocumentFileIoResult? = null
         private var writeCurrent: (() -> Boolean)? = null
         private var scopeStarted = false
+        private val unprovedCloses = mutableListOf<Int>()
+        private fun retainUnprovedClose(descriptor: Int) {
+            unprovedCloses += descriptor
+            retainCleanupFailure(this)
+        }
 
         private val outputUrl: NSURL by lazy {
             folder.URLByAppendingPathComponent(fileName, isDirectory = false)
@@ -506,7 +583,7 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
                             requireIoCurrent()
                             startScope()
                             requireIoCurrent()
-                            createAndWrite(outputUrl, original, ::requireIoCurrent) { url, fileIdentity ->
+                            createAndWrite(outputUrl, original, ::requireIoCurrent, ::retainUnprovedClose) { url, fileIdentity ->
                                 created = true
                                 actualUrl = url
                                 identity = fileIdentity
@@ -540,7 +617,7 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
                         requireMainCurrent(host, ownerCurrent)
                         val original = checkNotNull(expected)
                         val actual = coordinatedRead(actualUrl ?: outputUrl,
-                            MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES, ::requireIoCurrent)
+                            MAX_LOCAL_PURCHASING_DOCUMENT_FILE_BYTES, ::requireIoCurrent, ::retainUnprovedClose)
                         try {
                             requireIoCurrent()
                             if (actual.identity != identity ||
@@ -573,7 +650,7 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
             withContext(NonCancellable + Dispatchers.Default) {
                 mutex.withLock {
                     if (finalized) unavailable(LocalPurchasingDocumentFileProblem.ALREADY_USED)
-                    else abortResult ?: abortLocked()
+                    else abortResult?.takeIf { it == LocalPurchasingDocumentFileIoResult.Succeeded } ?: abortLocked()
                 }
             }
 
@@ -601,7 +678,7 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
 
         private fun failureAfterCleanup(failure: Exception): LocalPurchasingDocumentFileIoResult {
             val cleanup = try { abortLocked() } catch (_: Exception) {
-                cleanupUncertain.value = 1
+                retainCleanupFailure(this)
                 unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)
             }
             if (failure is CancellationException) throw failure
@@ -614,13 +691,18 @@ class IosLocalPurchasingDocumentFiles : LocalPurchasingDocumentFiles, AutoClosea
                 val known = identity
                 val url = actualUrl ?: outputUrl
                 confirmed = known != null && try { deleteCreated(url, known) } catch (_: Exception) { false }
+                if (confirmed) created = false
             }
-            stopScope()
+            confirmed = confirmed && unprovedCloses.isEmpty()
+            // Retain the exact security-scoped folder while native cleanup remains unresolved.
+            if (confirmed) stopScope()
             expected?.fill(0)
             expected = null
             writeCurrent = null
-            if (!confirmed) cleanupUncertain.value = 1
-            unregisterDestination(this)
+            if (confirmed) {
+                nativeCleanup.resolved(this)
+                unregisterDestination(this)
+            } else retainCleanupFailure(this)
             return (if (confirmed) LocalPurchasingDocumentFileIoResult.Succeeded
                 else unavailable(LocalPurchasingDocumentFileProblem.CLEANUP_FAILED)).also { abortResult = it }
         }
@@ -720,7 +802,8 @@ private fun fstatDescriptor(descriptor: Int): FileStat? = memScoped {
     FileStat(FileIdentity(value.st_dev, value.st_ino), value.st_mode.toInt())
 }
 
-private fun coordinatedRead(url: NSURL, maximum: Int, check: () -> Unit): NativeRead {
+private fun coordinatedRead(url: NSURL, maximum: Int, check: () -> Unit,
+    onUnprovedClose: (Int) -> Unit): NativeRead {
     var result: NativeRead? = null
     var failure: Throwable? = null
     val coordinator = NSFileCoordinator(null)
@@ -730,19 +813,22 @@ private fun coordinatedRead(url: NSURL, maximum: Int, check: () -> Unit): Native
             try {
                 val target = coordinated ?: fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
                 val path = target.path ?: fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
-                result = readBoundedPath(path, maximum, check)
+                result = readBoundedPath(path, maximum, check, onUnprovedClose)
             } catch (thrown: Throwable) {
                 failure = thrown
             }
         }
         if (failure == null && error.value != null) failure = DocumentFailure(nativeProblem(error.value))
     }
-    failure?.let { throw it }
+    failure?.let { result?.bytes?.fill(0); throw it }
     return result ?: fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
 }
 
-private fun readBoundedPath(path: String, maximum: Int, check: () -> Unit): NativeRead {
+private fun readBoundedPath(path: String, maximum: Int, check: () -> Unit,
+    onUnprovedClose: (Int) -> Unit): NativeRead {
     val descriptor = openReadOnly(path)
+    var result: NativeRead? = null
+    var bodyFailure: Throwable? = null
     try {
         val stat = fstatDescriptor(descriptor) ?: fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
         if ((stat.mode and S_IFMT) != S_IFREG) fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
@@ -764,12 +850,21 @@ private fun readBoundedPath(path: String, maximum: Int, check: () -> Unit): Nati
             check()
             if (length == 0) fail(LocalPurchasingDocumentFileProblem.EMPTY_FILE)
             if (length > maximum) fail(LocalPurchasingDocumentFileProblem.TOO_LARGE)
-            return NativeRead(buffer.copyOf(length), stat.identity)
+            return NativeRead(buffer.copyOf(length), stat.identity).also { result = it }
         } finally {
             buffer.fill(0)
         }
+    } catch (failure: Throwable) {
+        bodyFailure = failure
+        throw failure
     } finally {
-        platform.posix.close(descriptor)
+        if (platform.posix.close(descriptor) != 0) {
+            result?.bytes?.fill(0)
+            onUnprovedClose(descriptor)
+            val closeFailure = DocumentFailure(LocalPurchasingDocumentFileProblem.CLOSE_FAILED)
+            val original = bodyFailure
+            if (original != null) original.addSuppressed(closeFailure) else throw closeFailure
+        }
     }
 }
 
@@ -782,7 +877,7 @@ private fun openReadOnly(path: String): Int {
 }
 
 private fun createAndWrite(url: NSURL, bytes: ByteArray, check: () -> Unit,
-    onCreated: (NSURL, FileIdentity?) -> Unit) {
+    onUnprovedClose: (Int) -> Unit, onCreated: (NSURL, FileIdentity?) -> Unit) {
     var failure: Throwable? = null
     val coordinator = NSFileCoordinator(null)
     memScoped {
@@ -818,11 +913,14 @@ private fun createAndWrite(url: NSURL, bytes: ByteArray, check: () -> Unit,
                     if (platform.posix.fsync(descriptor) != 0) {
                         fail(LocalPurchasingDocumentFileProblem.IO_FAILED)
                     }
-                    val closed = platform.posix.close(descriptor)
-                    descriptor = -1
-                    if (closed != 0) fail(LocalPurchasingDocumentFileProblem.CLOSE_FAILED)
+                    val closing = descriptor
+                    descriptor = -1 // Never retry a consumed close, including EINTR.
+                    if (platform.posix.close(closing) != 0) {
+                        onUnprovedClose(closing)
+                        fail(LocalPurchasingDocumentFileProblem.CLOSE_FAILED)
+                    }
                 } finally {
-                    if (descriptor >= 0) platform.posix.close(descriptor)
+                    if (descriptor >= 0 && platform.posix.close(descriptor) != 0) onUnprovedClose(descriptor)
                 }
             } catch (thrown: Throwable) {
                 failure = thrown

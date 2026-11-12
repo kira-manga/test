@@ -79,7 +79,21 @@ internal data class EmployeePolicyActivationFieldsV1(val request: LocalProvision
 
 /** Separate semantic definition domain; no existing employee/installation serializer changes. */
 internal object LocalEmployeePolicyActivationDefinitionWireV1 {
-    fun encode(value: EmployeePolicyActivationFieldsV1): ByteArray = selfOwnedEncode("complete-local-employee-policy-definition/v1",
+    private const val EXTENDED_DOMAIN = "complete-local-employee-policy-definition/v2"
+
+    fun encode(value: EmployeePolicyActivationFieldsV1): ByteArray {
+        val configuration = value.policy.employeeCreationConfiguration
+        if (configuration == null) return encodeLegacy(value)
+        val legacy = encodeLegacy(value.copy(policy = value.policy.withEmployeeCreationConfiguration(null)))
+        val extension = configuration.copyWireBytes()
+        return try {
+            selfOwnedEncode(EXTENDED_DOMAIN, LocalEmployeePolicyActivationProfileV1.MAXIMUM_DEFINITION_BYTES) {
+                field(legacy); field(extension)
+            }
+        } finally { legacy.fill(0); extension.fill(0) }
+    }
+
+    private fun encodeLegacy(value: EmployeePolicyActivationFieldsV1): ByteArray = selfOwnedEncode("complete-local-employee-policy-definition/v1",
         LocalEmployeePolicyActivationProfileV1.MAXIMUM_DEFINITION_BYTES) {
         string(LocalEmployeePolicyActivationProfileV1.PURPOSE)
         val request = value.request; val policy = value.policy
@@ -105,7 +119,22 @@ internal object LocalEmployeePolicyActivationDefinitionWireV1 {
         }
         octets(value.canonicalPolicy)
     }
-    fun decode(bytes: ByteArray): EmployeePolicyActivationFieldsV1 = selfOwnedDecode(bytes, "complete-local-employee-policy-definition/v1") {
+    fun decode(bytes: ByteArray): EmployeePolicyActivationFieldsV1 {
+        require(bytes.size in 1..LocalEmployeePolicyActivationProfileV1.MAXIMUM_DEFINITION_BYTES)
+        if (selfOwnedDefinitionDomain(bytes) == EXTENDED_DOMAIN) return selfOwnedDecode(bytes, EXTENDED_DOMAIN) {
+            val legacy = field(LocalEmployeePolicyActivationProfileV1.MAXIMUM_DEFINITION_BYTES)
+            val extension = field(LocalEmployeeCreationConfigurationV1.MAXIMUM_BYTES)
+            try {
+                require(selfOwnedDefinitionDomain(legacy) == "complete-local-employee-policy-definition/v1")
+                val value = decode(legacy)
+                value.copy(policy = value.policy.withEmployeeCreationConfiguration(
+                    LocalEmployeeCreationConfigurationV1.decode(extension)))
+            } finally { legacy.fill(0); extension.fill(0) }
+        }
+        return decodeLegacy(bytes)
+    }
+
+    private fun decodeLegacy(bytes: ByteArray): EmployeePolicyActivationFieldsV1 = selfOwnedDecode(bytes, "complete-local-employee-policy-definition/v1") {
         require(bytes.size in 1..LocalEmployeePolicyActivationProfileV1.MAXIMUM_DEFINITION_BYTES &&
             string(128) == LocalEmployeePolicyActivationProfileV1.PURPOSE)
         val branch = scope(); val requestId = id(); val actor = id(); val digest = PayloadDigest(string(64)); val revision = Revision(long())

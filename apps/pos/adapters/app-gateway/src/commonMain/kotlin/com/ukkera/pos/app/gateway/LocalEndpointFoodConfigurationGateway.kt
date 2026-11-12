@@ -413,7 +413,7 @@ public class LocalEndpointFoodConfigurationGateway(
         val lease = credentials.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
         try {
             if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-            val view = when (val current = endpoint.current(lease.credentials)) {
+            val view = when (val current = lease.observeSession(endpoint)) {
                 is LocalSessionViewResult.Current -> current.view
                 LocalSessionViewResult.Denied -> throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
                 LocalSessionViewResult.Busy -> throw GatewayFailure(LocalServiceProblem.RETRY_LATER)

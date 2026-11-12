@@ -120,21 +120,32 @@ jobs:
             --arch "${{ matrix.arch }}" \
             --source-revision "${SOURCE_REVISION:-}"
 
-      - name: Upload macOS DMG and diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pos-macos-dmg-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/pos-artifacts/desktop-macos-${{ matrix.arch }}
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Publish job summary
+      - name: Validate public artifact staging
+        id: public_safe
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          summary="build/pos-artifacts/desktop-macos-${{ matrix.arch }}/diagnostics/summary.txt"
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/publish_public_artifact.py \
+            --candidate "build/pos-artifacts/desktop-macos-${{ matrix.arch }}" \
+            --output "build/pos-public-artifacts/desktop-macos-${{ matrix.arch }}"
+
+      - name: Upload macOS DMG and diagnostics
+        if: always() && steps.public_safe.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-macos-dmg-${{ matrix.arch }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-public-artifacts/desktop-macos-${{ matrix.arch }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish job summary
+        if: always() && steps.public_safe.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="build/pos-public-artifacts/desktop-macos-${{ matrix.arch }}/diagnostics/summary.txt"
           if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
 
   windows:
@@ -215,19 +226,30 @@ jobs:
             --arch x64 \
             --source-revision "${SOURCE_REVISION:-}"
 
-      - name: Upload Windows MSI and diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pos-windows-msi-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/pos-artifacts/desktop-windows-x64
-          if-no-files-found: warn
-          retention-days: 14
-
-      - name: Publish job summary
+      - name: Validate public artifact staging
+        id: public_safe
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          summary="build/pos-artifacts/desktop-windows-x64/diagnostics/summary.txt"
+          PYTHON="$(command -v python3 || command -v python)"
+          "$PYTHON" scripts/pos/publish_public_artifact.py \
+            --candidate "build/pos-artifacts/desktop-windows-x64" \
+            --output "build/pos-public-artifacts/desktop-windows-x64"
+
+      - name: Upload Windows MSI and diagnostics
+        if: always() && steps.public_safe.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pos-windows-msi-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-public-artifacts/desktop-windows-x64
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Publish job summary
+        if: always() && steps.public_safe.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="build/pos-public-artifacts/desktop-windows-x64/diagnostics/summary.txt"
           if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi

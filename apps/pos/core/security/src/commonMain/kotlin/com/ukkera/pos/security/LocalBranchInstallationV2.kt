@@ -655,8 +655,11 @@ public object LocalBranchInstallationWireV2 {
                 LocalTokenPolicy(long(), long()))
         }
 
-    private fun policyBytes(value: ActivatedLocalPolicy): ByteArray =
-        write("policy", MAXIMUM_POLICY_BYTES) {
+    private fun policyBytes(value: ActivatedLocalPolicy): ByteArray {
+        // This frozen installation packet cannot represent the later policy extension.
+        // Keep its exact bytes and fail rather than silently dropping delegated settings.
+        require(value.employeeCreationConfiguration == null)
+        return write("policy", MAXIMUM_POLICY_BYTES) {
             require(value.revision == Revision(0))
             scopeV2(value.scope); idV2(value.actorId); long(value.revision.value)
             val grants = value.grants
@@ -689,6 +692,7 @@ public object LocalBranchInstallationWireV2 {
                 require(actions.size <= 256); int(actions.size); actions.forEach { name -> string(name) }
             }
         }
+    }
 
     private fun policyValue(bytes: ByteArray): ActivatedLocalPolicy =
         read(bytes, "policy") {
@@ -940,7 +944,8 @@ private fun installationCoordinateIdsV2(c: SelfOwnedAllocationCoordinatesV1): Li
 private fun copyInstallationAccountV2(value: LocalAccountProvisioning): LocalAccountProvisioning {
     val p = value.policy
     val policy = ActivatedLocalPolicy(p.scope, p.actorId, p.revision, p.grants, p.sessionPolicy,
-        p.throttlePolicy, p.approvalPolicy?.let { LocalApprovalPolicy(it.validForMillis, it.namedSelfApprovalActions) })
+        p.throttlePolicy, p.approvalPolicy?.let { LocalApprovalPolicy(it.validForMillis, it.namedSelfApprovalActions) },
+        p.employeeCreationConfiguration)
     return LocalAccountProvisioning(value.actorId, LocalLoginIdentifier(value.login.value), policy,
         value.tokenPolicy, value.admittedDeviceIds.toSet())
 }
