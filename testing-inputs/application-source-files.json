@@ -1,5 +1,5 @@
 {
-  "source_revision": "7594e8e12dfc38a635d0db0860dea4263c2fe947",
+  "source_revision": "fba8f018f8a41a0665f4e3f874277831485af030",
   "files": [
     {
       "path": "apps/pos/.editorconfig",
@@ -8259,7 +8259,7 @@
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacDesktopClientStorage.kt",
-      "sha256": "9fa277a0c0433c5c394a7cbba4683b62df6c87c8e8be368674263efebc243ab6"
+      "sha256": "b6beafba8f32210684826ace4a26daf1ee8c1a0d35c471b40b60332f421a6482"
     },
     {
       "path": "apps/pos/core/security/src/jvmMain/kotlin/com/ukkera/pos/security/MacInstalledApplicationIdentity.kt",
