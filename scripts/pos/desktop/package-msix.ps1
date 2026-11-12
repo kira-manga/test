@@ -61,7 +61,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "makeappx failed ($LASTEXITCODE); see diagnostics/makeappx.txt" }
     & $signtool sign /fd SHA256 /f $pfx /p $password $msix *> (Join-Path $diagnostics 'signtool-sign.txt')
     if ($LASTEXITCODE -ne 0) { throw "signtool sign failed ($LASTEXITCODE)" }
-    Copy-Item $Certificate (Join-Path $OutputDir 'UkkeraPOS-Test-Signing.cer')
+    # The public certificate is published from the repository, not the artifact (key-file gate).
 } finally {
     Remove-Item -Recurse -Force $stage -ErrorAction SilentlyContinue
 }
