@@ -35,8 +35,9 @@ internal object DesktopWindowsService {
                 DesktopWindowsServiceIdentity.TEST.serviceName, handler, null)
             if (handle == null) return
             report(Winsvc.SERVICE_START_PENDING, 0)
-            runCatching { probe() }
-            val host = runCatching { DesktopMasterServiceHost.windows().also { it.start() } }.getOrElse {
+            val started = runCatching { DesktopMasterServiceHost.windows().also { it.start() } }
+            runCatching { probe(started.exceptionOrNull()) }
+            val host = started.getOrElse {
                 report(Winsvc.SERVICE_STOPPED, 0, exitCode = 4)
                 return
             }
@@ -71,7 +72,7 @@ internal object DesktopWindowsService {
     }
 
     /** Test-runner diagnostic: written only when the runner pre-created the probe directory. */
-    private fun probe() {
+    private fun probe(hostFailure: Throwable?) {
         val directory = File(System.getenv("ProgramData") ?: return, "UkkeraPOSTestProbe")
         if (!directory.isDirectory) return
         val line = when (val result = WindowsInstalledApplicationIdentity.capturePackagedService(
@@ -81,6 +82,12 @@ internal object DesktopWindowsService {
                 "appContainer=${result.value.isAppContainer}"
             is SelfOwnedInstalledIdentityResultV2.Refused -> "REFUSED ${result.code}"
         }
-        File(directory, "service-probe.txt").writeText(line + "\n")
+        // Outcome class only: no message, path or identity detail beyond the probe line above.
+        val host = when (hostFailure) {
+            null -> "host=STARTED"
+            else -> "host=REFUSED ${hostFailure::class.simpleName} at " + hostFailure.stackTrace.take(3)
+                .joinToString("<") { it.className.substringAfterLast('.') + "." + it.methodName }
+        }
+        File(directory, "service-probe.txt").writeText("$line $host\n")
     }
 }

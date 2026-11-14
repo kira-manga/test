@@ -102,6 +102,8 @@ if ($Probe) {
         $summary.service_start_mode = if ($installed) { $installed.StartMode } else { 'NOT_REGISTERED' }
         $summary.service_account = if ($installed) { $installed.StartName } else { 'NOT_REGISTERED' }
         try {
+            # StartupType auto may already have started it before the probe directory existed.
+            Stop-Service -Name UkkeraPOSTestMaster -ErrorAction SilentlyContinue
             Start-Service -Name UkkeraPOSTestMaster
             $serviceFile = Join-Path $probeDir 'service-probe.txt'
             $deadline = (Get-Date).AddSeconds(90)
