@@ -8,14 +8,12 @@ import java.util.concurrent.atomic.AtomicReference
 internal class AndroidLocalCompanyEmployeeEnrollments(
     private val owner: AndroidSelfOwnedInstallationLifetime,
     private val environment: SelfOwnedOriginalEnvironment,
-    private val registry: LocalProvisionerRegistryStore,
-    private val keys: LocalProvisionerNativeKeys,
+    private val custody: SelfOwnedCompanyCustody,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,
 ) {
     private val actionOwner = Any()
-    private val authentication = AndroidLocalInstallerAuthentication(environment, registry, keys, work, issuance)
     private class DispatchEntry(val dispatch: NativeLocalEmployeeEnrollmentDispatch) {
         val permit = AtomicReference<NativeLocalEmployeeProvisioningPermit?>(null)
         val frame = AtomicReference<NativeEmployeeProvisioningFrame?>(null)
@@ -119,10 +117,10 @@ internal class AndroidLocalCompanyEmployeeEnrollments(
             definition.definition.originalRequestId, definition.definitionDigest, receipt.digest, definition.definition.authorityEpoch,
             checkNotNull(native.parent), actual.recordDigest, original.original.rootId, original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId,
             rootDigest, original.original.actionId, original.headAuthorityId, original.headEnrollmentId,
-            AndroidP256Primitives.rootFingerprint(keys.rootBody()))
+            custody.rootFingerprint())
         val reserved = original.allIds().toSet() + target.reservedOriginalIds() + state?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readBusinessPublications(keys)?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
-            registry.devicePairingReservedIdentityIds(keys) // pairing-created identities only; not legacy original references
+            custody.readBusinessPublications()?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
+            custody.devicePairingReservedIdentityIds() // pairing-created identities only; not legacy original references
         if (request.requestId in reserved || request.targetId in reserved || request.requestId == request.targetId) refuse(SelfOwnedInstallationFailureV1.CONFLICT)
         // These ORIGINAL IDs are retained with the complete definition BEFORE head verification.
         val ids = List(4) { AndroidP256Primitives.newId() }
@@ -166,9 +164,9 @@ internal class AndroidLocalCompanyEmployeeEnrollments(
         requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true)
         val actionBytes = NativeEmployeeEnrollmentWireV1.actionMessage(record)
         val actionDigest = try { sha256(actionBytes) } finally { actionBytes.fill(0) }
-        val approval = authentication.authenticateEmployeeEnrollmentAction(record.originalActionId, actionDigest, login, secret,
+        val approval = custody.authenticateEmployeeEnrollment(record.originalActionId, actionDigest, login, secret,
             record.preparedHead.deadlineElapsedMillis)
-        authentication.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+        custody.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
         requirePreparedHeadCurrent(record); requireNewIssuance()
         record = record.copy(phase = LocalEmployeeEnrollmentPhase.SIGNING_INTENT,
             approvedHead = NativeEmployeeEnrollmentApprovalV1(approval.accountRevision, approval.credentialRevision,
@@ -176,11 +174,11 @@ internal class AndroidLocalCompanyEmployeeEnrollments(
         record = retain(state.next(record), record.originalActionId)
         state = checkNotNull(ledger())
         requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true)
-        authentication.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+        custody.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
         requireNewIssuance()
-        val signature = keys.signEmployeeEnrollmentEndorsement(record, approval)
+        val signature = custody.signEmployeeEnrollmentEndorsement(record, approval)
         try {
-            authentication.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+            custody.requireEmployeeEnrollmentStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
             requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true); requireNewIssuance()
             record = retain(state.next(record.copy(phase = LocalEmployeeEnrollmentPhase.APPROVED,
                 rootEndorsement = SelfOwnedOctetsV1(signature))), record.originalActionId)
@@ -517,7 +515,7 @@ internal class AndroidLocalCompanyEmployeeEnrollments(
     }
     private fun requireOperationalOriginal(actual: OriginalNativeHistorySnapshot) {
         val native = actual.record
-        if (native.database == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
+        if (native.nativeDatabase == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
             native.attempt?.phase != NativeHistoryAttemptPhaseV2.COMPLETED || native.roleIntent?.role != NativeHistoryDesiredRoleV2.RUN)
             refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     }
@@ -535,18 +533,18 @@ internal class AndroidLocalCompanyEmployeeEnrollments(
         val bytes = checkNotNull(record.effect).evidence.copyBytes()
         return try { LocalEmployeeEnrollmentEffectEvidence.decode(bytes) } finally { bytes.fill(0) }
     }
-    private fun companyState(): LocalCompanyAuthorityStateV1 = registry.readCompanyState(keys)
+    private fun companyState(): SelfOwnedCompanyStateView = custody.companyState()
         ?: refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
-    private fun requireOriginal(): LocalCompanyAuthorityBootstrapV1 {
-        work.requireActive(); environment.requireExistingOriginalObservation(); registry.assertContinuity()
-        return registry.companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
+    private fun requireOriginal(): SelfOwnedCompanyBootstrapView {
+        work.requireActive(); environment.requireExistingOriginalObservation(); custody.assertContinuity()
+        return custody.companyOriginal() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
     }
     private fun requireNewIssuance() { requireOriginal(); issuance.requireIssuance(null); if (!owner.newCeremoniesAllowedNoIo()) refuse(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN) }
-    private fun ledger(): NativeEmployeeEnrollmentStateV1? = registry.readEmployeeEnrollments(keys)
+    private fun ledger(): NativeEmployeeEnrollmentStateV1? = custody.readEmployeeEnrollments()
     private fun currentOriginalRecord(id: DomainId): NativeEmployeeEnrollmentRecordV1 = ledger()?.records?.singleOrNull { it.originalActionId == id }
         ?: refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
     private fun retain(state: NativeEmployeeEnrollmentStateV1, id: DomainId): NativeEmployeeEnrollmentRecordV1 =
-        registry.retainEmployeeEnrollments(state, keys).records.single { it.originalActionId == id }
+        custody.retainEmployeeEnrollments(state).records.single { it.originalActionId == id }
     private inline fun noThrowCurrent(block: () -> Boolean): Boolean = try {
         work.requireActive(); !owner.dataUseDeniedNoIo() && block()
     } catch (_: Exception) { false }

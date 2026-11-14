@@ -9,8 +9,9 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 
 /**
- * Windows Service Control Manager entry for the packaged Master service process. This first
- * increment only reports its native packaged-service identity; it opens no storage or keys.
+ * Windows Service Control Manager entry for the packaged Master service process. It composes the
+ * [DesktopMasterServiceHost] over the observed packaged-service identity; when that identity or
+ * custody is refused the service stops with a service-specific error, never a fallback.
  */
 internal object DesktopWindowsService {
     const val ARGUMENT = "--service"
@@ -33,9 +34,15 @@ internal object DesktopWindowsService {
             handle = Advapi32.INSTANCE.RegisterServiceCtrlHandlerEx(
                 DesktopWindowsServiceIdentity.TEST.serviceName, handler, null)
             if (handle == null) return
-            report(Winsvc.SERVICE_RUNNING, Winsvc.SERVICE_ACCEPT_STOP or Winsvc.SERVICE_ACCEPT_SHUTDOWN)
+            report(Winsvc.SERVICE_START_PENDING, 0)
             runCatching { probe() }
+            val host = runCatching { DesktopMasterServiceHost.windows().also { it.start() } }.getOrElse {
+                report(Winsvc.SERVICE_STOPPED, 0, exitCode = 4)
+                return
+            }
+            report(Winsvc.SERVICE_RUNNING, Winsvc.SERVICE_ACCEPT_STOP or Winsvc.SERVICE_ACCEPT_SHUTDOWN)
             stopped.await()
+            runCatching { host.stop() }
             report(Winsvc.SERVICE_STOPPED, 0)
         }
     }
@@ -52,12 +59,13 @@ internal object DesktopWindowsService {
         return if (Advapi32.INSTANCE.StartServiceCtrlDispatcher(table)) 0 else 3
     }
 
-    private fun report(state: Int, accepted: Int) {
+    private fun report(state: Int, accepted: Int, exitCode: Int = 0) {
         val status = Winsvc.SERVICE_STATUS().apply {
             dwServiceType = 0x10 // SERVICE_WIN32_OWN_PROCESS
             dwCurrentState = state
             dwControlsAccepted = accepted
-            dwWaitHint = if (state == Winsvc.SERVICE_STOP_PENDING) 10_000 else 0
+            if (exitCode != 0) { dwWin32ExitCode = 1066; dwServiceSpecificExitCode = exitCode } // ERROR_SERVICE_SPECIFIC_ERROR
+            dwWaitHint = if (state == Winsvc.SERVICE_STOP_PENDING) 30_000 else if (state == Winsvc.SERVICE_START_PENDING) 60_000 else 0
         }
         handle?.let { Advapi32.INSTANCE.SetServiceStatus(it, status) }
     }

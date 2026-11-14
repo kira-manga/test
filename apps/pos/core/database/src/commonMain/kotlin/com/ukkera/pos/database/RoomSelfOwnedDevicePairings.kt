@@ -120,7 +120,7 @@ internal class RoomSelfOwnedDevicePairings(
      * Descriptor DATA does not replace actual target possession or fresh head approval. */
     private fun captureDefinition(requestId: DomainId, target: LocalDevicePairingTargetDescriptor,
         serviceAdmission: ByteArray, census: List<LocalDeviceAdmission>, sdkIdentity: LocalDevicePairingSdkIdentityV2?,
-        masterSdkOriginal: LocalMasterSdkOriginalV1?): LocalDevicePairingDefinition = if (sdkIdentity == null) {
+        masterSdkOriginal: LocalMasterSdkOriginal?): LocalDevicePairingDefinition = if (sdkIdentity == null) {
             check(masterSdkOriginal == null)
             LocalDevicePairingDefinition.capture(requestId, target, serviceAdmission, census)
         } else if (masterSdkOriginal == null)

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Ukkera POS test MSIX. Identity must match DesktopWindowsPackageIdentity.TEST exactly.
-     @VERSION@ is replaced by the four-part package version at packaging time. -->
+     @VERSION@ is replaced by the four-part package version at packaging time.
+     The Master is the SCM-supervised service mode of the same executable. It starts automatically
+     at boot (StartupType auto) under LocalService (S-1-5-19), the account
+     DesktopWindowsServiceIdentity.TEST expects; before setup it only idles. Packaged services
+     require an elevated (administrator) install. -->
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
@@ -31,7 +35,7 @@
           </uap3:AppExecutionAlias>
         </uap3:Extension>
         <desktop6:Extension Category="windows.service" Executable="UkkeraPOS.exe" EntryPoint="Windows.FullTrustApplication">
-          <desktop6:Service Name="UkkeraPOSTestMaster" StartupType="manual" StartAccount="localService" Arguments="--service"/>
+          <desktop6:Service Name="UkkeraPOSTestMaster" StartupType="auto" StartAccount="localService" Arguments="--service"/>
         </desktop6:Extension>
       </Extensions>
     </Application>

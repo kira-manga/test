@@ -6,7 +6,7 @@ import com.ukkera.pos.database.AndroidOriginalRpcHostRegistration
 import com.ukkera.pos.database.LocalMasterRpcHostResource
 import com.ukkera.pos.database.LocalMasterRpcPeerRegistration
 import com.ukkera.pos.security.LocalCompanyAuthorityResult
-import com.ukkera.pos.security.LocalMasterSdkOriginalV1
+import com.ukkera.pos.security.LocalMasterSdkOriginal
 import dev.p2pkit.rpc.RpcEndpoint
 import dev.p2pkit.rpc.RpcLocalIdentity
 import dev.p2pkit.rpc.RpcPlatform
@@ -23,7 +23,7 @@ public class AndroidOriginalRpcHostOwner private constructor(
     private val owner: LocalRpcOriginalHostOwner,
 ) {
     public val phase: StateFlow<LocalRpcFactoryPhase> get() = owner.phase
-    public val original: StateFlow<LocalMasterSdkOriginalV1?> get() = owner.original
+    public val original: StateFlow<LocalMasterSdkOriginal?> get() = owner.original
 
     /** Exact identity readback only; this does not start transport or business ingress. */
     public suspend fun acquire(): RpcLocalIdentity {
@@ -93,7 +93,7 @@ private class AndroidMasterRpcHostResource(
     override fun isCurrent(): Boolean =
         AndroidLocalNetworkAccess.isGranted(application) && registration.isCurrent()
 
-    override suspend fun yieldOriginal(): LocalMasterSdkOriginalV1 {
+    override suspend fun yieldOriginal(): LocalMasterSdkOriginal {
         check(isCurrent()) { "Original Master RPC registration is unavailable" }
         val original = when (val result = registration.yieldOriginal()) {
             is LocalCompanyAuthorityResult.Value -> result.value

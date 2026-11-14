@@ -276,7 +276,7 @@ internal class AndroidLocalProvisioner(
             val ids = newIds(10, emptySet())
             val nonce = AndroidP256Primitives.randomBytes(32)
             val created = try {
-                SelfOwnedBootstrapV1(0L, ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], facts, environment.target, registry.namespaceIdentity(),
+                SelfOwnedBootstrapV1(0L, ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], facts, environment.androidTargetV1(), registry.namespaceIdentity(),
                     SelfOwnedOctetsV1(nonce), SelfOwnedNativeKeyRoleV1.entries.mapIndexed { index, role ->
                         SelfOwnedNativeKeyIntentV1(role, ids[6 + index], SelfOwnedKeyIntentPhaseV1.NOT_STARTED,
                             null, null, SelfOwnedOctetsV1(ByteArray(0)))
@@ -331,7 +331,7 @@ internal class AndroidLocalProvisioner(
         if (facts.protection != original.facts.protection) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         state.allocations.singleOrNull()?.let { existing ->
             if (existing.body.branchName != facts.branchName || existing.body.protection != facts.protection ||
-                !existing.body.target.same(environment.target)) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
+                !existing.body.target.same(environment.androidTargetV1())) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
             return branchAction(original, existing)
         }
         // This profile issues only to this actual installed app. External target/import/delegation
@@ -347,7 +347,7 @@ internal class AndroidLocalProvisioner(
         val body = try {
             SelfOwnedPreparationBodyV1(original.rootId, AndroidP256Primitives.documentDigest(state.root), original.issuerId,
                 AndroidP256Primitives.documentDigest(state.delegation), account.installerId, account.credentialRevision,
-                account.delegationRevision, coordinates, state.nextSerial, SelfOwnedOctetsV1(nonce), environment.target,
+                account.delegationRevision, coordinates, state.nextSerial, SelfOwnedOctetsV1(nonce), environment.androidTargetV1(),
                 facts.branchName, facts.protection)
         } finally { nonce.fill(0) }
         val allocation = LocalProvisionerAllocationV1(body, LocalProvisionerAllocationPhaseV1.ALLOCATED, null)

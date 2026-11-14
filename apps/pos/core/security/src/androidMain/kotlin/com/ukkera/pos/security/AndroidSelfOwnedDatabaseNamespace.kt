@@ -55,7 +55,9 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         private set
 
     /** Null approval never creates this owned target/database namespace or keys; no repair. */
-    override fun openNative(approval: SelfOwnedNativeApproval?) {
+    override fun openNative(approval: SelfOwnedOriginalApproval?) = openNativeV1(approval?.v1())
+
+    private fun openNativeV1(approval: SelfOwnedNativeApproval?) {
         check(phase == Phase.NEW)
         phase = Phase.OPENING
         environment.requireCurrent()
@@ -133,7 +135,9 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         assertContinuity()
     }
 
-    override fun identity(): SelfOwnedNativeNamespaceV1 {
+    override fun identity(): SelfOwnedOriginalNamespaceIdentity = SelfOwnedOriginalNamespaceIdentity.V1(identityV1())
+
+    private fun identityV1(): SelfOwnedNativeNamespaceV1 {
         assertContinuity()
         return SelfOwnedNativeNamespaceV1(directory.path, requireNotNull(volumeUuid), environment.uid,
             requireNotNull(directoryStamp).inode, requireNotNull(lockStamp).inode, requireNotNull(databaseStamp).inode)
@@ -167,7 +171,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         environment.requireExistingOriginalObservation(); assertContinuity()
         known(originalDatabasePins.isEmpty() && closedStableDatabasePins.isEmpty())
         val path = File(databaseDirectory, "master.db")
-        val binding = original.database
+        val binding = original.nativeDatabase
         if (binding != null) {
             requireDatabaseIdentity(stamp(Os.lstat(path.path)), binding)
             return path.path
@@ -184,7 +188,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         return path.path
     }
 
-    override fun observeRoomDatabaseIdentity(path: String, roomIdentity: String): NativeHistoryDatabaseIdentityV2 {
+    override fun observeRoomDatabaseIdentity(path: String, roomIdentity: String): NativeHistoryDatabaseIdentity {
         environment.requireExistingOriginalObservation(); assertContinuity()
         known(path == File(databaseDirectory, "master.db").path)
         val value = stamp(Os.lstat(path))
@@ -195,7 +199,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
 
     /** This binds live namespace/inode coordinates, NOT stable A/D7 (which exclude inodes). */
     override fun historyNamespaceDigest(): PayloadDigest {
-        val value = identity()
+        val value = identityV1()
         val writer = NativeHistoryWriterV2(2048)
         return try {
             writer.string("ukkera.original-history-namespace/v2"); writer.string(value.canonicalPath)
@@ -212,11 +216,11 @@ internal class AndroidSelfOwnedDatabaseNamespace(
      * no caller supplies a path and neither branch may use O_CREAT. Pager preparation checks
      * identity/type/ownership, NOT stable page/header/size, so genuine hot rollback is possible.
      */
-    override fun pinOriginalDatabase(binding: NativeHistoryDatabaseIdentityV2, use: OriginalDatabaseUse): OriginalDatabasePin {
+    override fun pinOriginalDatabase(binding: NativeHistoryDatabaseIdentity, use: OriginalDatabaseUse): OriginalDatabasePin {
         environment.requireExistingOriginalObservation() // Reject a creating/preparation context FIRST.
         assertContinuity()
         known(originalDatabasePins.isEmpty() && closedStableDatabasePins.isEmpty() &&
-            binding.namespaceDigest == historyNamespaceDigest())
+            binding.boundNamespaceDigest == historyNamespaceDigest())
         val path = File(databaseDirectory, "master.db")
         val before = lstatOrNull(path)?.let(::stamp) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         requireDatabaseIdentity(before, binding)
@@ -272,7 +276,7 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         environment.requireExistingOriginalObservation()
         assertContinuity()
         known(pin.use == OriginalDatabaseUse.STABLE_READ && originalDatabasePins.isEmpty() &&
-            closedStableDatabasePins.size == 1 && pin.binding.namespaceDigest == historyNamespaceDigest())
+            closedStableDatabasePins.size == 1 && pin.binding.boundNamespaceDigest == historyNamespaceDigest())
         val initial = closedStableDatabasePins[pin] ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         val observed = stamp(Os.lstat(pin.path))
         requireDatabaseIdentity(observed, pin.binding)
@@ -285,7 +289,9 @@ internal class AndroidSelfOwnedDatabaseNamespace(
         closedStableDatabasePins.remove(pin)
     }
 
-    private fun requireDatabaseIdentity(value: Stamp, binding: NativeHistoryDatabaseIdentityV2) {
+    private fun requireDatabaseIdentity(value: Stamp, identity: NativeHistoryDatabaseIdentity) {
+        // Android binds only the POSIX V2 identity; any other platform identity fails closed.
+        val binding = identity as? NativeHistoryDatabaseIdentityV2 ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         known(OsConstants.S_ISREG(value.mode) && value.mode and 4095 == FILE_MODE && value.links == 1L && value.size >= 0 &&
             value.uid == environment.uid && value.uid == binding.uid && value.device == binding.device && value.inode == binding.inode &&
             value.device == requireNotNull(databaseStamp).device)

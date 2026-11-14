@@ -44,6 +44,9 @@ public class LocalOriginalRpcClientOwner private constructor(
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient {
         requireNetwork(); return retained.directoryClient(profile)
     }
+    public suspend fun employeeCreationClient(directory: LocalRpcRemoteDirectoryClient): LocalRpcRemoteEmployeeCreationClient {
+        requireNetwork(); return retained.employeeCreationClient(directory)
+    }
     /** Awaits the same exact source/factory cleanup; caller cancellation cannot abandon it. */
     public suspend fun close(): Unit = retained.close()
     override fun toString(): String = "LocalOriginalRpcClientOwner([REDACTED])"

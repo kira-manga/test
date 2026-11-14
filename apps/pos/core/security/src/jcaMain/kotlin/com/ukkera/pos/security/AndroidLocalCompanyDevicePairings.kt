@@ -8,14 +8,12 @@ import com.ukkera.pos.types.DomainId
 internal class AndroidLocalCompanyDevicePairings(
     private val owner: AndroidSelfOwnedInstallationLifetime,
     private val environment: SelfOwnedOriginalEnvironment,
-    private val registry: LocalProvisionerRegistryStore,
-    private val keys: LocalProvisionerNativeKeys,
+    private val custody: SelfOwnedCompanyCustody,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,
 ) {
     private val actionOwner = Any()
-    private val authentication = AndroidLocalInstallerAuthentication(environment, registry, keys, work, issuance)
 
     fun prepare(requested: LocalDevicePairingDefinition, suppliedOriginal: OriginalNativeHistorySnapshot): LocalDevicePairingAction {
         requireNewCeremony()
@@ -40,7 +38,7 @@ internal class AndroidLocalCompanyDevicePairings(
                 refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
             requireSameTarget(priorTarget.body.requested().target, requested.target)
             requireSameSdkOriginalIfPresent(priorTarget.body.requested(), requested)
-            keys.verifyUnsignedDevicePairingDisposition(priorTarget)
+            custody.verifyUnsignedDevicePairingDisposition(priorTarget)
         }
         val original = requireOriginal(); val company = companyState(); val head = company.head
         if (!head.enabled) refuse(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
@@ -52,7 +50,7 @@ internal class AndroidLocalCompanyDevicePairings(
             receipt.digest, definition.definition.authorityEpoch, checkNotNull(native.parent), actual.recordDigest,
             original.original.rootId, original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId, rootDigest,
             original.original.actionId, original.headAuthorityId, original.headEnrollmentId,
-            AndroidP256Primitives.rootFingerprint(keys.rootBody()))
+            custody.rootFingerprint())
         val observation = observe()
         if (observation.moment.elapsedMillis > Long.MAX_VALUE - SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS)
             refuse(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
@@ -147,8 +145,8 @@ internal class AndroidLocalCompanyDevicePairings(
         requireCurrentOrigin(record); requirePreparedHeadCurrent(record)
         val consent = checkNotNull(record.consent)
         if (consent.actionDigest != actionDigest) refuse(SelfOwnedInstallationFailureV1.CONFLICT)
-        val approval = authentication.authenticateDevicePairingAction(record, login, secret)
-        authentication.requireDevicePairingStillCurrent(approval, companyState(), record)
+        val approval = custody.authenticateDevicePairing(record, login, secret)
+        custody.requireDevicePairingStillCurrent(approval, companyState(), record)
         requireCurrentOrigin(record); requireNewCeremony()
         // Reread the exact forced consent, after actual head authentication changed its own
         // genuine account-wide throttle/registry revision, before any root signing intent.
@@ -160,15 +158,15 @@ internal class AndroidLocalCompanyDevicePairings(
             approvedHead = NativeDevicePairingApprovedHeadV1(approval.accountRevision, approval.credentialRevision,
                 approval.retainedRevision, approval.boot, approval.expires))), record.body.originalActionId)
         state = checkNotNull(ledger())
-        requireSigningCurrent(record, approval, keys, registry)
-        val signature = keys.signDevicePairingEndorsement(record, approval, this)
+        requireSigningCurrentNeutral(record, approval, custody)
+        val signature = custody.signDevicePairingEndorsement(record, approval, this)
         try {
-            requireSigningCurrent(record, approval, keys, registry)
+            requireSigningCurrentNeutral(record, approval, custody)
             record = retain(state.next(record.copy(phase = LocalDevicePairingPhase.APPROVED,
                 rootEndorsement = SelfOwnedOctetsV1(signature, 64))), record.body.originalActionId)
             requireCurrentOrigin(record); requirePreparedHeadCurrent(record); requireNewCeremony()
-            authentication.requireDevicePairingStillCurrent(approval, companyState(), record)
-            keys.verifyDevicePairing(record)
+            custody.requireDevicePairingStillCurrent(approval, companyState(), record)
+            custody.verifyDevicePairing(record)
             return LocalDevicePairingApproval(record, companyState().original.root)
         } finally { signature.fill(0) }
     }
@@ -179,13 +177,22 @@ internal class AndroidLocalCompanyDevicePairings(
     fun requireSigningCurrent(record: NativeDevicePairingRecordV1,
         approval: AndroidLocalInstallerAuthentication.DevicePairingHeadApproval,
         actualKeys: LocalProvisionerNativeKeys, actualRegistry: LocalProvisionerRegistryStore) {
-        if (actualKeys !== keys || actualRegistry !== registry || approval.owner !== authentication ||
-            record.phase != LocalDevicePairingPhase.SIGNING_INTENT) refuse(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
+        val v1 = custody as? AndroidCompanyCustodyV1
+        if (v1 == null || actualKeys !== v1.keys || actualRegistry !== v1.registry || approval.owner !== v1.authentication)
+            refuse(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
+        requireSigningCurrentNeutral(record, SelfOwnedCompanyHeadApproval.PairingV1(approval), v1)
+    }
+
+    /** Format-neutral body of [requireSigningCurrent]; [actualCustody] must be this participant's own. */
+    internal fun requireSigningCurrentNeutral(record: NativeDevicePairingRecordV1, approval: SelfOwnedCompanyHeadApproval,
+        actualCustody: SelfOwnedCompanyCustody) {
+        if (actualCustody !== custody || record.phase != LocalDevicePairingPhase.SIGNING_INTENT)
+            refuse(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
         requireNewCeremony(); requireCurrentOrigin(record); requirePreparedHeadCurrent(record)
         val actual = ledger()?.records?.singleOrNull { it.body.originalActionId == record.body.originalActionId }
         if (actual != record) refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         verifyStoredPossession(record)
-        authentication.requireDevicePairingStillCurrent(approval, companyState(), record)
+        custody.requireDevicePairingStillCurrent(approval, companyState(), record)
         val observed = observe(); requireObservation(record, observed)
     }
 
@@ -206,7 +213,7 @@ internal class AndroidLocalCompanyDevicePairings(
         val actual = anchor.snapshotOriginal()
         requireOrigin(record.body.origin, actual, currentCut = false)
         requireMasterBoundOriginalIfPresent(record.body.requested(), actual)
-        verifyStoredPossession(record); keys.verifyDevicePairing(record)
+        verifyStoredPossession(record); custody.verifyDevicePairing(record)
         return LocalDevicePairingApproval(record, companyState().original.root) // ORIGINAL signature/deadlines unchanged; no effect API exists.
     }
     fun retained(): List<LocalDevicePairingReference> { requireOriginal(); return ledger()?.records.orEmpty().map { it.reference() } }
@@ -236,7 +243,7 @@ internal class AndroidLocalCompanyDevicePairings(
             company.original.revision < approved.retainedRevision || environment.bootCount != approved.osBootCount ||
             work.clock() >= approved.deadlineElapsedMillis || head.reservationId != null || head.failedAttempts != 0)
             refuse(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
-        verifyStoredPossession(record); keys.verifyDevicePairing(record)
+        verifyStoredPossession(record); custody.verifyDevicePairing(record)
     }
 
     /** Immutable original-origin comparison for selected history DATA. The registry already
@@ -275,7 +282,7 @@ internal class AndroidLocalCompanyDevicePairings(
             refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val actual = anchor.snapshotOriginal(); requireOrigin(record.body.origin, actual, currentCut = false)
         requireMasterBoundOriginalIfPresent(record.body.requested(), actual)
-        val company = authentication.requireDevicePairingKnownUnsigned(record)
+        val company = custody.requireDevicePairingKnownUnsigned(record)
         NativeDevicePairingWireV1.encodeWithCompletionCapacity(state).fill(0)
         if (state.generation >= Long.MAX_VALUE - 2) refuse(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
         val dispositionId = AndroidP256Primitives.newId()
@@ -283,21 +290,21 @@ internal class AndroidLocalCompanyDevicePairings(
         val disposition = NativeDevicePairingUnsignedDispositionV1(dispositionId, record.phase,
             NativeDevicePairingWireV1.unsignedRecordDigest(record.body, record.phase, record.possession, record.consent),
             company.original.revision, company.head.accountRevision, company.head.credentialRevision, environment.bootCount, observe())
-        requireNewCeremony(); authentication.requireDevicePairingKnownUnsigned(record)
+        requireNewCeremony(); custody.requireDevicePairingKnownUnsigned(record)
         requireMasterBoundOriginalIfPresent(record.body.requested())
         record = retain(state.next(record.copy(phase = LocalDevicePairingPhase.UNSIGNED_RETIREMENT_SIGNING_INTENT,
             unsignedDisposition = disposition)), id)
         state = checkNotNull(ledger())
-        requireUnsignedRetirementSigningCurrent(record, keys, registry)
-        val signature = keys.signUnsignedDevicePairingDisposition(record, this)
+        requireUnsignedRetirementSigningCurrentNeutral(record, custody)
+        val signature = custody.signUnsignedDevicePairingDisposition(record, this)
         try {
-            requireUnsignedRetirementSigningCurrent(record, keys, registry)
+            requireUnsignedRetirementSigningCurrentNeutral(record, custody)
             val completed = record.copy(phase = LocalDevicePairingPhase.RETIRED_KNOWN_UNSIGNED,
                 retirementEndorsement = SelfOwnedOctetsV1(signature, 64))
-            keys.verifyUnsignedDevicePairingDisposition(completed)
-            requireUnsignedRetirementSigningCurrent(record, keys, registry)
+            custody.verifyUnsignedDevicePairingDisposition(completed)
+            requireUnsignedRetirementSigningCurrentNeutral(record, custody)
             record = retain(state.next(completed), id)
-            keys.verifyUnsignedDevicePairingDisposition(record)
+            custody.verifyUnsignedDevicePairingDisposition(record)
             requireOriginal(); val finalOriginal = anchor.snapshotOriginal()
             requireOrigin(record.body.origin, finalOriginal, currentCut = false)
             requireMasterBoundOriginalIfPresent(record.body.requested(), finalOriginal)
@@ -307,13 +314,20 @@ internal class AndroidLocalCompanyDevicePairings(
     /** Closed actual ROOT participant rejoins known unsigned original and drained custody. */
     fun requireUnsignedRetirementSigningCurrent(record: NativeDevicePairingRecordV1,
         actualKeys: LocalProvisionerNativeKeys, actualRegistry: LocalProvisionerRegistryStore) {
-        if (actualKeys !== keys || actualRegistry !== registry ||
-            record.phase != LocalDevicePairingPhase.UNSIGNED_RETIREMENT_SIGNING_INTENT)
+        val v1 = custody as? AndroidCompanyCustodyV1
+        if (v1 == null || actualKeys !== v1.keys || actualRegistry !== v1.registry)
+            refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
+        requireUnsignedRetirementSigningCurrentNeutral(record, v1)
+    }
+
+    /** Format-neutral body of [requireUnsignedRetirementSigningCurrent]. */
+    internal fun requireUnsignedRetirementSigningCurrentNeutral(record: NativeDevicePairingRecordV1, actualCustody: SelfOwnedCompanyCustody) {
+        if (actualCustody !== custody || record.phase != LocalDevicePairingPhase.UNSIGNED_RETIREMENT_SIGNING_INTENT)
             refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         requireNewCeremony(); val actual = anchor.snapshotOriginal()
         requireOrigin(record.body.origin, actual, currentCut = false)
         requireMasterBoundOriginalIfPresent(record.body.requested(), actual)
-        authentication.requireDevicePairingKnownUnsigned(record)
+        custody.requireDevicePairingKnownUnsigned(record)
         if (ledger()?.records?.singleOrNull { it.body.originalActionId == record.body.originalActionId } != record)
             refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
     }
@@ -324,7 +338,7 @@ internal class AndroidLocalCompanyDevicePairings(
         val actual = anchor.snapshotOriginal()
         requireOrigin(record.body.origin, actual, currentCut = false)
         requireMasterBoundOriginalIfPresent(record.body.requested(), actual)
-        keys.verifyUnsignedDevicePairingDisposition(record)
+        custody.verifyUnsignedDevicePairingDisposition(record)
         return LocalDevicePairingUnsignedRetirement.fromNative(record, companyState().original.root)
     }
     private fun requireSameTarget(before: LocalDevicePairingTargetDescriptor, after: LocalDevicePairingTargetDescriptor) {
@@ -398,7 +412,7 @@ internal class AndroidLocalCompanyDevicePairings(
         val namespace = owner.compositionProfile.appId(native.allocation.coordinates.scope)
         if (master.allocation.digest != native.allocation.digest ||
             master.allocation.originalNativeBindingDigest != native.allocation.originalNativeBindingDigest ||
-            !master.nativeApplication.same(environment.target) || !master.nativeApplication.same(owner.materialAtOpen.target) ||
+            !master.namesInstalledTarget(environment, owner.materialAtOpen) ||
             master.compositionProfile != owner.compositionProfile || master.appId != namespace)
             refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         if (requested.request.scope != native.allocation.coordinates.scope || sdk.appId != master.appId || sdk.appId != namespace)
@@ -414,7 +428,7 @@ internal class AndroidLocalCompanyDevicePairings(
         if (requested.masterSdkOriginal != null)
             requireSdkBranchNamespaceForAuthority(requested, actual ?: anchor.snapshotOriginal())
     }
-    private fun sameMasterOriginal(expected: LocalMasterSdkOriginalV1, actual: LocalMasterSdkOriginalV1): Boolean {
+    private fun sameMasterOriginal(expected: LocalMasterSdkOriginal, actual: LocalMasterSdkOriginal): Boolean {
         val expectedBytes = expected.copyWireBytes()
         try {
             val actualBytes = actual.copyWireBytes()
@@ -435,7 +449,7 @@ internal class AndroidLocalCompanyDevicePairings(
         if (origin.rootId != original.original.rootId || origin.rootKeyId != original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId ||
             origin.rootDocumentDigest != rootDigest || origin.foundingActionId != original.original.actionId ||
             origin.headAuthorityId != original.headAuthorityId || origin.headEnrollmentId != original.headEnrollmentId ||
-            origin.rootFingerprint != AndroidP256Primitives.rootFingerprint(keys.rootBody())) refuse(SelfOwnedInstallationFailureV1.CONFLICT)
+            origin.rootFingerprint != custody.rootFingerprint()) refuse(SelfOwnedInstallationFailureV1.CONFLICT)
     }
     private fun requirePreparedHeadCurrent(record: NativeDevicePairingRecordV1) {
         val company = companyState(); val head = company.head; val prepared = record.body.preparedHead
@@ -454,36 +468,36 @@ internal class AndroidLocalCompanyDevicePairings(
     }
     private fun requireOperationalOriginal(actual: OriginalNativeHistorySnapshot) {
         val native = actual.record
-        if (native.database == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
+        if (native.nativeDatabase == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
             native.attempt?.phase != NativeHistoryAttemptPhaseV2.COMPLETED || native.roleIntent?.role != NativeHistoryDesiredRoleV2.RUN)
             refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     }
     private fun reservedIds(state: NativeDevicePairingStateV1?, origin: NativeDevicePairingOriginV1): Set<DomainId> =
         requireOriginal().allIds().toSet() + origin.reservedOriginalIds() + state?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.deviceAdmissionReservedIdentityIds(keys) +
-            registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readBusinessPublications(keys)?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) }
+            custody.deviceAdmissionReservedIdentityIds() +
+            custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() } +
+            custody.readBusinessPublications()?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) }
     private fun requireNoUnknownSigning(state: NativeDevicePairingStateV1?) {
         if (state?.records?.any { it.phase in setOf(LocalDevicePairingPhase.SIGNING_INTENT,
                 LocalDevicePairingPhase.UNSIGNED_RETIREMENT_SIGNING_INTENT) } == true)
             refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
     }
-    private fun requireOriginal(): LocalCompanyAuthorityBootstrapV1 {
-        work.requireActive(); environment.requireExistingOriginalObservation(); registry.assertContinuity()
+    private fun requireOriginal(): SelfOwnedCompanyBootstrapView {
+        work.requireActive(); environment.requireExistingOriginalObservation(); custody.assertContinuity()
         if (owner.dataUseDeniedNoIo()) refuse(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        return registry.companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
+        return custody.companyOriginal() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
     }
     private fun requireNewCeremony() {
         requireOriginal(); issuance.requireIssuance(null)
         if (!owner.newCeremoniesAllowedNoIo()) refuse(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
     }
-    private fun companyState(): LocalCompanyAuthorityStateV1 = registry.readCompanyState(keys)
+    private fun companyState(): SelfOwnedCompanyStateView = custody.companyState()
         ?: refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
-    private fun ledger(): NativeDevicePairingStateV1? = registry.readDevicePairings(keys)
+    private fun ledger(): NativeDevicePairingStateV1? = custody.readDevicePairings()
     private fun originalRecord(id: DomainId): NativeDevicePairingRecordV1 = ledger()?.records?.singleOrNull { it.body.originalActionId == id }
         ?: refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
     private fun retain(state: NativeDevicePairingStateV1, id: DomainId): NativeDevicePairingRecordV1 =
-        registry.retainDevicePairings(state, keys).records.single { it.body.originalActionId == id }
+        custody.retainDevicePairings(state).records.single { it.body.originalActionId == id }
     private fun observe(): LocalAuthenticationObservation = owner.historyClockSampleNative().let { LocalAuthenticationObservation(it.issuerContextId, it.moment) }
     private fun refuse(reason: SelfOwnedInstallationFailureV1): Nothing = selfOwnedFail(reason)
 }

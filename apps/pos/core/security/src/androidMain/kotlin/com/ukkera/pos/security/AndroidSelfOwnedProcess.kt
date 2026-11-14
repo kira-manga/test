@@ -8,7 +8,7 @@ import android.util.Log
 /** Android process facts for the shared owner work: same behavior as the original inline calls. */
 internal object AndroidSelfOwnedProcess : SelfOwnedProcessPlatform {
     override fun pid(): Int = Process.myPid()
-    override fun uid(): Int = Process.myUid()
+    override fun principal(): SelfOwnedProcessPrincipal = SelfOwnedProcessPrincipal.AndroidUid(Process.myUid())
     override fun elapsedMillis(): Long = SystemClock.elapsedRealtime()
     override fun elapsedRealtimeNanos(): Long = SystemClock.elapsedRealtimeNanos()
     override fun passwordKeyFactory(): javax.crypto.SecretKeyFactory = AndroidNativePasswordKeyDerivation.secretKeyFactory()

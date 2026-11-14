@@ -34,7 +34,7 @@ internal class AndroidSelfOwnedOriginalPlatform(private val application: Applica
         work: AndroidOwnedInstallationWork): LocalProvisionerRegistryStore =
         AndroidLocalProvisionerRegistry(environment.android(), work)
 
-    override fun provisionerKeys(environment: SelfOwnedOriginalEnvironment, registry: LocalProvisionerRegistryStore,
+    override fun provisionerKeys(environment: SelfOwnedOriginalEnvironment, registry: SelfOwnedOriginalRegistryStore,
         work: AndroidOwnedInstallationWork): LocalProvisionerNativeKeys =
         AndroidLocalProvisionerKeys(environment.android(), registry as AndroidLocalProvisionerRegistry, work)
 
@@ -91,6 +91,6 @@ public object AndroidSelfOwnedInstallationOwner {
     /** Current original DATA for an already retained Host resource. This existing-only yield
      * closes no Master participant and never constructs or repairs an SDK owner. */
     public suspend fun yieldExistingMasterSdkForHost(custody: SelfOwnedNativeHistoryCustody,
-        expectedCurrentSnapshot: OriginalNativeHistorySnapshot): LocalMasterSdkOriginalV1 =
+        expectedCurrentSnapshot: OriginalNativeHistorySnapshot): LocalMasterSdkOriginal =
         SelfOwnedInstallationOwnerCore.yieldExistingMasterSdkForHost(custody, expectedCurrentSnapshot)
 }

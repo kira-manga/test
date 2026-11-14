@@ -1,5 +1,6 @@
 package com.ukkera.pos.app.gateway
 
+import com.ukkera.pos.security.DesktopMasterClientJournalCustody
 import com.ukkera.pos.security.MacClientJournalKeyStore
 import com.ukkera.pos.security.MacDesktopFiles
 import com.ukkera.pos.security.MacInstalledApplicationIdentity
@@ -73,8 +74,38 @@ internal class MacJournalPlatformFacts(private val expected: SelfOwnedMacUiIdent
     }
 }
 
+/** Desktop Master SERVICE custody: the service's own OS key custody and secret-store key index. */
+internal class MasterServiceJournalKeys(private val custody: DesktopMasterClientJournalCustody) : DesktopJournalKeys {
+    override fun keyNames(prefix: String): List<String> = custody.keyNames(prefix)
+    override fun keyExists(name: String): Boolean = custody.keyExists(name)
+    override fun createKey(name: String, protection: SelfOwnedKeyProtectionV1) {
+        check(protection == SelfOwnedKeyProtectionV1.OS_ISOLATED) { "Only the OS-isolated Master service profile is implemented" }
+        custody.createKey(name)
+    }
+    override fun deleteKey(name: String) = custody.deleteKey(name)
+    override fun inspectKey(name: String, protection: SelfOwnedKeyProtectionV1): Any {
+        check(protection == SelfOwnedKeyProtectionV1.OS_ISOLATED)
+        return custody.inspectKey(name)
+    }
+    override fun encrypt(name: String, aad: ByteArray, plaintext: ByteArray): Pair<ByteArray, ByteArray> = custody.encrypt(name, aad, plaintext)
+    override fun decrypt(name: String, nonce: ByteArray, ciphertext: ByteArray, aad: ByteArray): ByteArray =
+        custody.decrypt(name, nonce, ciphertext, aad)
+}
+
+/** Installed Master service facts bound into its cohost journal AEAD; re-observed on each base check. */
+internal class MasterServiceJournalPlatformFacts(private val custody: DesktopMasterClientJournalCustody) : DesktopJournalPlatformFacts {
+    override val targetDigest: String get() = custody.targetDigest
+    override val volumeId: String get() = custody.volumeId
+    override fun requireCurrent() = custody.requireCurrent()
+}
+
 /** Public platform factories for desktop client journal storage. */
 public object DesktopClientJournalStorages {
+    /** Desktop Master SERVICE same-device cohost journals: the service's own owner-only directory and
+     * key custody, from the SAME OS custody as its Master (never the UI-process stores). */
+    public fun masterService(custody: DesktopMasterClientJournalCustody): DesktopClientJournalStorage =
+        DesktopClientJournalStorage(custody.parentDirectory, MasterServiceJournalKeys(custody), MasterServiceJournalPlatformFacts(custody))
+
     /** Windows packaged app: the package's own LocalState folder, CNG keys, packaged identity facts. */
     public fun windows(expected: SelfOwnedWindowsPackagedAppIdentityV2): DesktopClientJournalStorage {
         val local = System.getenv("LOCALAPPDATA") ?: error("LOCALAPPDATA is unavailable")

@@ -12,7 +12,7 @@ import com.ukkera.pos.types.DomainId
 public class LocalDevicePairingApprovedMaster internal constructor(
     private val identity: NativeDevicePairingApprovedMasterIdentityV1,
 ) {
-    public val masterSdkOriginal: LocalMasterSdkOriginalV1 get() = identity.masterSdkOriginal
+    public val masterSdkOriginal: LocalMasterSdkOriginal get() = identity.masterSdkOriginal
     public val targetSdkIdentity: LocalDevicePairingSdkIdentityV2 get() = identity.targetSdkIdentity
     public val originalPairingActionId: DomainId get() = identity.originalPairingActionId
     public val originalRequestId: DomainId get() = identity.originalRequestId
@@ -32,7 +32,7 @@ public class LocalDevicePairingApprovedMaster internal constructor(
 
 /** Bounded immutable readback fields only; no duplicate full challenge or signing message. */
 internal class NativeDevicePairingApprovedMasterIdentityV1(
-    val masterSdkOriginal: LocalMasterSdkOriginalV1,
+    val masterSdkOriginal: LocalMasterSdkOriginal,
     val targetSdkIdentity: LocalDevicePairingSdkIdentityV2,
     val originalPairingActionId: DomainId,
     val originalRequestId: DomainId,

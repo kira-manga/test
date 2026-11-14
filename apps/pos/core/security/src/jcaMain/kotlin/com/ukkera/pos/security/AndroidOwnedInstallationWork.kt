@@ -52,7 +52,7 @@ internal class AndroidOwnedInstallationWork(
     private val scope = CoroutineScope(job + Dispatchers.IO)
     internal val roomCoroutines = AndroidOwnedRoomCoroutines(this, job, platform)
     private val pid = platform.pid()
-    private val uid = platform.uid()
+    private val principal = platform.principal()
     private val retired = AtomicBoolean(false)
     private val exclusionRequested = AtomicBoolean(false)
     private val lastElapsed = AtomicLong(platform.elapsedMillis())
@@ -74,7 +74,7 @@ internal class AndroidOwnedInstallationWork(
 
     init {
         try {
-            require(pid > 0 && uid >= 0 && lastElapsed.get() >= 0)
+            require(pid > 0 && lastElapsed.get() >= 0)
             watchdog.scheduleWithFixedDelay({
                 try {
                     synchronized(gate) {
@@ -92,7 +92,7 @@ internal class AndroidOwnedInstallationWork(
     }
 
     fun clock(): Long {
-        if (platform.pid() != pid || platform.uid() != uid) {
+        if (platform.pid() != pid || platform.principal() != principal) {
             requestProcessExclusion(ExclusionReason.PROCESS_IDENTITY_CHANGED); selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         }
         repeat(4) {
@@ -154,7 +154,7 @@ internal class AndroidOwnedInstallationWork(
         if (!request) return
         logProcessExclusionAsync(reason, origin)
         // Never guess another PID/session or pretend this call is proof of actual death.
-        if (platform.pid() == pid && platform.uid() == uid) {
+        if (platform.pid() == pid && platform.principal() == principal) {
             try { platform.terminate(pid) } catch (_: Throwable) { /* lease remains held; no replacement is admitted */ }
         }
     }

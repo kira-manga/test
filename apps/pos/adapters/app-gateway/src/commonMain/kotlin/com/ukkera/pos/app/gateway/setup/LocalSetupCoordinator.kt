@@ -25,6 +25,7 @@ import com.ukkera.pos.app.setup.LocalSetupPairingDocumentView
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.sha256
 import com.ukkera.pos.security.BranchScope
+import com.ukkera.pos.security.SelfOwnedNativePreparationResultV2
 import com.ukkera.pos.security.LocalAccountProvisioning
 import com.ukkera.pos.security.LocalEmployeeEnrollmentAction
 import com.ukkera.pos.security.LocalEmployeeEnrollmentPhase
@@ -98,7 +99,6 @@ import com.ukkera.pos.security.SelfOwnedLocalSecurityContext
 import com.ukkera.pos.security.SelfOwnedNativeMaterialView
 import com.ukkera.pos.security.SelfOwnedNativeOpenResult
 import com.ukkera.pos.security.SelfOwnedNativeReadResult
-import com.ukkera.pos.security.SelfOwnedPreparationPacketV1
 import com.ukkera.pos.types.DomainId
 import dev.p2pkit.core.AppId
 import kotlin.concurrent.Volatile
@@ -149,7 +149,7 @@ public class LocalSetupCoordinator(
     private var automaticReopenAttempted = false
     private var foundingAction: LocalCompanyFoundingAction? = null
     private var branchAction: LocalProvisionerPendingAction? = null
-    private var retainedPreparation: SelfOwnedPreparationPacketV1? = null
+    private var retainedPreparation: SelfOwnedAllocationCoordinatesV1? = null
     private var freshTargetOriginal: LocalSetupFreshDeviceTargetOriginal? = null
     // A terminal attachment remains bound to this exact native owner/configuration. Neither
     // failed construction nor LAN-only close re-arms another factory in this setup lifetime.
@@ -287,9 +287,9 @@ public class LocalSetupCoordinator(
                 try {
                     operation(clear = { secret.fill('\u0000') }) {
                         change { it.copy(phase = LocalSetupPhase.ORIGINAL_UNRESOLVED) }
-                        when (val result = owner.value.issueOriginalPreparation(action, action.installerLogin, secret)) {
-                            is LocalProvisionerGrant.Retained -> presentPreparation(action, result.packet)
-                            is LocalProvisionerGrant.Unresolved -> nativeFailure(result.reason)
+                        when (val result = issueOriginalGrant(owner.value, action, secret)) {
+                            is OriginalGrant.Retained -> presentPreparation(action, result.coordinates)
+                            is OriginalGrant.Unresolved -> nativeFailure(result.reason)
                         }
                     }
                 } catch (failure: Throwable) { secret.fill('\u0000'); throw failure }
@@ -304,11 +304,11 @@ public class LocalSetupCoordinator(
             val previouslyRetained = requireNotNull(retainedPreparation)
             operation {
                 // Re-read only the positive original packet before handing ownership to P2.
-                val packet = when (val result = owner.value.recoverOriginalPreparation()) {
-                    is LocalProvisionerGrant.Retained -> result.packet
-                    is LocalProvisionerGrant.Unresolved -> { nativeFailure(result.reason); return@operation }
+                val packet = when (val result = recoverOriginalGrant(owner.value)) {
+                    is OriginalGrant.Retained -> result
+                    is OriginalGrant.Unresolved -> { nativeFailure(result.reason); return@operation }
                 }
-                requireOriginal(sameCoordinates(packet.coordinates, previouslyRetained.coordinates) &&
+                requireOriginal(sameCoordinates(packet.coordinates, previouslyRetained) &&
                     sameCoordinates(packet.coordinates, requireNotNull(action.allocation)))
                 if (!continueWork()) return@operation
                 closeNativeOwner(owner) // ACTUAL awaited P1 close; not deny/cancel/health.
@@ -3906,9 +3906,9 @@ public class LocalSetupCoordinator(
                 } else {
                     presentBranch(original, company)
                     if (inspection.originalGrantRetained && continueWork()) {
-                        when (val grant = owner.value.recoverOriginalPreparation()) {
-                            is LocalProvisionerGrant.Retained -> presentPreparation(original, grant.packet)
-                            is LocalProvisionerGrant.Unresolved -> nativeFailure(grant.reason)
+                        when (val grant = recoverOriginalGrant(owner.value)) {
+                            is OriginalGrant.Retained -> presentPreparation(original, grant.coordinates)
+                            is OriginalGrant.Unresolved -> nativeFailure(grant.reason)
                         }
                     }
                 }
@@ -3946,9 +3946,38 @@ public class LocalSetupCoordinator(
             companyReview = null, company = company, native = null, receipt = null, problem = null) }
     }
 
-    private fun presentPreparation(action: LocalProvisionerPendingAction, packet: SelfOwnedPreparationPacketV1) {
-        requireOriginal(sameCoordinates(requireNotNull(action.allocation), packet.coordinates))
-        withSetupLock(gate) { retainedPreparation = packet }
+    /** Retained original grant coordinates only: the Android V1 grant or the Windows/macOS V2 grant. */
+    private sealed interface OriginalGrant {
+        class Retained(val coordinates: SelfOwnedAllocationCoordinatesV1) : OriginalGrant
+        data class Unresolved(val reason: SelfOwnedInstallationFailureV1) : OriginalGrant
+    }
+
+    private suspend fun issueOriginalGrant(provisioner: LocalProvisioner, action: LocalProvisionerPendingAction,
+        secret: CharArray): OriginalGrant =
+        if (provisioner.issuesNativePreparationV2) {
+            when (val result = provisioner.issueOriginalNativePreparationV2(action, action.installerLogin, secret)) {
+                is SelfOwnedNativePreparationResultV2.Retained -> OriginalGrant.Retained(result.packet.coordinates)
+                is SelfOwnedNativePreparationResultV2.Unavailable -> OriginalGrant.Unresolved(result.reason)
+            }
+        } else when (val result = provisioner.issueOriginalPreparation(action, action.installerLogin, secret)) {
+            is LocalProvisionerGrant.Retained -> OriginalGrant.Retained(result.packet.coordinates)
+            is LocalProvisionerGrant.Unresolved -> OriginalGrant.Unresolved(result.reason)
+        }
+
+    private suspend fun recoverOriginalGrant(provisioner: LocalProvisioner): OriginalGrant =
+        if (provisioner.issuesNativePreparationV2) {
+            when (val result = provisioner.recoverOriginalNativePreparationV2()) {
+                is SelfOwnedNativePreparationResultV2.Retained -> OriginalGrant.Retained(result.packet.coordinates)
+                is SelfOwnedNativePreparationResultV2.Unavailable -> OriginalGrant.Unresolved(result.reason)
+            }
+        } else when (val result = provisioner.recoverOriginalPreparation()) {
+            is LocalProvisionerGrant.Retained -> OriginalGrant.Retained(result.packet.coordinates)
+            is LocalProvisionerGrant.Unresolved -> OriginalGrant.Unresolved(result.reason)
+        }
+
+    private fun presentPreparation(action: LocalProvisionerPendingAction, coordinates: SelfOwnedAllocationCoordinatesV1) {
+        requireOriginal(sameCoordinates(requireNotNull(action.allocation), coordinates))
+        withSetupLock(gate) { retainedPreparation = coordinates }
         change { it.copy(phase = LocalSetupPhase.ORIGINAL_PREPARATION_RETAINED, problem = null) }
     }
 
@@ -3987,28 +4016,40 @@ public class LocalSetupCoordinator(
 
     private suspend fun readNative(owner: Target, expected: SelfOwnedAllocationCoordinatesV1? = null,
         expectedBranch: String? = null, verifyOriginalBinding: Boolean = false,
-        master: LocalSetupMaster? = null): Boolean =
-        when (val read = if (master == null) owner.context.readOriginalNativeBinding()
-            else master.readOwnedOriginalNativeBinding()) {
-        is SelfOwnedNativeReadResult.Retained -> {
-            val material = read.material
-            requireOriginal(sameCoordinates(material.coordinates, owner.context.materialAtOpen.coordinates))
-            if (verifyOriginalBinding) {
-                // Native readback exposes the digest of the complete signed binding. Check
-                // consistency with the acquired original without decoding or granting authority.
-                val bindingBytes = read.binding.copyWireBytes()
-                val bindingDigest = try { sha256(bindingBytes).value } finally { bindingBytes.fill(0) }
-                requireOriginal(bindingDigest == material.originalNativeBindingDigest &&
-                    bindingDigest == owner.context.materialAtOpen.originalNativeBindingDigest)
+        master: LocalSetupMaster? = null): Boolean {
+        // Windows/macOS originals retain a V2 binding; the Android V1 read refuses them and vice versa.
+        val desktop = owner.context.materialAtOpen.installedTarget is
+            com.ukkera.pos.security.SelfOwnedNativeInstalledTargetBindingV1
+        val (material, binding) = if (desktop) {
+            when (val read = if (master == null) owner.context.readOriginalNativeBindingV2()
+                else master.readOwnedOriginalNativeBindingV2()) {
+                is com.ukkera.pos.security.SelfOwnedNativeReadResultV2.Retained ->
+                    read.material to (read.binding as com.ukkera.pos.security.SelfOwnedNativeOriginalBinding)
+                is com.ukkera.pos.security.SelfOwnedNativeReadResultV2.Unresolved -> { nativeFailure(read.reason); return false }
             }
-            if (expected != null) requireOriginal(sameCoordinates(expected, material.coordinates))
-            if (expectedBranch != null) requireOriginal(expectedBranch == material.branchName)
-            change { it.copy(phase = LocalSetupPhase.ORIGINAL_TARGET_RETAINED, native = nativeView(material),
-                companyReview = null, receipt = null, firstAccountHeadLogin = null, definitionReview = null,
-                problem = LocalSetupProblem.FULL_INSTALLATION_HELD) }
-            true
+        } else {
+            when (val read = if (master == null) owner.context.readOriginalNativeBinding()
+                else master.readOwnedOriginalNativeBinding()) {
+                is SelfOwnedNativeReadResult.Retained ->
+                    read.material to (read.binding as com.ukkera.pos.security.SelfOwnedNativeOriginalBinding)
+                is SelfOwnedNativeReadResult.Unresolved -> { nativeFailure(read.reason); return false }
+            }
         }
-        is SelfOwnedNativeReadResult.Unresolved -> { nativeFailure(read.reason); false }
+        requireOriginal(sameCoordinates(material.coordinates, owner.context.materialAtOpen.coordinates))
+        if (verifyOriginalBinding) {
+            // Native readback exposes the digest of the complete signed binding. Check
+            // consistency with the acquired original without decoding or granting authority.
+            val bindingBytes = binding.copyWireBytes()
+            val bindingDigest = try { sha256(bindingBytes).value } finally { bindingBytes.fill(0) }
+            requireOriginal(bindingDigest == material.originalNativeBindingDigest &&
+                bindingDigest == owner.context.materialAtOpen.originalNativeBindingDigest)
+        }
+        if (expected != null) requireOriginal(sameCoordinates(expected, material.coordinates))
+        if (expectedBranch != null) requireOriginal(expectedBranch == material.branchName)
+        change { it.copy(phase = LocalSetupPhase.ORIGINAL_TARGET_RETAINED, native = nativeView(material),
+            companyReview = null, receipt = null, firstAccountHeadLogin = null, definitionReview = null,
+            problem = LocalSetupProblem.FULL_INSTALLATION_HELD) }
+        return true
     }
 
     private fun requireProvisioner(): Provisioner = (native as? Provisioner)

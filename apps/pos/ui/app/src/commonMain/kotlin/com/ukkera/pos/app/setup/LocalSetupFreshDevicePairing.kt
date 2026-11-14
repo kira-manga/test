@@ -10,7 +10,7 @@ import com.ukkera.pos.security.LocalMasterSdkProfileV1
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
 import com.ukkera.pos.security.LocalDevicePairingUnsignedRetirement
 import com.ukkera.pos.security.LocalDevicePairingMasterTransfer
-import com.ukkera.pos.security.LocalMasterSdkOriginalV1
+import com.ukkera.pos.security.LocalMasterSdkOriginal
 import com.ukkera.pos.security.LocalDevicePairingTargetReference
 import com.ukkera.pos.types.DomainId
 
@@ -105,7 +105,7 @@ public data class LocalSetupFreshDevicePairingView(
     public val responseCycle: Int = 0,
     public val masterTransfer: LocalDevicePairingMasterTransfer? = null,
     /** Native verified-readback identity only, not a session or business grant. */
-    public val verifiedMaster: LocalMasterSdkOriginalV1? = null,
+    public val verifiedMaster: LocalMasterSdkOriginal? = null,
 ) {
     override fun toString(): String = "LocalSetupFreshDevicePairingView([REDACTED])"
 }

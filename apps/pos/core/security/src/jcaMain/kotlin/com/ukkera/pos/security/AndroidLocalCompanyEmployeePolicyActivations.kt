@@ -8,14 +8,12 @@ import java.util.concurrent.atomic.AtomicReference
 internal class AndroidLocalCompanyEmployeePolicyActivations(
     private val owner: AndroidSelfOwnedInstallationLifetime,
     private val environment: SelfOwnedOriginalEnvironment,
-    private val registry: LocalProvisionerRegistryStore,
-    private val keys: LocalProvisionerNativeKeys,
+    private val custody: SelfOwnedCompanyCustody,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,
 ) {
     private val actionOwner = Any()
-    private val authentication = AndroidLocalInstallerAuthentication(environment, registry, keys, work, issuance)
     private class DispatchEntry(val dispatch: NativeLocalEmployeePolicyActivationDispatch) {
         val permit = AtomicReference<NativeLocalEmployeePolicyActivationPermit?>(null)
         val frame = AtomicReference<NativeEmployeePolicyActivationFrame?>(null)
@@ -114,11 +112,11 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
             definition.definition.originalRequestId, definition.definitionDigest, receipt.digest, definition.definition.authorityEpoch,
             checkNotNull(native.parent), actual.recordDigest, original.original.rootId, original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId,
             rootDigest, original.original.actionId, original.headAuthorityId, original.headEnrollmentId,
-            AndroidP256Primitives.rootFingerprint(keys.rootBody()))
+            custody.rootFingerprint())
         val reserved = original.allIds().toSet() + target.reservedOriginalIds() + state?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readBusinessPublications(keys)?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
-            registry.devicePairingReservedIdentityIds(keys) +
-            registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() }
+            custody.readBusinessPublications()?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
+            custody.devicePairingReservedIdentityIds() +
+            custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() }
         if (request.requestId in reserved || request.requestId == request.targetId) refuse(SelfOwnedInstallationFailureV1.CONFLICT)
         // The ORIGINAL action ID and complete next policy are retained BEFORE head verification.
         val actionId = AndroidP256Primitives.newId()
@@ -163,9 +161,9 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
         requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true)
         val actionBytes = NativeEmployeePolicyActivationWireV1.actionMessage(record)
         val actionDigest = try { sha256(actionBytes) } finally { actionBytes.fill(0) }
-        val approval = authentication.authenticateEmployeePolicyActivationAction(record.originalActionId, actionDigest, login, secret,
+        val approval = custody.authenticateEmployeePolicyActivation(record.originalActionId, actionDigest, login, secret,
             record.preparedHead.deadlineElapsedMillis)
-        authentication.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+        custody.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
         requirePreparedHeadCurrent(record); requireNewIssuance()
         record = record.copy(phase = LocalEmployeePolicyActivationPhase.SIGNING_INTENT,
             approvedHead = NativeEmployeePolicyActivationApprovalV1(approval.accountRevision, approval.credentialRevision,
@@ -173,11 +171,11 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
         record = retain(state.next(record), record.originalActionId)
         state = checkNotNull(ledger())
         requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true)
-        authentication.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+        custody.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
         requireNewIssuance()
-        val signature = keys.signEmployeePolicyActivationEndorsement(record, approval)
+        val signature = custody.signEmployeePolicyActivationEndorsement(record, approval)
         try {
-            authentication.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
+            custody.requireEmployeePolicyActivationStillCurrent(approval, companyState(), record.originalActionId, actionDigest)
             requireTarget(record.target, anchor.snapshotOriginal(), requirePreparationParent = true); requireNewIssuance()
             record = retain(state.next(record.copy(phase = LocalEmployeePolicyActivationPhase.APPROVED,
                 rootEndorsement = SelfOwnedOctetsV1(signature))), record.originalActionId)
@@ -211,9 +209,9 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
         requireObservation(record, observation)
         val dispatchId = AndroidP256Primitives.newId()
         val reserved = requireOriginal().allIds().toSet() + record.target.reservedOriginalIds() + state.records.flatMap { it.nativeIds() } +
-            registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readBusinessPublications(keys)?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
-            registry.devicePairingReservedIdentityIds(keys)
+            custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() } +
+            custody.readBusinessPublications()?.records.orEmpty().flatMap { listOf(it.originalActionId, it.keyId, it.publicationId, it.entityId) } +
+            custody.devicePairingReservedIdentityIds()
         if (dispatchId in reserved) refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         val retained = retain(state.next(record.copy(phase = LocalEmployeePolicyActivationPhase.DISPATCH_INTENT,
             dispatch = NativeEmployeePolicyActivationDispatchV1(dispatchId, actual.recordDigest, observation))), record.originalActionId)
@@ -456,7 +454,7 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
     }
     private fun requireOperationalOriginal(actual: OriginalNativeHistorySnapshot) {
         val native = actual.record
-        if (native.database == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
+        if (native.nativeDatabase == null || native.parent == null || native.pending != null || native.issuerAcknowledgement == null ||
             native.attempt?.phase != NativeHistoryAttemptPhaseV2.COMPLETED || native.roleIntent?.role != NativeHistoryDesiredRoleV2.RUN)
             refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     }
@@ -474,18 +472,18 @@ internal class AndroidLocalCompanyEmployeePolicyActivations(
         val bytes = checkNotNull(record.effect).evidence.copyBytes()
         return try { LocalEmployeePolicyActivationEffectEvidence.decode(bytes) } finally { bytes.fill(0) }
     }
-    private fun companyState(): LocalCompanyAuthorityStateV1 = registry.readCompanyState(keys)
+    private fun companyState(): SelfOwnedCompanyStateView = custody.companyState()
         ?: refuse(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
-    private fun requireOriginal(): LocalCompanyAuthorityBootstrapV1 {
-        work.requireActive(); environment.requireExistingOriginalObservation(); registry.assertContinuity()
-        return registry.companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
+    private fun requireOriginal(): SelfOwnedCompanyBootstrapView {
+        work.requireActive(); environment.requireExistingOriginalObservation(); custody.assertContinuity()
+        return custody.companyOriginal() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
     }
     private fun requireNewIssuance() { requireOriginal(); issuance.requireIssuance(null); if (!owner.newCeremoniesAllowedNoIo()) refuse(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN) }
-    private fun ledger(): NativeEmployeePolicyActivationStateV1? = registry.readEmployeePolicyActivations(keys)
+    private fun ledger(): NativeEmployeePolicyActivationStateV1? = custody.readEmployeePolicyActivations()
     private fun currentOriginalRecord(id: DomainId): NativeEmployeePolicyActivationRecordV1 = ledger()?.records?.singleOrNull { it.originalActionId == id }
         ?: refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
     private fun retain(state: NativeEmployeePolicyActivationStateV1, id: DomainId): NativeEmployeePolicyActivationRecordV1 =
-        registry.retainEmployeePolicyActivations(state, keys).records.single { it.originalActionId == id }
+        custody.retainEmployeePolicyActivations(state).records.single { it.originalActionId == id }
     private inline fun noThrowCurrent(block: () -> Boolean): Boolean = try {
         work.requireActive(); !owner.dataUseDeniedNoIo() && block()
     } catch (_: Exception) { false }

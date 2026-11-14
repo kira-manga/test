@@ -102,6 +102,11 @@ public class LocalMasterRpcPeerRegistration internal constructor(
         resourceSession: RpcApplicationSession): LookupReply =
         registry.lookupBusiness(this, credentials, identity, profile, peer, resourceSession)
 
+    /** The SAME Master's actual creation service while this registration owns the current
+     * Host. Every call on it still reauthorizes the transport-authenticated creator. */
+    public suspend fun employeeCreationService(): LocalMasterEmployeeCreationClient? =
+        registry.employeeCreationService(this)
+
     /** Actual Host cleanup calls this after denial and before draining owned callbacks. */
     public suspend fun awaitSessionRevocation(): Unit = registry.awaitSessionRevocation(this)
 
@@ -293,6 +298,12 @@ internal class LocalMasterRpcPeerRegistry(
         val endpoint = token.client as? LocalMasterEndpoint
             ?: return LookupReply.Deferred(identity.operationId, DeferredReason.AUTHORIZATION_DENIED)
         return endpoint.lookupRpcBusiness(credentials, identity, audience)
+    }
+
+    internal suspend fun employeeCreationService(token: LocalMasterRpcPeerRegistration): LocalMasterEmployeeCreationClient? {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token)) return null
+        return (token.client as? LocalMasterEndpoint)?.takeIf { ownsCurrent(token) }
     }
 
     private suspend fun kitchenAudience(token: LocalMasterRpcPeerRegistration,

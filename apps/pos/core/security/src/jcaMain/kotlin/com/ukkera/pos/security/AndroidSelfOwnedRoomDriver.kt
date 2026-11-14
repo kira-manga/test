@@ -100,8 +100,8 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
             work.requireActive()
             raw = driver.open(databasePath, SQLITE_OPEN_READWRITE or SQLITE_OPEN_NOFOLLOW)
             coroutines.traceStage("bundled-driver-open-returned")
-            val current = anchor.snapshotOriginal().record.database
-            current?.let { check(namespace.observeRoomDatabaseIdentity(databasePath, it.roomIdentityHash) == it) }
+            val current = anchor.snapshotOriginal().record.nativeDatabase
+            current?.let { check(namespace.observeRoomDatabaseIdentity(databasePath, it.boundRoomIdentityHash) == it) }
         }
         override fun inTransaction(): Boolean {
             coroutines.sqlActor(); check(!closeStarted && !actuallyClosed)

@@ -108,7 +108,7 @@ public class LocalDevicePairingApproval internal constructor(internal val record
     public val originalActionId: DomainId get() = record.body.originalActionId
     public val requested: LocalDevicePairingDefinition get() = record.body.requested()
     /** Included immutable Master DATA only. Legacy originals retain their explicit absence. */
-    public val masterSdkOriginal: LocalMasterSdkOriginalV1? get() = requested.masterSdkOriginal
+    public val masterSdkOriginal: LocalMasterSdkOriginal? get() = requested.masterSdkOriginal
     public val challengeDigest: PayloadDigest get() = LocalDevicePairingChallenge.fromNative(record.body).challengeDigest
     public val purpose: String get() = requested.purpose
     public val authorityDigest: PayloadDigest get() {

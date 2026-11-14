@@ -7,6 +7,7 @@ import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -295,7 +296,8 @@ private fun assertDefinition(expected: LocalDevicePairingDefinition, actual: Loc
     assertEquals(leftSdk.fingerprint, rightSdk.fingerprint); assertEquals(leftSdk.pairingQr, rightSdk.pairingQr)
     assertEquals(leftSdk.descriptorDigest, rightSdk.descriptorDigest)
     assertContentEquals(leftSdk.copyWireBytes(), rightSdk.copyWireBytes())
-    assertMaster(assertNotNull(expected.masterSdkOriginal), assertNotNull(actual.masterSdkOriginal))
+    // Harness wiring only (13 Nov 2026): the shared accessor is format-neutral; these fixtures are V1.
+    assertMaster(assertIs<LocalMasterSdkOriginalV1>(expected.masterSdkOriginal), assertIs<LocalMasterSdkOriginalV1>(actual.masterSdkOriginal))
     assertEquals(expected.purpose, actual.purpose); assertEquals(expected.definitionDigest, actual.definitionDigest)
     assertContentEquals(expected.copyWireBytes(), actual.copyWireBytes())
 }

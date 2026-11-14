@@ -128,6 +128,65 @@ internal class WindowsSelfOwnedSigningKey private constructor(
             val targetBytes = SelfOwnedInstalledIdentityWireV2.encodeTarget(target)
             val targetDigest = try { JvmP256Primitives.hashHex(targetBytes) } finally { targetBytes.fill(0) }
             val name = WString("ukkera.pos.original.signing.v2:$mode:${role.name.lowercase()}:${rootId.value}:${keyId.value}:$targetDigest")
+            return acquireNamed(target, name, protection, originalPoint, create, serviceSid, accountSid)
+        }
+
+        /** Desktop Master custody: one persisted CNG key per shared-core derived alias of this service. */
+        fun createDesktop(target: SelfOwnedInstalledIdentityTargetV2, alias: String,
+            protection: SelfOwnedKeyProtectionV1): WindowsSelfOwnedSigningKey =
+            acquireDesktop(target, alias, protection, null, create = true)
+
+        fun openDesktop(target: SelfOwnedInstalledIdentityTargetV2, alias: String,
+            protection: SelfOwnedKeyProtectionV1, originalPoint: ByteArray?): WindowsSelfOwnedSigningKey =
+            acquireDesktop(target, alias, protection, originalPoint, create = false)
+
+        /** True only when the named key exists; any status other than success/NTE_BAD_KEYSET fails. */
+        fun desktopExists(target: SelfOwnedInstalledIdentityTargetV2, alias: String, protection: SelfOwnedKeyProtectionV1): Boolean {
+            check(Platform.isWindows() && Native.POINTER_SIZE == 8) { "A 64-bit Windows service is required" }
+            val (serviceSid, accountSid) = serviceCoordinates(target)
+            requireService(target, serviceSid, accountSid)
+            val provider = PointerByReference()
+            WindowsOriginalCng.api.NCryptOpenStorageProvider(provider, providerName(protection), 0).checkCng()
+            val providerHandle = checkNotNull(provider.value)
+            try {
+                val output = PointerByReference()
+                val status = WindowsOriginalCng.api.NCryptOpenKey(providerHandle, output, desktopName(target, alias), 0,
+                    WindowsOriginalCng.SILENT)
+                output.value?.let { WindowsOriginalCng.api.NCryptFreeObject(it).checkCng() }
+                if (status == NTE_BAD_KEYSET) return false
+                status.checkCng()
+                return true
+            } finally { WindowsOriginalCng.api.NCryptFreeObject(providerHandle).checkCng() }
+        }
+
+        private const val NTE_BAD_KEYSET = 0x80090016.toInt()
+
+        private fun providerName(protection: SelfOwnedKeyProtectionV1) = WString(when (protection) {
+            SelfOwnedKeyProtectionV1.OS_ISOLATED -> "Microsoft Software Key Storage Provider"
+            SelfOwnedKeyProtectionV1.SECURE_HARDWARE -> "Microsoft Platform Crypto Provider"
+            SelfOwnedKeyProtectionV1.STRONGBOX -> error("Unsupported key policy")
+        })
+
+        private fun desktopName(target: SelfOwnedInstalledIdentityTargetV2, alias: String): WString {
+            require(alias.length in 1..200 && alias.all { it.code in 0x21..0x7e && it != '\\' && it != '/' })
+            val targetBytes = SelfOwnedInstalledIdentityWireV2.encodeTarget(target)
+            val targetDigest = try { JvmP256Primitives.hashHex(targetBytes) } finally { targetBytes.fill(0) }
+            return WString("ukkera.pos.desktop-master.p256.v2:$alias:$targetDigest")
+        }
+
+        private fun acquireDesktop(target: SelfOwnedInstalledIdentityTargetV2, alias: String,
+            protection: SelfOwnedKeyProtectionV1, originalPoint: ByteArray?, create: Boolean): WindowsSelfOwnedSigningKey {
+            check(Platform.isWindows() && Native.POINTER_SIZE == 8) { "A 64-bit Windows service is required" }
+            require(protection != SelfOwnedKeyProtectionV1.STRONGBOX) { "StrongBox is not a Windows key policy" }
+            originalPoint?.let(JvmP256Primitives::publicKey)
+            val (serviceSid, accountSid) = serviceCoordinates(target)
+            requireService(target, serviceSid, accountSid)
+            return acquireNamed(target, desktopName(target, alias), protection, originalPoint, create, serviceSid, accountSid)
+        }
+
+        private fun acquireNamed(target: SelfOwnedInstalledIdentityTargetV2, name: WString,
+            protection: SelfOwnedKeyProtectionV1, originalPoint: ByteArray?, create: Boolean,
+            serviceSid: String, accountSid: String): WindowsSelfOwnedSigningKey {
             val provider = PointerByReference()
             WindowsOriginalCng.api.NCryptOpenStorageProvider(provider, WString(when (protection) {
                 SelfOwnedKeyProtectionV1.OS_ISOLATED -> "Microsoft Software Key Storage Provider"

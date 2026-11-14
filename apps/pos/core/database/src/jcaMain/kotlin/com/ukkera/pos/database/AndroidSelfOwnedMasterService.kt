@@ -1,6 +1,5 @@
 package com.ukkera.pos.database
 
-import android.app.Application
 import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
@@ -41,7 +40,9 @@ public class AndroidOriginalLocalClient internal constructor(
     public val readKeys: Set<ReadKey>,
 ) {
     public fun isCurrent(): Boolean = service.ownsOriginalClient(this)
-    public fun belongsTo(application: Application): Boolean = service.originalClientApplication(this, application)
+    public fun belongsTo(application: SelfOwnedMasterHostOwner): Boolean = belongsToOwner(application)
+    /** Identity-only comparison with the service's opaque platform host owner token. */
+    internal fun belongsToOwner(owner: Any): Boolean = service.originalClientOwner(this, owner)
 
     /** Only the fully settled original C1 with no later work may create its first journals. */
     public fun permitsFirstEnrollment(): Boolean = service.permitsFirstClientEnrollment(this)
@@ -177,7 +178,7 @@ public class AndroidOriginalLocalClient internal constructor(
         service.acquireRpcHostTrust(this)
 
     /** Current authenticated original Master SDK DATA; no capture, repair or serving grant. */
-    public suspend fun recoverRpcMasterOriginal(): LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> =
+    public suspend fun recoverRpcMasterOriginal(): LocalCompanyAuthorityResult<LocalMasterSdkOriginal> =
         service.recoverRpcMasterOriginal(this)
 
     /** Retain the exact Host resource before its common owner or any SDK work is constructed.
@@ -195,7 +196,7 @@ public class AndroidOriginalRpcHostRegistration internal constructor(
     internal val resource: LocalMasterRpcHostResource,
 ) {
     public fun isCurrent(): Boolean = service.ownsRpcHostRegistration(this)
-    public suspend fun yieldOriginal(): LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> =
+    public suspend fun yieldOriginal(): LocalCompanyAuthorityResult<LocalMasterSdkOriginal> =
         service.yieldRpcMasterOriginal(this)
     override fun toString(): String = "AndroidOriginalRpcHostRegistration([REDACTED])"
 }
@@ -204,7 +205,9 @@ public class AndroidOriginalRpcHostRegistration internal constructor(
  * accepted; no public path/driver/key/runtime/clock/healthy callback. Client handles cannot
  * close the master. Later incomplete authorization/stock/pending histories remain held. */
 public class AndroidSelfOwnedMasterService private constructor(
-    private val application: Application,
+    // Opaque platform host identity (Android Application or desktop host owner), identity-only.
+    private val ownerToken: Any,
+    private val platform: SelfOwnedMasterPlatform,
     private val custody: SelfOwnedNativeHistoryCustody,
     private val handlers: List<MasterCommandHandler>,
     private val reads: List<MasterReadHandler>,
@@ -293,7 +296,7 @@ public class AndroidSelfOwnedMasterService private constructor(
 
     internal fun retainRpcHostResource(original: AndroidOriginalLocalClient,
         resource: LocalMasterRpcHostResource): AndroidOriginalRpcHostRegistration = synchronized(lifecycleGate) {
-        check(ownsOriginalClient(original) && original.belongsTo(application)) { "Original Master is unavailable" }
+        check(ownsOriginalClient(original) && original.belongsToOwner(ownerToken)) { "Original Master is unavailable" }
         check(rpcHostRegistration == null) { "An original RPC Host resource is already retained" }
         AndroidOriginalRpcHostRegistration(this, original, resource).also { rpcHostRegistration = it }
     }
@@ -302,8 +305,8 @@ public class AndroidSelfOwnedMasterService private constructor(
         rpcHostRegistration === value && value.service === this && ownsOriginalClient(value.original)
     }
 
-    internal fun originalClientApplication(value: AndroidOriginalLocalClient, actual: Application): Boolean =
-        application === actual && ownsOriginalClient(value)
+    internal fun originalClientOwner(value: AndroidOriginalLocalClient, actual: Any): Boolean =
+        ownerToken === actual && ownsOriginalClient(value)
 
     internal fun permitsFirstClientEnrollment(value: AndroidOriginalLocalClient): Boolean = synchronized(lifecycleGate) {
         if (!ownsOriginalClient(value)) return@synchronized false
@@ -522,7 +525,7 @@ public class AndroidSelfOwnedMasterService private constructor(
         LocalCompanyAuthorityResult.Unavailable(LocalCompanyAuthorityFailure.NATIVE_UNAVAILABLE,
             if (busy) SelfOwnedInstallationFailureV1.BUSY else SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     private suspend fun sameDevicePairingBridge(original: AndroidOriginalLocalClient): RoomSelfOwnedDevicePairings {
-        check(ownsOriginalClient(original) && original.belongsTo(application))
+        check(ownsOriginalClient(original) && original.belongsToOwner(ownerToken))
         val native = LocalCompanyDevicePairings.acquireOriginal(custody)
         check(native is LocalCompanyAuthorityResult.Value && native.value.belongsTo(custody))
         check(ownsOriginalClient(original))
@@ -551,15 +554,15 @@ public class AndroidSelfOwnedMasterService private constructor(
         }
     }
     internal suspend fun recoverRpcMasterOriginal(original: AndroidOriginalLocalClient):
-        LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> {
+        LocalCompanyAuthorityResult<LocalMasterSdkOriginal> {
         currentCoroutineContext().ensureActive()
         if (!ownsOriginalClient(original)) return devicePairingUnavailable()
         if (!installationSlot.tryAcquire()) return devicePairingUnavailable(busy = true)
         return launchEmployeeOwned(RpcMasterOriginalWork(original))
     }
     private inner class RpcMasterOriginalWork(original: AndroidOriginalLocalClient):
-        DevicePairingWork<LocalMasterSdkOriginalV1>(original) {
-        override suspend fun perform(): LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> {
+        DevicePairingWork<LocalMasterSdkOriginal>(original) {
+        override suspend fun perform(): LocalCompanyAuthorityResult<LocalMasterSdkOriginal> {
             val sdkOriginal = checkNotNull(roomOwner).readOriginalMasterSdk()
             check(ownsOriginalClient(original))
             return LocalCompanyAuthorityResult.Value(sdkOriginal)
@@ -567,20 +570,20 @@ public class AndroidSelfOwnedMasterService private constructor(
     }
 
     internal suspend fun yieldRpcMasterOriginal(registration: AndroidOriginalRpcHostRegistration):
-        LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> {
+        LocalCompanyAuthorityResult<LocalMasterSdkOriginal> {
         currentCoroutineContext().ensureActive()
         if (!ownsRpcHostRegistration(registration)) return devicePairingUnavailable()
         if (!installationSlot.tryAcquire()) return devicePairingUnavailable(busy = true)
         return launchEmployeeOwned(RpcMasterHostYieldWork(registration), awaitActualWork = true)
     }
     private inner class RpcMasterHostYieldWork(private val registration: AndroidOriginalRpcHostRegistration):
-        DevicePairingWork<LocalMasterSdkOriginalV1>(registration.original) {
-        override suspend fun perform(): LocalCompanyAuthorityResult<LocalMasterSdkOriginalV1> {
+        DevicePairingWork<LocalMasterSdkOriginal>(registration.original) {
+        override suspend fun perform(): LocalCompanyAuthorityResult<LocalMasterSdkOriginal> {
             check(ownsRpcHostRegistration(registration))
             val owner = checkNotNull(roomOwner)
             check(owner.operational && owner.originalCustody === custody && owner.originalScope == original.peer.scope)
             val sdkOriginal = owner.serialPublicationLoan { loan ->
-                AndroidSelfOwnedInstallationOwner.yieldExistingMasterSdkForHost(custody, loan.original)
+                platform.nativeOwner.yieldExistingMasterSdkForHost(custody, loan.original)
             }
             check(ownsRpcHostRegistration(registration))
             // The actual original loan has returned. Construct from this exact Master's
@@ -1070,7 +1073,7 @@ public class AndroidSelfOwnedMasterService private constructor(
             if (busy) SelfOwnedInstallationFailureV1.BUSY else SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
 
     private suspend fun start() {
-        when(val selected=AndroidRuntimeHistoryStartup.select(application,custody,historyProducer,stockProjection)) {
+        when(val selected=AndroidRuntimeHistoryStartup.select(platform,custody,historyProducer,stockProjection)) {
             is AndroidRuntimeHistoryStartup.Selection.Allocation -> life.value=LocalMasterLifecycleMode.ALLOCATION_ONLY
             is AndroidRuntimeHistoryStartup.Selection.Held -> life.value=LocalMasterLifecycleMode.UNRESOLVED
             is AndroidRuntimeHistoryStartup.Selection.AcknowledgementPending -> {
@@ -1134,10 +1137,10 @@ public class AndroidSelfOwnedMasterService private constructor(
     private suspend fun authenticateLifecycle(login: LocalLoginIdentifier, password: CharArray,
         request: LocalMasterLifecycleRequest, heldStopRecovery: Boolean): LocalMasterLifecycleResult {
         val diagnostics = OriginalLifecycleDiagnostics()
-        val started = android.os.SystemClock.elapsedRealtime()
+        val started = platform.diagnostics.elapsedRealtimeMillis()
         return try { authenticateLifecycleObserved(login, password, request, heldStopRecovery, diagnostics) }
         finally {
-            try { android.util.Log.i("UkkeraNativeOwner", "Lifecycle phase: action=${request.action.name}; phase=${diagnostics.phase.name}; durationMillis=${android.os.SystemClock.elapsedRealtime() - started}") }
+            try { platform.diagnostics.info("Lifecycle phase: action=${request.action.name}; phase=${diagnostics.phase.name}; durationMillis=${platform.diagnostics.elapsedRealtimeMillis() - started}") }
             catch (_: Throwable) { /* Fixed diagnostic only; preserve the original outcome. */ }
         }
     }
@@ -1194,6 +1197,22 @@ public class AndroidSelfOwnedMasterService private constructor(
             currentCoroutineContext().ensureActive()
             if (closing.get() != null || life.value != LocalMasterLifecycleMode.OPERATIONAL)
                 SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            else result
+        } finally { installationSlot.release() }
+    }
+
+    /** Desktop V2 counterpart of [readOwnedOriginalNativeBinding]; an Android V1 owner refuses without reading. */
+    public suspend fun readOwnedOriginalNativeBindingV2(): SelfOwnedNativeReadResultV2 {
+        currentCoroutineContext().ensureActive()
+        if (!installationSlot.tryAcquire())
+            return SelfOwnedNativeReadResultV2.Unresolved(SelfOwnedInstallationFailureV1.BUSY)
+        return try {
+            if (closing.get() != null || life.value != LocalMasterLifecycleMode.OPERATIONAL)
+                return SelfOwnedNativeReadResultV2.Unresolved(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+            val result = custody.readOwnedOriginalNativeBindingV2()
+            currentCoroutineContext().ensureActive()
+            if (closing.get() != null || life.value != LocalMasterLifecycleMode.OPERATIONAL)
+                SelfOwnedNativeReadResultV2.Unresolved(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
             else result
         } finally { installationSlot.release() }
     }
@@ -1336,7 +1355,7 @@ public class AndroidSelfOwnedMasterService private constructor(
                     try {
                         val approved=RoomSelfOwnedInstallationVerifier.prepare(custody,snapshot.definition,headLogin,ownedHead,ownedPassword)
                         prepared=approved
-                        val owner=AndroidRuntimeHistoryStartup.openFirst(application,custody)
+                        val owner=AndroidRuntimeHistoryStartup.openFirst(platform,custody)
                         val composed=compose(owner)
                         if (acknowledge) {
                             val receipt=composed.initializer.initialize(approved)
@@ -1360,7 +1379,7 @@ public class AndroidSelfOwnedMasterService private constructor(
                             }.take(6).joinToString(" <- ") {
                                 "${it.className}.${it.methodName}:${it.lineNumber}"
                             }
-                            android.util.Log.w("UkkeraNativeOwner",
+                            platform.diagnostics.warn(
                                 "Original installation refused: ${failure.javaClass.simpleName}; $locations")
                         } catch (_: Throwable) { /* Diagnostics never affect the retained outcome. */ }
                         response.complete(originalInstallationFailure())
@@ -1456,7 +1475,7 @@ public class AndroidSelfOwnedMasterService private constructor(
         // failure must still be able to observe the confirmed native result on this owner.
         // ACK changes the native digest. Never open Room using the PRE-ACK scan/admission.
         // Re-traverse the original database, close/reobserve, and only then open one pool.
-        val selected=AndroidRuntimeHistoryStartup.select(application,custody,historyProducer,stockProjection)
+        val selected=AndroidRuntimeHistoryStartup.select(platform,custody,historyProducer,stockProjection)
         check(selected is AndroidRuntimeHistoryStartup.Selection.Opened)
         val composed=compose(selected.owner)
         val receipt=checkNotNull(selected.owner.originalRecord.record.receipt)
@@ -1580,32 +1599,34 @@ public class AndroidSelfOwnedMasterService private constructor(
          * stays owned; no operational client is exposed until a genuine configured runtime is
          * opened separately after actual close and a qualified complete-history startup.
          */
-        public suspend fun forOriginalInstallation(application: Application,
+        public suspend fun forOriginalInstallation(application: SelfOwnedMasterHostOwner,
             context: SelfOwnedLocalSecurityContext): AndroidSelfOwnedMasterOpenResult =
-            open(application,context,emptyList(),emptyList(),UnavailablePhysicalRecordingExecutionGate,
+            open(application,selfOwnedMasterPlatform(application),context,emptyList(),emptyList(),UnavailablePhysicalRecordingExecutionGate,
                 emptyList(),null,null,installationOnly=true)
 
         /** Called from the same native setup host, not an arbitrary imported installation DTO. */
-        public suspend fun fromOriginalContext(application: Application,context: SelfOwnedLocalSecurityContext,
+        public suspend fun fromOriginalContext(application: SelfOwnedMasterHostOwner,context: SelfOwnedLocalSecurityContext,
             handlers: List<MasterCommandHandler>,reads: List<MasterReadHandler>,
             physical: PhysicalRecordingExecutionGate = UnavailablePhysicalRecordingExecutionGate,
             nativeOriginalImports: List<NativeOriginalImportInterpreter> = emptyList(),
             stockProjection: StockCanonicalProjectionV2? = null,
             historyProducer: RuntimeHistoryBusinessProducer? = null): AndroidSelfOwnedMasterOpenResult =
-            open(application,context,handlers,reads,physical,nativeOriginalImports,stockProjection,historyProducer,installationOnly=false)
+            open(application,selfOwnedMasterPlatform(application),context,handlers,reads,physical,nativeOriginalImports,stockProjection,historyProducer,installationOnly=false)
 
-        private suspend fun open(application: Application,context: SelfOwnedLocalSecurityContext,
+        /** Shared open path. [ownerToken] is compared by identity only; [platform] carries the
+         * platform's genuine security owner/builder/diagnostics, never an accepting default. */
+        internal suspend fun open(ownerToken: Any,platform: SelfOwnedMasterPlatform,context: SelfOwnedLocalSecurityContext,
             handlers: List<MasterCommandHandler>,reads: List<MasterReadHandler>,physical: PhysicalRecordingExecutionGate,
             nativeOriginalImports: List<NativeOriginalImportInterpreter>,stockProjection: StockCanonicalProjectionV2?,
             historyProducer: RuntimeHistoryBusinessProducer?,
             installationOnly: Boolean): AndroidSelfOwnedMasterOpenResult {
-            val claim=AndroidSelfOwnedInstallationOwner.claimOriginalHistoryCustody(context)
+            val claim=platform.nativeOwner.claimOriginalHistoryCustody(context)
             if(claim !is SelfOwnedNativeHistoryClaimResult.Claimed) return AndroidSelfOwnedMasterOpenResult.Unresolved(
                 (claim as SelfOwnedNativeHistoryClaimResult.Unresolved).reason)
             var service: AndroidSelfOwnedMasterService?=null
             var delivered=false
             try {
-                val candidate=AndroidSelfOwnedMasterService(application,claim.custody,handlers.toList(),reads.toList(),physical,
+                val candidate=AndroidSelfOwnedMasterService(ownerToken,platform,claim.custody,handlers.toList(),reads.toList(),physical,
                     nativeOriginalImports.toList(),stockProjection,historyProducer,installationOnly,context.materialAtOpen)
                 service=candidate
                 candidate.start()

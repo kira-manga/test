@@ -7,7 +7,8 @@ package com.ukkera.pos.security
  */
 internal interface SelfOwnedProcessPlatform {
     fun pid(): Int
-    fun uid(): Int
+    /** Actual OS principal of this process (Android UID, Windows user SID or macOS uid). */
+    fun principal(): SelfOwnedProcessPrincipal
     /** Same-boot monotonic milliseconds, including suspended time where the OS supports it. */
     fun elapsedMillis(): Long
     /** OS monotonic nanoseconds that keep counting across sleep (Android elapsedRealtimeNanos). */

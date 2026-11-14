@@ -5,9 +5,6 @@ import java.nio.ByteBuffer
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import javax.crypto.Cipher
-import javax.crypto.Mac
-import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.PBEKeySpec
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -33,15 +30,15 @@ internal class AndroidSelfOwnedLocalSecurity(
     private val configuration = material.keyConfiguration()
     private val creationParameters = PasswordHashParameters()
     private val processId = work.platform.pid()
-    private val processUid = work.platform.uid()
-    private val bootId = originalBootId(configuration.installationId, environment.bootCount)
+    private val processPrincipal = work.platform.principal()
+    private val bootId = environment.bootMark.bootId(configuration.installationId)
     private val issuerContextId = AndroidP256Primitives.newId()
     private val lastElapsedNanos = AtomicLong(work.platform.elapsedRealtimeNanos())
     private val retired = AtomicBoolean(false)
 
     init {
         work.requireActive(); environment.requireCurrent()
-        if (processId <= 0 || processUid != environment.uid || issuerContextId == bootId || lastElapsedNanos.get() < 0L) {
+        if (processId <= 0 || processPrincipal != environment.principal || issuerContextId == bootId || lastElapsedNanos.get() < 0L) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         }
     }
@@ -191,21 +188,8 @@ internal class AndroidSelfOwnedLocalSecurity(
     }
 
     private fun sealNative(aad: ByteArray, plaintext: ByteArray): AndroidSelfOwnedCiphertext {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.ENCRYPT_MODE, material.storageKey()) // Native provider chooses the randomized IV.
-        val nonce = cipher.iv ?: selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
-        var ciphertext: ByteArray? = null
-        try {
-            val parameters = cipher.parameters?.getParameterSpec(GCMParameterSpec::class.java)
-                ?: selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
-            if (nonce.size != ProtectedLocalStorageFormat.NONCE_BYTES || parameters.tLen != ProtectedLocalStorageFormat.TAG_BYTES * 8 ||
-                !parameters.iv.contentEquals(nonce)) selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
-            cipher.updateAAD(aad)
-            val encrypted = cipher.doFinal(plaintext); ciphertext = encrypted
-            if (encrypted.size != plaintext.size + ProtectedLocalStorageFormat.TAG_BYTES) selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
-            material.storageKey()
-            return AndroidSelfOwnedCiphertext(nonce.copyOf(), encrypted.copyOf())
-        } finally { nonce.fill(0); ciphertext?.fill(0) }
+        val sealed = material.sealStorage(aad, plaintext, SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
+        try { material.requireStorageKey(); return sealed } catch (failure: Throwable) { sealed.clear(); throw failure }
     }
 
     private fun openNative(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray, maximumPlaintext: Int): ByteArray {
@@ -213,27 +197,22 @@ internal class AndroidSelfOwnedLocalSecurity(
             ciphertext.size !in (1 + ProtectedLocalStorageFormat.TAG_BYTES)..(maximumPlaintext + ProtectedLocalStorageFormat.TAG_BYTES)) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         }
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, material.storageKey(), GCMParameterSpec(ProtectedLocalStorageFormat.TAG_BYTES * 8, nonce))
-        cipher.updateAAD(aad)
-        val plaintext = cipher.doFinal(ciphertext) // One shot: no unauthenticated update() plaintext escapes.
+        val plaintext = material.openStorage(aad, nonce, ciphertext) // One shot: no unauthenticated plaintext escapes.
         try {
             if (plaintext.size !in 1..maximumPlaintext || plaintext.size + ProtectedLocalStorageFormat.TAG_BYTES != ciphertext.size) {
                 selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             }
-            material.storageKey()
+            material.requireStorageKey()
             return plaintext
         } catch (failure: Throwable) { plaintext.fill(0); throw failure }
     }
 
     private fun pepperNative(message: ByteArray): ByteArray {
         if (message.size > MAXIMUM_PEPPER_MESSAGE_BYTES) selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_INPUT)
-        val mac = Mac.getInstance("HmacSHA256")
-        mac.init(material.pepperKey())
-        val tag = mac.doFinal(message)
+        val tag = material.pepperTag(message)
         try {
             if (tag.size != 32) selfOwnedFail(SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN)
-            material.pepperKey()
+            material.requirePepperKey()
             return tag
         } catch (failure: Throwable) { tag.fill(0); throw failure }
     }
@@ -301,7 +280,7 @@ internal class AndroidSelfOwnedLocalSecurity(
         if (retired.get() || owner.dataUseDeniedNoIo()) return null
         return try {
             work.requireActive() // Bounded PID/UID/OS-clock and denial checks, not IO-based custody.
-            if (work.platform.pid() != processId || work.platform.uid() != processUid) return denyObservation()
+            if (work.platform.pid() != processId || work.platform.principal() != processPrincipal) return denyObservation()
             repeat(4) {
                 if (retired.get() || owner.dataUseDeniedNoIo()) return null
                 val previous = lastElapsedNanos.get()
@@ -329,6 +308,9 @@ internal class AndroidSelfOwnedLocalSecurity(
 
     companion object {
         private const val MAXIMUM_PEPPER_MESSAGE_BYTES = 4 * 1024
+
+        /** Neutral boot-mark access to the unchanged Android derivation below. */
+        internal fun androidBootId(installationId: DomainId, bootCount: Int): DomainId = originalBootId(installationId, bootCount)
 
         /** Exact existing Android boot-count UUIDv8 domain, not attestation or anti-rollback. */
         private fun originalBootId(installationId: DomainId, bootCount: Int): DomainId {

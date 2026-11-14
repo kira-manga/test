@@ -511,12 +511,14 @@ class LocalMasterRpcSupplierWireCodecSupportingTest {
         is LocalMasterRpcReadRequestV1 -> json.encodeToString(LocalMasterRpcReadRequestSerializerV1, request)
         is LocalMasterRpcExecuteRequestV1 -> json.encodeToString(LocalMasterRpcExecuteRequestSerializerV1, request)
         is LocalMasterRpcLookupRequestV1 -> json.encodeToString(LocalMasterRpcLookupRequestSerializerV1, request)
+        else -> error("Not a supplier business request")
     }
 
     private fun serializeRequest(request: LocalMasterRpcOwnedRequestV1, encoder: Encoder): Unit = when (request) {
         is LocalMasterRpcReadRequestV1 -> LocalMasterRpcReadRequestSerializerV1.serialize(encoder, request)
         is LocalMasterRpcExecuteRequestV1 -> LocalMasterRpcExecuteRequestSerializerV1.serialize(encoder, request)
         is LocalMasterRpcLookupRequestV1 -> LocalMasterRpcLookupRequestSerializerV1.serialize(encoder, request)
+        else -> error("Not a supplier business request")
     }
 
     private fun decodeRequest(kind: RequestKind, wire: String): LocalMasterRpcOwnedRequestV1 = when (kind) {
@@ -543,6 +545,7 @@ class LocalMasterRpcSupplierWireCodecSupportingTest {
             is LocalMasterRpcReadRequestV1 -> request.request.payload
             is LocalMasterRpcExecuteRequestV1 -> request.request.payload
             is LocalMasterRpcLookupRequestV1 -> error("Lookup has no business payload")
+            else -> error("Not a supplier business request")
         }
         assertEquals(expected.size, stored.size)
         assertTrue(stored.copyBytes().contentEquals(expected), "Exact bounded business payload")

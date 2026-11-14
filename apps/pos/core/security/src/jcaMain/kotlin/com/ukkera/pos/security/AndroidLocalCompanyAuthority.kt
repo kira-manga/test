@@ -4,6 +4,26 @@ import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
 import java.util.concurrent.atomic.AtomicReference
 
+/** The concrete same-work issuer that installed one [AndroidLocalCompanyInstallationAdmission]. */
+internal interface LocalCompanyInstallationAdmissionAuthority {
+    fun requireBeforeInstallationAttemptRetention(admission: AndroidLocalCompanyInstallationAdmission,
+        actualAnchor: AndroidSelfOwnedHistoryAnchor, actualWork: AndroidOwnedInstallationWork,
+        actualEnvironment: SelfOwnedOriginalEnvironment, proposal: OriginalInstallationProposal,
+        snapshot: LocalBranchInstallationSnapshotV2, attemptSequence: Long, prospectiveAttemptId: DomainId)
+}
+
+/** Original-installation issuer surface shared by the Android V1 and desktop V2 company containers. */
+internal interface LocalCompanyOriginalInstallationIssuer {
+    fun inspectCompanyAuthority(): LocalCompanyAuthorityView
+    fun readOriginalInstallationHumanReference(): LocalInstallationHumanReferenceV2
+    fun prepareOriginalInstallationDefinition(proposal: OriginalInstallationProposal): LocalCompanyInstallationAction
+    fun approveOriginalInstallationDefinition(action: LocalCompanyInstallationAction, login: String,
+        secret: CharArray): LocalCompanyInstallationApproval
+    fun readOriginalInstallationAttempt(): LocalCompanyInstallationApproval
+    fun acknowledgeOriginalInstallationReceipt(completion: OriginalInstallationCompletion): LocalInstallationSignedAcknowledgementV2
+    fun retireOriginalInstallationAttempt(retirement: OriginalAttemptRetirement)
+}
+
 /**
  * Execute-only participant of the ACTUAL existing P1/P2 work. No factory, executor, process
  * lease, own store or externally supplied authority callback. Wrappers admit/copy/clear inputs
@@ -16,7 +36,7 @@ internal class AndroidLocalCompanyAuthority(
     private val work: AndroidOwnedInstallationWork,
     private val historyAnchor: AndroidSelfOwnedHistoryAnchor? = null,
     private val issuance: AndroidLocalCompanyIssuanceGate = AndroidLocalCompanyIssuanceGate(),
-) {
+) : LocalCompanyInstallationAdmissionAuthority, LocalCompanyOriginalInstallationIssuer {
     private val actionOwner = Any()
     private val preparedFounding = AtomicReference<PreparedFoundingCredentials?>(null)
     private val authentication = AndroidLocalInstallerAuthentication(environment, registry, keys, work, issuance)
@@ -27,7 +47,7 @@ internal class AndroidLocalCompanyAuthority(
     fun denyHeadIssuance() { issuance.deny(null) }
     fun denyPurpose(purpose: LocalCompanyHeadPurposeV1?) { issuance.deny(purpose) }
 
-    fun inspectCompanyAuthority(): LocalCompanyAuthorityView {
+    override fun inspectCompanyAuthority(): LocalCompanyAuthorityView {
         requireOwned()
         val original = requireBootstrap()
         val state = registry.readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
@@ -58,12 +78,12 @@ internal class AndroidLocalCompanyAuthority(
         return readOriginalCompanyAndHeadAction()
     }
 
-    fun readOriginalInstallationHumanReference(): LocalInstallationHumanReferenceV2 {
+    override fun readOriginalInstallationHumanReference(): LocalInstallationHumanReferenceV2 {
         val state = requireState()
         return originalInstallationHumanReference(state).also { requireOwned() }
     }
 
-    fun prepareOriginalInstallationDefinition(proposal: OriginalInstallationProposal): LocalCompanyInstallationAction {
+    override fun prepareOriginalInstallationDefinition(proposal: OriginalInstallationProposal): LocalCompanyInstallationAction {
         val owner = requireInstallationOwner()
         requireNewIssuance(LocalCompanyHeadPurposeV1.FULL_D7_INSTALLATION_APPROVE)
         var state = requireState()
@@ -92,7 +112,7 @@ internal class AndroidLocalCompanyAuthority(
             requireBootstrap().key(LocalCompanyHeadKeyRoleV1.INSTALLATION).keyRevision, environment.bootCount, pendingDeadline())
     }
 
-    fun approveOriginalInstallationDefinition(action: LocalCompanyInstallationAction, login: String,
+    override fun approveOriginalInstallationDefinition(action: LocalCompanyInstallationAction, login: String,
         secret: CharArray): LocalCompanyInstallationApproval {
         val owner = requireInstallationOwner()
         var state = requireState()
@@ -178,7 +198,7 @@ internal class AndroidLocalCompanyAuthority(
         return result
     }
 
-    fun readOriginalInstallationAttempt(): LocalCompanyInstallationApproval =
+    override fun readOriginalInstallationAttempt(): LocalCompanyInstallationApproval =
         readOriginalInstallationAttempt(requireInstallationOwner().readOriginalInstallationAttempt())
 
     private fun readOriginalInstallationAttempt(original: OriginalInstallationAttempt): LocalCompanyInstallationApproval {
@@ -196,7 +216,7 @@ internal class AndroidLocalCompanyAuthority(
         return LocalCompanyInstallationApproval(original, proof)
     }
 
-    fun acknowledgeOriginalInstallationReceipt(completion: OriginalInstallationCompletion): LocalInstallationSignedAcknowledgementV2 {
+    override fun acknowledgeOriginalInstallationReceipt(completion: OriginalInstallationCompletion): LocalInstallationSignedAcknowledgementV2 {
         val owner = requireInstallationOwner()
         owner.requireOriginalCompletion(completion)
         var state = requireState()
@@ -252,7 +272,7 @@ internal class AndroidLocalCompanyAuthority(
         } finally { frameBytes.fill(0) }
     }
 
-    fun retireOriginalInstallationAttempt(retirement: OriginalAttemptRetirement) {
+    override fun retireOriginalInstallationAttempt(retirement: OriginalAttemptRetirement) {
         val owner = requireInstallationOwner()
         owner.requireOriginalRetirement(retirement)
         var state = requireState()
@@ -351,7 +371,7 @@ internal class AndroidLocalCompanyAuthority(
      * reserve call. This is the actual original P1 registry/key/auth owner, not a provider.
      * The one-shot is consumed before native observations; any refusal still consumes it.
      */
-    internal fun requireBeforeInstallationAttemptRetention(admission: AndroidLocalCompanyInstallationAdmission,
+    override fun requireBeforeInstallationAttemptRetention(admission: AndroidLocalCompanyInstallationAdmission,
         actualAnchor: AndroidSelfOwnedHistoryAnchor, actualWork: AndroidOwnedInstallationWork,
         actualEnvironment: SelfOwnedOriginalEnvironment, proposal: OriginalInstallationProposal,
         snapshot: LocalBranchInstallationSnapshotV2, attemptSequence: Long, prospectiveAttemptId: DomainId) {
@@ -364,7 +384,9 @@ internal class AndroidLocalCompanyAuthority(
         requireSameInstallationSnapshot(admission.originalSnapshot, actualAnchor.requireOriginalProposal(proposal))
         val state = requireState()
         requireInstallationAdmission(state, snapshot, attemptSequence)
-        authentication.requireHeadStillCurrent(admission.headApproval, state, LocalCompanyHeadPurposeV1.FULL_D7_INSTALLATION_APPROVE,
+        val headApproval = admission.headApproval as? AndroidLocalInstallerAuthentication.HeadApproval
+            ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
+        authentication.requireHeadStillCurrent(headApproval, state, LocalCompanyHeadPurposeV1.FULL_D7_INSTALLATION_APPROVE,
             snapshot.definition.originalRequestId, snapshot.definitionDigest)
         if (protectedHeadDigest(state) != admission.protectedHeadStateDigest) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         // Include all fifteen founding/key IDs, original allocation IDs, every policy ID,
@@ -501,7 +523,7 @@ internal class AndroidLocalCompanyAuthority(
             val nonce = AndroidP256Primitives.randomBytes(32)
             val base = try {
                 SelfOwnedBootstrapV1(0L, ids[0], ids[1], ids[2], ids[3], ids[4], ids[5], facts.company,
-                    environment.target, registry.namespaceIdentity(), SelfOwnedOctetsV1(nonce),
+                    environment.androidTargetV1(), registry.namespaceIdentity(), SelfOwnedOctetsV1(nonce),
                     SelfOwnedNativeKeyRoleV1.entries.mapIndexed { index, role ->
                         SelfOwnedNativeKeyIntentV1(role, ids[6 + index], SelfOwnedKeyIntentPhaseV1.NOT_STARTED,
                             null, null, SelfOwnedOctetsV1(ByteArray(0)))
@@ -906,19 +928,26 @@ internal class AndroidLocalCompanyAuthority(
  * A failed force/return invalidates this object, never frees the durable reservation.
  */
 internal class AndroidLocalCompanyInstallationAdmission internal constructor(
-    private val authority: AndroidLocalCompanyAuthority,
+    private val authority: LocalCompanyInstallationAdmissionAuthority,
     internal val originalAnchor: AndroidSelfOwnedHistoryAnchor,
     internal val originalProposal: OriginalInstallationProposal,
     internal val originalSnapshot: LocalBranchInstallationSnapshotV2,
     internal val nextAttemptSequence: Long,
-    internal val headApproval: AndroidLocalInstallerAuthentication.HeadApproval,
+    /** The authority's own opaque head approval (V1 Android or V2 desktop); compared by that authority only. */
+    internal val headApproval: Any,
+    val headAccountRevision: Long,
+    val headCredentialRevision: Long,
+    val installationPurposeRevision: Long,
+    val installationKeyRevision: Long,
+    val deadlineElapsedMillis: Long,
     val protectedHeadStateDigest: PayloadDigest,
 ) {
-    val headAccountRevision: Long get() = headApproval.accountRevision
-    val headCredentialRevision: Long get() = headApproval.credentialRevision
-    val installationPurposeRevision: Long get() = headApproval.purposeRevision
-    val installationKeyRevision: Long get() = headApproval.keyRevision
-    val deadlineElapsedMillis: Long get() = headApproval.expires
+    internal constructor(authority: AndroidLocalCompanyAuthority, originalAnchor: AndroidSelfOwnedHistoryAnchor,
+        originalProposal: OriginalInstallationProposal, originalSnapshot: LocalBranchInstallationSnapshotV2,
+        nextAttemptSequence: Long, headApproval: AndroidLocalInstallerAuthentication.HeadApproval,
+        protectedHeadStateDigest: PayloadDigest) : this(authority, originalAnchor, originalProposal, originalSnapshot,
+        nextAttemptSequence, headApproval, headApproval.accountRevision, headApproval.credentialRevision,
+        headApproval.purposeRevision, headApproval.keyRevision, headApproval.expires, protectedHeadStateDigest)
     private var prospectiveAttempt: DomainId? = null
     private var consumed = false
     private var checked = false

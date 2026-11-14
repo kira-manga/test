@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ukkera POS (macOS, test only) per-user LaunchAgent for the Master service mode of the same
+     signed app. DesktopMacServiceAgent renders it into ~/Library/LaunchAgents (mode 0600) and
+     loads it with `launchctl bootstrap gui/<uid>`. Placeholders (@-delimited, XML-escaped): LABEL
+     agent label, PROGRAM bundled launcher (UkkeraPOS.app/Contents/MacOS/UkkeraPOS), LOG_DIR
+     owner-only (0700) log directory under ~/Library/Logs. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@PROGRAM@</string>
+    <string>--service</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>ProcessType</key>
+  <string>Standard</string>
+  <key>Umask</key>
+  <integer>63</integer>
+  <key>StandardOutPath</key>
+  <string>@LOG_DIR@/master.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG_DIR@/master.err.log</string>
+</dict>
+</plist>

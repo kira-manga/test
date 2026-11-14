@@ -240,6 +240,42 @@ internal object MacOriginalNative {
         selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
     }
 
+    /** One read/write syscall (position < 0: current offset); EINTR is retried, other errors fail. */
+    fun transfer(fd: Int, buffer: ByteArray, offset: Int, length: Int, position: Long, write: Boolean): Int {
+        requireSupported()
+        require(offset >= 0 && length >= 0 && offset + length <= buffer.size)
+        if (length == 0) return 0
+        Memory(length.toLong()).use { memory ->
+            try {
+                if (write) memory.write(0, buffer, offset, length)
+                while (true) {
+                    val count = when {
+                        write && position < 0 -> library.write(fd, memory, NativeLong(length.toLong()))
+                        write -> library.pwrite(fd, memory, NativeLong(length.toLong()), NativeLong(position))
+                        position < 0 -> library.read(fd, memory, NativeLong(length.toLong()))
+                        else -> library.pread(fd, memory, NativeLong(length.toLong()), NativeLong(position))
+                    }
+                    if (count < 0) {
+                        if (Native.getLastError() == EINTR) continue
+                        selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+                    }
+                    if (!write && count > 0) memory.read(0, buffer, offset, count.toInt())
+                    return count.toInt()
+                }
+            } finally { memory.clear() }
+        }
+    }
+
+    fun unlink(path: Path) {
+        requireSupported()
+        if (library.unlink(path.toString()) != 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
+    fun rmdir(path: Path) {
+        requireSupported()
+        if (library.rmdir(path.toString()) != 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
     fun close(fd: Int): Int {
         requireSupported()
         return library.close(fd)
@@ -509,6 +545,10 @@ internal interface MacOriginalLibC : Library {
     fun read(fd: Int, buffer: Pointer, count: NativeLong): Long
     fun write(fd: Int, buffer: Pointer, count: NativeLong): Long
     fun lseek(fd: Int, offset: NativeLong, whence: Int): Long
+    fun pread(fd: Int, buffer: Pointer, count: NativeLong, offset: NativeLong): Long
+    fun pwrite(fd: Int, buffer: Pointer, count: NativeLong, offset: NativeLong): Long
+    fun unlink(path: String): Int
+    fun rmdir(path: String): Int
     fun getattrlist(path: String, attributes: Pointer, buffer: Pointer, size: NativeLong,
         options: NativeLong): Int
     fun statfs(path: String, buffer: Pointer): Int

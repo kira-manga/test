@@ -62,7 +62,7 @@ public class LocalDevicePairingDefinition private constructor(canonical: ByteArr
     /** Explicit V2 DATA captured before this action. Legacy V1 definitions have none. */
     public val sdkIdentity: LocalDevicePairingSdkIdentityV2? get() = value.sdkIdentity
     /** Additive V3 selection DATA, not an authenticated Master pin. Legacy definitions have none. */
-    public val masterSdkOriginal: LocalMasterSdkOriginalV1? get() = value.masterSdkOriginal
+    public val masterSdkOriginal: LocalMasterSdkOriginal? get() = value.masterSdkOriginal
     public val purpose: String get() = if (sdkIdentity == null) LocalDevicePairingProfileV1.PURPOSE else LocalDevicePairingProfileV2.PURPOSE
     public val definitionDigest: PayloadDigest = sha256(bytes)
     public fun copyCanonicalServiceAdmission(): ByteArray = value.serviceAdmission.copyBytes()
@@ -98,7 +98,7 @@ public class LocalDevicePairingDefinition private constructor(canonical: ByteArr
          * this exact original against authenticated record6 before every protected advancement. */
         public fun captureMasterBound(requestId: DomainId, target: LocalDevicePairingTargetDescriptor,
             canonicalServiceAdmission: ByteArray, retainedAdmissions: List<LocalDeviceAdmission>,
-            sdkIdentity: LocalDevicePairingSdkIdentityV2, masterSdkOriginal: LocalMasterSdkOriginalV1): LocalDevicePairingDefinition {
+            sdkIdentity: LocalDevicePairingSdkIdentityV2, masterSdkOriginal: LocalMasterSdkOriginal): LocalDevicePairingDefinition {
             val request = localDevicePairingRequestV1(target.admission.scope, requestId,
                 target.admission.deviceId, canonicalServiceAdmission.copyOf())
             val fields = DevicePairingDefinitionFieldsV1(request, target,
@@ -153,7 +153,7 @@ internal data class DevicePairingTargetFieldsV1(val admission: LocalDeviceAdmiss
 internal data class DevicePairingDefinitionFieldsV1(val request: LocalProvisioningRequest,
     val target: LocalDevicePairingTargetDescriptor, val serviceAdmission: SelfOwnedOctetsV1,
     val admissions: List<LocalDeviceAdmission>, val sdkIdentity: LocalDevicePairingSdkIdentityV2? = null,
-    val masterSdkOriginal: LocalMasterSdkOriginalV1? = null) {
+    val masterSdkOriginal: LocalMasterSdkOriginal? = null) {
     init {
         require(request.action == LocalProvisioningAction.ADMIT_DEVICE && request.scope == target.admission.scope &&
             request.targetId == target.admission.deviceId && request.requestId != request.targetId &&

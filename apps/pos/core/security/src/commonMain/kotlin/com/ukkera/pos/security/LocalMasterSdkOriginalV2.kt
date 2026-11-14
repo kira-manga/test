@@ -11,27 +11,23 @@ import dev.p2pkit.core.PeerId
  * allocation and retained official SDK identity. Decoding never proves native custody, device
  * admission, employee authority, transport activation or current writer authority.
  */
-public class LocalMasterSdkOriginalV2 private constructor(canonical: ByteArray) {
+public class LocalMasterSdkOriginalV2 private constructor(canonical: ByteArray) : LocalMasterSdkOriginal {
     private val bytes: ByteArray = canonical.copyOf()
     private val value: NativeMasterSdkOriginalFieldsV2 = decodeNativeMasterSdkOriginal(bytes)
 
-    public val originalAcquisitionId: DomainId get() = value.originalAcquisitionId
-    public val allocation: OriginalAllocationCommitmentV2 get() = value.allocation
-    public val installedTarget: SelfOwnedNativeInstalledTargetBindingV1 get() = value.installedTarget
-    public val appId: AppId get() = value.appId
-    public val peerId: PeerId get() = value.peerId
-    public val fingerprint: PeerFingerprint get() = value.fingerprint
-    public val pairingQr: String get() = value.pairingQr
-    public val exactDeviceName: String get() = value.exactDeviceName
-    public val compositionProfile: LocalCompositionSdkProfileV1 get() = value.compositionProfile
-    public val descriptorDigest: PayloadDigest = sha256(bytes)
+    override val formatVersion: Int get() = 2
+    override val originalAcquisitionId: DomainId get() = value.originalAcquisitionId
+    override val allocation: OriginalAllocationCommitmentV2 get() = value.allocation
+    override val installedTarget: SelfOwnedNativeInstalledTargetBindingV1 get() = value.installedTarget
+    override val appId: AppId get() = value.appId
+    override val peerId: PeerId get() = value.peerId
+    override val fingerprint: PeerFingerprint get() = value.fingerprint
+    override val pairingQr: String get() = value.pairingQr
+    override val exactDeviceName: String get() = value.exactDeviceName
+    override val compositionProfile: LocalCompositionSdkProfileV1 get() = value.compositionProfile
+    override val descriptorDigest: PayloadDigest = sha256(bytes)
 
-    public fun matchesSdkTransportIdentity(actualAppId: AppId, actualPeerId: PeerId,
-        actualFingerprint: PeerFingerprint, actualPairingQr: String): Boolean =
-        appId == actualAppId && peerId == actualPeerId && fingerprint == actualFingerprint &&
-            pairingQr == actualPairingQr
-
-    public fun copyWireBytes(): ByteArray = bytes.copyOf()
+    override fun copyWireBytes(): ByteArray = bytes.copyOf()
     override fun toString(): String = "LocalMasterSdkOriginalV2([REDACTED])"
 
     public companion object {
@@ -58,7 +54,7 @@ public class LocalMasterSdkOriginalV2 private constructor(canonical: ByteArray) 
     }
 }
 
-private const val NATIVE_MASTER_SDK_ORIGINAL_DOMAIN_V2 = "original-native-master-sdk-identity-data/v2"
+private const val NATIVE_MASTER_SDK_ORIGINAL_DOMAIN_V2 = LocalMasterSdkOriginal.DOMAIN_V2
 
 private class NativeMasterSdkOriginalFieldsV2(
     val originalAcquisitionId: DomainId,

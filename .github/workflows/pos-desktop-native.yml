@@ -145,6 +145,8 @@ jobs:
           POS_ROOT: ${{ steps.pos.outputs.root }}
           DESKTOP_SMOKE: ${{ inputs.desktop_smoke && '1' || '0' }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
+          # Designated-requirement digest of the owner's signed app (from a prior identity probe).
+          POS_MAC_DESIGNATED_REQUIREMENT_SHA256: ${{ vars.POS_MAC_DESIGNATED_REQUIREMENT_SHA256 }}
         run: |
           set -euo pipefail
           bash "$PWD/scripts/pos/desktop/package-desktop.sh" \

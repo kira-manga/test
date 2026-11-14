@@ -109,7 +109,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
     private val directoryWorkers = mutableSetOf<Job>()
     private class DirectoryOperation<T : Any>(
         val credentials: LocalGatewayCredentials,
-        val access: LocalMasterRpcBusinessAccess,
+        val access: LocalMasterRpcBusinessAccess?,
         val call: suspend (LocalMasterClientRpcBridgeV1, LocalGatewayCredentials, DomainId) -> T,
     ) {
         lateinit var worker: Job
@@ -268,6 +268,16 @@ internal class LocalRpcOriginalClientOwner private constructor(
         }
     }
 
+    /** Remote employee creation on the SAME retained directory connection and bridge. The
+     * profile stays fixed; creation uses its own procedure and the Master's own authorization. */
+    suspend fun employeeCreationClient(directory: LocalRpcRemoteDirectoryClient): LocalRpcRemoteEmployeeCreationClient =
+        gate.withLock {
+            currentCoroutineContext().ensureActive()
+            requireConnectedOwner()
+            check(directoryClientCurrent(directory)) { "Selected directory client is retired" }
+            LocalRpcRemoteEmployeeCreationClient(this, directory)
+        }
+
     internal fun directoryClientCurrent(client: LocalRpcRemoteDirectoryClient): Boolean {
         val retained = directoryLifetime.value ?: return false
         return retained.client === client && parent.isActive && state.value == LocalRpcFactoryPhase.READY &&
@@ -276,13 +286,14 @@ internal class LocalRpcOriginalClientOwner private constructor(
 
     /** Actual owner retains admitted work and its result until exact one-shot adoption or abandonment. */
     internal suspend fun <T : Any> directoryExchange(client: LocalRpcRemoteDirectoryClient,
-        credentials: LocalGatewayCredentials, access: LocalMasterRpcBusinessAccess,
+        credentials: LocalGatewayCredentials, access: LocalMasterRpcBusinessAccess?,
         unavailable: () -> T, busy: () -> T,
         call: suspend (LocalMasterClientRpcBridgeV1, LocalGatewayCredentials, DomainId) -> T): T {
         currentCoroutineContext().ensureActive()
         var saturated = false
         val operation = gate.withLock {
-            if (!directoryClientCurrent(client) || credentials.connectionId != client.connectionId || access.profile != client.profile) return@withLock null
+            if (!directoryClientCurrent(client) || credentials.connectionId != client.connectionId ||
+                access != null && access.profile != client.profile) return@withLock null
             directoryWorkers.removeAll { it.isCompleted }
             if (directoryOperations.size >= 8 || directoryWorkers.size >= 8) { saturated = true; return@withLock null }
             val owned = LocalGatewayCredentials(credentials.connectionId, credentials.bearer.useBytes(::OpaqueCredential))

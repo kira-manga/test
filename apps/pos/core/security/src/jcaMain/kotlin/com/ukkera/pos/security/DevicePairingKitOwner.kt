@@ -102,7 +102,19 @@ internal class DevicePairingKitOwner(
         requireIdle(); requireActive()
     }
 
-    fun requireMatchesMaster(original: LocalMasterSdkOriginalV1) {
+    /** First actual Master association only (Windows/macOS installed-target facts, V2 DATA). */
+    fun captureMasterV2(originalAcquisitionId: DomainId, allocation: OriginalAllocationCommitmentV2,
+        installedTarget: SelfOwnedNativeInstalledTargetBindingV1): LocalMasterSdkOriginalV2 {
+        requireActive(); requireIdle()
+        val actual = checkNotNull(kit)
+        val (fingerprint, qr) = captureAuthenticatedQr(actual)
+        val result = LocalMasterSdkOriginalV2.capture(originalAcquisitionId, allocation,
+            installedTarget, actual.appId, actual.localPeerId, fingerprint, qr, actual.localDeviceName)
+        requireMatchesMaster(result)
+        return result
+    }
+
+    fun requireMatchesMaster(original: LocalMasterSdkOriginal) {
         requireActive(); requireIdle()
         val actual = checkNotNull(kit)
         val (fingerprint, qr) = captureAuthenticatedQr(actual)

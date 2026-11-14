@@ -1,5 +1,7 @@
 package com.ukkera.pos.app.gateway
 
+import com.ukkera.pos.database.LocalMasterEmployeeCreationClient
+
 import com.ukkera.pos.app.BranchUiGateway
 import com.ukkera.pos.app.BranchUiSession
 import com.ukkera.pos.app.LocalClientCleanupStatus
@@ -178,6 +180,8 @@ public class LocalEndpointBranchGateway private constructor(
     private val composition: Composition,
     dispatcher: CoroutineDispatcher,
     private val directoryProfile: LocalMasterRpcWorkflowProfile? = null,
+    /** Separately composed remote creation on the same retained original Client, if any. */
+    private val remoteCreation: LocalMasterEmployeeCreationClient? = null,
 ) : BranchUiGateway {
     /** Existing roots retain their full endpoint/registry and exact actor intent-journal requirement. */
     public constructor(connections: StateFlow<LocalMasterClientConnection?>, credentials: LocalClientCredentialJournal,
@@ -322,7 +326,7 @@ public class LocalEndpointBranchGateway private constructor(
                         } else verified.view
                         if (!connectionCurrent(connection)) return@snapshot rejected(SignInFailure.UNAVAILABLE)
                         val display = display(finalView, connection.labels, business?.fullConnection?.administrationClient != null,
-                            workspaceMode = workspaceMode(business))
+                            workspaceMode = workspaceMode(business), creationAvailable = creationComposed(connection, business))
                         // Master-confirmed authentication does not require an operational grant.
                         // An empty projection uses the session-only UI; every protected operation
                         // still requires the master's current authorization, including recovery.
@@ -630,12 +634,24 @@ public class LocalEndpointBranchGateway private constructor(
         finally { withContext(NonCancellable) { workJob.join() } }
     }
 
+    private fun creationComposed(connection: LocalAuthenticationClientConnection, business: BusinessAttachment?): Boolean =
+        remoteCreation != null && business?.fullConnection == null &&
+            connection.credentialBinding is LocalClientAuthenticationBinding.RemoteOriginalAttachment
+
     public companion object {
         /** One immutable supported business profile on the same exact original session engine. */
         public fun directoryOnly(connections: StateFlow<LocalDirectoryClientConnection?>,
             credentials: LocalClientCredentialJournal, intents: LocalClientIntentJournalSource,
             profile: LocalMasterRpcWorkflowProfile, dispatcher: CoroutineDispatcher = Dispatchers.Default): LocalEndpointBranchGateway =
             LocalEndpointBranchGateway(connections, credentials, intents, Composition.DIRECTORY_ONLY, dispatcher, profile)
+
+        /** Directory profile plus the separately retained remote employee-creation lane. The
+         * native root must supply [creation] from the SAME original Client as the connection. */
+        public fun directoryWithEmployeeCreation(connections: StateFlow<LocalDirectoryClientConnection?>,
+            credentials: LocalClientCredentialJournal, intents: LocalClientIntentJournalSource,
+            profile: LocalMasterRpcWorkflowProfile, creation: LocalMasterEmployeeCreationClient,
+            dispatcher: CoroutineDispatcher = Dispatchers.Default): LocalEndpointBranchGateway =
+            LocalEndpointBranchGateway(connections, credentials, intents, Composition.DIRECTORY_ONLY, dispatcher, profile, creation)
 
         /** Same real session/workflow engine, bounded supplier profile and exact actor intents. */
         public fun supplierOnly(connections: StateFlow<LocalSupplierClientConnection?>,
@@ -698,6 +714,11 @@ public class LocalEndpointBranchGateway private constructor(
                 if (full.administrationClient == null) UnavailableLocalAdministration
                 else LocalEndpointAdministrationGateway(full, credentials, identity, source,
                     retireOriginalSession = { retireOriginalAttachment(key) })
+            } ?: remoteCreation?.takeIf { business?.fullConnection == null &&
+                    connection.credentialBinding is LocalClientAuthenticationBinding.RemoteOriginalAttachment }?.let { creation ->
+                LocalCreationOnlyAdministrationGateway(LocalEndpointEmployeeCreationGateway(
+                    LocalEmployeeCreationClientConnection(creation, connection) { connection.isCurrent() },
+                    credentials, identity, source, retireOriginalSession = { retireOriginalAttachment(key) }))
             } ?: UnavailableLocalAdministration
             val companyCatalog: LocalCompanyCatalogGateway = business?.let { actual ->
                 actual.fullConnection?.companyPublications?.let { publications ->
@@ -762,7 +783,7 @@ public class LocalEndpointBranchGateway private constructor(
             if (!renewed && policy.revision == previous.policyRevision) return attachmentCurrent(previous.key)
             val epochs = inputs.nextEpochs(previous.policy, requireNotNull(previous.display.localDraftEpochs))
             val nextDisplay = display(policy, login, connection.labels, business?.fullConnection?.administrationClient != null,
-                workspaceMode = workspaceMode(business))
+                workspaceMode = workspaceMode(business), creationAvailable = creationComposed(connection, business))
                 .copy(localDraftEpochs = epochs)
             // Protected Current can keep this employee/session valid while withdrawing every
             // operational area. Retire its old adapters; the UI shows session status only.
@@ -939,8 +960,24 @@ private fun sameSession(row: StoredClientSessionV1, view: LocalSessionView): Boo
     view.policy.actorId == row.identity.actorId && view.policy.scope == row.identity.scope
 
 private fun display(view: LocalSessionView, labels: LocalBranchDisplayLabels, administrationAvailable: Boolean,
-    workspaceMode: LocalSessionWorkspaceMode): SessionDisplayContext {
-    return display(view.policy, view.login, labels, administrationAvailable, workspaceMode)
+    workspaceMode: LocalSessionWorkspaceMode, creationAvailable: Boolean = false): SessionDisplayContext =
+    creationHint(display(view.policy, view.login, labels, administrationAvailable, workspaceMode),
+        view.policy, administrationAvailable, creationAvailable)
+
+private fun display(policy: ActivatedLocalPolicy, login: LocalLoginIdentifier, labels: LocalBranchDisplayLabels,
+    administrationAvailable: Boolean, workspaceMode: LocalSessionWorkspaceMode, creationAvailable: Boolean): SessionDisplayContext =
+    creationHint(display(policy, login, labels, administrationAvailable, workspaceMode), policy, administrationAvailable, creationAvailable)
+
+/** A separately composed remote creation lane shows People as a navigation hint only;
+ * the Master authorizes the creator and target on every creation call. */
+private fun creationHint(display: SessionDisplayContext, policy: ActivatedLocalPolicy, administrationAvailable: Boolean,
+    creationAvailable: Boolean): SessionDisplayContext {
+    if (!creationAvailable || administrationAvailable) return display
+    val permission = Permission(SecurityAction.LOCAL_ACCOUNT_ADMINISTRATION, PermissionVerb.ADMINISTER)
+    val grants = policy.grants.filter { it.permission == permission &&
+        (it.scope == policy.scope || it.scope == policy.scope.company()) && (it.namedSubjectId == null || it.namedSubjectId == policy.actorId) }
+    val allowed = grants.none { it.effect == GrantEffect.DENY && it.targetIds == null } && grants.any { it.effect == GrantEffect.ALLOW }
+    return if (allowed) display.copy(allowedAreas = display.allowedAreas + AppArea.PEOPLE) else display
 }
 
 private fun display(policy: ActivatedLocalPolicy, login: LocalLoginIdentifier, labels: LocalBranchDisplayLabels,

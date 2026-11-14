@@ -276,6 +276,11 @@ echo "Building $FORMAT with :apps:desktop:$GRADLE_TASK ..."
       "-Pcompose.desktop.mac.signing.identity=$POS_MAC_SIGNING_IDENTITY"
       "-Pcompose.desktop.mac.signing.keychain=$POS_MAC_KEYCHAIN")
   fi
+  if [[ "$FORMAT" == "dmg" && -n "${UKKERA_EXPECTED_TEAM_ID:-}" && -n "${POS_MAC_DESIGNATED_REQUIREMENT_SHA256:-}" ]]; then
+    # Expected Master service identity (DesktopMacServiceIdentity) from the owner's certificate.
+    MAC_SIGNING_ARGS+=("-Pukkera.mac.signing.teamIdentifier=$UKKERA_EXPECTED_TEAM_ID"
+      "-Pukkera.mac.signing.designatedRequirementSha256=$POS_MAC_DESIGNATED_REQUIREMENT_SHA256")
+  fi
   bash ./gradlew \
     "$GRADLE_TASK" \
     "${MAC_SIGNING_ARGS[@]}" \
@@ -309,6 +314,19 @@ if [[ "$FORMAT" == "dmg" ]]; then
   DMG_BUNDLE_ID="$(plutil -extract CFBundleIdentifier raw -o - "$APP_PATH/Contents/Info.plist")"
   [[ "$DMG_BUNDLE_ID" == "com.ukkera.pos.local.desktop" ]] || fail "unexpected DMG bundle id: $DMG_BUNDLE_ID"
   file "$APP_PATH/Contents/MacOS/UkkeraPOS" > "$DIAG/dmg-executable-file.txt" 2>&1
+  # Service mode: the LaunchAgent template must be bundled for DesktopMacServiceAgent.
+  AGENT_FOUND=0
+  for jar in "$APP_PATH"/Contents/app/*.jar; do
+    LISTING="$(unzip -l "$jar" 2>/dev/null || true)"
+    if grep -q 'com\.ukkera\.pos\.master\.plist\.template$' <<<"$LISTING"; then AGENT_FOUND=1; break; fi
+  done
+  [[ "$AGENT_FOUND" == "1" ]] || fail "DMG app does not bundle the Master LaunchAgent template."
+  echo "launch_agent_template=bundled" > "$DIAG/dmg-service-agent.txt"
+  if grep -q 'ukkera.mac.signing.designatedRequirementSha256' "$APP_PATH"/Contents/app/*.cfg 2>/dev/null; then
+    echo "service_identity=configured" >> "$DIAG/dmg-service-agent.txt"
+  else
+    echo "service_identity=not-configured (service mode will refuse)" >> "$DIAG/dmg-service-agent.txt"
+  fi
   lipo -info "$APP_PATH/Contents/MacOS/UkkeraPOS" > "$DIAG/dmg-executable-lipo.txt" 2>&1 || true
   if [[ "$ARCH" == "arm64" ]]; then EXPECTED_MACHO_ARCH=arm64; else EXPECTED_MACHO_ARCH=x86_64; fi
   lipo -info "$APP_PATH/Contents/MacOS/UkkeraPOS" 2>&1 | grep -q "$EXPECTED_MACHO_ARCH" || \

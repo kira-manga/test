@@ -21,7 +21,7 @@ internal data class MacSelfOwnedSigningKeyBinding(
     val trainingSlot: LocalTrainingCompositionSlot?,
     val rootId: DomainId,
     val signingKeyId: DomainId,
-) {
+) : MacSigningKeyTag {
     init {
         require(
             (mode == LocalSetupCompositionMode.LIVE && trainingSlot == null) ||
@@ -29,7 +29,7 @@ internal data class MacSelfOwnedSigningKeyBinding(
         ) { "macOS signing-key binding requires exactly LIVE or a training slot" }
     }
 
-    internal fun applicationTag(): ByteArray {
+    override fun applicationTag(): ByteArray {
         val label = when (mode) {
             LocalSetupCompositionMode.LIVE -> "live"
             LocalSetupCompositionMode.TRAINING -> when (requireNotNull(trainingSlot)) {
@@ -50,6 +50,18 @@ internal data class MacSelfOwnedSigningKeyBinding(
         const val TAG_PREFIX = "com.ukkera.pos.macos.self-owned.signing-key.v1"
         const val TAG_MAXIMUM_CHARACTERS = 255
     }
+}
+
+/** Permanent Keychain application tag of one signing key. */
+internal sealed interface MacSigningKeyTag {
+    fun applicationTag(): ByteArray
+}
+
+/** Desktop Master custody tag: fixed prefix plus the shared-core derived alias. */
+internal class MacDesktopAliasTag(private val alias: String) : MacSigningKeyTag {
+    init { require(alias.length in 1..200 && alias.all { it.code in 0x21..0x7e }) }
+    override fun applicationTag(): ByteArray = "com.ukkera.pos.macos.desktop-master.p256.v2/$alias".toByteArray(Charsets.US_ASCII)
+    override fun toString(): String = "MacDesktopAliasTag([REDACTED])"
 }
 
 /** Actual observed custody level, never inferred from the requested policy. */
@@ -92,7 +104,7 @@ internal enum class MacSelfOwnedSigningKeySecurity {
  * origin and one-use intent before invoking them.
  */
 internal class MacSelfOwnedSigningKey private constructor(
-    val binding: MacSelfOwnedSigningKeyBinding,
+    val binding: MacSigningKeyTag,
     val protection: SelfOwnedKeyProtectionV1,
     val security: MacSelfOwnedSigningKeySecurity,
     private var privateItem: Item?,
@@ -122,6 +134,15 @@ internal class MacSelfOwnedSigningKey private constructor(
     /** The exact permanent tag for this root/key/profile; DATA only, not an authority claim. */
     internal fun copyApplicationTag(): ByteArray = binding.applicationTag()
 
+    private val original: MacSelfOwnedSigningKeyBinding
+        get() = binding as? MacSelfOwnedSigningKeyBinding ?: error("macOS signing key is not an original-context key")
+
+    /** Desktop-alias custody: raw r||s over [message], natively and point verified. */
+    internal fun signDesktop(message: ByteArray): ByteArray {
+        check(binding is MacDesktopAliasTag)
+        return signFixed(message)
+    }
+
     /**
      * Sign one bounded root/issuer/native-preparation document with the shared V1 role frame.
      * The owner remains responsible for choosing the correct original role and retained body.
@@ -134,10 +155,10 @@ internal class MacSelfOwnedSigningKey private constructor(
         when (role) {
             SelfOwnedDocumentRoleV1.ROOT_ANNOUNCEMENT -> {
                 val root = SelfOwnedInstallationWireV1.decodeRoot(body)
-                require(root.rootId == binding.rootId && root.rootKeyId == binding.signingKeyId && root.rootPublicKey.same(point))
+                require(root.rootId == original.rootId && root.rootKeyId == original.signingKeyId && root.rootPublicKey.same(point))
             }
             SelfOwnedDocumentRoleV1.ISSUER_DELEGATION ->
-                require(SelfOwnedInstallationWireV1.decodeDelegation(body).rootId == binding.rootId)
+                require(SelfOwnedInstallationWireV1.decodeDelegation(body).rootId == original.rootId)
             SelfOwnedDocumentRoleV1.NATIVE_PREPARATION -> error("macOS preparation requires the V2 installed-target domain")
         }
         val message = SelfOwnedInstallationWireV1.signingMessage(role, body)
@@ -149,7 +170,7 @@ internal class MacSelfOwnedSigningKey private constructor(
     internal fun signOriginalPreparation(
         preparation: SelfOwnedInstalledIdentityPreparationV2,
     ): SelfOwnedInstalledIdentitySignedDocumentV2 {
-        require(preparation.target.kind.platform == SelfOwnedInstalledIdentityPlatformV2.MACOS && preparation.rootId == binding.rootId)
+        require(preparation.target.kind.platform == SelfOwnedInstalledIdentityPlatformV2.MACOS && preparation.rootId == original.rootId)
         val message = SelfOwnedInstalledIdentityWireV2.signingMessage(preparation)
         val signature = try { signFixed(message) } finally { message.fill(0) }
         return try {
@@ -180,7 +201,7 @@ internal class MacSelfOwnedSigningKey private constructor(
         val decoded = SelfOwnedNativeInstallationWireV2.decodeBindingBody(body)
         require(decoded is SelfOwnedInstalledIdentityResultV2.Data)
         require(decoded.value.namespace.platform == SelfOwnedNativePlatformV2.MACOS &&
-            decoded.value.coordinates.targetSigningKeyId == binding.signingKeyId &&
+            decoded.value.coordinates.targetSigningKeyId == original.signingKeyId &&
             decoded.value.targetPublicKey.same(point))
         val message = SelfOwnedNativeInstallationWireV2.bindingSigningMessage(body)
         return try { signFixed(message) } finally { message.fill(0) }
@@ -347,7 +368,7 @@ internal class MacSelfOwnedSigningKey private constructor(
          * one-way intent. A pre-existing tagged item is never adopted as a new creation.
          */
         internal fun createAfterForcedIntent(
-            binding: MacSelfOwnedSigningKeyBinding,
+            binding: MacSigningKeyTag,
             protection: SelfOwnedKeyProtectionV1,
         ): MacSelfOwnedSigningKey = guarded {
             requireMacPlatform()
@@ -383,7 +404,7 @@ internal class MacSelfOwnedSigningKey private constructor(
          * fail closed; this path never generates, replaces or deletes a key.
          */
         internal fun reopenExistingOnly(
-            binding: MacSelfOwnedSigningKeyBinding,
+            binding: MacSigningKeyTag,
             protection: SelfOwnedKeyProtectionV1,
             originalPublicPoint: ByteArray,
         ): MacSelfOwnedSigningKey = guarded {
@@ -395,9 +416,9 @@ internal class MacSelfOwnedSigningKey private constructor(
         }
 
         private fun openExistingInternal(
-            binding: MacSelfOwnedSigningKeyBinding,
+            binding: MacSigningKeyTag,
             protection: SelfOwnedKeyProtectionV1,
-            originalPublicPoint: ByteArray,
+            originalPublicPoint: ByteArray?,
         ): MacSelfOwnedSigningKey {
             val tag = binding.applicationTag()
             try {
@@ -423,6 +444,24 @@ internal class MacSelfOwnedSigningKey private constructor(
             } finally {
                 tag.fill(0)
             }
+        }
+
+        /** Existing-only desktop-alias key; the shared core compares its point with the retained proof. */
+        internal fun openDesktop(alias: MacDesktopAliasTag, protection: SelfOwnedKeyProtectionV1): MacSelfOwnedSigningKey = guarded {
+            requireMacPlatform()
+            requireSupportedPolicy(protection)
+            openExistingInternal(alias, protection, null)
+        }
+
+        /** Existing-only presence of a desktop-alias key; native errors other than absence fail. */
+        internal fun desktopExists(alias: MacDesktopAliasTag): Boolean {
+            requireMacPlatform()
+            val tag = alias.applicationTag()
+            try {
+                val item = loadItem(tag) ?: return false
+                item.close()
+                return true
+            } finally { tag.fill(0) }
         }
 
         private fun requireAbsent(tag: ByteArray) {

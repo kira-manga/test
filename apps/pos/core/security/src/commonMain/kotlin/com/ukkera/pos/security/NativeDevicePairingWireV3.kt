@@ -28,7 +28,7 @@ internal object NativeDevicePairingWireV3 {
         val master = field(LocalMasterSdkProfileV1.MAXIMUM_ORIGINAL_BYTES)
         try {
             NativeDevicePairingWireV2.decodeDefinition(target).copy(
-                masterSdkOriginal = LocalMasterSdkOriginalV1.decode(master))
+                masterSdkOriginal = LocalMasterSdkOriginal.decode(master))
         } finally { target.fill(0); master.fill(0) }
     }
 }

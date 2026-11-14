@@ -1,10 +1,8 @@
 package com.ukkera.pos.database
 
-import android.app.Application
-import androidx.room3.Room
 import com.ukkera.pos.security.*
 
-/** Android driver/builder adapters for shared original-history startup and owned Room open.
+/** Shared JVM/Android driver/builder adapters for shared original-history startup and owned Room open.
  * Native driver acquisition and DATABASE_BOUND remain on the same retained invocation.
  * Shared hold/ACK decisions never create a driver or grant another writer. */
 internal object AndroidRuntimeHistoryStartup {
@@ -14,29 +12,28 @@ internal object AndroidRuntimeHistoryStartup {
         class AcknowledgementPending(val original: OriginalNativeHistorySnapshot): Selection
         class Held(val holds: Set<RuntimeHistoryReadHold>): Selection
     }
-    suspend fun select(application: Application,custody: SelfOwnedNativeHistoryCustody,
+    suspend fun select(platform: SelfOwnedMasterPlatform,custody: SelfOwnedNativeHistoryCustody,
         producer: RuntimeHistoryBusinessProducer? = null, stockCodec: StockCanonicalProjectionV2? = null): Selection {
         return when(val selected=RuntimeHistoryStartup.select(custody,producer,stockCodec)) {
             is RuntimeHistoryStartup.Selection.Allocation -> Selection.Allocation(selected.original)
-            is RuntimeHistoryStartup.Selection.Ready -> Selection.Opened(openDatabase(application,custody,selected.admission))
+            is RuntimeHistoryStartup.Selection.Ready -> Selection.Opened(openDatabase(platform,custody,selected.admission))
             is RuntimeHistoryStartup.Selection.AcknowledgementPending -> Selection.AcknowledgementPending(selected.original)
             is RuntimeHistoryStartup.Selection.Held -> Selection.Held(selected.holds)
         }
     }
-    suspend fun openFirst(application: Application,custody: SelfOwnedNativeHistoryCustody): RoomRuntimeHistoryOwner {
+    suspend fun openFirst(platform: SelfOwnedMasterPlatform,custody: SelfOwnedNativeHistoryCustody): RoomRuntimeHistoryOwner {
         RuntimeHistoryStartup.requireFirstRoomOpen(custody)
-        return openDatabase(application,custody,null)
+        return openDatabase(platform,custody,null)
     }
-    private suspend fun openDatabase(application: Application,custody: SelfOwnedNativeHistoryCustody,
+    private suspend fun openDatabase(platform: SelfOwnedMasterPlatform,custody: SelfOwnedNativeHistoryCustody,
         admission: RoomOriginalHistoryAdmission?): RoomRuntimeHistoryOwner {
         try {
             return custody.runRoomWork(block = {
                 try {
-                    val driver=AndroidSelfOwnedInstallationOwner.openRoomDriver(custody)
+                    val driver=platform.nativeOwner.openRoomDriver(custody)
                     openOwnedRuntimeHistoryRoom(custody, admission, driver,
-                        builder = { Room.databaseBuilder<MasterRoomDatabase>(application, driver.databasePath,
-                            factory = MasterRoomConstructor::initialize) },
-                        finishNativeOpen = { AndroidSelfOwnedInstallationOwner.finishRoomOpen(custody, driver) })
+                        builder = { platform.databaseBuilder(driver.databasePath) },
+                        finishNativeOpen = { platform.nativeOwner.finishRoomOpen(custody, driver) })
                 } catch (failure: Throwable) {
                     parkRuntimeHistoryAdmissionDuringOpenFailure(custody, admission, failure)
                     throw failure

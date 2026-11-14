@@ -304,7 +304,7 @@ internal class RoomRuntimeHistoryOwner private constructor(
 
     /** Existing authenticated original DATA only, freshly checked under the same native loan.
      * A legacy/missing original is unavailable; this path never captures or repairs SDK state. */
-    internal suspend fun readOriginalMasterSdk(): LocalMasterSdkOriginalV1 = serialPublicationLoan { loan ->
+    internal suspend fun readOriginalMasterSdk(): LocalMasterSdkOriginal = serialPublicationLoan { loan ->
         val settled = loan.original
         check(settled.record.pending == null && settled.record.issuerAcknowledgement != null)
         val originalSdk = checkNotNull(settled.record.masterSdkOriginal)

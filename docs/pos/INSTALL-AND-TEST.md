@@ -2,42 +2,87 @@
 
 These are synthetic local qualification builds. Epic 3 development and owner
 acceptance remain incomplete. Android has native setup/service integration;
-desktop and iOS currently launch an **unconfigured bootstrap**. Installing them
-does not provide a working branch Master, employee login, checkout or paired
-Client. Do not use production data or real payments.
+packaged Windows (MSIX) and macOS builds compose the in-app Client setup; the
+desktop Master and iOS are not yet composed. Pairing and full business workflows
+are not yet verified end to end. Do not use production data or real payments.
 
-## macOS, Windows and Android inspection downloads — 12 November 2026
+## Current downloads — source `fba8f018` (12 November 2026, late)
 
-The manual owner-package workflow provides macOS Apple Silicon/Intel DMGs,
-a Windows x64 MSI and the retained-signer Android application/runtime-test pair.
-All four artifacts were downloaded and verified against file manifests/checksums.
-Desktop packaging and bounded packaged startup passed; Android input/source checks,
-matching source build and fatal lint passed. The first Windows publication and
-Android memory failures remain recorded alongside the successful retries.
+All packages below come from clean source **`fba8f018`** and expire on
+**26 November 2026**. Sign in to GitHub, download the ZIP for your platform and
+extract it before opening the installer.
 
-**Inspection packages; full POS operation is incomplete.** Desktop launchers remain
-unconfigured for trusted setup/Master/Client services. Android employee creation
-remains unavailable. Packages contain application tree `a00d8303`; the later
-creation-original lookup is not included. The auxiliary repository stays **PUBLIC**.
-[Downloads, expiry dates, exact source/hashes and readiness limits](../../qa/pos/traceability/owner-test-packages-20261112/README.md).
-
-The current downloads below expire on **26 November 2026**. Sign in to GitHub,
-download the ZIP for your platform, and extract it before opening the installer.
-
-| Platform | Current download | File to open after extracting the ZIP |
+| Platform | Download | File to open after extracting |
 | --- | --- | --- |
-| Mac with Apple Silicon (M-series) | [Apple Silicon DMG](https://github.com/kira-manga/test/actions/runs/43177650760/artifacts/13925765614) | `UkkeraPOS-1.0.0.dmg` |
-| Mac with an Intel processor | [Intel DMG](https://github.com/kira-manga/test/actions/runs/43177650760/artifacts/13925671503) | `UkkeraPOS-1.0.0.dmg` |
-| Windows x64 | [Windows MSI](https://github.com/kira-manga/test/actions/runs/43179326171/artifacts/13925473115) | `UkkeraPOS-0.1.0.msi` |
-| Android | [Android APK](https://github.com/kira-manga/test/actions/runs/43179698847/artifacts/13926298925) | `ukkera-pos-testing.apk` |
+| Mac with Apple Silicon | [Apple Silicon DMG](https://github.com/kira-manga/test/actions/runs/43322778237/artifacts/13992121936) | `UkkeraPOS-1.0.0.dmg` |
+| Mac with an Intel processor | [Intel DMG](https://github.com/kira-manga/test/actions/runs/43322778237/artifacts/13991538597) | `UkkeraPOS-1.0.0.dmg` |
+| Windows x64 (Client and Master service) | [Windows ZIP](https://github.com/kira-manga/test/actions/runs/43322778237/artifacts/13990954525) | `UkkeraPOS-Test-0.1.24.0.msix` |
+| Android | [Android ZIP](https://github.com/kira-manga/test/actions/runs/43326203062/artifacts/13993313657) | `ukkera-pos-testing.apk` |
 
-On Mac, open the DMG and install the application. On Windows, run the MSI.
-These desktop packages are unsigned and the Mac packages are not notarized, so
-operating-system security prompts can appear. On Android, transfer the application
-APK to the device and open it; the installing app may need permission to install
-APKs. The separate `ukkera-pos-runtime-tests.apk` is for the disposable automated
-qualification campaign, not ordinary owner inspection. Preserve existing app data
-and unresolved original operations when installing an update.
+Hosted checks on these exact packages: the macOS (arm64 and x64) and Windows
+packaged Client target key reached `KEY_READY` and reopened; the Client journal
+enrolled and reopened; the Windows package identity and `UkkeraPOSTestMaster`
+service registration were observed. Android packaging verified the source inventory, single
+retained signer, v2/v3 signatures, 16-KiB alignment, fatal lint and matching
+source build. **Nothing was installed on a physical device and no Master↔Client
+pairing has been executed yet.**
+
+**Android signer change — uninstall first.** These APKs use the retained
+local-testing certificate `ae3ac7d5…`; the `54f974f8…` signer used by the earlier
+11–12 November packages is no longer available. Android refuses this update over
+an earlier test install. Uninstall the earlier Ukkera POS test app (synthetic data
+only) before installing `ukkera-pos-testing.apk`. Do not install the separate
+`ukkera-pos-runtime-tests.apk` for ordinary testing.
+
+**Windows:** the Client needs the MSIX package identity; the MSI does not
+provide it. The MSIX is signed with a self-signed test certificate:
+
+1. Right-click `UkkeraPOS-Test-0.1.24.0.msix` → **Properties → Digital
+   Signatures** → select the signature → **Details → View Certificate →
+   Install Certificate** → **Local Machine** → *Place all certificates in the
+   following store* → **Trusted People**. Administrator approval is required.
+2. Open the MSIX and choose **Install** (or, in an administrator PowerShell,
+   `Add-AppxPackage .\UkkeraPOS-Test-0.1.24.0.msix`).
+3. Start **Ukkera POS** from the Start menu. Remove the test certificate from
+   Trusted People when testing ends.
+
+**Mac:** open the DMG and copy the application; follow the Gatekeeper steps
+below (unsigned, not notarized).
+
+### First connected trial: Android Master + Windows/macOS Client
+
+Use synthetic names and values only, on one local network.
+
+1. **Android Master.** Install the APK, open it, choose setup and create the
+   synthetic company/branch Master on this device. Record each screen result.
+2. **Desktop Client.** Open Ukkera POS on Windows (MSIX) or Mac → **Setup**.
+   The desktop prepares its in-app Client key in OS-protected storage
+   (Windows DPAPI / macOS login Keychain).
+3. **Pairing documents.** Pairing exchanges small files between the devices.
+   When a screen offers **Export**, the desktop saves `ukkera-<document>.bin`
+   (for example `ukkera-challenge.bin`); move it to the other device (USB, cable
+   or shared folder) and **Import** it there. Repeat in the order the setup
+   screens request. Record any step whose document cannot be exported or imported.
+4. **Connection.** After approval the Client connects to the Master over the LAN.
+   On Android 17 / API 37, grant local-network access when asked.
+5. Record for each step: device, OS version, the screen shown, and any refusal
+   text. Close and reopen both apps once after pairing and record whether the
+   Client reconnects.
+
+**Known limits for this trial.** Android employee creation and its remote
+creation RPC remain unfinished, so multi-employee
+login/permission tests are not yet possible. The desktop Master (Windows service
+/ macOS) is not yet composed; only the Android device can be the Master. A
+refusal in an unfinished path is not a reason to reset data or repeat an
+original.
+
+### Earlier packages (`a00d8303`)
+
+The earlier inspection downloads ([run 43177650760](https://github.com/kira-manga/test/actions/runs/43177650760),
+[run 43179326171](https://github.com/kira-manga/test/actions/runs/43179326171),
+[run 43179698847](https://github.com/kira-manga/test/actions/runs/43179698847))
+contain `a00d8303` and an unconfigured desktop bootstrap.
+[Their exact source, hashes and limits](../../qa/pos/traceability/owner-test-packages-20261112/README.md).
 
 ### Opening the Mac inspection build
 
@@ -385,9 +430,10 @@ Latest Android application SHA-256: `49e7c44472093b8358abdf91b75458421b8febfc4a7
    ```
 
 3. Launch **Ukkera POS**. The package ID is `com.ukkera.pos.local.testing` and the
-   application is nondebuggable. Its existing testing signer is retained. If an
-   update reports an incompatible signature, preserve the installed application
-   and record the error; do not uninstall it to make the update appear successful.
+   application is nondebuggable. The `fba8f018` package changes the testing
+   signer (see *Current downloads*): uninstall an earlier synthetic test install
+   first. For any other incompatible-signature report, preserve the installed
+   application and record the error.
 4. On API 37, the app requests local-network access before a new LAN host/connect.
    Check denial and grant separately. Denial must not create an operational LAN
    endpoint. Grant alone must not authenticate an employee or admit a device.

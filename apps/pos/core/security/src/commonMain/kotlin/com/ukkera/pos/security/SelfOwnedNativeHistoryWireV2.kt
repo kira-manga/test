@@ -57,9 +57,7 @@ public object SelfOwnedNativeHistoryWireV2 {
         ownedField(LocalBranchInstallationWireV2.encodeAllocation(value.allocation))
         long(value.generation); long(value.denialGeneration)
         bool(value.definition != null); value.definition?.let { ownedField(it.copyWireBytes()) }
-        bool(value.database != null); value.database?.let {
-            long(it.device); long(it.inode); int(it.uid); digest(it.namespaceDigest); string(it.roomIdentityHash)
-        }
+        bool(value.nativeDatabase != null); value.nativeDatabase?.let { databaseIdentity(it) }
         bool(value.parent != null); value.parent?.let { head(it) }
         bool(value.pending != null); value.pending?.let {
             head(it.child); ownedField(encodeIntent(it.originalIntent))
@@ -123,7 +121,7 @@ public object SelfOwnedNativeHistoryWireV2 {
         val definition = if (bool()) decodedField(LocalBranchInstallationWireV2.MAXIMUM_DEFINITION_BYTES) {
             LocalBranchInstallationWireV2.decodeDefinition(it) ?: malformed()
         } else null
-        val database = if (bool()) NativeHistoryDatabaseIdentityV2(long(), long(), int(), digest(), string(32)) else null
+        val database = if (bool()) databaseIdentity() else null
         val parent = if (bool()) head() else null
         val pending = if (bool()) {
             val pendingChild = head(); val intent = decodedField(MAX_CAPSULE_BYTES, ::decodeIntent)
@@ -169,7 +167,7 @@ public object SelfOwnedNativeHistoryWireV2 {
             }
         } else emptyList()
         val masterSdkOriginal = if (format >= MASTER_SDK_ORIGINAL_RECORD_FORMAT)
-            decodedField(LocalMasterSdkProfileV1.MAXIMUM_ORIGINAL_BYTES, LocalMasterSdkOriginalV1::decode) else null
+            decodedField(LocalMasterSdkOriginal.MAXIMUM_ORIGINAL_BYTES, LocalMasterSdkOriginal::decode) else null
         NativeHistoryAnchorRecordV2(allocation, generation, denialGeneration, definition, database, parent, pending,
             role, attempt, retired, child, receipt, ack, reservation, format, decisions, protectedDecisions, publicationObservations,
             masterSdkOriginal)
@@ -318,6 +316,39 @@ public object SelfOwnedNativeHistoryWireV2 {
         NativeHistoryProtectedFinalDecision(BranchScope(id(), id(), id()), digest(), head(), digest(),
             protectedDeclaration(), LocalAuthenticationObservation(id(), MonotonicMoment(id(), long())))
 
+    /**
+     * The POSIX V2 identity keeps its exact untagged bytes (device is always >= 0). Only a new
+     * variant is tag-dispatched behind the otherwise impossible device sentinel -1, so no existing
+     * V2 record byte changes and no V2 decode can ever be reinterpreted as another variant.
+     */
+    private fun NativeHistoryWriterV2.databaseIdentity(value: NativeHistoryDatabaseIdentity) {
+        when (value) {
+            is NativeHistoryDatabaseIdentityV2 -> {
+                long(value.device); long(value.inode); int(value.uid); digest(value.namespaceDigest); string(value.roomIdentityHash)
+            }
+            is NativeHistoryDatabaseBindingWindowsV1 -> {
+                long(TAGGED_DATABASE_SENTINEL); int(WINDOWS_DATABASE_TAG)
+                ownedField(NativeHistoryDatabaseIdentityWireWindowsV1.encode(value.file))
+                digest(value.namespaceDigest); string(value.roomIdentityHash)
+            }
+            is NativeHistoryDatabaseIdentityWindowsV1 -> malformed()
+        }
+    }
+    private fun NativeHistoryReaderV2.databaseIdentity(): NativeHistoryDatabaseIdentity {
+        val first = long()
+        if (first != TAGGED_DATABASE_SENTINEL) return NativeHistoryDatabaseIdentityV2(first, long(), int(), digest(), string(32))
+        if (int() != WINDOWS_DATABASE_TAG) malformed()
+        val file = decodedField(NativeHistoryDatabaseIdentityWireWindowsV1.MAXIMUM_BYTES) {
+            when (val result = NativeHistoryDatabaseIdentityWireWindowsV1.decode(it)) {
+                is SelfOwnedInstalledIdentityResultV2.Data -> result.value
+                is SelfOwnedInstalledIdentityResultV2.Refused -> malformed()
+            }
+        }
+        return NativeHistoryDatabaseBindingWindowsV1(file, digest(), string(32))
+    }
+    internal const val TAGGED_DATABASE_SENTINEL: Long = -1L
+    internal const val WINDOWS_DATABASE_TAG: Int = 1
+
     private fun NativeHistoryWriterV2.ownedField(value: ByteArray) {
         try { field(value) } finally { value.fill(0) }
     }
@@ -358,7 +389,7 @@ public enum class NativeHistoryRetirementFateV2(public val tag: Int) {
 public data class NativeHistoryDatabaseIdentityV2(
     public val device: Long, public val inode: Long, public val uid: Int,
     public val namespaceDigest: PayloadDigest, public val roomIdentityHash: String,
-) {
+) : NativeHistoryDatabaseIdentity {
     init { require(device >= 0 && inode > 0 && uid >= 0 && roomIdentityHash.length == 32 && roomIdentityHash.all { it in "0123456789abcdef" }) }
 }
 public data class NativeHistoryRecordedHeadV2(
@@ -421,7 +452,7 @@ public data class NativeHistoryInstallationReservationV2(
 
 public class NativeHistoryAnchorRecordV2(
     public val allocation: OriginalAllocationCommitmentV2, public val generation: Long, public val denialGeneration: Long,
-    public val definition: LocalBranchInstallationSnapshotV2?, public val database: NativeHistoryDatabaseIdentityV2?,
+    public val definition: LocalBranchInstallationSnapshotV2?, database: NativeHistoryDatabaseIdentity?,
     public val parent: NativeHistoryRecordedHeadV2?, public val pending: NativeHistoryPendingV2?,
     public val roleIntent: NativeHistoryRoleIntentV2?, public val attempt: NativeHistoryAttemptRecordV2?,
     retiredAttempts: List<NativeHistoryRetiredAttemptV2>, public val firstChild: LocalInstallationCompletedChildFactsV2?,
@@ -431,7 +462,7 @@ public class NativeHistoryAnchorRecordV2(
     finalDeadlineDecisions: List<NativeHistoryFinalDeadlineDecision> = emptyList(),
     protectedFinalDecisions: List<NativeHistoryProtectedFinalDecision> = emptyList(),
     businessPublicationObservations: List<NativeHistoryBusinessPublicationObservationProof> = emptyList(),
-    public val masterSdkOriginal: LocalMasterSdkOriginalV1? = null,
+    public val masterSdkOriginal: LocalMasterSdkOriginal? = null,
 ) {
     private val decisions = finalDeadlineDecisions.toList()
     public val finalDeadlineDecisions: List<NativeHistoryFinalDeadlineDecision> get() = decisions.toList()
@@ -441,7 +472,23 @@ public class NativeHistoryAnchorRecordV2(
     public val businessPublicationObservations: List<NativeHistoryBusinessPublicationObservationProof> get() = publicationObservations.toList()
     private val retired = retiredAttempts.toList()
     public val retiredAttempts: List<NativeHistoryRetiredAttemptV2> get() = retired.toList()
+    /** The exact retained original database identity (POSIX V2 or Windows binding), or null if unbound. */
+    public val nativeDatabase: NativeHistoryDatabaseIdentity? = database
+    /**
+     * POSIX V2 view of [nativeDatabase] (Android/macOS). It is null for a Windows binding, so binding
+     * presence and phase decisions must use [nativeDatabase]; this view never stands in for absence.
+     */
+    public val database: NativeHistoryDatabaseIdentityV2? get() = nativeDatabase as? NativeHistoryDatabaseIdentityV2
     init {
+        // Only a Windows V2 Master original may hold the Windows binding, and it may hold nothing else.
+        val windowsMaster = (masterSdkOriginal as? LocalMasterSdkOriginalV2)?.installedTarget?.platform ==
+            SelfOwnedInstalledTargetPlatformV1.WINDOWS
+        when (nativeDatabase) {
+            null -> Unit
+            is NativeHistoryDatabaseIdentityV2 -> require(!windowsMaster)
+            is NativeHistoryDatabaseBindingWindowsV1 -> require(windowsMaster)
+            is NativeHistoryDatabaseIdentityWindowsV1 -> throw IllegalArgumentException("native.history.database.unbound")
+        }
         require(generation > 0 && denialGeneration >= 0 && retired.size <= SelfOwnedNativeHistoryWireV2.MAX_RETIRED_ATTEMPTS)
         require(recordFormat in setOf(SelfOwnedNativeHistoryWireV2.FORMAT, SelfOwnedNativeHistoryWireV2.FINAL_DECISION_RECORD_FORMAT,
             SelfOwnedNativeHistoryWireV2.PROTECTED_FINAL_RECORD_FORMAT, SelfOwnedNativeHistoryWireV2.BUSINESS_PUBLICATION_RECORD_FORMAT,
@@ -504,7 +551,7 @@ public class NativeHistoryAnchorRecordV2(
         require(definition == null || definition.allocationDigest == allocation.digest)
         require((attempt == null && retired.isEmpty()) || definition != null)
         require(roleIntent == null || roleIntent.generation <= generation)
-        require(parent == null || database != null)
+        require(parent == null || nativeDatabase != null)
         require(attempt != null || (parent == null && pending == null && firstChild == null && receipt == null && issuerAcknowledgement == null))
         val c = allocation.coordinates
         val reservedIds = mutableSetOf(c.allocationId,c.scope.organizationId,c.scope.companyId,c.scope.branchId,c.installationId,
@@ -529,7 +576,7 @@ public class NativeHistoryAnchorRecordV2(
             require(it.facts.attemptSequence == previous + 1 && it.facts.originalAnchorGeneration < generation &&
                 it.denialGeneration in previousDenial..denialGeneration && reservedIds.add(it.facts.issuedAttemptId))
             when (it.phase) {
-                NativeHistoryAttemptPhaseV2.COMPLETED -> require(database != null && parent != null && firstChild != null && receipt != null)
+                NativeHistoryAttemptPhaseV2.COMPLETED -> require(nativeDatabase != null && parent != null && firstChild != null && receipt != null)
                 NativeHistoryAttemptPhaseV2.RETIRING -> require(denialGeneration > it.denialGeneration)
                 else -> require(denialGeneration == it.denialGeneration)
             }
@@ -539,8 +586,8 @@ public class NativeHistoryAnchorRecordV2(
             }
             when (it.phase) {
                 NativeHistoryAttemptPhaseV2.PRE_SQL, NativeHistoryAttemptPhaseV2.SQL_SUBMISSION_ARMED -> require(pending == null)
-                NativeHistoryAttemptPhaseV2.DATABASE_BOUND -> require(database != null && pending == null)
-                NativeHistoryAttemptPhaseV2.NATIVE_PENDING -> require(database != null && pending != null)
+                NativeHistoryAttemptPhaseV2.DATABASE_BOUND -> require(nativeDatabase != null && pending == null)
+                NativeHistoryAttemptPhaseV2.NATIVE_PENDING -> require(nativeDatabase != null && pending != null)
                 NativeHistoryAttemptPhaseV2.RETIRING -> if (pending != null) require(it.approvals != null && it.submissionDigest != null)
                 NativeHistoryAttemptPhaseV2.COMPLETED -> if (pending != null) {
                     // No ordinary writer can occupy pending or spend the original ACK tail.
@@ -553,7 +600,7 @@ public class NativeHistoryAnchorRecordV2(
             require(it.definitionDigest == requireNotNull(definition).definitionDigest && it.nextAttemptSequence == previous + 1)
             require(retired.size < SelfOwnedNativeHistoryWireV2.MAX_RETIRED_ATTEMPTS && retired.all { entry -> entry.issuerRetirementDigest != null })
         }
-        pending?.let { require(database != null && it.child.historySequence == (parent?.historySequence ?: 0L) + 1)
+        pending?.let { require(nativeDatabase != null && it.child.historySequence == (parent?.historySequence ?: 0L) + 1)
             if (parent != null) require(it.child.installationGenesisDigest == parent.installationGenesisDigest)
             else require(it.originalIntent.purposeTag == 1) }
         if (firstChild != null) {
@@ -561,7 +608,7 @@ public class NativeHistoryAnchorRecordV2(
             require(firstChild.originalAllocationDigest == allocation.digest && firstChild.definitionDigest == d.definitionDigest &&
                 firstChild.originalRequestId == d.definition.originalRequestId && firstChild.issuedAttemptId == a.facts.issuedAttemptId &&
                 firstChild.attemptSequence == a.facts.attemptSequence && firstChild.commandEpoch == d.definition.authorityEpoch)
-            require(database != null && a.approvals != null)
+            require(nativeDatabase != null && a.approvals != null)
             parent?.let { head ->
                 require(head.installationGenesisDigest == firstChild.installationGenesisDigest &&
                     head.commandEpoch >= d.definition.authorityEpoch.value)
@@ -665,6 +712,13 @@ internal object NativeHistoryLifecycleCapacityV2 {
     private const val ATTEMPT_BASE = FACTS_FIELD + INT + LONG + 4L * BOOL
     private const val APPROVAL_FIELD = INT + LocalBranchInstallationWireV2.MAXIMUM_SIGNED_APPROVAL_BYTES
     private const val DATABASE_BODY = 2L * LONG + INT + DIGEST + INT + 32L
+    // Sentinel + tag + bounded Windows file-identity field + the same digest/hash tail.
+    private const val WINDOWS_DATABASE_BODY = LONG + INT + INT + NativeHistoryDatabaseIdentityWireWindowsV1.MAXIMUM_BYTES +
+        DIGEST + INT + 32L
+    /** Android/macOS keep the unchanged V2 reserve; only a Windows V2 Master original reserves the Windows body. */
+    private fun databaseReserve(value: NativeHistoryAnchorRecordV2): Long =
+        if ((value.masterSdkOriginal as? LocalMasterSdkOriginalV2)?.installedTarget?.platform ==
+            SelfOwnedInstalledTargetPlatformV1.WINDOWS) WINDOWS_DATABASE_BODY else DATABASE_BODY
     private const val HEAD_BODY = 3L * LONG + 5L * DIGEST
     private const val PENDING_BODY = HEAD_BODY + INT + SelfOwnedNativeHistoryWireV2.MAX_CAPSULE_BYTES
     private const val ROLE_BODY = INT + LONG + ID + 2L * DIGEST
@@ -693,7 +747,7 @@ internal object NativeHistoryLifecycleCapacityV2 {
             (if (attempt?.submissionDigest == null) DIGEST else 0L)
         val role = if (value.roleIntent == null) ROLE_BODY else 0L
         val completion = proofs + role +
-            (if (value.database == null) DATABASE_BODY else 0L) +
+            (if (value.nativeDatabase == null) databaseReserve(value) else 0L) +
             (if (value.parent == null) HEAD_BODY else 0L) +
             (if (value.pending == null) PENDING_BODY +
                 (if (value.recordFormat >= SelfOwnedNativeHistoryWireV2.FINAL_DECISION_RECORD_FORMAT) BOOL else 0L) +
@@ -773,7 +827,7 @@ internal object NativeHistoryLifecycleCapacityV2 {
         if (old.pending?.businessPublications != null && next.parent == old.pending.child && next.pending == null)
             require(nextPublications.size == oldPublications.size + 1)
         old.definition?.let { require(next.definition?.definitionDigest == it.definitionDigest) }
-        old.database?.let { require(next.database == it) }
+        old.nativeDatabase?.let { require(next.nativeDatabase == it) }
         old.roleIntent?.let {
             val role = requireNotNull(next.roleIntent)
             require(role.generation >= it.generation)

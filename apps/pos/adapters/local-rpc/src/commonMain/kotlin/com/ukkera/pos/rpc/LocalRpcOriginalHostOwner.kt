@@ -1,6 +1,6 @@
 package com.ukkera.pos.rpc
 
-import com.ukkera.pos.security.LocalMasterSdkOriginalV1
+import com.ukkera.pos.security.LocalMasterSdkOriginal
 import com.ukkera.pos.database.LocalMasterRpcPeerRegistration
 import dev.p2pkit.rpc.RpcEndpoint
 import dev.p2pkit.rpc.RpcLocalIdentity
@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 /** Native operational yield and same-Master trust only; no capture or custody-close API. */
 internal interface LocalRpcOriginalHostSource {
     fun isCurrent(): Boolean
-    suspend fun yieldOriginal(): LocalMasterSdkOriginalV1
+    suspend fun yieldOriginal(): LocalMasterSdkOriginal
     suspend fun trustStore(): RpcTrustStore
     suspend fun peerRegistration(): LocalMasterRpcPeerRegistration? = null
 }
@@ -52,8 +52,8 @@ internal class LocalRpcOriginalHostOwner(
     private val gate = Mutex()
     private val state = MutableStateFlow(LocalRpcFactoryPhase.NEW)
     val phase: StateFlow<LocalRpcFactoryPhase> = state.asStateFlow()
-    private val originalData = MutableStateFlow<LocalMasterSdkOriginalV1?>(null)
-    val original: StateFlow<LocalMasterSdkOriginalV1?> = originalData.asStateFlow()
+    private val originalData = MutableStateFlow<LocalMasterSdkOriginal?>(null)
+    val original: StateFlow<LocalMasterSdkOriginal?> = originalData.asStateFlow()
     private val ownerJob = SupervisorJob()
     private val scope = CoroutineScope(applicationScope.coroutineContext.minusKey(Job) + ownerJob)
     private var acquisition: Deferred<RpcLocalIdentity>? = null

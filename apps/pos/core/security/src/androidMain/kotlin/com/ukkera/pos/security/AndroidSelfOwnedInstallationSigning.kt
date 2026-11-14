@@ -131,7 +131,11 @@ internal class AndroidSelfOwnedInstallationSigning(
         } finally { body.fill(0); message.fill(0) }
     }
 
-    override fun validateOriginalBinding(binding: SelfOwnedNativeBindingV1) {
+    /** Android verifies only its own V1 binding; any other binding is a key-state failure. */
+    override fun validateOriginalBinding(binding: SelfOwnedNativeOriginalBinding) =
+        validateOriginalBindingV1(binding as? SelfOwnedNativeBindingV1 ?: keyFailure())
+
+    private fun validateOriginalBindingV1(binding: SelfOwnedNativeBindingV1) {
         val expected = SelfOwnedNativeInstallationWireV1.encodeBindingBody(expectedBindingBody())
         val actual = binding.body(); val signature = binding.signature()
         val point = originalPoint()
@@ -158,7 +162,11 @@ internal class AndroidSelfOwnedInstallationSigning(
      * whole verification instead. No proof object, plaintext buffer or key handle escapes.
      * The storage decrypt still performs its own native key checks before and after use.
      */
-    override fun openOriginalJournalState(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1,
+    override fun openOriginalJournalState(aad: ByteArray, envelope: SelfOwnedOriginalJournalEnvelope,
+        material: SelfOwnedOriginalDataKeys): SelfOwnedOriginalJournalState = SelfOwnedOriginalJournalState.V1(
+        openOriginalJournalStateV1(aad, (envelope as? SelfOwnedOriginalJournalEnvelope.V1)?.value ?: keyFailure(), material))
+
+    private fun openOriginalJournalStateV1(aad: ByteArray, envelope: SelfOwnedRegistryEnvelopeV1,
         material: SelfOwnedOriginalDataKeys): SelfOwnedNativeJournalStateV1 {
         requireJournalFrame(aad, envelope.nonce, envelope.ciphertext)
         val original = journal.intent()
@@ -192,7 +200,7 @@ internal class AndroidSelfOwnedInstallationSigning(
     }
 
     /** Actual original allocation, not hashes supplied by a caller or imported signature chain. */
-    override fun originalHistoryAllocation(binding: SelfOwnedNativeBindingV1,
+    override fun originalHistoryAllocation(binding: SelfOwnedNativeOriginalBinding,
         initial: AndroidOriginalCompanionInitialization?): OriginalAllocationCommitmentV2 {
         requireHistoryAcquisition(initial)
         validateOriginalBinding(binding)

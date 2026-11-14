@@ -1,7 +1,5 @@
 package com.ukkera.pos.security
 
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
 
 /**
  * Actual native V2 companion on the original P2 worker, keys, namespace and process lease.
@@ -68,9 +66,9 @@ internal class AndroidSelfOwnedHistoryAnchor(
             submissionDigest = submission)))
     }
 
-    fun bindOriginalDatabase(identity: NativeHistoryDatabaseIdentityV2) {
+    fun bindOriginalDatabase(identity: NativeHistoryDatabaseIdentity) {
         val cut = snapshotOriginal(); val old = cut.record
-        old.database?.let { known(it == identity); return }
+        old.nativeDatabase?.let { known(it == identity); return }
         val a = requireNotNull(old.attempt)
         known(a.phase == NativeHistoryAttemptPhaseV2.SQL_SUBMISSION_ARMED && old.parent == null && old.pending == null)
         retain(cut, next(old, database = identity, attempt = a.copy(phase = NativeHistoryAttemptPhaseV2.DATABASE_BOUND)))
@@ -83,7 +81,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
         known(frame.ownerIdentity === ownerIdentity && !frame.consumed && frame.nativeBegan &&
             frame.nativeDisposition == SelfOwnedNativeSqlDisposition.UNKNOWN && frame.preparedChild == null)
         val cut = snapshotOriginal(); val old = cut.record
-        known(old.pending == null && old.parent == frame.original.record.parent && old.database == frame.original.record.database)
+        known(old.pending == null && old.parent == frame.original.record.parent && old.nativeDatabase == frame.original.record.nativeDatabase)
         known(child.historySequence == (old.parent?.historySequence ?: 0L) + 1L)
         val a = requireNotNull(old.attempt)
         if (old.parent == null) {
@@ -243,7 +241,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
         val parent = requireNotNull(record.parent)
         val first = requireNotNull(record.firstChild)
         val receipt = requireNotNull(record.receipt)
-        known(record.database != null && record.pending == null && record.issuerAcknowledgement == null &&
+        known(record.nativeDatabase != null && record.pending == null && record.issuerAcknowledgement == null &&
             original.phase == NativeHistoryAttemptPhaseV2.COMPLETED && original.approvals != null &&
             record.retiredAttempts.all { it.issuerRetirementDigest != null })
         // Never turn a later suffix, rollback or an unsettled SQL result into the original C1.
@@ -318,7 +316,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
 
     private fun requirePendingOriginal(record: NativeHistoryAnchorRecordV2) {
         val attempt = requireNotNull(record.attempt)
-        known(record.database != null && record.parent == null && record.firstChild == null && record.receipt == null &&
+        known(record.nativeDatabase != null && record.parent == null && record.firstChild == null && record.receipt == null &&
             record.issuerAcknowledgement == null && record.pending?.child?.historySequence == 1L &&
             attempt.approvals != null && attempt.submissionDigest != null &&
             attempt.phase in setOf(NativeHistoryAttemptPhaseV2.NATIVE_PENDING, NativeHistoryAttemptPhaseV2.RETIRING) &&
@@ -347,17 +345,14 @@ internal class AndroidSelfOwnedHistoryAnchor(
         try {
             val actualAad = SelfOwnedNativeHistoryWireV2.envelopeAad(allocation); aad = actualAad
             signing.verifyHistoryEnvelope(allocation,actualAad,envelope,initialization)
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE,material.storageKey(),GCMParameterSpec(128,envelope.nonce))
-            cipher.updateAAD(actualAad)
-            val bytes = cipher.doFinal(envelope.ciphertext); plaintext = bytes
+            val bytes = material.openStorage(actualAad, envelope.nonce, envelope.ciphertext); plaintext = bytes
             known(bytes.size in 1..SelfOwnedNativeHistoryWireV2.MAX_ANCHOR_BYTES)
             val record = SelfOwnedNativeHistoryWireV2.decodeRecord(bytes)
             if(initialization!=null) requireInitialRecord(record)
             known(record.allocation.digest == allocation.digest &&
                 record.allocation.originalNativeBindingDigest == allocation.originalNativeBindingDigest)
             requireOriginalMasterSdkAssociation(record, allocation, initialization)
-            record.database?.let { known(it.namespaceDigest == namespace.historyNamespaceDigest()) }
+            record.nativeDatabase?.let { known(it.boundNamespaceDigest == namespace.historyNamespaceDigest()) }
             verifyOriginalProofs(record)
             val result = OriginalNativeHistorySnapshot(ownerIdentity,Any(),lifetimeId,binding,record,sha256(bytes))
             material.assertOriginalDataKeys(); guard()
@@ -407,7 +402,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
         }
         known(record.recordFormat == SelfOwnedNativeHistoryWireV2.MASTER_SDK_ORIGINAL_RECORD_FORMAT &&
             original.allocation.originalNativeBindingDigest == actualAllocation.originalNativeBindingDigest &&
-            original.nativeApplication.same(environment.target) && original.nativeApplication.same(owner.materialAtOpen.target))
+            original.namesInstalledTarget(environment, owner.materialAtOpen))
         val actualBytes = LocalBranchInstallationWireV2.encodeAllocation(actualAllocation)
         try {
             val originalBytes = LocalBranchInstallationWireV2.encodeAllocation(original.allocation)
@@ -426,7 +421,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
      */
     fun retainOriginalProposal(snapshot: LocalBranchInstallationSnapshotV2): OriginalInstallationProposal {
         val cut = snapshotOriginal(); val record = cut.record
-        known(record.parent == null && record.pending == null && record.database == null && record.attempt == null)
+        known(record.parent == null && record.pending == null && record.nativeDatabase == null && record.attempt == null)
         known(record.retiredAttempts.lastOrNull()?.issuerRetirementDigest != null || record.retiredAttempts.isEmpty())
         known(snapshot.allocationDigest == record.allocation.digest)
         val canonical = LocalBranchInstallationWireV2.snapshotDefinition(snapshot.definition)
@@ -448,7 +443,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
     fun requireOriginalProposal(proposal: OriginalInstallationProposal): LocalBranchInstallationSnapshotV2 {
         known(proposal.ownerIdentity === ownerIdentity && proposal === originalProposal)
         val actual = snapshotOriginal().record
-        known(actual.parent == null && actual.pending == null && actual.database == null && actual.attempt == null &&
+        known(actual.parent == null && actual.pending == null && actual.nativeDatabase == null && actual.attempt == null &&
             actual.definition?.definitionDigest == proposal.snapshot.definitionDigest && actual.allocation.digest == proposal.snapshot.allocationDigest)
         known(actual.retiredAttempts.lastOrNull()?.issuerRetirementDigest != null || actual.retiredAttempts.isEmpty())
         requireInstallationReservation(actual,proposal.snapshot)
@@ -519,7 +514,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
 
     fun requireOriginalAttemptForIssuance(attempt: OriginalInstallationAttempt) {
         val actual = requireHistoricalAttempt(attempt)
-        known(actual.parent == null && actual.pending == null && actual.database == null &&
+        known(actual.parent == null && actual.pending == null && actual.nativeDatabase == null &&
             actual.attempt?.phase == NativeHistoryAttemptPhaseV2.PRE_SQL && actual.denialGeneration == attempt.denialGeneration)
         val clock = owner.historyClockSampleNative(); val facts = attempt.facts
         known(facts.nativeCustodyLifetimeId == lifetimeId && facts.issuerContextId == clock.issuerContextId &&
@@ -623,7 +618,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
         known(record.recordFormat==SelfOwnedNativeHistoryWireV2.MASTER_SDK_ORIGINAL_RECORD_FORMAT &&
             original.compositionProfile == environment.profile.sdkProfile &&
             original.exactDeviceName == original.compositionProfile.deviceName(record.allocation.coordinates.deviceId) &&
-            record.generation==1L && record.denialGeneration==0L && record.definition==null && record.database==null &&
+            record.generation==1L && record.denialGeneration==0L && record.definition==null && record.nativeDatabase==null &&
             record.parent==null && record.pending==null && record.roleIntent==null && record.attempt==null &&
             record.retiredAttempts.isEmpty() && record.firstChild==null && record.receipt==null &&
             record.issuerAcknowledgement==null && record.installationReservation==null && record.finalDeadlineDecisions.isEmpty() &&
@@ -641,17 +636,11 @@ internal class AndroidSelfOwnedHistoryAnchor(
         var signature: ByteArray? = null; var envelope: ByteArray? = null
         try {
             guard()
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            // The original key requires randomized encryption. AndroidKeyStore must
-            // generate the IV; a caller-selected IV is refused even when random.
-            cipher.init(Cipher.ENCRYPT_MODE, material.storageKey())
-            val actualNonce = cipher.iv ?: uncertain()
-            nonce = actualNonce
-            val parameters = cipher.parameters?.getParameterSpec(GCMParameterSpec::class.java) ?: uncertain()
-            known(actualNonce.size == 12 && parameters.tLen == 128 && parameters.iv.contentEquals(actualNonce))
-            cipher.updateAAD(aad)
-            val encrypted = cipher.doFinal(plaintext); ciphertext = encrypted
-            known(encrypted.size == plaintext.size + 16)
+            // The original key requires randomized encryption. The native key store must
+            // generate the 12-byte IV; a caller-selected IV is refused even when random.
+            val sealed = material.sealStorage(aad, plaintext, SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            val actualNonce = sealed.nonce; nonce = actualNonce
+            val encrypted = sealed.ciphertext; ciphertext = encrypted
             val signed = signing.signHistoryEnvelope(next.allocation, aad, actualNonce, encrypted,initialization); signature = signed
             val encoded = SelfOwnedNativeHistoryWireV2.encodeEnvelope(actualNonce, encrypted, signed); envelope = encoded
             namespace.retainHistoryAnchorBytes(encoded)
@@ -663,7 +652,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
         attempt: NativeHistoryAttemptRecordV2? = old.attempt, retired: List<NativeHistoryRetiredAttemptV2> = old.retiredAttempts,
         acknowledgement: LocalInstallationSignedAcknowledgementV2? = old.issuerAcknowledgement,
         reservation: NativeHistoryInstallationReservationV2? = old.installationReservation,
-        database: NativeHistoryDatabaseIdentityV2? = old.database,
+        database: NativeHistoryDatabaseIdentity? = old.nativeDatabase,
         parent: NativeHistoryRecordedHeadV2? = old.parent, pending: NativeHistoryPendingV2? = old.pending,
         role: NativeHistoryRoleIntentV2? = old.roleIntent, denial: Long = old.denialGeneration,
         firstChild: LocalInstallationCompletedChildFactsV2? = old.firstChild,

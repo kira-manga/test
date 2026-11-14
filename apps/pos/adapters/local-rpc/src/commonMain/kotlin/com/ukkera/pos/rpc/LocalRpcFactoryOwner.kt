@@ -7,7 +7,7 @@ import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
 import com.ukkera.pos.security.LocalDevicePairingSdkOriginal
-import com.ukkera.pos.security.LocalMasterSdkOriginalV1
+import com.ukkera.pos.security.LocalMasterSdkOriginal
 import dev.p2pkit.core.AppId
 import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.rpc.RpcClient
@@ -523,7 +523,7 @@ public class LocalRpcFactoryOwner private constructor(
 
         /** Private original-service serving route; callers cannot install arbitrary callbacks. */
         internal fun reconstructServingHost(platform: RpcPlatform, applicationScope: CoroutineScope,
-            original: LocalMasterSdkOriginalV1, lan: OrganizationLan, trustStore: RpcTrustStore,
+            original: LocalMasterSdkOriginal, lan: OrganizationLan, trustStore: RpcTrustStore,
             ingress: LocalRpcMasterSessionIngress, isCurrent: () -> Boolean): LocalRpcFactoryOwner =
             LocalRpcFactoryOwner(platform, applicationScope, original.appId, original.exactDeviceName,
                 lan, trustStore, true, { actual ->
@@ -533,7 +533,7 @@ public class LocalRpcFactoryOwner private constructor(
 
         /** A real Master original, never a substituted Client pairing descriptor or native key. */
         public fun reconstructHost(platform: RpcPlatform, applicationScope: CoroutineScope,
-            original: LocalMasterSdkOriginalV1, lan: OrganizationLan,
+            original: LocalMasterSdkOriginal, lan: OrganizationLan,
             trustStore: RpcTrustStore): LocalRpcFactoryOwner =
             LocalRpcFactoryOwner(platform, applicationScope, original.appId, original.exactDeviceName,
                 lan, trustStore, true, { actual ->

@@ -953,6 +953,120 @@ internal object WindowsOriginalNative {
 
     private fun invalidHandle(handle: Pointer): Boolean = Pointer.nativeValue(handle) == -1L
 
+    // ---- Desktop Master generic file custody (service account owner, service-SID-only DACL) ----
+
+    /** Existing entry handle; null only for a genuinely absent entry. Reparse points are never followed. */
+    fun desktopOpen(path: String, write: Boolean, directory: Boolean): WindowsOriginalHandle? {
+        requireSupported()
+        if (directory) return openDirectoryHandle(path)
+        val handle = kernel.CreateFileW(WString(nativePath(path)),
+            GENERIC_READ or READ_CONTROL or (if (write) GENERIC_WRITE else 0),
+            SHARE_READ or SHARE_WRITE or SHARE_DELETE, null, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL or FILE_FLAG_OPEN_REPARSE_POINT, null)
+        if (!invalidHandle(handle)) return WindowsOriginalHandle(handle)
+        return when (Native.getLastError()) {
+            ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND -> null
+            ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION -> selfOwnedFail(SelfOwnedInstallationFailureV1.BUSY)
+            else -> selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        }
+    }
+
+    /** Exclusive create with an explicit protected owner-only DACL; never opens an existing entry. */
+    fun desktopCreateFile(path: String, accountSid: String, serviceSid: String): WindowsOriginalHandle {
+        requireSupported()
+        val handle = withPrivateAttributes(accountSid, serviceSid, inheritable = false, rights = "FA") { attributes ->
+            kernel.CreateFileW(WString(nativePath(path)), GENERIC_READ or GENERIC_WRITE or READ_CONTROL,
+                SHARE_READ or SHARE_WRITE or SHARE_DELETE, attributes, CREATE_NEW,
+                FILE_ATTRIBUTE_NORMAL or FILE_FLAG_OPEN_REPARSE_POINT, null)
+        }
+        if (invalidHandle(handle)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        return WindowsOriginalHandle(handle)
+    }
+
+    fun desktopCreateDirectory(path: String, accountSid: String, serviceSid: String) {
+        createServiceDirectory(path, accountSid, serviceSid).closeConfirmed()
+    }
+
+    /** Actual handle observation: volume serial, 128-bit file ID, owner SID and exact private DACL. */
+    fun desktopStamp(handle: Pointer, accountSid: String, serviceSid: String): DesktopStamp {
+        val info = fileInformation(handle)
+        requireNoReparsePoint(handle, info)
+        val identity = fileIdentity(handle)
+        val directory = info.dwFileAttributes and FILE_ATTRIBUTE_DIRECTORY != 0
+        val owner = PointerByReference(); val descriptor = PointerByReference()
+        if (advapi.GetSecurityInfo(handle, SE_FILE_OBJECT, OWNER_SECURITY_INFORMATION, owner, null, null, null,
+                descriptor) != 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        val security = checkNotNull(descriptor.value)
+        val sid = try { sidText(checkNotNull(owner.value)) } finally { kernel.LocalFree(security) }
+        val ownerOnly = try {
+            requirePrivateFileSecurity(handle, accountSid, serviceSid, FILE_ALL_ACCESS, if (directory) DIRECTORY_ACL_FLAGS else 0)
+            true
+        } catch (_: SelfOwnedFailureV1) { false }
+        val basic = Memory(40)
+        try {
+            if (kernel.GetFileInformationByHandleEx(handle, 0, basic, 40) == 0) {
+                selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            }
+            val size = (info.nFileSizeHigh.toLong() shl 32) or (info.nFileSizeLow.toLong() and 0xffffffffL)
+            return DesktopStamp("%016x".format(identity.volumeSerialNumber), identity.fileId, sid,
+                if (directory) DesktopEntryKind.DIRECTORY else DesktopEntryKind.FILE, ownerOnly,
+                info.nNumberOfLinks.toLong(), size, basic.getLong(16), basic.getLong(24))
+        } finally { basic.close() }
+    }
+
+    /** One ReadFile/WriteFile at an explicit byte [position]; end of file reads as 0. */
+    fun desktopTransfer(handle: Pointer, buffer: ByteArray, offset: Int, length: Int, position: Long, write: Boolean): Int {
+        require(offset >= 0 && length >= 0 && offset + length <= buffer.size && position >= 0)
+        if (length == 0) return 0
+        val memory = Memory(length.toLong())
+        val overlapped = Memory(32)
+        try {
+            overlapped.clear()
+            overlapped.setInt(16, position.toInt())
+            overlapped.setInt(20, (position ushr 32).toInt())
+            if (write) memory.write(0, buffer, offset, length)
+            val count = IntByReference()
+            val ok = if (write) kernel.WriteFile(handle, memory, length, count, overlapped)
+                else kernel.ReadFile(handle, memory, length, count, overlapped)
+            if (ok == 0) {
+                if (!write && Native.getLastError() == ERROR_HANDLE_EOF) return 0
+                selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            }
+            if (!write && count.value > 0) memory.read(0, buffer, offset, count.value)
+            return count.value
+        } finally { memory.clear(); memory.close(); overlapped.close() }
+    }
+
+    fun desktopFlush(handle: Pointer) {
+        if (kernel.FlushFileBuffers(handle) == 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
+    fun desktopTryLock(handle: Pointer): Boolean = Memory(32).use { overlapped ->
+        overlapped.clear()
+        if (kernel.LockFileEx(handle, LOCKFILE_EXCLUSIVE_LOCK or LOCKFILE_FAIL_IMMEDIATELY, 0, -1, -1, overlapped) != 0) true
+        else if (Native.getLastError() == ERROR_LOCK_VIOLATION) false
+        else selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
+    /** Atomic same-volume replace with write-through metadata. */
+    fun desktopRename(from: String, to: String) {
+        if (kernel.MoveFileExW(WString(nativePath(from)), WString(nativePath(to)), MOVEFILE_REPLACE_EXISTING or MOVEFILE_WRITE_THROUGH) == 0) {
+            selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        }
+    }
+
+    fun desktopRemove(path: String, directory: Boolean) {
+        val ok = if (directory) kernel.RemoveDirectoryW(WString(nativePath(path))) else kernel.DeleteFileW(WString(nativePath(path)))
+        if (ok == 0) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
+    fun desktopVolumeUuid(handle: Pointer, path: String): String = requireLocalNtfsVolume(handle, path)
+
+    private const val SHARE_DELETE: Int = 0x00000004
+    private const val ERROR_HANDLE_EOF: Int = 38
+    private const val MOVEFILE_REPLACE_EXISTING: Int = 0x1
+    private const val MOVEFILE_WRITE_THROUGH: Int = 0x8
+
     private fun nativePath(path: String): String {
         if (path.length !in 3..32600 || path[0] !in 'A'..'Z' && path[0] !in 'a'..'z' ||
             path[1] != ':' || path[2] != '\\' || path.endsWith("\\") ||
@@ -1097,6 +1211,12 @@ internal interface WindowsOriginalKernel32 : StdCallLibrary {
     fun FindFirstFileW(pattern: WString, data: WindowsOriginalFindData): Pointer
     fun FindNextFileW(handle: Pointer, data: WindowsOriginalFindData): Int
     fun FindClose(handle: Pointer): Int
+    fun ReadFile(handle: Pointer, buffer: Pointer, count: Int, transferred: IntByReference, overlapped: Pointer): Int
+    fun WriteFile(handle: Pointer, buffer: Pointer, count: Int, transferred: IntByReference, overlapped: Pointer): Int
+    fun FlushFileBuffers(handle: Pointer): Int
+    fun MoveFileExW(from: WString, to: WString, flags: Int): Int
+    fun DeleteFileW(path: WString): Int
+    fun RemoveDirectoryW(path: WString): Int
 }
 
 internal interface WindowsOriginalAdvapi32 : StdCallLibrary {

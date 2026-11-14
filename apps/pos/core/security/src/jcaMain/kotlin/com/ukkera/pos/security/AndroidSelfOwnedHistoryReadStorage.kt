@@ -8,8 +8,6 @@ import androidx.sqlite.driver.bundled.SQLITE_OPEN_READONLY
 import androidx.sqlite.driver.bundled.SQLITE_OPEN_READWRITE
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
-import javax.crypto.Cipher
-import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
@@ -66,7 +64,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         work.roomCoroutines.traceStage("history-read-open-before-custody")
         environment.requireExistingOriginalObservation() // Before any potentially creating reobserve.
         owner.requireDataNative(); anchor.requireSameOriginalCut(original)
-        val binding = original.record.database ?: uncertain()
+        val binding = original.record.nativeDatabase ?: uncertain()
         work.roomCoroutines.traceStage("history-read-open-after-custody")
         try {
             val pin = namespace.pinOriginalDatabase(binding,OriginalDatabaseUse.STABLE_READ)
@@ -279,7 +277,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         private val work: AndroidOwnedInstallationWork,
         private val environment: SelfOwnedOriginalEnvironment,
         private val namespace: SelfOwnedOriginalDatabaseNamespace,
-        private val binding: NativeHistoryDatabaseIdentityV2,
+        private val binding: NativeHistoryDatabaseIdentity,
     ) {
         private var pin: OriginalDatabasePin? = null
         private var handle: SQLiteConnection? = null
@@ -328,7 +326,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         }
         internal fun requireOriginalCustody(actualOwner: AndroidSelfOwnedInstallationLifetime,
             actualWork: AndroidOwnedInstallationWork, actualEnvironment: SelfOwnedOriginalEnvironment,
-            actualNamespace: SelfOwnedOriginalDatabaseNamespace, originalBinding: NativeHistoryDatabaseIdentityV2) {
+            actualNamespace: SelfOwnedOriginalDatabaseNamespace, originalBinding: NativeHistoryDatabaseIdentity) {
             knownPager(owner === actualOwner && work === actualWork && environment === actualEnvironment &&
                 namespace === actualNamespace && binding == originalBinding && pin == null && handle == null && !closed)
         }
@@ -340,7 +338,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         companion object {
             fun retainedCandidate(owner: AndroidSelfOwnedInstallationLifetime,work: AndroidOwnedInstallationWork,
                 environment: SelfOwnedOriginalEnvironment,namespace: SelfOwnedOriginalDatabaseNamespace,
-                binding: NativeHistoryDatabaseIdentityV2): RollbackPager = RollbackPager(owner,work,environment,namespace,binding).also {
+                binding: NativeHistoryDatabaseIdentity): RollbackPager = RollbackPager(owner,work,environment,namespace,binding).also {
                     owner.retainHistoryRollbackPagerNative(it)
                 }
         }
@@ -1082,9 +1080,7 @@ internal class AndroidSelfOwnedHistoryReadStorage(
             val actualNonce=row.bytes("nonce"); nonce=actualNonce
             val actualEncrypted=row.bytes("ciphertextAndTag"); encrypted=actualEncrypted
             known(actualNonce.size==ProtectedLocalStorageFormat.NONCE_BYTES && actualEncrypted.size in 17..binding.table.maximumPlaintextBytes+16)
-            val cipher=Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE,material.storageKey(),GCMParameterSpec(128,actualNonce)); cipher.updateAAD(aad)
-            val opened=cipher.doFinal(actualEncrypted); plaintext=opened; binding.requirePlaintextSize(opened.size)
+            val opened=material.openStorage(aad,actualNonce,actualEncrypted); plaintext=opened; binding.requirePlaintextSize(opened.size)
             material.assertOriginalDataKeys(); guard()
             if (employeeSource != null) {
                 known(pass == NativeHistoryReadPassV2.EMPLOYEE_ENROLLMENT_IMAGE)

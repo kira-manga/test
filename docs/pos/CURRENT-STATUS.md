@@ -1,6 +1,6 @@
 # POS local development status
 
-As of **12 November 2026**. GitHub [tracker #2](https://github.com/ukkera/kmp-apps/issues/2)
+As of **14 November 2026**. GitHub [tracker #2](https://github.com/ukkera/kmp-apps/issues/2)
 is the live backlog; individual Issues own scope, next steps and acceptance.
 [Completion policy](planning/WORKFLOW.md) separates software development from
 owner/device acceptance. No subjective completion percentage is used.
@@ -16,6 +16,80 @@ Master and Client roles, and all original requirements remain in scope. Missing
 code and failed required non-device integration are not deferred manual tests.
 
 
+
+## Desktop Master service, setup console and packaging (D4–D6) — 14 November 2026
+
+- The desktop Master is the OS-supervised service mode of the same app (`--service`): a
+  Windows packaged service (LocalService, automatic start) or a macOS per-user LaunchAgent
+  (test only). It drives the shared setup coordinator over native V2 custody, issues and
+  recovers V2 original grants, and makes one automatic reopen of a retained installation.
+- Same-device original Client of the desktop Master shares the Android runtime
+  (`LocalCohostBranchRuntime`); its journals use the service's own custody. Employee
+  enrollment, policy activation, device admission and pairing ceremonies are available.
+- Setup console (D5): the UI administers the service through a local channel carrying
+  Master-role intents only; secrets travel outside the JSON and are cleared. Windows named
+  pipe (first-instance ownership, remote clients rejected, SYSTEM/Administrators/owner DACL,
+  package-family check of the peer on both ends); macOS owner-only Unix socket.
+- Checks (self-authored, NOT independent; Linux with POSIX/software-key stand-ins):
+  app-gateway jvmTest 1,335 tests, 0 failures, including desktop Master V2 end-to-end
+  setup, setup over the console socket, and cohost enrollment, policy activation, employee
+  password sign-in and Master refusal of an ungranted read; desktop 14 tests; Android compiled.
+- Limitations: Windows/macOS native custody, the named pipe, SCM/launchd supervision and the
+  installers are unverified until owner runs ([manual steps](desktop/MANUAL-TESTING.md)).
+  Master administration on Windows needs an elevated UI. Keys are OS_ISOLATED software
+  custody; physical recording and desktop business-policy publication are unavailable;
+  the macOS console socket admits any process of the same user.
+
+## Desktop Master core (stages D1–D3 core) — 13 November 2026
+
+- Shared original owner now dispatches by format: Android stays on the unchanged V1 formats
+  (golden vectors frozen first), Windows/macOS use additive V2 formats (registry, company
+  container, boot-ordinal chain, history database identity), with no cross-version fallback.
+- Desktop core: founding, branch issuance, installer and named-head ceremonies (durable
+  throttle, boot-chain bound approvals, revocation serialized with commit) and a format-neutral
+  company custody port. Employee enrollment, employee policy activation, device pairing and
+  device admission run one implementation over either Android V1 custody (pure delegation) or
+  the Desktop V2 ledgers (issuer-signed, AAD-bound, validated on every read, root endorsements
+  restricted to the shared client-verified domains). Business publication stays Android-only.
+- Checks (self-authored frozen tests, NOT independent; software-key test double, no native
+  custody proven): security frozen suites green, database 1,103 (15 skipped), Android and
+  desktop compiled. Real Windows CNG/DPAPI and macOS Keychain composition behind the seam,
+  service hosting, protected IPC and packaging (D4–D6) remain; no desktop Master runs yet.
+
+## Remote employee-creation RPC — 13 November 2026
+
+- Frozen (self-authored, NOT independent) expectations preceded the source. A dedicated
+  `pos.employee-creation` v1 procedure now carries context, capture, review, lookup,
+  execute and cancel between a paired Client and the Master, with owned bearer/password
+  custody and response binding to the exact actor, target and original.
+- The Master Host re-checks the current interactive session, device and peer on every
+  authorization and reply; the creation service enforces the creator's grant itself.
+- Android and Desktop Clients on directory workflows get a creation-only People lane.
+- Checks: frozen 7/7; database 1,103 (15 skipped), local-rpc 208, app-gateway 1,332,
+  zero failures; Android and desktop compiled. No network-level Host/Client harness:
+  real creation over LAN is unverified. Creation needs an Android Master today.
+- [Record](../../qa/pos/traceability/employee-creation-rpc-20261113/README.md).
+
+## Desktop Client packages and shared original owner — 12 November 2026 (late)
+
+- `7594e8e1` moves the original installation owner (P1 provisioner, P2 history,
+  company authority, pairing/enrollment/activation services) into the shared
+  `jcaMain` source set behind a native platform seam; Android keeps its native
+  custody and public API. Existing regressions passed with unchanged counts.
+- `fba8f018` requests non-extractable, sensitive macOS Client target keys at the
+  top level of the login-Keychain request (the private-attribute form produced
+  an exportable key, which the app correctly refused).
+- Hosted [run 43322778237](https://github.com/kira-manga/test/actions/runs/43322778237):
+  macOS arm64/x64 and Windows MSIX Client target key `KEY_READY` + reopen, Client
+  journal enroll + reopen, Windows identity and Master service registration.
+- Android pair at `fba8f018` published by
+  [run 43326203062](https://github.com/kira-manga/test/actions/runs/43326203062)
+  with retained signer `ae3ac7d5…` (earlier `54f974f8…` signer unavailable;
+  uninstall earlier test installs).
+- Next: owner trial Android Master + desktop Client ([steps](INSTALL-AND-TEST.md));
+  desktop Master port (V2 format freezes first, then Windows/macOS natives,
+  shared Room Master service, RPC host and protected UI↔service IPC).
+- Not established: physical installation, pairing, reconnection or owner acceptance.
 
 ## Employee-creation remote composition prerequisites — 12 November 2026
 

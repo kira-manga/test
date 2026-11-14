@@ -606,7 +606,7 @@ public sealed class LocalMasterRpcOwnedRequestV1 protected constructor(access: B
 
     /** Only the zero-loan retire owner or final loan-release owner may publish completion. */
     private fun finishDestruction() {
-        try { bearer.fill(0) }
+        try { destroyOwnedSecrets(); bearer.fill(0) }
         catch (failure: Throwable) {
             cleanupCompleted.completeExceptionally(failure)
             throw failure
@@ -614,6 +614,9 @@ public sealed class LocalMasterRpcOwnedRequestV1 protected constructor(access: B
         state.value = State(Lifetime.DESTROYED, 0)
         cleanupCompleted.complete(Unit)
     }
+
+    /** Additional request-owned secrets, wiped once by the terminal destruction owner. */
+    protected open fun destroyOwnedSecrets() {}
 
     final override fun toString(): String = "LocalMasterRpcOwnedRequestV1([REDACTED])"
 }
@@ -759,7 +762,7 @@ private fun <T : LocalMasterRpcOwnedRequestV1, B : Any> ownedRpcRequestSerialize
 }
 
 /** Partially decoded credentials are owned from the first byte, including decoder failures. */
-private object LocalMasterRpcBearerSerializerV1 : KSerializer<ByteArray> {
+internal object LocalMasterRpcBearerSerializerV1 : KSerializer<ByteArray> {
     override val descriptor: SerialDescriptor = ByteArraySerializer().descriptor
     override fun serialize(encoder: Encoder, value: ByteArray) {
         if (value.size != LocalMasterClientRpcProtocolV1.ACCESS_BEARER_BYTES)
@@ -785,7 +788,7 @@ private object LocalMasterRpcStoredBytesSerializerV1 : KSerializer<StoredBytes> 
     }
 }
 
-private fun decodeBoundedRpcBytes(decoder: Decoder, descriptor: SerialDescriptor, minimum: Int, maximum: Int): ByteArray {
+internal fun decodeBoundedRpcBytes(decoder: Decoder, descriptor: SerialDescriptor, minimum: Int, maximum: Int): ByteArray {
     val staged = ByteArray(maximum)
     try {
         var count = 0
@@ -1135,6 +1138,34 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
             requireCurrentCaller()
             return result
         } finally { owned.destroy() }
+    }
+
+    /**
+     * Fixed employee-creation route on this same selected-original loan. The request must
+     * already own a copy of [credentials]' bearer; this call destroys it. The delivered reply
+     * is actor-bound DATA only; the caller still checks its target/original binding.
+     * A Host application error is undisclosed outcome, never proof of non-execution.
+     */
+    public suspend fun employeeCreation(
+        credentials: LocalGatewayCredentials,
+        request: LocalMasterRpcEmployeeCreationRequestV1,
+        requestingActorId: DomainId,
+    ): LocalMasterRpcEmployeeCreationResponseV1 {
+        try {
+            requireConnection(credentials)
+            val result = invoke(LocalMasterEmployeeCreationRpcProtocolV1.PROCEDURE, request, accept = { false }) { delivered ->
+                when (delivered) {
+                    is RpcReply.Success -> {
+                        requireResponseBinding(delivered.value.requestingActorId == requestingActorId)
+                        delivered.value
+                    }
+                    is RpcReply.ApplicationError -> LocalMasterRpcEmployeeCreationResponseV1(requestingActorId,
+                        LocalMasterRpcEmployeeCreationResultV1.Outcome(LocalMasterRpcEmployeeCreationResultV1.Code.UNAVAILABLE))
+                }
+            }
+            requireCurrentCaller()
+            return result
+        } finally { request.destroy() }
     }
 
     private fun requireConnection(credentials: LocalGatewayCredentials) {

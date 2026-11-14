@@ -17,6 +17,12 @@ public class SelfOwnedNativeHistoryCustody internal constructor(
     /** Fresh binding DATA through this actual transferred owner; never a history/writer grant. */
     public suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
         controller.readOwnedOriginalNativeBinding()
+    /**
+     * Windows/macOS (V2) counterpart of [readOwnedOriginalNativeBinding]: fresh retained V2 binding
+     * DATA through this actual transferred owner. Android keeps its V1 read and is refused here.
+     */
+    public suspend fun readOwnedOriginalNativeBindingV2(): SelfOwnedNativeReadResultV2 =
+        controller.readOwnedOriginalNativeBindingV2()
     public suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot = controller.snapshotOriginal()
     public suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession = controller.openOriginalReadOnly()
 
@@ -288,6 +294,8 @@ internal interface SelfOwnedNativeHistoryController {
     val compositionProfile: LocalCompositionSdkProfileV1
     suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult =
         SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
+    suspend fun readOwnedOriginalNativeBindingV2(): SelfOwnedNativeReadResultV2 =
+        SelfOwnedNativeReadResultV2.Unresolved(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     suspend fun snapshotOriginal(): OriginalNativeHistorySnapshot
     suspend fun openOriginalReadOnly(): SelfOwnedNativeHistoryReadSession
     suspend fun openReceiptMembershipData(session: SelfOwnedNativeHistoryReadSession): SelfOwnedNativeReceiptMembershipData =

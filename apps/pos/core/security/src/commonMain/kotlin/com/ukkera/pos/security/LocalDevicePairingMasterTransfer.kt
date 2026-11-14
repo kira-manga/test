@@ -10,7 +10,7 @@ public class LocalDevicePairingMasterTransfer private constructor(canonical: Byt
     private val record = NativeDevicePairingWireV1.decodeApprovedCertificate(fields.first)
     public val originalActionId: DomainId get() = record.body.originalActionId
     public val originalChallenge: LocalDevicePairingChallenge get() = LocalDevicePairingChallenge.fromNative(record.body)
-    public val masterSdkOriginal: LocalMasterSdkOriginalV1 get() = checkNotNull(record.body.requested().masterSdkOriginal)
+    public val masterSdkOriginal: LocalMasterSdkOriginal get() = checkNotNull(record.body.requested().masterSdkOriginal)
     public val transferDigest: PayloadDigest = sha256(bytes)
     public val authorityCertificateDigest: PayloadDigest = sha256(fields.first)
     public val rootDocumentDigest: PayloadDigest = sha256(fields.second)

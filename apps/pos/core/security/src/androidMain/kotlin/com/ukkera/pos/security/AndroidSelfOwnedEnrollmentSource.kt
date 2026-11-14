@@ -99,9 +99,12 @@ internal class AndroidSelfOwnedEnvironment private constructor(
 ): SelfOwnedOriginalEnvironment {
     private enum class DirectoryObservation { PREPARATION, EXISTING_ORIGINAL }
 
-    override val target: SelfOwnedTargetDescriptorV1 get() = captured.target
+    val target: SelfOwnedTargetDescriptorV1 get() = captured.target
+    override val installedTarget: SelfOwnedInstalledTargetBindingV1 by lazy { SelfOwnedInstalledTargetBindingV1.android(target) }
+    override val bootMark: SelfOwnedBootMark get() = SelfOwnedBootMark.AndroidCount(captured.boot)
     override val bootCount: Int get() = captured.boot
-    override val uid: Int get() = captured.target.applicationUid
+    override val principal: SelfOwnedProcessPrincipal get() = SelfOwnedProcessPrincipal.AndroidUid(captured.target.applicationUid)
+    val uid: Int get() = captured.target.applicationUid
     val noBackupDirectory: File get() = File(captured.noBackupPath)
     val dataDirectory: File get() = File(captured.dataPath)
 

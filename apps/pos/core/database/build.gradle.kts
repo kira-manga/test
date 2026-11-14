@@ -23,7 +23,14 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    // Preserve iosMain while adding the shared JVM/Android self-owned Master branch.
+    applyDefaultHierarchyTemplate()
+    // Shared host-owner identity: Android actual is android.app.Application.
+    compilerOptions.freeCompilerArgs.add("-Xexpect-actual-classes")
     sourceSets {
+        val jcaMain = create("jcaMain") { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jcaMain)
+        androidMain.get().dependsOn(jcaMain)
         commonMain.dependencies {
             api(project(":core:types"))
             api(project(":core:security"))
@@ -91,4 +98,11 @@ tasks.named<KotlinCompile>("compileTestKotlinJvm") {
 tasks.withType<Test>().configureEach {
     maxHeapSize = "256m"
     doFirst { systemProperty("ukkera.test.runtime.classpath", classpath.asPath) }
+}
+// Test-only: the desktop Master installation check reuses core:security's Linux POSIX/software-key
+// stand-ins for the Windows/macOS OS seams. No production dependency or provider is added.
+val securityJvmTest = project(":core:security").tasks.named<KotlinCompile>("compileTestKotlinJvm")
+dependencies { add("jvmTestImplementation", files(securityJvmTest.flatMap { it.destinationDirectory })) }
+tasks.named<KotlinCompile>("compileTestKotlinJvm") {
+    friendPaths.from(securityJvmTest.flatMap { it.destinationDirectory })
 }

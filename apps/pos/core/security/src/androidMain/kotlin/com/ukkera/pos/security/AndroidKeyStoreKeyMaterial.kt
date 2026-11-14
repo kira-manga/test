@@ -323,8 +323,15 @@ internal class AndroidSelfOwnedDataKeyMaterial(
         SelfOwnedDataKeyConfiguration(it.installationId, it.scope, it.storageReference, it.pepperReference)
     }
 
-    override fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
-    override fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
+    private fun storageKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.STORAGE)
+    private fun pepperKey(): SecretKey = checkedKey(SelfOwnedTargetKeyRoleV1.PEPPER)
+    override fun requireStorageKey() { storageKey() }
+    override fun requirePepperKey() { pepperKey() }
+    override fun sealStorage(aad: ByteArray, plaintext: ByteArray, contractFailure: SelfOwnedInstallationFailureV1):
+        AndroidSelfOwnedCiphertext = SelfOwnedJcaStorageCipher.seal(storageKey(), aad, plaintext, contractFailure)
+    override fun openStorage(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray =
+        SelfOwnedJcaStorageCipher.open(storageKey(), aad, nonce, ciphertext)
+    override fun pepperTag(message: ByteArray): ByteArray = SelfOwnedJcaStorageCipher.tag(pepperKey(), message)
 
     fun configuration(): AndroidKeyStoreConfiguration = configuration(guard())
 

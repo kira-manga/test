@@ -132,6 +132,8 @@ public interface LocalProvisioner {
     public suspend fun issueOriginalPreparation(action: LocalProvisionerPendingAction,
         installerLogin: String, secret: CharArray): LocalProvisionerGrant
     public suspend fun recoverOriginalPreparation(): LocalProvisionerGrant
+    /** True only for a native Windows/macOS producer whose original grant is the V2 preparation. */
+    public val issuesNativePreparationV2: Boolean get() = false
     /**
      * Additive original preparation for a native Windows/macOS producer. The default is a bounded
      * refusal for implementations that only provide the unchanged Android V1 grant; it never

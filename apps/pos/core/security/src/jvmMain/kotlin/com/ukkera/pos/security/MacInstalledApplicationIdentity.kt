@@ -24,6 +24,22 @@ public object MacInstalledApplicationIdentity {
         capture(expected.signingIdentifier, expected.teamIdentifier, expected)
 
     /**
+     * The same packaged-launcher, Apple-anchor, Team-ID and designated-requirement checks for the
+     * Master service mode of the SAME signed app (launchd-supervised; macOS is test-only).
+     */
+    public fun captureService(expected: SelfOwnedMacServiceIdentityV2):
+        SelfOwnedInstalledIdentityResultV2<SelfOwnedMacServiceIdentityV2> =
+        when (val actual = capture(expected.signingIdentifier, expected.teamIdentifier, null)) {
+            is SelfOwnedInstalledIdentityResultV2.Refused -> SelfOwnedInstalledIdentityResultV2.Refused(actual.code)
+            is SelfOwnedInstalledIdentityResultV2.Data -> {
+                val service = SelfOwnedMacServiceIdentityV2(actual.value.signingIdentifier, actual.value.teamIdentifier,
+                    actual.value.designatedRequirementSha256)
+                if (SelfOwnedInstalledIdentityV2.matches(expected, service)) SelfOwnedInstalledIdentityResultV2.Data(service)
+                else SelfOwnedInstalledIdentityResultV2.Refused(SelfOwnedInstalledIdentityRefusalV2.REFUSE_IDENTITY_MISMATCH)
+            }
+        }
+
+    /**
      * First-install observation: the same packaged-launcher, Apple-anchor and Team-ID trust checks
      * as [captureUi], returning the ACTUAL identity (including its designated-requirement digest)
      * so the original preparation can bind it. DATA only; never a later-session substitute.

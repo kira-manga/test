@@ -97,6 +97,10 @@ if ($Probe) {
         New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
         & icacls.exe $probeDir /grant '*S-1-5-19:(OI)(CI)M' | Out-Null
         $summary.service_sid_type = (& sc.exe qsidtype UkkeraPOSTestMaster | Out-String).Trim()
+        # The Master must survive reboots: the manifest declares an automatic LocalService service.
+        $installed = Get-CimInstance Win32_Service -Filter "Name='UkkeraPOSTestMaster'"
+        $summary.service_start_mode = if ($installed) { $installed.StartMode } else { 'NOT_REGISTERED' }
+        $summary.service_account = if ($installed) { $installed.StartName } else { 'NOT_REGISTERED' }
         try {
             Start-Service -Name UkkeraPOSTestMaster
             $serviceFile = Join-Path $probeDir 'service-probe.txt'

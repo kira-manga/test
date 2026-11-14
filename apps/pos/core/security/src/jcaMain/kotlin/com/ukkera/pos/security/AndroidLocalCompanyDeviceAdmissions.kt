@@ -10,8 +10,7 @@ import java.util.concurrent.atomic.AtomicReference
 internal class AndroidLocalCompanyDeviceAdmissions(
     private val owner: AndroidSelfOwnedInstallationLifetime,
     private val environment: SelfOwnedOriginalEnvironment,
-    private val registry: LocalProvisionerRegistryStore,
-    private val keys: LocalProvisionerNativeKeys,
+    private val custody: SelfOwnedCompanyCustody,
     private val work: AndroidOwnedInstallationWork,
     private val anchor: AndroidSelfOwnedHistoryAnchor,
     private val issuance: AndroidLocalCompanyIssuanceGate,
@@ -101,11 +100,11 @@ internal class AndroidLocalCompanyDeviceAdmissions(
         val original = anchor.snapshotOriginal(); pairings.requireAdmissionCurrent(pairing, original)
         val observation = observe(); requireObservation(pairing, observation)
         val dispatchId = AndroidP256Primitives.newId()
-        val reserved = checkNotNull(registry.companyBootstrapRecord()).allIds().toSet() + pairing.body.origin.reservedOriginalIds() +
-            registry.readDevicePairings(keys)?.records.orEmpty().flatMap { it.nativeIds() } +
-            state?.records.orEmpty().map { it.dispatchId } + registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readEmployeePolicyActivations(keys)?.records.orEmpty().flatMap { it.nativeIds() } +
-            registry.readBusinessPublications(keys)?.records.orEmpty().flatMap { it.reservedIdentityIdsV1() }
+        val reserved = checkNotNull(custody.companyOriginal()).allIds().toSet() + pairing.body.origin.reservedOriginalIds() +
+            custody.readDevicePairings()?.records.orEmpty().flatMap { it.nativeIds() } +
+            state?.records.orEmpty().map { it.dispatchId } + custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() } +
+            custody.readEmployeePolicyActivations()?.records.orEmpty().flatMap { it.nativeIds() } +
+            custody.readBusinessPublications()?.records.orEmpty().flatMap { it.reservedIdentityIdsV1() }
         if (dispatchId in reserved) refuse(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         val record = NativeDeviceAdmissionRecordV1(pairing, dispatchId, observation, NativeDeviceAdmissionPhaseV1.DISPATCH_INTENT)
         val next = state?.next(record) ?: NativeDeviceAdmissionStateV1(0L, listOf(record))
@@ -326,16 +325,16 @@ internal class AndroidLocalCompanyDeviceAdmissions(
         return try { sha256(bytes) } finally { bytes.fill(0) }
     }
     private fun requireOriginal() {
-        work.requireActive(); environment.requireExistingOriginalObservation(); registry.assertContinuity()
+        work.requireActive(); environment.requireExistingOriginalObservation(); custody.assertContinuity()
         if (owner.dataUseDeniedNoIo()) refuse(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        registry.companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
+        custody.companyOriginal() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
     }
-    private fun ledger(): NativeDeviceAdmissionStateV1? = registry.readDeviceAdmissions(keys)
+    private fun ledger(): NativeDeviceAdmissionStateV1? = custody.readDeviceAdmissions()
     private fun currentOriginalRecord(id: DomainId): NativeDeviceAdmissionRecordV1 = ledger()?.records?.singleOrNull {
         it.pairing.body.originalActionId == id
     } ?: refuse(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
     private fun retain(state: NativeDeviceAdmissionStateV1, id: DomainId): NativeDeviceAdmissionRecordV1 =
-        registry.retainDeviceAdmissions(state, keys).records.single { it.pairing.body.originalActionId == id }
+        custody.retainDeviceAdmissions(state).records.single { it.pairing.body.originalActionId == id }
     private fun observe(): LocalAuthenticationObservation = owner.historyClockSampleNative().let { LocalAuthenticationObservation(it.issuerContextId, it.moment) }
     private inline fun noThrowCurrent(block: () -> Boolean): Boolean = try {
         work.requireActive(); !owner.dataUseDeniedNoIo() && block()

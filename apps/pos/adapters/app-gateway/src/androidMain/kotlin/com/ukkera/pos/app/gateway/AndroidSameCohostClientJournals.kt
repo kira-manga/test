@@ -22,9 +22,9 @@ internal class AndroidSameCohostClientJournals(
     private val application: Application,
     private val originalClient: AndroidOriginalLocalClient,
     private val original: AndroidOriginalClientJournals,
-) : LocalClientIntentJournalSource {
+) : SameCohostClientJournals {
     init { check(original.belongsTo(originalClient) && originalClient.belongsTo(application)) }
-    val credentials: LocalClientCredentialJournal get() = original.credentials
+    override val credentials: LocalClientCredentialJournal get() = original.credentials
     private class EmployeeOwner(val custody: AndroidEmployeeClientCustody, val allocation: NativeEmployeeJournalAllocation,
         val native: AndroidLocalClientJournalOwner) {
         val intents: LocalClientIntentJournal = checkNotNull(native.intentJournal)
@@ -42,7 +42,7 @@ internal class AndroidSameCohostClientJournals(
             ?.takeIf { closure.get() == null }
     }
 
-    suspend fun acquireEmployee(custody: AndroidEmployeeClientCustody, action: NativeEmployeeClientJournalAction): Boolean = acquiring.withLock {
+    override suspend fun acquireEmployee(custody: AndroidEmployeeClientCustody, action: NativeEmployeeClientJournalAction): Boolean = acquiring.withLock {
         currentCoroutineContext().ensureActive()
         if (closure.get() != null || !original.belongsTo(originalClient) || !custody.belongsTo(originalClient) ||
             !custody.belongsTo(application)) return@withLock false
@@ -78,7 +78,7 @@ internal class AndroidSameCohostClientJournals(
 
     /** Only this exact privately delivered entry can bind physical participation. This never
      * creates/reopens an owner on actor lookup, borrows the first actor or accepts a journal port. */
-    suspend fun admitEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean = acquiring.withLock {
+    override suspend fun admitEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean = acquiring.withLock {
         currentCoroutineContext().ensureActive()
         if (closure.get() != null || !custody.belongsTo(originalClient) || !custody.belongsTo(application)) return@withLock false
         val entry = employees.get().singleOrNull { it.custody === custody } ?: return@withLock false
@@ -89,7 +89,7 @@ internal class AndroidSameCohostClientJournals(
 
     /** Close every employee intent before the original device credential owner. Any unknown
      * close is retained as failure; low-level real OS leases are never released by this list. */
-    suspend fun close(): Unit = withContext(NonCancellable) {
+    override suspend fun close(): Unit = withContext(NonCancellable) {
         val result = CompletableDeferred<Unit>()
         if (!closure.compareAndSet(null, result)) { checkNotNull(closure.get()).await(); return@withContext }
         // End already delivered employee lifetimes synchronously, BEFORE waiting for the

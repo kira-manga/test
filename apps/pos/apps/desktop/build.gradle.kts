@@ -29,6 +29,9 @@ dependencies {
     testImplementation(kotlin("test-junit"))
 }
 
+// The macOS LaunchAgent template is bundled so the running app can render it (DesktopMacServiceAgent).
+sourceSets.main { resources.srcDir("packaging/macos") }
+
 tasks.withType<Test>().configureEach {
     systemProperty("ukkera.desktop.packaging.dir", layout.projectDirectory.dir("packaging").asFile.absolutePath)
 }
@@ -36,6 +39,13 @@ tasks.withType<Test>().configureEach {
 compose.desktop {
     application {
         mainClass = "com.ukkera.pos.desktop.MainKt"
+        // Expected macOS Master service identity from the owner's signing certificate
+        // (DesktopMacServiceIdentity). Supplied only by the signing build; never defaulted.
+        listOf("teamIdentifier", "designatedRequirementSha256").forEach { name ->
+            providers.gradleProperty("ukkera.mac.signing.$name").orNull?.takeIf { it.isNotBlank() }?.let {
+                jvmArgs += "-Dukkera.mac.signing.$name=$it"
+            }
+        }
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "UkkeraPOS"

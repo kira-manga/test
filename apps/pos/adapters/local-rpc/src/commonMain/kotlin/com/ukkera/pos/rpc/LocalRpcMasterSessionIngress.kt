@@ -18,6 +18,9 @@ import com.ukkera.pos.database.LocalMasterInvoiceMatchingRpcProtocolV1
 import com.ukkera.pos.database.LocalMasterClientRpcProtocolV1
 import com.ukkera.pos.database.LocalMasterClientRpcErrorV1
 import com.ukkera.pos.database.LocalMasterRpcOwnedRequestV1
+import com.ukkera.pos.database.LocalMasterEmployeeCreationRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterRpcEmployeeCreationRequestV1
+import com.ukkera.pos.database.LocalMasterRpcEmployeeCreationResponseV1
 import com.ukkera.pos.database.LocalMasterRpcReadRequestV1
 import com.ukkera.pos.database.LocalMasterRpcReadResponseV1
 import com.ukkera.pos.database.LocalMasterRpcExecuteRequestV1
@@ -119,7 +122,9 @@ internal class LocalRpcMasterSessionIngress(
         val scope: RpcAuthorizationScope,
         val businessAccess: LocalMasterRpcBusinessAccess? = null,
         val businessBearerDigest: PayloadDigest? = null,
-    )
+        /** A bounded per-request employee-creation scope; never reused as an identity entry. */
+        val creation: Boolean = false,
+    ) { val scoped: Boolean get() = businessAccess != null || creation }
     private val gate = Mutex()
     private val retired = MutableStateFlow(false)
     private val entries = mutableListOf<Entry>()
@@ -185,6 +190,8 @@ internal class LocalRpcMasterSessionIngress(
         installBusiness(configuration, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
             LocalMasterInvoiceMatchingRpcProtocolV1.READ, LocalMasterInvoiceMatchingRpcProtocolV1.EXECUTE,
             LocalMasterInvoiceMatchingRpcProtocolV1.LOOKUP)
+        configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(LocalMasterEmployeeCreationRpcProtocolV1.PROCEDURE),
+            authenticate = ::authenticateCreation, authorize = ::authorizeCreation, handler = ::employeeCreation)
     }
 
     /** The registration fixes the profile; no request field or configuration key chooses it. */
@@ -307,7 +314,9 @@ internal class LocalRpcMasterSessionIngress(
         businessAccess: LocalMasterRpcBusinessAccess? = null,
         resource: String = RESOURCE,
         businessBearerDigest: PayloadDigest? = null,
+        creation: Boolean = false,
     ): RpcAuthorizationScope? {
+        val scoped = businessAccess != null || creation
         var bearer: OpaqueCredential? = null
         var unretained: LocalRpcIdentityBinding? = null
         var unretainedScope: RpcAuthorizationScope? = null
@@ -329,8 +338,8 @@ internal class LocalRpcMasterSessionIngress(
             if (principal == null || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
                 principal.scope != peer.nativePeer.scope || principal.deviceId != peer.nativePeer.deviceId) return null
             val existing = gate.withLock {
-                if (isRetired() || businessAccess != null) null else entries.firstOrNull {
-                    it.businessAccess == null && it.physical === context.physicalSession && it.sessionId == principal.sessionId
+                if (isRetired() || scoped) null else entries.firstOrNull {
+                    !it.scoped && it.physical === context.physicalSession && it.sessionId == principal.sessionId
                 }
             }
             if (existing != null) {
@@ -346,7 +355,7 @@ internal class LocalRpcMasterSessionIngress(
             // session. Bound per-request business custody independently of the employee's
             // longer login, so the existing expiry cleanup can reclaim its finite census.
             // Expiry with an uncertain delivery preserves the durable original for fresh lookup.
-            val bindingLifetime = if (businessAccess == null) lifetime
+            val bindingLifetime = if (!scoped) lifetime
                 else minOf(lifetime, MAXIMUM_BUSINESS_SESSION_LIFETIME_MILLIS)
             val binding = LocalRpcIdentityBinding.bindAssociated(context, credentials, registration.principals,
                 LocalRpcAssociatedPhysicalPeerProvenance { physical ->
@@ -361,7 +370,11 @@ internal class LocalRpcMasterSessionIngress(
             // No native read or binding cleanup runs under the database's short fence.
             // Retain before local publication so close/write owns this exact SDK session.
             val original = binding.originalIdentityFor(scope) ?: return null
-            if (businessAccess != null) {
+            if (creation) {
+                // The creation service itself re-checks ADMINISTER and current state per call.
+                if (!registration.retainResourceApplicationSession(epoch, scope.session, original) ||
+                    registration.employeeCreationService() == null) return null
+            } else if (businessAccess != null) {
                 // Audience checks require the retained exact resource session. Refusal
                 // leaves this candidate owned by the existing revocation cleanup below.
                 if (!registration.retainResourceApplicationSession(epoch, scope.session, original) ||
@@ -370,10 +383,11 @@ internal class LocalRpcMasterSessionIngress(
             } else if (!registration.retainApplicationSession(epoch, scope.session, original)) return null
             val published = gate.withLock {
                 if (isRetired() || !peer.isCurrent() || !scope.session.isActive || entries.size >= MAXIMUM_LOGINS) null
-                else if (businessAccess == null && entries.any { it.businessAccess == null &&
+                else if (!scoped && entries.any { !it.scoped &&
                         it.physical === context.physicalSession && it.sessionId == principal.sessionId }) null
                 else scope.also {
-                    entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope, businessAccess, businessBearerDigest))
+                    entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope, businessAccess,
+                        businessBearerDigest, creation))
                     unretained = null
                     unretainedScope = null
                 }
@@ -510,6 +524,79 @@ internal class LocalRpcMasterSessionIngress(
                         isRetired() || !entry.peer.isCurrent() || !entry.scope.session.isActive)
                         return@withCallback businessUnavailable()
                     RpcReply.Success(capture(principal.actorId, result))
+                } finally { credentials.bearer.destroy() }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { currentCoroutineContext().ensureActive(); businessUnavailable() }
+        }
+    }
+
+    private suspend fun authenticateCreation(context: RpcAuthenticationContext,
+        request: LocalMasterRpcEmployeeCreationRequestV1): RpcAuthorizationScope? {
+        if (!request.claimForCallback()) return null
+        return withCallback({ null }, cleanup = {
+            request.destroy()
+            request.awaitCleanup()
+            businessRequestCustody.reap()
+        }) {
+            val temporary = LocalRpcCurrentIdentityRequest(request.useBearer { it.copyOf() })
+            try {
+                authenticationGate.withLock {
+                    authenticateOwned(context, temporary, null, CREATION_RESOURCE, request.useBearer(::sha256), creation = true)
+                }
+            } finally { temporary.destroy() }
+        }
+    }
+
+    /** Transport currentness only. The Master creation service authorizes ADMINISTER per call. */
+    private suspend fun authorizeCreation(context: RpcAuthorizationContext): Boolean = withCallback({ false }) {
+        if (isRetired()) return@withCallback false
+        val entry = gate.withLock { entries.firstOrNull { it.scope.session === context.scope.session } }
+            ?: return@withCallback false
+        if (!entry.creation || context.procedureName != LocalMasterEmployeeCreationRpcProtocolV1.PROCEDURE.name ||
+            context.procedureVersion != LocalMasterEmployeeCreationRpcProtocolV1.PROCEDURE.version ||
+            context.scope.resource != CREATION_RESOURCE || !entry.peer.isCurrent()) return@withCallback false
+        val credentials = entry.binding.currentOriginalCredentials(context) ?: return@withCallback false
+        try {
+            val allowed = currentInteractive(credentials, entry) && registration.employeeCreationService() != null
+            currentCoroutineContext().ensureActive()
+            allowed && !isRetired() && entry.peer.isCurrent() && entry.scope.session.isActive
+        } finally { credentials.bearer.destroy() }
+    }
+
+    private suspend fun currentInteractive(credentials: LocalGatewayCredentials, entry: Entry): Boolean {
+        val principal = registration.principals.authenticateLocal(credentials) ?: return false
+        return principal.authenticationPurpose == AuthenticationPurpose.INTERACTIVE &&
+            principal.sessionId == entry.sessionId && principal.scope == entry.peer.nativePeer.scope &&
+            principal.deviceId == entry.peer.nativePeer.deviceId
+    }
+
+    private suspend fun employeeCreation(context: RpcCallContext, request: LocalMasterRpcEmployeeCreationRequestV1):
+        RpcReply<LocalMasterRpcEmployeeCreationResponseV1, LocalMasterClientRpcErrorV1> {
+        if (!request.claimForCallback()) return businessUnavailable()
+        return withCallback({ businessUnavailable() }, cleanup = {
+            request.destroy()
+            request.awaitCleanup()
+            businessRequestCustody.reap()
+        }) {
+            try {
+                val entry = gate.withLock {
+                    if (isRetired()) null else entries.firstOrNull { it.scope.session === context.authorizationScope?.session }
+                } ?: return@withCallback businessUnavailable()
+                if (!entry.creation || context.authorizationScope?.resource != CREATION_RESOURCE ||
+                    entry.businessBearerDigest != request.useBearer(::sha256) || !entry.peer.isCurrent())
+                    return@withCallback businessUnavailable()
+                val principal = entry.binding.originalIdentityFor(entry.scope) ?: return@withCallback businessUnavailable()
+                val credentials = entry.binding.currentOriginalCredentials(context) ?: return@withCallback businessUnavailable()
+                try {
+                    val service = registration.employeeCreationService()
+                    if (service == null || !currentInteractive(credentials, entry)) return@withCallback businessUnavailable()
+                    val response = LocalMasterEmployeeCreationRpcProtocolV1.dispatch(service, credentials, request, principal.actorId)
+                    currentCoroutineContext().ensureActive()
+                    // A committed creation is never rolled back; a stale output stays undisclosed
+                    // and remains recoverable by its durable original through Lookup.
+                    if (isRetired() || !entry.peer.isCurrent() || !entry.scope.session.isActive ||
+                        !currentInteractive(credentials, entry)) return@withCallback businessUnavailable()
+                    RpcReply.Success(response)
                 } finally { credentials.bearer.destroy() }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (_: Exception) { currentCoroutineContext().ensureActive(); businessUnavailable() }
@@ -708,6 +795,7 @@ internal class LocalRpcMasterSessionIngress(
 
     companion object {
         private const val RESOURCE = "pos.session.current"
+        private const val CREATION_RESOURCE = "pos.employee-creation"
         private const val WAREHOUSE_READ = "pos.warehouse.read"
         private const val WAREHOUSE_EXECUTE = "pos.warehouse.execute"
         private const val WAREHOUSE_LOOKUP = "pos.warehouse.lookup"

@@ -142,6 +142,7 @@ internal fun encodeFoodCarrier(request: LocalMasterRpcOwnedRequestV1): String = 
     is LocalMasterRpcReadRequestV1 -> Json.encodeToString(LocalMasterFoodCashFinancialRpcProtocolV1.READ.request, request)
     is LocalMasterRpcExecuteRequestV1 -> Json.encodeToString(LocalMasterFoodCashFinancialRpcProtocolV1.EXECUTE.request, request)
     is LocalMasterRpcLookupRequestV1 -> Json.encodeToString(LocalMasterFoodCashFinancialRpcProtocolV1.LOOKUP.request, request)
+    else -> error("Not a food-financial business request")
 }
 
 internal fun decodeFoodCarrier(kind: FoodFinancialCarrierKind, wire: String): LocalMasterRpcOwnedRequestV1 = when (kind) {

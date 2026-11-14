@@ -33,6 +33,8 @@ public class AndroidOriginalRpcClientOwner private constructor(private val share
     public suspend fun supplierClient(): LocalRpcRemoteSupplierClient = shared.supplierClient()
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient =
         shared.directoryClient(profile)
+    public suspend fun employeeCreationClient(directory: LocalRpcRemoteDirectoryClient): LocalRpcRemoteEmployeeCreationClient =
+        shared.employeeCreationClient(directory)
     public suspend fun close(): Unit = shared.close()
     override fun toString(): String = "AndroidOriginalRpcClientOwner([REDACTED])"
 

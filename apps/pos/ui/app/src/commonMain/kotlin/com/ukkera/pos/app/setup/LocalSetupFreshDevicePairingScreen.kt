@@ -1,5 +1,10 @@
 package com.ukkera.pos.app.setup
 
+import com.ukkera.pos.security.SelfOwnedWindowsPackagedAppIdentityV2
+import com.ukkera.pos.security.SelfOwnedWindowsPackagedServiceIdentityV2
+import com.ukkera.pos.security.SelfOwnedWindowsServiceIdentityV2
+import com.ukkera.pos.security.SelfOwnedMacUiIdentityV2
+import com.ukkera.pos.security.SelfOwnedMacServiceIdentityV2
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -469,11 +474,32 @@ private fun FreshChallengeDetails(challenge: LocalDevicePairingChallenge) {
         ReviewField(t("Master SDK pairing QR", "رمز اقتران SDK للجهاز الرئيسي"), master.pairingQr)
         ReviewField(t("Original Master SDK acquisition", "الحصول الأصلي على SDK للجهاز الرئيسي"), master.originalAcquisitionId.value)
         ReviewField(t("Complete Master original digest", "بصمة الأصل الكامل للجهاز الرئيسي"), master.descriptorDigest.value)
-        val installed = master.nativeApplication
-        ReviewField(t("Master installed application ID", "معرّف التطبيق المثبت للجهاز الرئيسي"), installed.applicationId)
-        ReviewField(t("Master installed application UID", "معرّف مستخدم التطبيق المثبت للجهاز الرئيسي"), installed.applicationUid.toString())
-        ReviewField(t("Master APK signer SHA-256", "بصمة SHA-256 لموقّع APK للجهاز الرئيسي"), installed.apkSignerSha256)
-        ReviewField(t("Master Android ID commitment", "التزام معرّف Android للجهاز الرئيسي"), installed.androidIdCommitment)
+        ReviewField(t("Master installed platform", "منصة التطبيق المثبت للجهاز الرئيسي"), master.installedTarget.platform.name)
+        master.installedTarget.androidTarget?.let { installed ->
+            ReviewField(t("Master installed application ID", "معرّف التطبيق المثبت للجهاز الرئيسي"), installed.applicationId)
+            ReviewField(t("Master installed application UID", "معرّف مستخدم التطبيق المثبت للجهاز الرئيسي"), installed.applicationUid.toString())
+            ReviewField(t("Master APK signer SHA-256", "بصمة SHA-256 لموقّع APK للجهاز الرئيسي"), installed.apkSignerSha256)
+            ReviewField(t("Master Android ID commitment", "التزام معرّف Android للجهاز الرئيسي"), installed.androidIdCommitment)
+        }
+        when (val native = master.installedTarget.nativeTarget) {
+            is SelfOwnedWindowsPackagedAppIdentityV2 ->
+                ReviewField(t("Master Windows package family", "عائلة حزمة Windows للجهاز الرئيسي"), native.packageFamilyName)
+            is SelfOwnedWindowsPackagedServiceIdentityV2 -> {
+                ReviewField(t("Master Windows package family", "عائلة حزمة Windows للجهاز الرئيسي"), native.packageFamilyName)
+                ReviewField(t("Master Windows service SID", "معرّف أمان خدمة Windows للجهاز الرئيسي"), native.serviceSid)
+            }
+            is SelfOwnedWindowsServiceIdentityV2 ->
+                ReviewField(t("Master Windows service SID", "معرّف أمان خدمة Windows للجهاز الرئيسي"), native.serviceSid)
+            is SelfOwnedMacUiIdentityV2 -> {
+                ReviewField(t("Master macOS signing identifier", "معرّف توقيع macOS للجهاز الرئيسي"), native.signingIdentifier)
+                ReviewField(t("Master macOS designated requirement SHA-256", "بصمة المتطلب المعيّن لـ macOS للجهاز الرئيسي"), native.designatedRequirementSha256)
+            }
+            is SelfOwnedMacServiceIdentityV2 -> {
+                ReviewField(t("Master macOS signing identifier", "معرّف توقيع macOS للجهاز الرئيسي"), native.signingIdentifier)
+                ReviewField(t("Master macOS designated requirement SHA-256", "بصمة المتطلب المعيّن لـ macOS للجهاز الرئيسي"), native.designatedRequirementSha256)
+            }
+            else -> Unit
+        }
         ReviewField(t("Master original P1 delegation digest", "بصمة تفويض P1 الأصلي للجهاز الرئيسي"), master.allocation.p1DelegationDigest.value)
         ReviewField(t("Master original P1 preparation digest", "بصمة تحضير P1 الأصلي للجهاز الرئيسي"), master.allocation.p1PreparationDigest.value)
         ReviewField(t("Master original native public point", "النقطة العامة الأصلية للجهاز الرئيسي"), freshPublicHex(master.allocation.copyTargetPublicKey()))

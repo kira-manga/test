@@ -32,7 +32,8 @@ public enum class LocalSetupConnectionPhase { DETACHED, CONNECTING, ATTACHED, UN
 /** Both real entry journeys remain available; selecting a route creates no company/account. */
 @Composable
 public fun LocalEntryScreen(language: AppLanguage, onLanguageChange: (AppLanguage) -> Unit,
-    onSetup: () -> Unit, onEmployee: () -> Unit, onTrainingEmployee: (() -> Unit)? = null) {
+    onSetup: () -> Unit, onEmployee: () -> Unit, onTrainingEmployee: (() -> Unit)? = null,
+    onMasterService: (() -> Unit)? = null) {
     EntryLayout(language, onLanguageChange) {
         SectionHeading(entryText(language, "Ukkera POS · Local", "عُكّرة · نقطة البيع المحلية"))
         Notice(entryText(language,
@@ -44,6 +45,14 @@ public fun LocalEntryScreen(language: AppLanguage, onLanguageChange: (AppLanguag
         Notice(entryText(language,
             "Setup opens the real local authority coordinator. No keys, company, branch or employee are created until you explicitly request the corresponding step.",
             "يفتح الإعداد منسق السلطة المحلية الفعلي. لن تُنشأ مفاتيح أو شركة أو فرع أو موظف إلا بعد طلبك الصريح للخطوة المقابلة."))
+        if (onMasterService != null) {
+            Button(onClick = onMasterService, modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(entryText(language, "Administer this computer's Master service", "إدارة خدمة الخادم الرئيسي على هذا الحاسوب"))
+            }
+            Notice(entryText(language,
+                "Connects to the separately supervised Master service of this installed app. The service still requires the named head approval for every effect.",
+                "يتصل بخدمة الخادم الرئيسي المُشرف عليها بشكل منفصل لهذا التطبيق المثبت. تظل الخدمة تتطلب موافقة الرئيس المسمى لكل أثر."))
+        }
         OutlinedButton(onClick = onEmployee, modifier = Modifier.fillMaxWidth().touchTarget()) {
             Text(entryText(language, "Employee sign-in / existing branch", "دخول الموظف / فرع قائم"))
         }

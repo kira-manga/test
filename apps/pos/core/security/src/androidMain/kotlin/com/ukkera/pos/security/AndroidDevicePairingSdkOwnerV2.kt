@@ -22,12 +22,14 @@ internal class AndroidDevicePairingSdkOwnerV2(
     fun captureNative(originalAcquisitionId: DomainId, originalPreparationId: DomainId,
         target: LocalDevicePairingTargetDescriptor, nativeApplication: SelfOwnedTargetDescriptorV1): LocalDevicePairingSdkIdentityV2 =
         shared.captureAndroid(originalAcquisitionId, originalPreparationId, target, nativeApplication)
+    /** Android captures only the unchanged V1 DATA from its own legacy application target. */
     override fun captureMasterNative(originalAcquisitionId: DomainId, allocation: OriginalAllocationCommitmentV2,
-        nativeApplication: SelfOwnedTargetDescriptorV1): LocalMasterSdkOriginalV1 =
-        shared.captureMaster(originalAcquisitionId, allocation, nativeApplication)
+        environment: SelfOwnedOriginalEnvironment): LocalMasterSdkOriginalV1 =
+        shared.captureMaster(originalAcquisitionId, allocation, environment.androidTargetV1())
     fun requireMatchesNative(original: LocalDevicePairingSdkIdentityV2, exactDeviceName: String) =
         shared.requireMatches(original, exactDeviceName)
-    override fun requireMatchesNative(original: LocalMasterSdkOriginalV1) = shared.requireMatchesMaster(original)
+    override fun requireMatchesNative(original: LocalMasterSdkOriginal) =
+        shared.requireMatchesMaster(original as? LocalMasterSdkOriginalV1 ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN))
     override fun closeNative() = shared.close()
 
     override fun toString(): String = "AndroidDevicePairingSdkOwnerV2([REDACTED])"

@@ -162,6 +162,9 @@ public interface LocalSetupMaster {
     /** Existing-only binding DATA observed through the actual current Master-owned custody. */
     public suspend fun readOwnedOriginalNativeBinding(): com.ukkera.pos.security.SelfOwnedNativeReadResult =
         com.ukkera.pos.security.SelfOwnedNativeReadResult.Unresolved(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
+    /** Desktop (Windows/macOS) V2 counterpart; Android Masters keep the unavailable default. */
+    public suspend fun readOwnedOriginalNativeBindingV2(): com.ukkera.pos.security.SelfOwnedNativeReadResultV2 =
+        com.ukkera.pos.security.SelfOwnedNativeReadResultV2.Unresolved(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     public val mode: StateFlow<LocalMasterLifecycleMode>
     public suspend fun permitsFirstClientEnrollment(): Boolean
     public suspend fun prepareOriginalDefinition(account: LocalAccountProvisioning, authorityEpoch: Revision): LocalBranchInstallationSnapshotV2

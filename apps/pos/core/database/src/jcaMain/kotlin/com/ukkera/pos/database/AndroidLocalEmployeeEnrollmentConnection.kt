@@ -1,6 +1,5 @@
 package com.ukkera.pos.database
 
-import android.app.Application
 import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 
@@ -22,7 +21,7 @@ public class AndroidLocalEmployeeEnrollmentConnection internal constructor(
     public val isLookupOnly: Boolean get() = !permitsProvisioning
     public fun isCurrent(): Boolean = service.ownsEmployeeEnrollment(this)
     public fun belongsTo(original: AndroidOriginalLocalClient): Boolean = this.original === original && isCurrent()
-    public fun belongsTo(application: Application): Boolean = original.belongsTo(application) && isCurrent()
+    public fun belongsTo(application: SelfOwnedMasterHostOwner): Boolean = original.belongsTo(application) && isCurrent()
 
     /** Read-only exact native-retained requested data, not a login-to-permissions generator. */
     public suspend fun originalDefinition(requestId: DomainId, login: LocalLoginIdentifier): LocalAccountProvisioning? =
@@ -63,7 +62,7 @@ public class AndroidEmployeeClientCustody internal constructor(
         get() = enrollment.original.compositionMode
     public val serviceIncarnationId: DomainId get() = enrollment.original.serviceIncarnationId
     public fun isCurrent(): Boolean = service.ownsEmployeeClient(this)
-    public fun belongsTo(application: Application): Boolean = enrollment.belongsTo(application) && isCurrent()
+    public fun belongsTo(application: SelfOwnedMasterHostOwner): Boolean = enrollment.belongsTo(application) && isCurrent()
     public fun belongsTo(original: AndroidOriginalLocalClient): Boolean = enrollment.belongsTo(original) && isCurrent()
     public suspend fun acquireJournalAction(action: NativeEmployeeClientJournalAction): LocalCompanyAuthorityResult<NativeEmployeeJournalAllocation> =
         service.acquireEmployeeJournalAction(this, action)

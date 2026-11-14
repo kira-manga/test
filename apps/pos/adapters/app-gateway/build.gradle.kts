@@ -70,3 +70,8 @@ tasks.named<KotlinCompile>("compileTestKotlinJvm") {
 }
 
 tasks.withType<Test>().configureEach { maxHeapSize = "256m" }
+
+// Desktop Master setup E2E reuses the core:security Linux test doubles (self-authored, not independent).
+val securityJvmTest = project(":core:security").tasks.named<KotlinCompile>("compileTestKotlinJvm")
+dependencies { add("jvmTestImplementation", files(securityJvmTest.flatMap { it.destinationDirectory })) }
+tasks.named<KotlinCompile>("compileTestKotlinJvm") { friendPaths.from(securityJvmTest.flatMap { it.destinationDirectory }) }

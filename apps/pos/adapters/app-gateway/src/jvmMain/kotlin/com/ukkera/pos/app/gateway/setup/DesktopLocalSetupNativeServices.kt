@@ -279,8 +279,11 @@ public class DesktopLocalSetupNativeServices(
                                 journal.credentials.owner, labels, profile,
                                 supplierReferences = profile == LocalMasterRpcWorkflowProfile.SUPPLIERS
                             ) { current() && journal.isCurrent() && endpoint.isCurrent() }
-                            val gateway = LocalEndpointBranchGateway.directoryOnly(MutableStateFlow(connection),
-                                journal.credentials, intents, profile)
+                            // Same retained original Client; the Master authorizes each creation call.
+                            val creation = rpc.employeeCreationClient(endpoint)
+                            check(creation.isCurrent() && endpoint.isCurrent() && current())
+                            val gateway = LocalEndpointBranchGateway.directoryWithEmployeeCreation(MutableStateFlow(connection),
+                                journal.credentials, intents, profile, creation)
                             LanAuthentication(gateway, journal, endpoint::isCurrent)
                         } else {
                             val service = rpc.authenticationService()
