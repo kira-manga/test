@@ -21,6 +21,7 @@ import jdk.jfr.Recording
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onStart
 
 /**
  * Supporting executor, NOT an independent oracle. Every authority-bearing value below comes
@@ -363,7 +364,18 @@ internal object LanGenuineProcessEndpoint {
                     var ready = false
                     var observedRounds = 0
                     val rounds = stabilityRounds()
-                    live.readUpdates(LocalWorkflowQuery(LocalWorkflow.CASH)).collect { update ->
+                    val query = LocalWorkflowQuery(LocalWorkflow.CASH)
+                    val updates = live.readUpdates(query)
+                    // The payment helper has already read CASH. An updates-only stream
+                    // need not repeat that unchanged page. Wire the normal UI initial read
+                    // at subscription start; all later Master updates remain automatic.
+                    val mounted = if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
+                        updates.onStart {
+                            val initial = session.workflows.read(query)
+                            check(initial is LocalReadResult.Available)
+                            emit(LocalWorkflowReadUpdate.Available(initial.page))
+                        } else updates
+                    mounted.collect { update ->
                         when (update) {
                             is LocalWorkflowReadUpdate.Available -> {
                                 if (!ready) { exchange.putText("$role.gateway-ready", "encrypted-coherent-initial-page"); ready = true }

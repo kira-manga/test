@@ -28,7 +28,7 @@ import kotlinx.serialization.json.*
  * on recovery. Unknown outcomes and all failed inputs remain retained for diagnosis. */
 internal object LanGenuinePaymentSupport {
     const val ENABLE_PROPERTY = "ukkera.lan.paymentSupporting"
-    const val MAPPING_VERSION = "lan-payment-supporting-v1.0.4"
+    const val MAPPING_VERSION = "lan-payment-supporting-v1.0.7"
     val clientActions = setOf(SecurityAction.CASH_READ, SecurityAction.CASH_OPEN,
         SecurityAction.PURCHASING_READ, SecurityAction.INVENTORY_COST_READ, SecurityAction.SUPPLIER_CASH_SETTLE,
         SecurityAction.SUPPLIER_CASH_RESOLVE, SecurityAction.OPERATION_RESULT_RECOVERY)

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Package the POS Compose desktop launcher as a local, unsigned DMG or MSI.
+# Package the POS Compose desktop launcher as a local test DMG or MSI.
 #
-# DMG is built only on macOS and MSI only on Windows. Both are unsigned local
-# qualification packages; no certificate, notarization or installer identity is
-# implied.
+# DMG is built only on macOS and MSI only on Windows. Explicit macOS signing
+# configuration is observed and verified; MSI remains unsigned. Package signatures,
+# native identity probes, notarization and full application acceptance are distinct.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -172,6 +172,7 @@ mkdir -p "$DIAG"
 
 PACKAGE=""
 SMOKE_STATUS="skipped"
+SIGNING_STATUS="unsigned-local-test"
 BUILD_STATUS="running"
 FINALIZED=0
 MOUNT_POINT=""
@@ -208,7 +209,7 @@ run_attempt=${GITHUB_RUN_ATTEMPT:-local}
 EOF
 
   cat > "$OUT_DIR/README-ARTIFACTS.txt" <<EOF
-Ukkera POS desktop package (unsigned local qualification)
+Ukkera POS desktop test package
 
 build_status: $BUILD_STATUS
 host: $HOST_OS / $HOST_ARCH
@@ -218,15 +219,17 @@ aux_snapshot_revision: $AUX_SNAPSHOT_REVISION
 java: $(java -version 2>&1 | head -n 1)
 package: ${PACKAGE:-not-produced}
 desktop_smoke: $SMOKE_STATUS
+signing: $SIGNING_STATUS
 
 Contents:
-- The unsigned $FORMAT package (when produced).
+- The $FORMAT package (when produced).
 - diagnostics/: Gradle/package verification logs and signing state.
 - SHA256SUMS and manifest.json: hashes and build metadata.
 
-This package is unsigned. macOS Gatekeeper and Windows SmartScreen can warn or
-block it; that is expected for this local test package. It is not notarized or
-code-signed, is not an operational Master, and is not owner acceptance.
+The signing value above records this package's observed signature state.
+macOS notarization is not performed here. Windows MSI signing is separate from
+the signed test MSIX, whose own summary and certificate are included when built.
+Package/startup checks do not establish full POS workflows or owner acceptance.
 No credentials, signing keys, native databases or Gradle caches are intentionally
 staged.
 EOF
@@ -240,7 +243,7 @@ EOF
     "--metadata" "format=$FORMAT"
     "--metadata" "package=$PACKAGE"
     "--metadata" "desktop_smoke=$SMOKE_STATUS"
-    "--metadata" "signing=unsigned-local-test"
+    "--metadata" "signing=$SIGNING_STATUS"
     "--metadata" "workflow=${GITHUB_WORKFLOW:-local}"
     "--metadata" "run_id=${GITHUB_RUN_ID:-local}"
     "--metadata" "run_attempt=${GITHUB_RUN_ATTEMPT:-local}"
@@ -332,6 +335,7 @@ if [[ "$FORMAT" == "dmg" ]]; then
   lipo -info "$APP_PATH/Contents/MacOS/UkkeraPOS" 2>&1 | grep -q "$EXPECTED_MACHO_ARCH" || \
     fail "DMG executable architecture does not match $ARCH"
   if codesign -dv --verbose=4 "$APP_PATH" > "$DIAG/dmg-codesign.txt" 2>&1; then
+    SIGNING_STATUS="signature-present-not-verified"
     echo "codesign_exit=0 (signed)" >> "$DIAG/dmg-codesign.txt"
   else
     echo "codesign_exit=$? (unsigned, expected)" >> "$DIAG/dmg-codesign.txt"
@@ -339,11 +343,18 @@ if [[ "$FORMAT" == "dmg" ]]; then
   if spctl --assess --type execute --verbose=4 "$APP_PATH" > "$DIAG/dmg-spctl.txt" 2>&1; then
     echo "spctl_exit=0 (accepted)" >> "$DIAG/dmg-spctl.txt"
   else
-    echo "spctl_exit=$? (not accepted, expected for unsigned local package)" >> "$DIAG/dmg-spctl.txt"
+    echo "spctl_exit=$? (not accepted; see assessment details)" >> "$DIAG/dmg-spctl.txt"
   fi
   if [[ -n "${UKKERA_EXPECTED_TEAM_ID:-}" ]]; then
-    codesign --verify --deep --strict --verbose=2 "$APP_PATH" > "$DIAG/dmg-codesign-verify.txt" 2>&1 \
-      && echo "verify_exit=0" >> "$DIAG/dmg-codesign-verify.txt" || echo "verify_exit=$?" >> "$DIAG/dmg-codesign-verify.txt"
+    if codesign --verify --deep --strict --verbose=2 "$APP_PATH" > "$DIAG/dmg-codesign-verify.txt" 2>&1; then
+      SIGNING_STATUS="signed-verified"
+      echo "verify_exit=0" >> "$DIAG/dmg-codesign-verify.txt"
+    else
+      mac_verify_status=$?
+      SIGNING_STATUS="signature-invalid"
+      echo "verify_exit=$mac_verify_status" >> "$DIAG/dmg-codesign-verify.txt"
+      fail "Configured macOS signature verification failed."
+    fi
     # Native identity: Apple anchor + Team ID trust and actual designated requirement (DATA only).
     "$APP_PATH/Contents/MacOS/UkkeraPOS" "--identity-probe=$DIAG/mac-identity-probe.txt" > "$DIAG/mac-identity-probe.log" 2>&1 \
       && echo "probe_exit=0" >> "$DIAG/mac-identity-probe.log" || echo "probe_exit=$?" >> "$DIAG/mac-identity-probe.log"
@@ -459,7 +470,7 @@ cat > "$DIAG/summary.txt" <<EOF
 - Java: $(java -version 2>&1 | head -n 1)
 - Package: $PACKAGE
 - Desktop smoke: $SMOKE_STATUS
-- Signing: unsigned local test package
+- Signing: $SIGNING_STATUS
 - Source revision: $SOURCE_REVISION
 - Hashes: \`SHA256SUMS\`, metadata: \`manifest.json\`
 EOF

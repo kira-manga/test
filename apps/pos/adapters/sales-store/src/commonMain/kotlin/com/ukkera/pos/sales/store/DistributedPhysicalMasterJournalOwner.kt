@@ -311,7 +311,10 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
             check(projected.owner == entry.client && projected.requirement.canonicalBytes == requirement.canonicalBytes &&
                 projected.nativeIdentity.profile == entry.clientProfile)
             if (resolution) {
-                val snapshot = snapshot(master) ?: return@owned held()
+                // Background immutable-original delivery/intake owns this same native
+                // file. Serialize the snapshot like every other Master journal read;
+                // transient file Busy must not be caused by our own concurrent owner IO.
+                val snapshot = gate.withLock { snapshot(master) } ?: return@owned held()
                 val original = snapshot.original ?: return@owned held()
                 check(snapshot.actionMayHaveStarted && snapshot.certificate != null &&
                     domain.domain.classifyOriginal(requirement, original) == LocalPhysicalOriginalKind.UNKNOWN)
@@ -771,7 +774,19 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
     } catch (_: Exception) { false }
 
     private fun snapshot(master: LocalPhysicalJournal): LocalPhysicalOriginalSnapshot? =
-        (master.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot
+        when (val read = master.readOriginal()) {
+            is LocalPhysicalOriginalRead.Read -> read.snapshot
+            LocalPhysicalOriginalRead.Busy -> {
+                com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                    com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_CLIENT_NATIVE_ACQUIRE, IllegalStateException())
+                null
+            }
+            LocalPhysicalOriginalRead.Held -> {
+                com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                    com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_CLIENT_NATIVE_ACQUIRE, IllegalStateException())
+                null
+            }
+        }
 
     private fun releaseEntryNative(entry: Entry): Boolean {
         entry.temporary?.release(); entry.publicationTemporary?.release(); entry.evidence?.release()

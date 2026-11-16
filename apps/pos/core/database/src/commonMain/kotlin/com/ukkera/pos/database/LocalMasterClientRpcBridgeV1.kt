@@ -42,6 +42,7 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.encoding.decodeStructure
 import kotlinx.serialization.encoding.encodeStructure
+import kotlin.time.Duration.Companion.seconds
 
 /** Fixed business schemas. Their DTOs are inert data, never database publication capabilities. */
 public object LocalMasterClientRpcProtocolV1 {
@@ -1274,6 +1275,23 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         accept: suspend (T) -> Boolean,
         decode: (RpcReply<R, E>) -> T,
     ): T {
+        val readOnly = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && procedure.name in setOf(
+            LocalMasterLanBusinessRpcProtocolV1.READ.name,
+            LocalMasterChangesRpcProtocolV1.procedures(LocalMasterRpcWorkflowProfile.LAN_BUSINESS).SNAPSHOT.name,
+            LocalMasterChangesRpcProtocolV1.procedures(LocalMasterRpcWorkflowProfile.LAN_BUSINESS).PULL.name,
+            LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name)
+        return if (readOnly) recoverUndeliveredRpcRead(::requireCurrentCaller) { attempt ->
+            invokeOnce(procedure, request, accept, decode, attempt)
+        } else invokeOnce(procedure, request, accept, decode, null)
+    }
+
+    private suspend fun <Q : LocalMasterRpcOwnedRequestV1, R, E, T : Any> invokeOnce(
+        procedure: RpcProcedure<Q, R, E>,
+        request: Q,
+        accept: suspend (T) -> Boolean,
+        decode: (RpcReply<R, E>) -> T,
+        readAttempt: LocalMasterRpcReadAttempt?,
+    ): T {
         requireCurrentCaller()
         val observation = RpcCallObservation()
         // The official callback has no deferred public ACK token. A call without a real
@@ -1282,7 +1300,19 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         val withheld = ReceiptWithheld()
         var selected: T? = null
         try {
-            client.callWithAcceptance(procedure, request, observation = observation,
+            // This is the total ordinary business-call budget, not an authentication or
+            // native deadline. Multiple bounded current checks and durable result acceptance
+            // share it. Other bridge procedures keep ten seconds; CURRENT/login use their
+            // separate, unchanged authentication client.
+            val ordinaryLan = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && procedure.name in setOf(
+                LocalMasterLanBusinessRpcProtocolV1.READ.name,
+                LocalMasterLanBusinessRpcProtocolV1.EXECUTE.name,
+                LocalMasterLanBusinessRpcProtocolV1.LOOKUP.name,
+                LocalMasterChangesRpcProtocolV1.procedures(LocalMasterRpcWorkflowProfile.LAN_BUSINESS).SNAPSHOT.name,
+                LocalMasterChangesRpcProtocolV1.procedures(LocalMasterRpcWorkflowProfile.LAN_BUSINESS).PULL.name,
+                LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name)
+            client.callWithAcceptance(procedure, request, timeout = if (ordinaryLan) 30.seconds else 10.seconds,
+                observation = observation,
                 retry = RpcRetry.RecoverOnly(maxAttempts = 1)) { offered ->
                 requireCurrentCaller()
                 val observed = observation.progress.value
@@ -1294,6 +1324,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
                     observed.executionEvidence == RpcExecutionEvidence.HandlerFinished)
                 val result = decode(offered.details.reply)
                 selected = result
+                readAttempt?.observeDelivery()
                 if (!accept(result)) throw withheld
                 requireCurrentCaller()
             }
