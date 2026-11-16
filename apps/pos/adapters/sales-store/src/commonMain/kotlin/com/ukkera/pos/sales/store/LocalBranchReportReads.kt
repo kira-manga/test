@@ -30,7 +30,8 @@ public class LocalBranchReportReadHandler(
 
     // Classification only: prepare/project still require the current actual VIEW/EXPORT grants.
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.REPORTS
+        profile == LocalMasterRpcWorkflowProfile.REPORTS &&
+            normalize(normalized) == normalized
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(context.scope == view.scope && context.key == key)

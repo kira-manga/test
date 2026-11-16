@@ -11,7 +11,8 @@ import com.ukkera.pos.types.*
 
 /** One actual master transaction joins supplier obligation, real drawer custody and native originals. */
 public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
-    private val participants: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource) : MasterCommandHandler {
+    private val participants: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterCommandHandler, LocalMasterRpcRetainedOriginalAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
     override val key: CommandKey = LocalSupplierCashProfile.COMMAND
     override val writableKinds: Set<String> = LocalSupplierSettlementProfile.kinds + LocalSupplierCashProfile.gatedKinds +
         LocalSupplierCashStorage.writableKinds + setOf(LocalSupplierCashProfile.APPLICATION, ReservedOperations.KIND)
@@ -20,6 +21,23 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
     override val physicalRecordingClaimNamespaces: Set<String> = LocalSupplierCashProfile.gatedClaims
     override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalSupplierCashInteractiveAuthorization(stock)
     override fun normalize(input: StoredBytes): StoredBytes = LocalSupplierCashCodec.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalSupplierCashCodec.decode(normalized).let { it is LocalSupplierCashRequest.ApplyOriginal || it is LocalSupplierCashRequest.ApplyResolution }
+    override fun supportsRpcPhysicalRetainedResult(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalSupplierCashCodec.decode(normalized).let { it is LocalSupplierCashRequest.StartCash || it is LocalSupplierCashRequest.RecordResolution }
+    override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.key != key) return null
+        val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: return null
+        val sources = originalSources ?: LocalFinancialOriginalSourceServices(stock, null,
+            UnavailableHistoricalSalesTenderPolicySourceV1, LocalCatalogFinancialOriginalProof(stock))
+        return sources.read(view, retained) { loan ->
+            supplierCashRpcOriginalRequirements(normalized, original, loan, context, stock)
+        }
+    }
+
     override fun physicalRecordingAction(normalized: StoredBytes): PhysicalRecordingAction? = when (LocalSupplierCashCodec.decode(normalized)) {
         is LocalSupplierCashRequest.StartCash -> PhysicalRecordingAction.START_PAYMENT
         is LocalSupplierCashRequest.RecordOriginal -> PhysicalRecordingAction.RETAIN_ORIGINAL
@@ -118,7 +136,7 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
         if (context.operationId != target.factOperation(phase)) return supplierUnavailable(context, target.supplierId)
         val slot = LocalSupplierCashFacts.slot(view, target.recordingOperationId) ?: return supplierUnavailable(context, target.supplierId)
         requirePurchasingProducer(slot.start)
-        if (slot.value.target != target || slot.value.originalActorId != context.originalActorId) return supplierUnavailable(context, target.supplierId)
+        if (slot.value.target != target || phase == LocalSupplierCashPhase.ORIGINAL && slot.value.originalActorId != context.originalActorId) return supplierUnavailable(context, target.supplierId)
         val requirement = slot.value.requirement()
         val resolve = phase == LocalSupplierCashPhase.RESOLUTION
         if (resolve) {
@@ -137,7 +155,7 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
         return SupplierCashPrepared(context, commitment, slot.value.originalActorId, slot.value.domain.reasonCode,
             slot.value.domain.financialResources.toSet() + LocalSupplierCashJournal.authorityResources(requirement), resolve,
             admission = { _, _ -> if (context.physicalParticipants?.let { it.authority == slot.value.domain.authority &&
-                it.clientDeviceId == requirement.clientDeviceId && it.originalActorId == slot.value.originalActorId } == true) admission else null }) { _, at ->
+                it.clientDeviceId == requirement.clientDeviceId && it.originalActorId == context.originalActorId } == true) admission else null }) { _, at ->
             val native = context.physicalRecording
             if (native == null || !native.matches(admission) || native.sourceChanges.isNotEmpty()) return@SupplierCashPrepared supplierReject("purchasing.supplier_cash_journal_required")
             val raw = LocalSupplierCashFacts.raw(slot.value, phase, context.originalActorId, normalized, slot.row.digest, at)
@@ -146,18 +164,28 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
         }
     }
 
-    private suspend fun apply(operationId: OperationId, phase: LocalSupplierCashPhase, view: CommandReadView, context: CommandContext): PreparedMutation {
+    internal suspend fun prepareSupervisedApplication(request: LocalSupplierCashSupervisorRequest.Apply, normalized: StoredBytes,
+        view: CommandReadView, context: CommandContext): PreparedMutation {
+        check(context.key == LocalSupplierCashSupervisorCodec.COMMAND &&
+            LocalSupplierCashSupervisorCodec.encode(request) == normalized &&
+            semanticDigest(context.scope, context.originalActorId, context.key, normalized) == context.semanticDigest)
+        return apply(request.factOperationId, request.phase, view, context, supervised = true)
+    }
+
+    private suspend fun apply(operationId: OperationId, phase: LocalSupplierCashPhase, view: CommandReadView, context: CommandContext,
+        supervised: Boolean = false): PreparedMutation {
         val rawKey = if (phase == LocalSupplierCashPhase.ORIGINAL) LocalSupplierCashJournal.rawKey(operationId) else LocalSupplierCashJournal.resolutionKey(operationId)
         val header = view.aggregate(rawKey) ?: return supplierUnavailable(context, DomainId(operationId.value))
         val raw = LocalSupplierCashFacts.decodeRaw(header.payload)
-        if (raw.originalActorId != context.originalActorId || raw.recordingActorId != context.originalActorId)
+        if (!supervised && (raw.originalActorId != context.originalActorId || raw.recordingActorId != context.originalActorId))
             return supplierUnavailable(context, DomainId(operationId.value))
         // The exact native-backed physical fact is retained even if financial qualification
         // is unavailable. Only the rich invoice/ledger join may authorize application.
         val physicalFact = LocalSupplierCashFacts.fact(view, operationId, phase) ?: error("Purchasing retained supplier fact unavailable")
         val slot = physicalFact.slot.value; val target = slot.target
         check(context.operationId !in setOf(target.intentOperationId, target.recordingOperationId, target.resolutionOperationId))
-        val resolve = phase == LocalSupplierCashPhase.RESOLUTION
+        val resolution = phase == LocalSupplierCashPhase.RESOLUTION
+        val resolve = supervised || resolution
         val commitment = supplierCashCommitment(slot.domain.source, target.settlementId, slot.domain.amount)
         val resources = slot.domain.financialResources.toSet() + LocalSupplierCashJournal.authorityResources(slot.requirement())
         val captureReader = PurchasingReader(view)
@@ -181,7 +209,7 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
         fact.application.applicationOperationId?.let { applied -> return SupplierCashPrepared(context, commitment, slot.originalActorId,
             slot.domain.reasonCode, resources, resolve) { _, _ -> ProposedOutcome.Reject("purchasing.supplier_cash_already_applied",
                 LocalSupplierCashCodec.result(LocalSupplierCashResult.AlreadyApplied(target, applied, phase))) } }
-        val original = if (resolve) {
+        val original = if (resolution) {
             try { supplierCashFact(view, target.recordingOperationId, LocalSupplierCashPhase.ORIGINAL)
                 ?: return pending(LocalSupplierCashPendingReason.ORIGINAL_APPLICATION_REQUIRED) }
             catch (unsupported: PurchasingInvoiceCaptureUnqualified) {
@@ -189,7 +217,7 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
                     slot.originalActorId, slot.domain.reasonCode, resources, resolve)
             }
         } else fact
-        if (resolve && original.application.result?.let { it is LocalSupplierCashResult.Applied && it.action == LocalSupplierCashAction.UNKNOWN } != true)
+        if (resolution && original.application.result?.let { it is LocalSupplierCashResult.Applied && it.action == LocalSupplierCashAction.UNKNOWN } != true)
             return pending(LocalSupplierCashPendingReason.ORIGINAL_APPLICATION_REQUIRED)
         val outcome = fact.outcome()
         val action = supplierCashKnownAction(outcome, slot.domain.amount) ?: return pending(LocalSupplierCashPendingReason.VALUE_OR_TENDER_REQUIRES_RECONCILIATION)
@@ -208,7 +236,7 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
                 target.attemptId !in cash.session.pendingAttemptIds || cash.session.reservedCashOut.minor < before.amount.minor ||
                 view.claim(LocalSupplierCashStorage.sourceClaim(target.attemptId)) != target.sessionId ||
                 view.aggregate(LocalSupplierCashStorage.movementKey(target.attemptId)) != null ||
-                (if (resolve) before.status != PurchasingSupplierAttemptStatus.OUTCOME_UNKNOWN || before.originalBodyDigest != original.value.bodyDigest
+                (if (resolution) before.status != PurchasingSupplierAttemptStatus.OUTCOME_UNKNOWN || before.originalBodyDigest != original.value.bodyDigest
                 else before.status != PurchasingSupplierAttemptStatus.AWAITING_ATTESTATION))
                 return pending(LocalSupplierCashPendingReason.SOURCE_OR_CUSTODY_CHANGED, extra)
             if (cut != null && (cut.settlements.reservedTotal.minor < before.amount.minor || checkNotNull(purchasingDue(cut)).remainingDue.minor < before.amount.minor))
@@ -220,13 +248,19 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
                 return pending(LocalSupplierCashPendingReason.SOURCE_OR_CUSTODY_CHANGED, extra)
             reader.requireSupplierHydrationCapacity(applying = before, action = action)
             val inputs = SupplierApplicationFact(slot, original.value, fact.value, PurchasingSource.from(original.row),
-                if (resolve) PurchasingSource.from(fact.row) else null, fact.application, fact.applicationRow.revision)
+                if (resolution) PurchasingSource.from(fact.row) else null, fact.application, fact.applicationRow.revision)
             return SupplierCashPrepared(context, commitment, slot.originalActorId, slot.domain.reasonCode, resources + extra, resolve) { command, at ->
-                val changed = if (action == LocalSupplierCashAction.UNKNOWN) null else SupplierCashSettlements.finish(command, commitment,
-                    cash.session, cash.session.revision, cash.assignments, target.attemptId, action == LocalSupplierCashAction.CASH_PAID,
+                val changed = if (action == LocalSupplierCashAction.UNKNOWN) null
+                else if (supervised) SupplierCashSettlements.finishSupervised(command, commitment, cash.session, cash.session.revision,
+                    cash.assignments, target.attemptId, operationId, fact.value.recordingActorId,
+                    if (resolution) target.recordingOperationId else null, if (resolution) original.value.bodyDigest else null,
+                    action == LocalSupplierCashAction.CASH_PAID, supplierEvidence(outcome).supplierDomain(fact.value.recordingActorId))
+                else SupplierCashSettlements.finish(command, commitment, cash.session, cash.session.revision,
+                    cash.assignments, target.attemptId, action == LocalSupplierCashAction.CASH_PAID,
                     supplierEvidence(outcome).supplierDomain(slot.originalActorId), resolve)
                 supplierApplyEffects(SupplierSettlementWrites(context, at, command.authorization), context.operationId, inputs, attempt,
-                    supplier, cut, cash, changed, changed?.movement?.let { LocalSupplierCashStorage.movementWrite(context, it, at) })
+                    supplier, cut, cash, changed, changed?.movement?.let { if (supervised) LocalSupplierCashStorage.supervisedMovementWrite(context, slot, fact.value,
+                        if (resolution) original.value else null, it, at) else LocalSupplierCashStorage.movementWrite(context, it, at) })
             }
         } catch (_: PurchasingHydrationCapacityUnavailable) { return pending(LocalSupplierCashPendingReason.STORAGE_CAPACITY_REQUIRED) }
           catch (unsupported: PurchasingInvoiceCaptureUnqualified) {
@@ -281,11 +315,16 @@ internal fun supplierReject(code: String): ProposedOutcome.Reject = ProposedOutc
 internal fun supplierUnavailable(context: CommandContext, target: DomainId): PreparedMutation = object : PreparedMutation() {
     override val requirement: AuthorizationRequirement = AuthorizationRequirement(Permission(SecurityAction.PURCHASING_READ, PermissionVerb.PERFORM),
         context.scope, ActionBinding(target, Revision(0), context.semanticDigest, context.operationId, "purchasing.supplier_cash_unavailable"))
+    // New supervisor keys cannot retain a known refusal without an original source
+    // whose exact closed profile can join it. Current read authorization still runs first.
+    override val admissionRestriction: PreparedMutationAdmissionRestriction? =
+        if (context.key == LocalSupplierCashSupervisorCodec.COMMAND) PreparedMutationAdmissionRestriction.SOURCE_UNAVAILABLE else null
     override val allowsActionApproval: Boolean = false
     override val affectedResources: Set<RecoveryResourceKey> = setOf(supplierSettlementResource(target), RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, context.originalActorId))
     override val recoveryHoldBarrierKinds: Set<RecoveryResourceKind> = supplierCashBarriers
     override fun evaluate(authorization: AuthorizedAction, recordedAt: UtcInstant): ProposedOutcome {
         check(authorization.principalKind == PrincipalKind.LOCAL_EMPLOYEE && authorization.approvalId == null && authorization.isBoundTo(requirement, context.originalActorId))
+        check(admissionRestriction == null)
         return supplierReject("purchasing.supplier_cash_unavailable")
     }
 }
@@ -358,7 +397,8 @@ private fun supplierPhysicalOutcome(normalized: StoredBytes, outcome: ProposedOu
         val raw = LocalSupplierCashFacts.decodeRaw(apply.changes.single {
             it.key == if (resolve) LocalSupplierCashJournal.resolutionKey(context.operationId) else LocalSupplierCashJournal.rawKey(context.operationId)
         }.payload)
-        check(raw.body() == normalized && raw.phase == phase && raw.originalActorId == context.originalActorId && raw.recordingActorId == context.originalActorId &&
+        check(raw.body() == normalized && raw.phase == phase && (resolve || raw.originalActorId == context.originalActorId) &&
+            raw.recordingActorId == context.originalActorId &&
             raw.semanticDigest == context.semanticDigest && context.operationId == raw.target.factOperation(phase) &&
             LocalSupplierCashCodec.result(apply.result) == LocalSupplierCashResult.RawRetained(raw.target, phase) && apply.claims.isEmpty())
         requireSupplierChanges(apply.changes, listOf(LocalSupplierCashFacts.rawWrite(raw), LocalSupplierCashFacts.applicationWrite(LocalSupplierCashFacts.initial(raw), null)))

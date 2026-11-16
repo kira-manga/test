@@ -9,6 +9,7 @@ import com.ukkera.pos.security.LocalSetupCompositionMode
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
 import com.ukkera.pos.security.NativeEmployeeJournalAllocation
 import com.ukkera.pos.security.SelfOwnedKeyProtectionV1
+import com.ukkera.pos.sales.store.LocalPhysicalExternalCustody
 import com.ukkera.pos.types.DomainId
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicReference
@@ -92,16 +93,24 @@ internal class DesktopCohostJournalFile(
     override fun initialManifest(): ByteArray = when (kind) {
         ClientJournalKind.CREDENTIALS -> AndroidEncryptedClientCredentialJournal.originalEmptyManifest(this)
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.originalEmptyManifest(this)
-        ClientJournalKind.ACTOR_ALLOCATIONS -> error("client.cohost.desktop.kind")
+        ClientJournalKind.ACTOR_ALLOCATIONS, ClientJournalKind.READ_VIEWS_V1 -> error("client.cohost.desktop.kind")
     }
 
     fun validateExisting() = when (kind) {
         ClientJournalKind.CREDENTIALS -> AndroidEncryptedClientCredentialJournal.validateExisting(this)
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.validateExisting(this)
-        ClientJournalKind.ACTOR_ALLOCATIONS -> error("client.cohost.desktop.kind")
+        ClientJournalKind.ACTOR_ALLOCATIONS, ClientJournalKind.READ_VIEWS_V1 -> error("client.cohost.desktop.kind")
     }
 
-    fun attach(facet: ClientJournalPhysicalOwner) { check(headAdmitted); work.requireActive(); work.attachSuccessfulOwner(facet) }
+    /** Exact employee custody of THIS intent file; currentness of its claimed allocation. */
+    fun requireEmployeePhysicalCustody(custody: AndroidEmployeeClientCustody) {
+        val employee = journalBinding as? DesktopEmployeeCohostBinding
+        known(kind == ClientJournalKind.INTENTS && employee != null && employee.custody === custody && employee.isCurrent())
+    }
+    val employeePhysicalCustody: AndroidEmployeeClientCustody?
+        get() = (journalBinding as? DesktopEmployeeCohostBinding)?.custody
+
+    fun attach(facet: ClientJournalPhysicalOwner) = attachAdmittedOwner(facet)
     fun isCurrentOwner(facet: ClientJournalPhysicalOwner): Boolean = work.isCurrentOwner(facet)
 
     /** Positive proof that the FIRST journal completed enrollment and has never held work. */
@@ -122,25 +131,52 @@ internal class DesktopCohostJournalFile(
 
 /**
  * Successful desktop cohost owner, reached only after full typed validation, native head admission
- * and continuity. Desktop physical recording is unavailable, so it lends no physical custody.
+ * and continuity. An employee intent owner lends physical custody only through the shared loan
+ * census, the same as Android; the shared work fences/drains those loans on retirement and close.
  */
-internal class DesktopCohostJournalOwner private constructor(private val file: DesktopCohostJournalFile) {
+internal class DesktopCohostJournalOwner private constructor(private val file: DesktopCohostJournalFile) :
+    CohostEmployeePhysicalOwner {
     val credentialJournal: LocalClientCredentialJournal? =
         if (file.kind == ClientJournalKind.CREDENTIALS) AndroidEncryptedClientCredentialJournal.fromExisting(file) else null
     val intentJournal: LocalClientIntentJournal? =
         if (file.kind == ClientJournalKind.INTENTS) AndroidEncryptedClientIntentJournal.fromExisting(file) else null
-    @Volatile private var denied = false
-    private val facet = object : ClientJournalPhysicalOwner {
-        override fun denyPhysical() { denied = true }
-        override val physicalDenied: Boolean get() = denied
-        override val physicalLoansDrained: Boolean get() = true
-        override suspend fun awaitPhysicalDrain() = Unit
-    }
-    init { file.attach(facet) }
+    private val loans = ClientJournalPhysicalLoans()
+    init { file.attach(loans) }
 
-    fun isCurrent(): Boolean = !denied && file.isCurrentOwner(facet)
-    fun deny() { denied = true }
+    override val physicalDenied: Boolean get() = loans.physicalDenied
+    fun isCurrent(): Boolean = !physicalDenied && file.isCurrentOwner(loans)
+    fun deny() = loans.denyPhysical()
     suspend fun close() { file.closeOwner() }
+
+    /** Immutable reference/scalar join to THIS successful owner's private employee binding. */
+    override fun ownsEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean =
+        file.employeePhysicalCustody === custody && credentialJournal == null &&
+            intentJournal?.owner == LocalClientIdentity(custody.scope, custody.actorId, custody.deviceId) &&
+            file.journalId == custody.physicalEnrollmentHistory.journalId && file.keyId == custody.physicalEnrollmentHistory.journalKeyId
+
+    /** No native IO or grant callback; full typed recheck follows outside Room before backend IO. */
+    override fun captureEmployeePhysical(custody: AndroidEmployeeClientCustody): LocalPhysicalExternalCustody? =
+        if (!ownsEmployeePhysical(custody)) null else loans.capture()
+
+    override suspend fun recheckEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean {
+        if (physicalDenied || !ownsEmployeePhysical(custody)) return false
+        val checked = file.owned {
+            object : ClientJournalTask<Unit> {
+                override fun execute() {
+                    check(!physicalDenied)
+                    file.requireEmployeePhysicalCustody(custody)
+                    // The complete typed codec, never structural decoding or a head/digest result.
+                    file.validateExisting()
+                    file.assertContinuity()
+                    file.requireEmployeePhysicalCustody(custody)
+                    check(!physicalDenied && ownsEmployeePhysical(custody) && custody.isCurrent())
+                }
+                override fun discard(value: Unit) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return checked is ClientJournalOutcome.Value && !physicalDenied && ownsEmployeePhysical(custody)
+    }
 
     suspend fun verifyUnusedOriginalCredentials(): Boolean = file.owned {
         object : ClientJournalTask<Unit> {
@@ -158,7 +194,7 @@ internal class DesktopCohostJournalOwner private constructor(private val file: D
             enroll: Boolean, recoverWrites: Boolean, storage: DesktopClientJournalStorage): ClientJournalOutcome<DesktopCohostJournalOwner> {
             currentCoroutineContext().ensureActive()
             check(!enroll || !recoverWrites)
-            if (kind == ClientJournalKind.ACTOR_ALLOCATIONS || !original.belongsTo(host) ||
+            if (kind !in setOf(ClientJournalKind.CREDENTIALS, ClientJournalKind.INTENTS) || !original.belongsTo(host) ||
                 (enroll && !original.permitsFirstEnrollment())) return ClientJournalOutcome.Unavailable
             val c = original.material.coordinates
             val actorId = if (kind == ClientJournalKind.INTENTS) c.firstActorId else null
@@ -304,8 +340,8 @@ internal class DesktopOriginalClientJournals private constructor(
 
 /**
  * Aggregate of the desktop Master service's privately delivered genuine cohost owners. All
- * employees reuse the original device credential owner; only their intent lease is new. Desktop
- * physical recording is unavailable: no employee physical participation is ever admitted.
+ * employees reuse the original device credential owner; only their intent lease is new. Employee
+ * physical participation is admitted only through the Master's own original physical gate.
  */
 internal class DesktopSameCohostClientJournals(
     private val host: SelfOwnedMasterHostOwner,
@@ -365,8 +401,17 @@ internal class DesktopSameCohostClientJournals(
             }
         }
 
-    /** Desktop has no native physical journal gate; physical participation stays unavailable. */
-    override suspend fun admitEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean = false
+    /** Only this exact privately delivered entry can bind physical participation. This never
+     * creates/reopens an owner on actor lookup, borrows the first actor or accepts a journal port. */
+    override suspend fun admitEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean = acquiring.withLock {
+        currentCoroutineContext().ensureActive()
+        if (closure.get() != null || !custody.belongsTo(originalClient) || !custody.belongsTo(host)) return@withLock false
+        val entry = employees.get().singleOrNull { it.custody === custody } ?: return@withLock false
+        if (!entry.current()) return@withLock false
+        val physical = originalClient.physicalRecordingGate() as? DesktopOriginalPhysicalJournalExecutionGate ?: return@withLock false
+        if (!physical.ownsStorage(storage)) return@withLock false
+        physical.admitEmployee(originalClient, entry.custody, entry.native) && closure.get() == null && entry.current()
+    }
 
     override suspend fun close(): Unit = withContext(NonCancellable) {
         val result = CompletableDeferred<Unit>()
@@ -393,13 +438,14 @@ internal class DesktopSameCohostClientJournals(
 
 /**
  * Desktop Master-service same-device original client: the shared [LocalCohostBranchRuntime] over the
- * service's own journal custody. Retail physical recording is explicitly unavailable on desktop.
+ * service's own journal custody and the genuine desktop retail physical connection.
  */
 public class DesktopLocalBranchRuntime private constructor(
     original: AndroidOriginalLocalClient,
     journals: DesktopSameCohostClientJournals,
+    retailPhysical: LocalRetailPhysicalBinding?,
     publications: com.ukkera.pos.security.LocalCompanyBusinessPublications?,
-) : LocalCohostBranchRuntime(original, journals, null, publications) {
+) : LocalCohostBranchRuntime(original, journals, retailPhysical, publications) {
     override fun toString(): String = "DesktopLocalBranchRuntime([REDACTED])"
 
     public companion object {
@@ -410,6 +456,10 @@ public class DesktopLocalBranchRuntime private constructor(
             val original = master.originalLocalClient()
             if (!original.belongsTo(host)) return null
             val publications = original.originalBusinessPublications()
+            // Physical enrollment never creates/replaces a missing client journal. A missing
+            // physical catalogue keeps only that capability unavailable; existing nonphysical
+            // login/reads still use their independently valid original journals.
+            val retailPhysical = DesktopOriginalRetailPhysicalConnection.acquire(host, original, action, storage)
             val acquired = DesktopOriginalClientJournals.acquire(host, original, action, storage) ?: return null
             var candidate: DesktopLocalBranchRuntime? = null
             var delivered = false
@@ -417,7 +467,7 @@ public class DesktopLocalBranchRuntime private constructor(
                 currentCoroutineContext().ensureActive()
                 check(original.isCurrent())
                 val journals = DesktopSameCohostClientJournals(host, original, acquired, storage)
-                val runtime = DesktopLocalBranchRuntime(original, journals, publications).also { candidate = it }
+                val runtime = DesktopLocalBranchRuntime(original, journals, retailPhysical, publications).also { candidate = it }
                 check(runtime.isCurrent())
                 return runtime.also { delivered = true }
             } finally {

@@ -18,6 +18,7 @@ public class AndroidEncryptedClientIntentJournal private constructor(
     private val file: ClientJournalFileCore,
 ) : LocalClientIntentJournal(LocalClientIdentity(file.deviceOwner.scope,
     requireNotNull(file.actorId), file.deviceOwner.deviceId)) {
+    override internal val readViews: LocalClientReadViewStore get() = file.readViews()
 
     override internal suspend fun find(operationId: OperationId): JournalRead<StoredClientIntentV1?> =
         readResult(file.owned {

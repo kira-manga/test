@@ -18,16 +18,24 @@ internal sealed interface StoredTender {
         val tenderId: DomainId, val policyRevision: Revision, val kind: String,
         val requiresTerminal: Boolean, val requiresReference: Boolean,
     ) : StoredTender
+    @Serializable @SerialName("EXCHANGE_OFFSET") data class ExchangeOffset(
+        val exchangeId: DomainId, val returnId: DomainId, val source: StoredTender,
+    ) : StoredTender
 
     fun restore(): Tender = when (this) {
         Cash -> Tender.Cash
         is External -> Tender.External(tenderId, policyRevision, enumValueOf<ExternalTenderKind>(kind), requiresTerminal, requiresReference)
+        is ExchangeOffset -> {
+            snapshotCheck(source !is ExchangeOffset)
+            Tender.ExchangeOffset(exchangeId, returnId, source.restore())
+        }
     }
 
     companion object {
         fun from(value: Tender): StoredTender = when (value) {
             Tender.Cash -> Cash
             is Tender.External -> External(value.tenderId, value.policyRevision, value.kind.name, value.requiresTerminal, value.requiresReference)
+            is Tender.ExchangeOffset -> ExchangeOffset(value.exchangeId, value.returnId, from(value.source))
         }
     }
 }
@@ -169,6 +177,9 @@ internal fun validateStoredPayment(payment: PaymentRecord) {
             snapshotCheck(external.attestation == payment.attestation)
             validateExternal(payment.tender, external)
         }
+        // Restricted exchange offset: no cash handled, no external evidence.
+        is Tender.ExchangeOffset -> snapshotCheck(payment.cashReceived == null && payment.changeGiven == null &&
+            payment.externalEvidence == null && payment.resolutionObservation == null && payment.foodResolutionObservation == null)
     }
 }
 
@@ -181,9 +192,11 @@ internal fun validateStoredPaymentAttempt(attempt: PaymentAttempt) {
         AttemptStatus.AWAITING_ATTESTATION -> snapshotCheck(observation == null && payment == null)
         AttemptStatus.OUTCOME_UNKNOWN -> snapshotCheck(observation is CollectionOutcome.Unknown && payment == null)
         AttemptStatus.NOT_PAID -> snapshotCheck(observation is CollectionOutcome.NotPaid && payment == null)
-        AttemptStatus.ATTESTED_PAID -> snapshotCheck(payment != null &&
-            (observation is CollectionOutcome.CashReceived || observation is CollectionOutcome.ExternalAttested))
+        AttemptStatus.ATTESTED_PAID -> snapshotCheck(payment != null && if (attempt.tender is Tender.ExchangeOffset)
+            observation == null && attempt.resolutionObservation == null && attempt.foodResolutionObservation == null
+            else observation is CollectionOutcome.CashReceived || observation is CollectionOutcome.ExternalAttested)
     }
+    if (attempt.tender is Tender.ExchangeOffset) snapshotCheck(attempt.status == AttemptStatus.ATTESTED_PAID)
     val evidence = when (observation) {
         null -> null
         is CollectionOutcome.Unknown -> observation.evidence

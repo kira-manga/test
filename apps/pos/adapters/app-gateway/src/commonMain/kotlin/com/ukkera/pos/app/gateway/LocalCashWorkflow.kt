@@ -126,6 +126,9 @@ internal suspend fun cashWorkflow(access: GatewayAccess, query: LocalWorkflowQue
         val base = listOf(idField(LocalField.SESSION_ID, session.id), revisionField(LocalField.EXPECTED_REVISION, session.revision))
         when (session.status) {
             "OPEN" -> {
+                val floats = safeFloatSessionContent(access, session.id, session.revision)
+                records += floats.records
+                forms += floats.forms
                 offer(LocalAction.CASH_BEGIN_CLOSE, base + revisionField(LocalField.EXPECTED_WORK_REVISION, own.workRevision), target = session.id)
                 offer(LocalAction.CASH_NON_SALE, base + listOf(newIdField(LocalField.SOURCE_ID), choiceField(LocalField.MODE, listOf(
                     LocalChoice(NonSaleCashKind.NON_SALE_PAY_IN.name, text("Non-sale pay-in", "إيداع غير بيعي")),
@@ -297,8 +300,10 @@ private suspend fun cashSafeWorkflow(access: GatewayAccess, id: DomainId): Local
             "لا يوجد سجل خزنة متاح لهذا المستخدم لهذا المعرف. لا يُكشف رصيد الآخرين أو يُعامل كصفر."))
     val safe = result as? LocalCashReadResultV1.Safe ?: unavailable()
     if (safe.custodyId != id || safe.custodianId != access.view.actorId) unavailable()
+    val floats = safeFloatSafeContent(access, id, safe.revision)
     return LocalWorkflowPage(LocalWorkflow.CASH, listOf(LocalRecord(LocalRecordReference(LocalRecordKind.SAFE, id, safe.revision), literal(safe.label),
-        values = listOf(recordValue(text("Recorded received", "المستلم المسجل"), moneyText(safe.received))), selectable = false)), emptyList(), readCut(read))
+        values = listOf(recordValue(text("Recorded received", "المستلم المسجل"), moneyText(safe.received))), selectable = false)) + floats.records,
+        floats.forms, readCut(read))
 }
 
 private suspend fun cashTransferWorkflow(access: GatewayAccess, id: DomainId): LocalWorkflowPage {

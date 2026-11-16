@@ -82,6 +82,17 @@ public class LocalStockRepository(
         return relational.open(view, active = false).requireOriginalProducer(original)
     }
 
+    /** Original-only setup settlement. The installed authority and complete iterative
+     * producer/resource traversal are mandatory even on the native historical loan.
+     * No current-stock view, shape-only pass or accepting replacement authority is used. */
+    internal suspend fun requireRetainedOpeningProducer(original: com.ukkera.pos.database.RetainedStreamedCommand) {
+        localStockCheck(original.identity.producer.command == LocalStockRelationalProfileV2.COMMAND)
+        val request = LocalStockRelationalCommandsV2.decode(original.normalized) as? LocalStockRelationalCommand.Receive
+            ?: unavailableProducer()
+        localStockCheck(request.opening && request.operationId == original.identity.producer.operationId)
+        relational.requireComplete(original)
+    }
+
     /** One original-only read scope on the SAME active core loan. Only normally closed
      * immutable producer proofs may be shared; every requested root and direct source is
      * still reopened and compared. This exposes no current-stock reader, activation bypass,

@@ -63,7 +63,7 @@ public class LocalFoodSelectionPreviewReadHandler private constructor(
         localSalesDecodePreview(input, LocalFoodRequestV1.serializer(), 16_384))
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS &&
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) &&
             LocalFoodCodecV1.decode(normalized) is LocalFoodRequestV1.Add
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {

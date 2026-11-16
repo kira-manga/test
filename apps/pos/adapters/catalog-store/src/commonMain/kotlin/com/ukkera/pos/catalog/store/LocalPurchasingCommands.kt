@@ -436,6 +436,13 @@ internal suspend fun requirePurchasingCrossAccounts(
     stock.purchaseReceiptFacts(command, receiptId, lineId)
 }
 
+/** Financial original disclosure uses only the authenticated native BEFORE projection. */
+internal suspend fun requirePurchasingCrossAccounts(reader: PurchasingReader, cut: PurchasingInvoiceCut,
+    stock: LocalStockRepository, sources: RuntimeHistoricalFinancialSources, view: CommandReadView,
+) = requirePurchasingCrossAccountFacts(reader, cut, sources.evidence.scope) { receiptId, lineId ->
+    stock.purchaseReceiptFacts(sources, view, receiptId, lineId)
+}
+
 private suspend fun requirePurchasingCrossAccountFacts(
     reader: PurchasingReader, cut: PurchasingInvoiceCut, scope: BranchScope,
     receiptFacts: suspend (DomainId, DomainId) -> LocalPurchaseReceiptFacts?,

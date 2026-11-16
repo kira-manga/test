@@ -44,7 +44,7 @@ internal class PurchasingDocumentReadHandler : MasterReadHandler {
         purchasingDocumentDecode(input, LocalPurchasingDocumentQueryV1.serializer()), LocalPurchasingDocumentQueryV1.serializer())
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile != LocalMasterRpcWorkflowProfile.INVOICE_MATCHING) return false
+        if (profile != LocalMasterRpcWorkflowProfile.INVOICE_MATCHING && profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS) return false
         val query = purchasingDocumentDecode(normalized, LocalPurchasingDocumentQueryV1.serializer())
         return query.documentId != null && query.pendingDocumentId == null && query.after == null && normalize(normalized) == normalized
     }

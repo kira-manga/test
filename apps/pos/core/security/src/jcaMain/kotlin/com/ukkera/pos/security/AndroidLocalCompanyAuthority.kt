@@ -781,20 +781,9 @@ internal class AndroidLocalCompanyAuthority(
                 PurchasingAuthorityRoleV1.COMPANY_HEAD, Revision(head.accountRevision), original.key(LocalCompanyHeadKeyRoleV1.POLICY).keyId,
                 PurchasingPublicPointV1(point))
             val root = PurchasingRootReferenceV1(original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId, PayloadDigest(fingerprint))
-            val delegation = PurchasingAuthorityDelegationV1(branch.company(), root, delegationId, delegationPublicationId, revision,
-                delegationPredecessor, PurchasingAuthorityIssuerV1.Root(root.keyId), subject, proposal.grants, proposal.validity)
-            val delegationBytes = LocalCompanyPolicyWireV1.encodeDelegationBody(delegation)
-            val record = try {
-                val policy = PurchasingPolicyPublicationV1(branch, root, policyId, publicationId, revision, proposal.expectedPredecessor,
-                    PurchasingDelegatedIssuerV1(subject.authorityId, subject.accountRevision, subject.keyId, delegationId,
-                        PurchasingPublicationReferenceV1(delegationPublicationId, revision, PayloadDigest(AndroidP256Primitives.hashHex(delegationBytes)))),
-                    proposal.validity, proposal.retentionClasses, proposal.rules)
-                val policyBytes = LocalCompanyPolicyWireV1.encodePolicyBody(policy)
-                try { LocalCompanyPolicyRecordV1(actionId, subject.accountRevision.value, head.credentialRevision,
-                    head.policyRevision, original.key(LocalCompanyHeadKeyRoleV1.POLICY).keyRevision,
-                    SelfOwnedOctetsV1(delegationBytes), SelfOwnedOctetsV1(policyBytes), LocalCompanyPolicyPhaseV1.PREPARED, null) }
-                finally { policyBytes.fill(0) }
-            } finally { delegationBytes.fill(0) }
+            val record = LocalCompanyPolicyPublicationCore.buildRecord(proposal, branch, root, subject, actionId, policyId,
+                publicationId, delegationId, delegationPublicationId, revision, delegationPredecessor, head.credentialRevision,
+                head.policyRevision, original.key(LocalCompanyHeadKeyRoleV1.POLICY).keyRevision)
             requireOriginalCompanyPolicyV1(record.policy(), record.delegation(), state.original, original, fingerprint)
             requirePolicyEnvelopeFits(record)
             record
@@ -829,15 +818,8 @@ internal class AndroidLocalCompanyAuthority(
         }
     }
 
-    /** Pure exact envelope sizing only; these zero signature bytes NEVER leave this function. */
-    private fun requirePolicyEnvelopeFits(record: LocalCompanyPolicyRecordV1) {
-        val placeholder = ByteArray(64)
-        try {
-            val shape = PurchasingSignedPolicyV1(record.policy(), PurchasingSignatureV1(placeholder),
-                PurchasingDelegationDocumentsV1(listOf(PurchasingSignedDelegationV1(record.delegation(), PurchasingSignatureV1(placeholder)))))
-            LocalCompanyPolicyWireV1.encodeSignedPolicy(shape).fill(0)
-        } finally { placeholder.fill(0) }
-    }
+    /** Pure exact envelope sizing only (shared with the desktop V2 issuer). */
+    private fun requirePolicyEnvelopeFits(record: LocalCompanyPolicyRecordV1) = LocalCompanyPolicyPublicationCore.requireEnvelopeFits(record)
 
     private fun foundingAction(original: LocalCompanyAuthorityBootstrapV1,
         enrollmentRetained: Boolean = false): LocalCompanyFoundingAction {
@@ -892,14 +874,11 @@ internal class AndroidLocalCompanyAuthority(
         if (now > Long.MAX_VALUE - SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         return now + SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS
     }
-    private fun digest(value: SelfOwnedOctetsV1): PayloadDigest {
-        val bytes = value.copyBytes()
-        return try { PayloadDigest(AndroidP256Primitives.hashHex(bytes)) } finally { bytes.fill(0) }
-    }
+    private fun digest(value: SelfOwnedOctetsV1): PayloadDigest = LocalCompanyPolicyPublicationCore.digest(value)
     private fun reference(id: DomainId, revision: Revision, body: SelfOwnedOctetsV1): PurchasingPublicationReferenceV1 =
-        PurchasingPublicationReferenceV1(id, revision, digest(body))
+        LocalCompanyPolicyPublicationCore.reference(id, revision, body)
     private fun samePublicationReference(a: PurchasingPublicationReferenceV1?, b: PurchasingPublicationReferenceV1?): Boolean =
-        if (a == null || b == null) a == null && b == null else a.publicationId == b.publicationId && a.revision == b.revision && a.bodyDigest == b.bodyDigest
+        LocalCompanyPolicyPublicationCore.samePublicationReference(a, b)
     private fun newIds(count: Int, reserved: Set<DomainId>): List<DomainId> {
         val ids = List(count) { AndroidP256Primitives.newId() }
         if (ids.distinct().size != count || ids.any { it in reserved }) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)

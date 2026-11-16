@@ -15,4 +15,10 @@ public object DesktopOriginalRpcClientOwner {
         originalPairingActionId: DomainId, lan: OrganizationLan, identityStore: () -> JvmSecureIdentityStore): LocalOriginalRpcClientOwner =
         LocalOriginalRpcClientOwner.retainExisting(applicationScope, target, originalPairingActionId, lan,
             { RpcPlatform.jvm(identityStore()) }, {})
+
+    /** Same durable OS identity; replacement remains gated by confirmed whole-role close. */
+    public fun retainRecoverableExisting(applicationScope: CoroutineScope, target: LocalOriginalPairingTarget,
+        originalPairingActionId: DomainId, lan: OrganizationLan, identityStore: () -> JvmSecureIdentityStore): LocalOriginalRpcClientOwner =
+        LocalOriginalRpcClientOwner.retainRecoverableExisting(applicationScope, target, originalPairingActionId, lan,
+            { RpcPlatform.jvm(identityStore()) }, {})
 }

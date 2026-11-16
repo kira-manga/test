@@ -131,6 +131,7 @@ internal class DesktopSeamV2Double(
     var companyBytes: ByteArray? = null
     var envelopeBytes: ByteArray? = null
     /** Retained V2 company ledger envelopes (tests may tamper/swap them). */
+    var businessPublicationBytes: ByteArray? = null
     val ledgerBytes = mutableMapOf<SelfOwnedCompanyLedgerKindV2, ByteArray>()
     var continuityBroken = false
 
@@ -160,6 +161,8 @@ internal class DesktopSeamV2Double(
             bootstrapBytes = SelfOwnedNativeProvisionerWireV2.encodeBootstrap(next.original)
         }
         override fun replaceRegistryEnvelope(bytes: ByteArray) { envelopeBytes = bytes.copyOf() }
+        override fun businessPublicationEnvelopeBytes(): ByteArray? = businessPublicationBytes?.copyOf()
+        override fun replaceBusinessPublicationEnvelope(bytes: ByteArray) { businessPublicationBytes = bytes.copyOf() }
         override fun companyLedgerEnvelopeBytes(kind: SelfOwnedCompanyLedgerKindV2): ByteArray? = ledgerBytes[kind]?.copyOf()
         override fun replaceCompanyLedgerEnvelope(kind: SelfOwnedCompanyLedgerKindV2, bytes: ByteArray) { ledgerBytes[kind] = bytes.copyOf() }
     }

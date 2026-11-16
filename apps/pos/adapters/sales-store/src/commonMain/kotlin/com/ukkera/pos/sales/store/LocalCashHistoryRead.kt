@@ -2,13 +2,16 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.*
 import com.ukkera.pos.sales.*
+import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.types.*
 import kotlinx.serialization.KSerializer
 
 /** Closed reader for the active core-created scan. All present dependencies require their
  * strictly earlier whole original to have joined; missing row + surviving claim is corruption. */
-internal class LocalCashHistoryRead(private val command: RuntimeHistoricalCommand) {
-    private val original = (command.original as RetainedOriginalV2.Legacy).evidence
+internal class LocalCashHistoryRead private constructor(private val command: CashHistoricalObservation) {
+    constructor(command: RuntimeHistoricalCommand) : this(CashScanObservation(command))
+    constructor(sources: RuntimeHistoricalFinancialSources, view: CommandReadView) : this(CashFinancialObservation(sources, view))
+    private val original = command.evidence
 
     private suspend fun required(key: AggregateKey, schema: String = LocalSalesStoreProfile.schema(key.kind)): StoredAggregate {
         val row = command.aggregateSource(key)?.row ?: error("cash.history.source_missing")
@@ -220,4 +223,28 @@ internal class LocalCashHistoryRead(private val command: RuntimeHistoricalComman
         }
         return true
     }
+}
+
+private sealed interface CashHistoricalObservation {
+    val scope: BranchScope
+    val evidence: RetainedCommandEvidence
+    suspend fun aggregateSource(key: AggregateKey): CashHistoricalRow?
+    suspend fun claim(key: ClaimKey): DomainId?
+}
+private class CashHistoricalRow(val row: StoredAggregate, val original: RetainedOriginalV2)
+private class CashScanObservation(private val command: RuntimeHistoricalCommand) : CashHistoricalObservation {
+    override val scope: BranchScope get() = command.scope
+    override val evidence: RetainedCommandEvidence get() = (command.original as RetainedOriginalV2.Legacy).evidence
+    override suspend fun aggregateSource(key: AggregateKey): CashHistoricalRow? = command.aggregateSource(key)?.let { CashHistoricalRow(it.row, it.original) }
+    override suspend fun claim(key: ClaimKey): DomainId? = command.claim(key)
+}
+private class CashFinancialObservation(private val sources: RuntimeHistoricalFinancialSources,
+    private val view: CommandReadView) : CashHistoricalObservation {
+    override val scope: BranchScope get() = sources.evidence.scope
+    override val evidence: RetainedCommandEvidence get() = sources.evidence
+    override suspend fun aggregateSource(key: AggregateKey): CashHistoricalRow? = sources.aggregateSource(key)?.let {
+        financialOriginalProof(view).requireOriginal(it.original)
+        CashHistoricalRow(it.row, it.original)
+    }
+    override suspend fun claim(key: ClaimKey): DomainId? = financialOriginalProof(view).claim(sources, key)
 }

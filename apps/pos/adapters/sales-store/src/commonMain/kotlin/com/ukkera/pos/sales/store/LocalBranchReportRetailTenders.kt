@@ -51,11 +51,15 @@ internal fun validRetailTenderBreakdownReportRow(row: LocalBranchReportRowV1, ob
         detail.payments.size !in 0..64 || detail.payments.map { it.paymentAttemptId }.distinct().size != detail.payments.size) return false
     fun validTender(tender: LocalTenderViewV1): Boolean =
         if (tender.kind == "CASH") tender == LocalTenderViewV1("CASH")
+        // Exchange offset (no cash, no policy): identified by its exchange; never correctable.
+        else if (tender.kind == "EXCHANGE_OFFSET") tender.tenderId != null && tender == LocalTenderViewV1("EXCHANGE_OFFSET", tender.tenderId)
         else ExternalTenderKind.entries.any { it.name == tender.kind } && tender.tenderId != null && tender.policyRevision != null
     for (payment in detail.payments) {
         if (payment.amount.currency != Currency.EGP || payment.amount.minor <= 0 ||
             !validTender(payment.originalClassification) || !validTender(payment.reconciledClassification) ||
             payment.correctionCount !in 0L..LocalPaymentCorrectionProfileV1.MAX_SCAN_ROWS.toLong()) return false
+        if ((payment.originalClassification.kind == "EXCHANGE_OFFSET" || payment.reconciledClassification.kind == "EXCHANGE_OFFSET") &&
+            (payment.correctionCount != 0L || payment.originalClassification != payment.reconciledClassification)) return false
         if (payment.correctionCount == 0L) {
             if (payment.latestCorrectionId != null || payment.latestCorrectionRecordedAt != null ||
                 payment.originalClassification != payment.reconciledClassification) return false

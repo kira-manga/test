@@ -16,6 +16,23 @@ import com.ukkera.pos.database.LocalMasterFoodTableAssignmentRpcProtocolV1
 import com.ukkera.pos.database.LocalMasterInvoiceCaptureRpcProtocolV1
 import com.ukkera.pos.database.LocalMasterInvoiceMatchingRpcProtocolV1
 import com.ukkera.pos.database.LocalMasterClientRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterLanBusinessRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterChangesRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterRpcChangesRequestV1
+import com.ukkera.pos.database.LocalMasterRpcChangesResponseV1
+import com.ukkera.pos.database.LocalMasterChangesReplyV1
+import com.ukkera.pos.database.LocalMasterChangesFailureV1
+import com.ukkera.pos.database.LocalMasterChangesBatchRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterChangesBatchReplyV1
+import com.ukkera.pos.database.LocalMasterRpcChangesBatchRequestV1
+import com.ukkera.pos.database.LocalMasterRpcChangesBatchResponseV1
+import com.ukkera.pos.database.LocalMasterChangesBindingV1
+import com.ukkera.pos.database.LocalMasterChangesRpcAccessResultV1
+import com.ukkera.pos.database.ReadRequest
+import com.ukkera.pos.database.LocalMasterRpcReadStage
+import com.ukkera.pos.database.LocalMasterRpcReadTrace
+import com.ukkera.pos.database.LocalMasterRpcReadTracePhase
+import com.ukkera.pos.database.reportLocalMasterRpcReadFailure
 import com.ukkera.pos.database.LocalMasterClientRpcErrorV1
 import com.ukkera.pos.database.LocalMasterRpcOwnedRequestV1
 import com.ukkera.pos.database.LocalMasterEmployeeCreationRpcProtocolV1
@@ -27,6 +44,9 @@ import com.ukkera.pos.database.LocalMasterRpcExecuteRequestV1
 import com.ukkera.pos.database.LocalMasterRpcExecuteResponseV1
 import com.ukkera.pos.database.LocalMasterRpcLookupRequestV1
 import com.ukkera.pos.database.LocalMasterRpcLookupResponseV1
+import com.ukkera.pos.database.LocalMasterPhysicalRpcProtocolV1
+import com.ukkera.pos.database.LocalMasterPhysicalRpcRequestV1
+import com.ukkera.pos.database.LocalMasterPhysicalRpcResponseV1
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.sha256
 import com.ukkera.pos.database.LocalMasterRpcRegisteredPeer
@@ -63,6 +83,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Self-session identity only; neither grants nor business/resource authority are returned. */
 @Serializable
@@ -110,8 +131,12 @@ internal fun currentIdentityProcedureWithCustody(custody: LocalRpcBusinessReques
 internal class LocalRpcMasterSessionIngress(
     private val registration: LocalMasterRpcPeerRegistration, cleanupScope: CoroutineScope,
     private val parent: Job,
+    private val ownsRegistration: Boolean = true,
 ) {
-    private val authenticationIngress = LocalRpcMasterAuthenticationIngress(registration, cleanupScope, parent)
+    private val authenticationIngress = LocalRpcMasterAuthenticationIngress(registration, cleanupScope, parent, ownsRegistration)
+    private val physicalOriginalIngress = LocalRpcMasterPhysicalOriginalIngress(registration, cleanupScope, parent)
+    private val physicalCalls = LocalRpcPhysicalCallScopes()
+    private val physicalReplies = LocalRpcPhysicalReplyRetention<com.ukkera.pos.database.LocalMasterPhysicalRpcDelivery>()
     private val businessRequestCustody = LocalRpcBusinessRequestCustody(::isRetired)
     private val currentIdentityRequestCustody = LocalRpcBusinessRequestCustody(::isRetired)
     private class Entry(
@@ -120,15 +145,20 @@ internal class LocalRpcMasterSessionIngress(
         val peer: LocalMasterRpcRegisteredPeer,
         val binding: LocalRpcIdentityBinding,
         val scope: RpcAuthorizationScope,
-        val businessAccess: LocalMasterRpcBusinessAccess? = null,
         val businessBearerDigest: PayloadDigest? = null,
         /** A bounded per-request employee-creation scope; never reused as an identity entry. */
         val creation: Boolean = false,
-    ) { val scoped: Boolean get() = businessAccess != null || creation }
+        val changesProfile: LocalMasterRpcWorkflowProfile? = null,
+        val operationProfile: LocalMasterRpcWorkflowProfile? = null,
+        val physicalInteractive: Boolean = false,
+    ) { val scoped: Boolean get() = operationProfile != null || creation || changesProfile != null || physicalInteractive }
+    private val changesFamilies = LocalRpcChangesFamilies()
+    private val businessOperations = LocalRpcBusinessOperations()
     private val gate = Mutex()
     private val retired = MutableStateFlow(false)
     private val entries = mutableListOf<Entry>()
-    private val authenticationGate = Mutex()
+    private val maintenanceGate = Mutex()
+    private val authenticationAdmissions = LocalRpcAuthenticationAdmission(MAXIMUM_CALLBACKS)
     private var callbacks = 0
     private val drained = CompletableDeferred<Unit>()
     private val failedCleanups = mutableListOf<LocalRpcIdentityBinding>()
@@ -138,7 +168,7 @@ internal class LocalRpcMasterSessionIngress(
         try {
             while (isActive && !isRetired()) {
                 delay(1000)
-                authenticationGate.withLock { discardExpiredEntries() }
+                maintenanceGate.withLock { discardExpiredEntries() }
                 businessRequestCustody.reap()
                 currentIdentityRequestCustody.reap()
             }
@@ -157,6 +187,9 @@ internal class LocalRpcMasterSessionIngress(
             authorize = ::authorize,
             handler = ::currentIdentity)
         authenticationIngress.install(configuration)
+        physicalOriginalIngress.install(configuration)
+        configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(LocalMasterPhysicalRpcProtocolV1.INTERACTIVE),
+            authenticate = ::authenticatePhysical, authorize = ::authorizePhysical, handler = ::physicalInteractive)
         installBusiness(configuration, LocalMasterRpcWorkflowProfile.SUPPLIERS,
             LocalMasterClientRpcProtocolV1.READ, LocalMasterClientRpcProtocolV1.EXECUTE, LocalMasterClientRpcProtocolV1.LOOKUP)
         installBusiness(configuration, LocalMasterRpcWorkflowProfile.WAREHOUSES,
@@ -190,6 +223,15 @@ internal class LocalRpcMasterSessionIngress(
         installBusiness(configuration, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
             LocalMasterInvoiceMatchingRpcProtocolV1.READ, LocalMasterInvoiceMatchingRpcProtocolV1.EXECUTE,
             LocalMasterInvoiceMatchingRpcProtocolV1.LOOKUP)
+        installBusiness(configuration, LocalMasterRpcWorkflowProfile.LAN_BUSINESS,
+            LocalMasterLanBusinessRpcProtocolV1.READ, LocalMasterLanBusinessRpcProtocolV1.EXECUTE,
+            LocalMasterLanBusinessRpcProtocolV1.LOOKUP)
+        configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT),
+            authenticate = { context, request -> authenticateChanges(context, request,
+                LocalMasterRpcWorkflowProfile.LAN_BUSINESS, request.selections,
+                LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name, request.bindingDigest) },
+            authorize = ::authorizeChanges,
+            handler = ::snapshotBatchBusiness)
         configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(LocalMasterEmployeeCreationRpcProtocolV1.PROCEDURE),
             authenticate = ::authenticateCreation, authorize = ::authorizeCreation, handler = ::employeeCreation)
     }
@@ -202,22 +244,38 @@ internal class LocalRpcMasterSessionIngress(
     ) {
         configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(read),
             authenticate = { context, request ->
-                val access = LocalMasterRpcBusinessAccess.Read(request.request, profile)
-                authenticateBusiness(context, request, access, resource(access))
-            }, authorize = ::authorizeBusiness,
+                authenticateChanges(context, request, profile, listOf(request.request), read.name,
+                    LocalMasterChangesRpcProtocolV1.selectorBinding(request.request))
+            }, authorize = ::authorizeChanges,
             handler = { context, request -> readBusiness(context, request, profile) })
         configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(execute),
             authenticate = { context, request ->
                 val access = LocalMasterRpcBusinessAccess.Execute(request.request, profile)
-                authenticateBusiness(context, request, access, resource(access))
+                authenticateBusiness(context, request, access)
             }, authorize = ::authorizeBusiness,
             handler = { context, request -> executeBusiness(context, request, profile) })
         configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(lookup),
             authenticate = { context, request ->
                 val access = LocalMasterRpcBusinessAccess.Lookup(request.identity, profile)
-                authenticateBusiness(context, request, access, resource(access))
+                authenticateBusiness(context, request, access)
             }, authorize = ::authorizeBusiness,
             handler = { context, request -> lookupBusiness(context, request, profile) })
+        installChanges(configuration, profile)
+    }
+
+    /** Each registration fixes both the profile and the meaning of its progress field. */
+    private fun installChanges(configuration: RpcHostConfiguration, profile: LocalMasterRpcWorkflowProfile) {
+        val procedures = LocalMasterChangesRpcProtocolV1.procedures(profile)
+        configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(procedures.SNAPSHOT),
+            authenticate = { context, request ->
+                authenticateChanges(context, request, profile, listOf(request.selection), procedures.SNAPSHOT.name, request.bindingDigest)
+            }, authorize = ::authorizeChanges,
+            handler = { context, request -> changesBusiness(context, request, profile, pull = false) })
+        configuration.registerScopedWithPhysicalSession(ownedBusinessProcedure(procedures.PULL),
+            authenticate = { context, request ->
+                authenticateChanges(context, request, profile, listOf(request.selection), procedures.PULL.name, request.bindingDigest)
+            }, authorize = ::authorizeChanges,
+            handler = { context, request -> changesBusiness(context, request, profile, pull = true) })
     }
 
     /** Deny before awaiting any owned cleanup or invoking SDK/native operations. */
@@ -226,8 +284,11 @@ internal class LocalRpcMasterSessionIngress(
         businessRequestCustody.deny()
         currentIdentityRequestCustody.deny()
         authenticationIngress.deny()
-        registration.retireAll()
+        physicalOriginalIngress.deny()
+        if (ownsRegistration) registration.retireAll()
     }
+
+    internal fun isCurrentForServing(): Boolean = !isRetired()
 
     // Cleanup has its own lifetime so it survives application cancellation. Callback
     // authority does not: consult the actual retained application Job synchronously.
@@ -237,14 +298,23 @@ internal class LocalRpcMasterSessionIngress(
         deny()
         // Denial alone cannot stop output whose authorization already returned true.
         // Await the exact SDK session cutoff before waiting for any owned callback.
-        registration.awaitSessionRevocation()
+        if (ownsRegistration) registration.awaitSessionRevocation()
+        else {
+            // Local denial prevents further entry publication. Every scope that could
+            // already have escaped an authenticate callback is now in this exact list.
+            // Candidates not published here are refused and revoked by their retained
+            // callback before drain can complete; they cannot authorize an SDK output.
+            val sessions = gate.withLock { entries.map { it.scope.session } }
+            sessions.forEach { registration.revokeApplicationSession(it) }
+        }
         cleanupJob.cancelAndJoin()
         authenticationIngress.closeOwned()
+        physicalOriginalIngress.closeOwned()
         gate.withLock { if (callbacks == 0) drained.complete(Unit) }
         // RPC closes links but does not join application callbacks. Drain our exact owned work.
         drained.await()
         currentIdentityRequestCustody.destroyAfterDrain()
-        authenticationGate.withLock {
+        maintenanceGate.withLock {
             val owned = gate.withLock { entries.map { it.binding } + failedCleanups }
             var firstFailure: Throwable? = null
             for (binding in owned) {
@@ -252,6 +322,10 @@ internal class LocalRpcMasterSessionIngress(
                 catch (failure: Throwable) { if (firstFailure == null) firstFailure = failure }
             }
             (firstFailure ?: cleanupFailure)?.let { throw it }
+            changesFamilies.removeAllRevoked()
+            businessOperations.removeAllRevoked()
+            physicalCalls.removeAllRevoked()
+            physicalReplies.removeAllRevoked()
             gate.withLock { entries.clear(); failedCleanups.clear() }
             businessRequestCustody.destroyAfterDrain()
         }
@@ -292,8 +366,27 @@ internal class LocalRpcMasterSessionIngress(
         for (entry in expired) {
             registration.revokeApplicationSession(entry.scope.session)
             entry.binding.releaseExpiredApplicationSession()
+            changesFamilies.removeRevoked(entry.scope.session)
+            businessOperations.removeRevoked(entry.scope.session)
+            physicalCalls.removeRevoked(entry.scope.session)
+            physicalReplies.removeRevoked(entry.scope.session)
             gate.withLock { entries.remove(entry) }
         }
+    }
+
+    /** Same physical callback admission remains serial; an unrelated Client must not
+     * spend its SDK authentication budget waiting for another connection's native reads.
+     * Callback slots bound all queued/active lanes, and close drains callbacks before cleanup. */
+    private suspend fun withAuthenticationAdmission(context: RpcAuthenticationContext,
+        work: suspend () -> RpcAuthorizationScope?): RpcAuthorizationScope? {
+        val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.AUTHENTICATION_QUEUE,
+            LocalMasterRpcReadStage.BASE_SCOPE)
+        return try {
+            authenticationAdmissions.withPhysical(context.physicalSession, { null }) {
+                trace.finish()
+                work()
+            }
+        } finally { trace.finish() }
     }
 
     private suspend fun authenticate(
@@ -305,54 +398,82 @@ internal class LocalRpcMasterSessionIngress(
             request.destroy()
             request.awaitCleanup()
             currentIdentityRequestCustody.reap()
-        }) { authenticationGate.withLock { authenticateOwned(context, request) } }
+        }) { withAuthenticationAdmission(context) { authenticateOwned(context, request) } }
     }
 
     private suspend fun authenticateOwned(
         context: RpcAuthenticationContext,
         request: LocalRpcCurrentIdentityRequest,
-        businessAccess: LocalMasterRpcBusinessAccess? = null,
         resource: String = RESOURCE,
         businessBearerDigest: PayloadDigest? = null,
         creation: Boolean = false,
+        physicalInteractive: Boolean = false,
     ): RpcAuthorizationScope? {
-        val scoped = businessAccess != null || creation
+        val scoped = creation || physicalInteractive
         var bearer: OpaqueCredential? = null
         var unretained: LocalRpcIdentityBinding? = null
         var unretainedScope: RpcAuthorizationScope? = null
+        val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.AUTHENTICATE, LocalMasterRpcReadStage.REQUEST_SHAPE)
+        var stage by trace
+        var accepted = false
+        var diagnosticFailure: Throwable? = null
         try {
             currentCoroutineContext().ensureActive()
             if (isRetired() || request.access.size != 52) return null
             discardExpiredEntries()
             // Capture before the first authoritative read. A security write or Host
             // retirement that intervenes must reject even a freshly checked login.
+            stage = LocalMasterRpcReadStage.SESSION_EPOCH
             val epoch = registration.captureSessionEpoch() ?: return null
+            stage = LocalMasterRpcReadStage.PEER
             val peer = registration.register(context.physicalSession) ?: return null
             currentCoroutineContext().ensureActive()
             if (isRetired() || !peer.isCurrent() || context.peer != context.physicalSession.peer) return null
             val credential = OpaqueCredential(request.access).also { bearer = it }
             val credentials = LocalGatewayCredentials(peer.nativePeer.connectionId, credential)
             // Never adopt an existing entry without first validating THIS request's bearer.
+            stage = LocalMasterRpcReadStage.PRINCIPAL
             val principal = registration.principals.authenticateLocal(credentials)
             currentCoroutineContext().ensureActive()
             if (principal == null || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
                 principal.scope != peer.nativePeer.scope || principal.deviceId != peer.nativePeer.deviceId) return null
-            val existing = gate.withLock {
-                if (isRetired() || scoped) null else entries.firstOrNull {
-                    !it.scoped && it.physical === context.physicalSession && it.sessionId == principal.sessionId
+            stage = LocalMasterRpcReadStage.BASE_SCOPE
+            val candidates = gate.withLock {
+                if (isRetired() || creation) emptyList() else entries.filter {
+                    (if (physicalInteractive) it.physicalInteractive else !it.scoped) &&
+                        it.physical === context.physicalSession && it.sessionId == principal.sessionId &&
+                        it.businessBearerDigest == sha256(request.access)
                 }
             }
+            // A native continuation needs a current resource through its owned operation.
+            // Keep the original finite SDK lifetime and leave previous replies/custody intact;
+            // a nearly expired pool entry cannot admit a new physical invocation. A fresh
+            // scope still passes all original principal, epoch and protected resource checks.
+            val existing = if (physicalInteractive) candidates.lastOrNull {
+                it.binding.canAdmitResource(RESOURCE_ADMISSION_BUDGET)
+            } else candidates.firstOrNull()
+            if (physicalInteractive && candidates.isNotEmpty() && existing == null)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.RESOURCE_RETENTION, null)
             if (existing != null) {
-                val scope = existing.binding.authorizationScope(context, RESOURCE) ?: return null
+                stage = LocalMasterRpcReadStage.SCOPED_BINDING
+                val scope = existing.binding.authorizationScope(context, resource) ?: return null
                 val original = existing.binding.originalIdentityFor(scope) ?: return null
-                if (!registration.retainApplicationSession(epoch, scope.session, original)) return null
-                return scope.takeIf { !isRetired() && peer.isCurrent() && it.session.isActive }
+                stage = LocalMasterRpcReadStage.RESOURCE_RETENTION
+                // This exact identity-only object has remained in the revocation census.
+                // Fresh original verification above plus its irreversible retained cut
+                // survives unrelated writes; it cannot admit a new or resource session.
+                if (physicalInteractive) {
+                    if (!registration.physicalInteractiveSessionCurrent(credentials, existing.peer, scope.session)) return null
+                } else if (!registration.existingIdentitySessionCurrent(scope.session, original)) return null
+                stage = LocalMasterRpcReadStage.FINAL_STATE
+                return scope.takeIf { !isRetired() && peer.isCurrent() && it.session.isActive }.also { accepted = it != null }
             }
             if (gate.withLock { isRetired() || entries.size + failedCleanups.size >= MAXIMUM_LOGINS }) return null
+            stage = LocalMasterRpcReadStage.ORIGINAL_BINDING
             val lifetime = registration.remainingSessionLifetimeMillis(credentials) ?: return null
             currentCoroutineContext().ensureActive()
             // Terminal SDK acknowledgement/record eviction does not revoke its application
-            // session. Bound per-request business custody independently of the employee's
+            // session. Bound per-request creation custody independently of the employee's
             // longer login, so the existing expiry cleanup can reclaim its finite census.
             // Expiry with an uncertain delivery preserves the durable original for fresh lookup.
             val bindingLifetime = if (!scoped) lifetime
@@ -370,41 +491,45 @@ internal class LocalRpcMasterSessionIngress(
             // No native read or binding cleanup runs under the database's short fence.
             // Retain before local publication so close/write owns this exact SDK session.
             val original = binding.originalIdentityFor(scope) ?: return null
-            if (creation) {
+            stage = LocalMasterRpcReadStage.RESOURCE_RETENTION
+            if (creation || physicalInteractive) {
                 // The creation service itself re-checks ADMINISTER and current state per call.
-                if (!registration.retainResourceApplicationSession(epoch, scope.session, original) ||
-                    registration.employeeCreationService() == null) return null
-            } else if (businessAccess != null) {
-                // Audience checks require the retained exact resource session. Refusal
-                // leaves this candidate owned by the existing revocation cleanup below.
-                if (!registration.retainResourceApplicationSession(epoch, scope.session, original) ||
-                    !registration.authorizeBusiness(credentials, businessAccess, requireRecovery = false,
-                        peer = peer, resourceSession = scope.session)) return null
+                if (!registration.retainResourceApplicationSession(epoch, scope.session, original)) return null
+                if (creation && registration.employeeCreationService() == null) return null
+                if (physicalInteractive && !registration.physicalInteractiveSessionCurrent(credentials, peer, scope.session)) return null
             } else if (!registration.retainApplicationSession(epoch, scope.session, original)) return null
+            stage = LocalMasterRpcReadStage.PUBLICATION
             val published = gate.withLock {
                 if (isRetired() || !peer.isCurrent() || !scope.session.isActive || entries.size >= MAXIMUM_LOGINS) null
                 else if (!scoped && entries.any { !it.scoped &&
-                        it.physical === context.physicalSession && it.sessionId == principal.sessionId }) null
+                        it.physical === context.physicalSession && it.sessionId == principal.sessionId &&
+                        it.businessBearerDigest == sha256(request.access) }) null
                 else scope.also {
-                    entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope, businessAccess,
-                        businessBearerDigest, creation))
+                    entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope,
+                        businessBearerDigest = businessBearerDigest ?: sha256(request.access), creation = creation,
+                        physicalInteractive = physicalInteractive))
                     unretained = null
                     unretainedScope = null
                 }
             }
+            accepted = published != null
             return published
         } catch (cancelled: CancellationException) {
+            diagnosticFailure = cancelled
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            diagnosticFailure = failure
             currentCoroutineContext().ensureActive()
             return null
         } finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, diagnosticFailure)
             bearer?.destroy()
             withContext(NonCancellable) {
                 unretained?.let { binding ->
                     try {
                         val candidate = unretainedScope
-                        if (candidate == null) binding.retire()
+                        if (candidate == null) binding.releaseUnpublishedApplicationSession()
                         else {
                             registration.revokeApplicationSession(candidate.session)
                             // This candidate never escaped into a Host entry. A rejected
@@ -421,9 +546,9 @@ internal class LocalRpcMasterSessionIngress(
         }
     }
 
-    private fun <Q : LocalMasterRpcOwnedRequestV1, R> ownedBusinessProcedure(
-        shared: RpcProcedure<Q, R, LocalMasterClientRpcErrorV1>,
-    ): RpcProcedure<Q, R, LocalMasterClientRpcErrorV1> = RpcProcedure(
+    private fun <Q : LocalMasterRpcOwnedRequestV1, R, E> ownedBusinessProcedure(
+        shared: RpcProcedure<Q, R, E>,
+    ): RpcProcedure<Q, R, E> = RpcProcedure(
         shared.name, shared.version,
         businessRequestCustody.serializer(shared.request, { it.isCleanupComplete },
             { it.destroyIfUnclaimed() }, { it.destroy() }, { it.awaitCleanup() }),
@@ -432,46 +557,445 @@ internal class LocalRpcMasterSessionIngress(
 
     private suspend fun authenticateBusiness(context: RpcAuthenticationContext,
         request: LocalMasterRpcOwnedRequestV1, access: LocalMasterRpcBusinessAccess,
-        resource: String): RpcAuthorizationScope? {
+        procedureNameOverride: String? = null, requestBinding: PayloadDigest? = null): RpcAuthorizationScope? {
         if (!request.claimForCallback()) return null
         return withCallback({ null }, cleanup = {
-            request.destroy()
-            request.awaitCleanup()
-            businessRequestCustody.reap()
-        }) {
-            val temporary = LocalRpcCurrentIdentityRequest(request.useBearer { it.copyOf() })
-            try {
-                authenticationGate.withLock {
-                    authenticateOwned(context, temporary, access, resource, request.useBearer(::sha256))
+            request.destroy(); request.awaitCleanup(); businessRequestCustody.reap()
+        }) { withAuthenticationAdmission(context) {
+            authenticateBusinessOwned(context, request, access, procedureNameOverride ?: procedureName(access), requestBinding)
+        } }
+    }
+
+    /** One genuine operation session per exact physical/principal/profile, with immutable call DATA. */
+    private suspend fun authenticateBusinessOwned(context: RpcAuthenticationContext, request: LocalMasterRpcOwnedRequestV1,
+        access: LocalMasterRpcBusinessAccess, procedure: String, requestBinding: PayloadDigest?): RpcAuthorizationScope? {
+        var bearer: OpaqueCredential? = null
+        var unretained: LocalRpcIdentityBinding? = null
+        var unretainedScope: RpcAuthorizationScope? = null
+        val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.AUTHENTICATE, LocalMasterRpcReadStage.REQUEST_SHAPE)
+        var stage by trace
+        var accepted = false
+        var diagnosticFailure: Throwable? = null
+        try {
+            currentCoroutineContext().ensureActive()
+            if (isRetired() || access is LocalMasterRpcBusinessAccess.Read) return null
+            discardExpiredEntries()
+            stage = LocalMasterRpcReadStage.SESSION_EPOCH
+            val epoch = registration.captureSessionEpoch() ?: return null
+            stage = LocalMasterRpcReadStage.PEER
+            val peer = registration.register(context.physicalSession) ?: return null
+            if (isRetired() || !peer.isCurrent() || context.peer != context.physicalSession.peer) return null
+            val credential = request.useBearer(::OpaqueCredential).also { bearer = it }
+            val credentials = LocalGatewayCredentials(peer.nativePeer.connectionId, credential)
+            stage = LocalMasterRpcReadStage.PRINCIPAL
+            val principal = registration.principals.authenticateLocal(credentials) ?: return null
+            if (principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE || principal.scope != peer.nativePeer.scope ||
+                principal.deviceId != peer.nativePeer.deviceId) return null
+            val bearerDigest = request.useBearer(::sha256)
+            val retained = gate.withLock { entries.lastOrNull {
+                it.operationProfile == access.profile && it.physical === context.physicalSession && it.peer === peer &&
+                    it.businessBearerDigest == bearerDigest && samePrincipal(it.binding.originalIdentityFor(it.scope), principal)
+            } }
+            val existing = if (retained?.binding?.canAdmitResource(RESOURCE_ADMISSION_BUDGET) == true) retained else null
+            val binding: LocalRpcIdentityBinding
+            val base: RpcAuthorizationScope
+            stage = LocalMasterRpcReadStage.BASE_SCOPE
+            if (existing != null) {
+                binding = existing.binding
+                base = (if (access.profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                    binding.retainedOperationScope(context, existing.scope, OPERATIONS_SESSION_RESOURCE)
+                else binding.authorizationScope(context, OPERATIONS_SESSION_RESOURCE)) ?: return null
+            } else {
+                if (gate.withLock { isRetired() || entries.size + failedCleanups.size >= MAXIMUM_LOGINS }) return null
+                val lifetime = registration.remainingSessionLifetimeMillis(credentials) ?: return null
+                binding = LocalRpcIdentityBinding.bindAssociated(context, credentials, registration.principals,
+                    LocalRpcAssociatedPhysicalPeerProvenance { physical ->
+                        if (isRetired() || physical !== peer.physicalSession || !peer.isCurrent()) null
+                        else LocalRpcAssociatedPhysicalPeer(peer.nativePeer, peer.association)
+                    }, minOf(lifetime, MAXIMUM_BUSINESS_SESSION_LIFETIME_MILLIS).milliseconds) ?: return null
+                unretained = binding
+                base = (if (access.profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                    binding.takeInitialAssociatedScope(context, OPERATIONS_SESSION_RESOURCE)
+                else binding.authorizationScope(context, OPERATIONS_SESSION_RESOURCE)) ?: return null
+                unretainedScope = base
+            }
+            stage = LocalMasterRpcReadStage.ORIGINAL_BINDING
+            val original = binding.originalIdentityFor(base) ?: return null
+            // New SDK resources require the captured epoch. Existing resources stay
+            // continuously fenced; the protected authorization below freshly rejoins
+            // this exact original identity and current operation requirements.
+            stage = LocalMasterRpcReadStage.RESOURCE_RETENTION
+            if (existing == null && !registration.retainResourceApplicationSession(epoch, base.session, original)) return null
+            stage = LocalMasterRpcReadStage.QUERY_AUTHORIZATION
+            val operationAdmission = access.profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS
+            val allowed = if (operationAdmission) registration.authorizeChangesBusiness(credentials, access.profile,
+                emptyList(), peer, base.session, capacityOnly = true).result == LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+            else registration.authorizeBusiness(credentials, access, requireRecovery = false,
+                peer = peer, resourceSession = base.session)
+            if (!allowed) return null
+            stage = LocalMasterRpcReadStage.SELECTOR_FAMILY
+            val operation = businessOperations.admit(base.session, access, procedure, requestBinding) ?: return null
+            stage = LocalMasterRpcReadStage.SCOPED_BINDING
+            // LAN operation admission binds the exact request and freshly checked original
+            // identity only. Execute, the protected handler and every data disclosure
+            // retain their full current typed authorization. This immutable label
+            // supplies neither operation authority nor result-disclosure permission.
+            val scope = (if (access.profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                binding.retainedOperationScope(context, base, operation.resource)
+            else binding.authorizationScope(context, operation.resource)) ?: return null
+            currentCoroutineContext().ensureActive()
+            stage = LocalMasterRpcReadStage.PUBLICATION
+            if (existing == null) {
+                val published = gate.withLock {
+                    if (isRetired() || !peer.isCurrent() || !scope.session.isActive || entries.size >= MAXIMUM_LOGINS) false
+                    else {
+                        entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope,
+                            businessBearerDigest = bearerDigest, operationProfile = access.profile))
+                        unretained = null; unretainedScope = null
+                        true
+                    }
                 }
-            } finally { temporary.destroy() }
+                if (!published) return null
+            }
+            stage = LocalMasterRpcReadStage.FINAL_STATE
+            return scope.takeIf { !isRetired() && peer.isCurrent() && it.session.isActive }.also { accepted = it != null }
+        } catch (cancelled: CancellationException) { diagnosticFailure = cancelled; throw cancelled }
+        catch (failure: Exception) { diagnosticFailure = failure; currentCoroutineContext().ensureActive(); return null }
+        finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, diagnosticFailure)
+            bearer?.destroy()
+            withContext(NonCancellable) {
+                unretained?.let { binding ->
+                    try {
+                        val scope = unretainedScope
+                        if (scope == null) binding.releaseUnpublishedApplicationSession() else {
+                            registration.revokeApplicationSession(scope.session)
+                            binding.releaseExpiredApplicationSession()
+                            businessOperations.removeRevoked(scope.session)
+                        }
+                    } catch (failure: Throwable) {
+                        gate.withLock { failedCleanups.add(binding) }
+                        throw failure
+                    }
+                }
+            }
         }
     }
 
-    private suspend fun authorizeBusiness(context: RpcAuthorizationContext): Boolean = withCallback({ false }) {
-        if (isRetired()) return@withCallback false
-        val entry = gate.withLock { entries.firstOrNull { it.scope.session === context.scope.session } }
-            ?: return@withCallback false
-        val access = entry.businessAccess ?: return@withCallback false
-        if (context.procedureName != procedureName(access) || context.procedureVersion != 1 ||
-            context.scope.resource != resource(access) || !entry.peer.isCurrent()) return@withCallback false
-        val credentials = entry.binding.currentOriginalCredentials(context) ?: return@withCallback false
+
+    private suspend fun authenticateChanges(context: RpcAuthenticationContext, request: LocalMasterRpcOwnedRequestV1,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>, procedure: String,
+        arguments: PayloadDigest): RpcAuthorizationScope? {
+        if (!request.claimForCallback()) return null
+        return withCallback({ null }, cleanup = {
+            request.destroy(); request.awaitCleanup(); businessRequestCustody.reap()
+        }) { withAuthenticationAdmission(context) { authenticateChangesOwned(context, request, profile, selections, procedure, arguments) } }
+    }
+
+    /** One genuine READ-only session per exact physical/principal/profile, not one per poll. */
+    private suspend fun authenticateChangesOwned(context: RpcAuthenticationContext, request: LocalMasterRpcOwnedRequestV1,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>, procedure: String,
+        arguments: PayloadDigest): RpcAuthorizationScope? {
+        var bearer: OpaqueCredential? = null
+        var unretained: LocalRpcIdentityBinding? = null
+        var unretainedScope: RpcAuthorizationScope? = null
+        val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.AUTHENTICATE, LocalMasterRpcReadStage.REQUEST_SHAPE)
+        var stage by trace
+        var accepted = false
+        var diagnosticFailure: Throwable? = null
         try {
-            val recovery = context.operation != RpcAuthorizationOperation.Invoke && context.operation != RpcAuthorizationOperation.Execute
-            val allowed = registration.authorizeBusiness(credentials, access, requireRecovery = recovery,
-                peer = entry.peer, resourceSession = entry.scope.session)
             currentCoroutineContext().ensureActive()
-            allowed && !isRetired() && entry.peer.isCurrent() && entry.scope.session.isActive
-        } finally { credentials.bearer.destroy() }
+            if (isRetired() || !changesProcedure(profile, procedure) || selections.size !in 1..32 ||
+                selections.sumOf { it.payload.size.toLong() } > 65_536) return null
+            discardExpiredEntries()
+            stage = LocalMasterRpcReadStage.SESSION_EPOCH
+            val epoch = registration.captureSessionEpoch() ?: return null
+            stage = LocalMasterRpcReadStage.PEER
+            val peer = registration.register(context.physicalSession) ?: return null
+            if (isRetired() || !peer.isCurrent() || context.peer != context.physicalSession.peer) return null
+            val credential = request.useBearer(::OpaqueCredential).also { bearer = it }
+            val credentials = LocalGatewayCredentials(peer.nativePeer.connectionId, credential)
+            stage = LocalMasterRpcReadStage.PRINCIPAL
+            val principal = registration.principals.authenticateLocal(credentials) ?: return null
+            if (principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE || principal.scope != peer.nativePeer.scope ||
+                principal.deviceId != peer.nativePeer.deviceId) return null
+            val bearerDigest = request.useBearer(::sha256)
+            val retained = gate.withLock { entries.lastOrNull {
+                it.changesProfile == profile && it.physical === context.physicalSession && it.peer === peer &&
+                    it.businessBearerDigest == bearerDigest && samePrincipal(it.binding.originalIdentityFor(it.scope), principal)
+            } }
+            val existing = if (retained?.binding?.canAdmitResource(RESOURCE_ADMISSION_BUDGET) == true) retained else null
+            val binding: LocalRpcIdentityBinding
+            val base: RpcAuthorizationScope
+            stage = LocalMasterRpcReadStage.BASE_SCOPE
+            if (existing != null) {
+                binding = existing.binding
+                base = binding.authorizationScope(context, CHANGES_SESSION_RESOURCE) ?: return null
+            } else {
+                if (gate.withLock { isRetired() || entries.size + failedCleanups.size >= MAXIMUM_LOGINS }) return null
+                val lifetime = registration.remainingSessionLifetimeMillis(credentials) ?: return null
+                binding = LocalRpcIdentityBinding.bindAssociated(context, credentials, registration.principals,
+                    LocalRpcAssociatedPhysicalPeerProvenance { physical ->
+                        if (isRetired() || physical !== peer.physicalSession || !peer.isCurrent()) null
+                        else LocalRpcAssociatedPhysicalPeer(peer.nativePeer, peer.association)
+                    }, minOf(lifetime, MAXIMUM_BUSINESS_SESSION_LIFETIME_MILLIS).milliseconds) ?: return null
+                unretained = binding
+                base = binding.authorizationScope(context, CHANGES_SESSION_RESOURCE) ?: return null
+                unretainedScope = base
+            }
+            stage = LocalMasterRpcReadStage.ORIGINAL_BINDING
+            val original = binding.originalIdentityFor(base) ?: return null
+            // Only a new resource enters the census under this captured epoch. Reused
+            // resources remain continuously fenced; authorizeChangesBusiness below rejoins
+            // the exact retained entry and freshly checks its original and protected query.
+            // Re-registering it would reject an unrelated write during verification even
+            // though that write preserved this actual resource. A retired entry cannot pass
+            // the registry's retained-resource check or be installed again here.
+            stage = LocalMasterRpcReadStage.RESOURCE_RETENTION
+            if (existing == null && !registration.retainResourceApplicationSession(epoch, base.session, original)) return null
+            stage = LocalMasterRpcReadStage.QUERY_AUTHORIZATION
+            val authorization = registration.authorizeChangesBusiness(credentials, profile, selections, peer, base.session)
+            val captured = when (authorization.result) {
+                LocalMasterChangesRpcAccessResultV1.DENIED, LocalMasterChangesRpcAccessResultV1.UNAVAILABLE -> return null
+                LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY -> LocalRpcChangesScope.capacity(procedure, arguments)
+                LocalMasterChangesRpcAccessResultV1.MALFORMED_ONLY -> LocalRpcChangesScope.malformed(procedure, arguments)
+                LocalMasterChangesRpcAccessResultV1.ALLOWED -> {
+                    stage = LocalMasterRpcReadStage.SELECTOR_FAMILY
+                    when (val admitted = changesFamilies.admit(base.session, selections)) {
+                    LocalRpcChangesFamilies.Admission.Conflict -> return null
+                    LocalRpcChangesFamilies.Admission.Capacity -> LocalRpcChangesScope.capacity(procedure, arguments)
+                    is LocalRpcChangesFamilies.Admission.Retained -> LocalRpcChangesScope.data(procedure,
+                        admitted.family.digest, arguments, checkNotNull(authorization.binding))
+                    }
+                }
+            }
+            // Malformed input is not query authority. Both immutable refusal modes must
+            // independently qualify the current protected original before any SDK scope escapes.
+            stage = LocalMasterRpcReadStage.REFUSAL_AUTHORIZATION
+            if (captured.noDataOnly && registration.authorizeChangesBusiness(credentials, profile, emptyList(), peer,
+                    base.session, capacityOnly = true).result != LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY) return null
+            stage = LocalMasterRpcReadStage.SCOPED_BINDING
+            // The same callback already verified this exact original binding and then
+            // freshly joined it to the retained resource session and protected query.
+            // Only immutable correlation metadata changes here. Invoke, Execute and every
+            // disclosure still run their own fresh original/query authorization below.
+            val scope = RpcAuthorizationScope(base.session, captured.resource)
+            currentCoroutineContext().ensureActive()
+            stage = LocalMasterRpcReadStage.PUBLICATION
+            if (existing == null) {
+                val published = gate.withLock {
+                    if (isRetired() || !peer.isCurrent() || !scope.session.isActive || entries.size >= MAXIMUM_LOGINS) false
+                    else {
+                        entries.add(Entry(context.physicalSession, principal.sessionId, peer, binding, scope,
+                            businessBearerDigest = bearerDigest, changesProfile = profile))
+                        unretained = null; unretainedScope = null
+                        true
+                    }
+                }
+                if (!published) return null
+            }
+            stage = LocalMasterRpcReadStage.FINAL_STATE
+            return scope.takeIf { !isRetired() && peer.isCurrent() && it.session.isActive }.also { accepted = it != null }
+        } catch (cancelled: CancellationException) { diagnosticFailure = cancelled; throw cancelled }
+        catch (failure: Exception) { diagnosticFailure = failure; currentCoroutineContext().ensureActive(); return null }
+        finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, diagnosticFailure)
+            bearer?.destroy()
+            withContext(NonCancellable) {
+                unretained?.let { binding ->
+                    try {
+                        val scope = unretainedScope
+                        if (scope == null) binding.releaseUnpublishedApplicationSession() else {
+                            registration.revokeApplicationSession(scope.session)
+                            binding.releaseExpiredApplicationSession()
+                            changesFamilies.removeRevoked(scope.session)
+                        }
+                    } catch (failure: Throwable) {
+                        gate.withLock { failedCleanups.add(binding) }
+                        throw failure
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun authorizeChanges(context: RpcAuthorizationContext): Boolean = withCallback({ false }) {
+        val phase = when (context.operation) {
+            RpcAuthorizationOperation.Invoke -> LocalMasterRpcReadTracePhase.AUTHORIZE_INVOKE
+            RpcAuthorizationOperation.Execute -> LocalMasterRpcReadTracePhase.AUTHORIZE_EXECUTE
+            RpcAuthorizationOperation.Success -> LocalMasterRpcReadTracePhase.AUTHORIZE_SUCCESS
+            else -> LocalMasterRpcReadTracePhase.AUTHORIZE_CONTROL
+        }
+        val trace = LocalMasterRpcReadTrace(phase, LocalMasterRpcReadStage.AUTHORIZATION_ENTRY)
+        var stage by trace
+        var accepted = false
+        try {
+            if (isRetired() || context.procedureVersion != 1) return@withCallback false
+            val entry = gate.withLock { entries.firstOrNull { it.scope.session === context.scope.session } }
+                ?: return@withCallback false
+            stage = LocalMasterRpcReadStage.AUTHORIZATION_SCOPE
+            val profile = entry.changesProfile ?: return@withCallback false
+            if (!changesProcedure(profile, context.procedureName)) return@withCallback false
+            val scope = LocalRpcChangesScope.parse(context.scope.resource, context.procedureName) ?: return@withCallback false
+            stage = LocalMasterRpcReadStage.AUTHORIZATION_CREDENTIALS
+            // The LAN protected endpoint freshly verifies the exact retained original
+            // after its actual queue wait. Avoid a second native employee verification
+            // before that SAME check; this loan is only DATA and cannot authorize output.
+            val credentials = (if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                entry.binding.retainedCredentialsForProtectedOriginalCheck(context)
+            else entry.binding.currentOriginalCredentials(context)) ?: return@withCallback false
+            try {
+                // SDK ApplicationError/Failure/Receipt cannot carry a business projection. A
+                // no-data scope can never authorize Success, regardless of later query eligibility.
+                val noData = context.operation == RpcAuthorizationOperation.ApplicationError ||
+                    context.operation == RpcAuthorizationOperation.Failure || context.operation == RpcAuthorizationOperation.Receipt ||
+                    context.operation == RpcAuthorizationOperation.Cancel
+                stage = LocalMasterRpcReadStage.AUTHORIZATION_CURRENT
+                val admission = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                    context.operation in setOf(RpcAuthorizationOperation.Invoke, RpcAuthorizationOperation.Execute)
+                val allowed = if (noData || scope.noDataOnly || admission) {
+                    context.operation != RpcAuthorizationOperation.Success && registration.authorizeChangesBusiness(
+                            credentials, profile, emptyList(), entry.peer, entry.scope.session, capacityOnly = true).result ==
+                            LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                } else {
+                    val family = changesFamilies.capture(entry.scope.session, checkNotNull(scope.family)) ?: return@withCallback false
+                    val current = registration.authorizeChangesBusiness(credentials, profile, family.selections, entry.peer, entry.scope.session)
+                    stage = LocalMasterRpcReadStage.AUTHORIZATION_BINDING
+                    current.result == LocalMasterChangesRpcAccessResultV1.ALLOWED &&
+                        (context.operation != RpcAuthorizationOperation.Success || current.binding == scope.projection) &&
+                        changesFamilies.current(entry.scope.session, family)
+                }
+                currentCoroutineContext().ensureActive()
+                accepted = allowed && !isRetired() && entry.peer.isCurrent() && entry.scope.session.isActive
+                accepted
+            } finally { credentials.bearer.destroy() }
+
+        } finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, null)
+        }
+    }
+
+    private fun changesProcedure(profile: LocalMasterRpcWorkflowProfile, name: String): Boolean {
+        val procedures = LocalMasterChangesRpcProtocolV1.procedures(profile)
+        return name == readProcedureName(profile) || name == procedures.SNAPSHOT.name || name == procedures.PULL.name ||
+            profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && name == LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name
+    }
+
+    private fun readProcedureName(profile: LocalMasterRpcWorkflowProfile): String = when (profile) {
+        LocalMasterRpcWorkflowProfile.SUPPLIERS -> LocalMasterClientRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.WAREHOUSES -> LocalMasterWarehouseRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.REPORTS -> LocalMasterReportRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS -> LocalMasterStockTransferRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.KITCHEN -> LocalMasterKitchenRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.RETAIL_ORDERS -> LocalMasterRetailOrderRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS -> LocalMasterPaymentCorrectionRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS -> LocalMasterCustomerReceiptRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.FOOD_CHECKS -> LocalMasterFoodCheckRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL -> LocalMasterFoodCashFinancialRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> LocalMasterFoodTableAssignmentRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> LocalMasterInvoiceCaptureRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalMasterInvoiceMatchingRpcProtocolV1.READ.name
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> LocalMasterLanBusinessRpcProtocolV1.READ.name
+    }
+
+    private fun samePrincipal(left: com.ukkera.pos.security.LocalEmployeePrincipal?,
+        right: com.ukkera.pos.security.LocalEmployeePrincipal): Boolean = left != null &&
+        left.scope == right.scope && left.actorId == right.actorId && left.deviceId == right.deviceId &&
+        left.sessionId == right.sessionId && left.sessionGeneration == right.sessionGeneration &&
+        left.admissionRevision == right.admissionRevision && left.authenticationPurpose == right.authenticationPurpose
+
+    private suspend fun authorizeBusiness(context: RpcAuthorizationContext): Boolean = withCallback({ false }) {
+        val phase = when (context.operation) {
+            RpcAuthorizationOperation.Invoke -> LocalMasterRpcReadTracePhase.AUTHORIZE_INVOKE
+            RpcAuthorizationOperation.Execute -> LocalMasterRpcReadTracePhase.AUTHORIZE_EXECUTE
+            RpcAuthorizationOperation.Success -> LocalMasterRpcReadTracePhase.AUTHORIZE_SUCCESS
+            else -> LocalMasterRpcReadTracePhase.AUTHORIZE_CONTROL
+        }
+        val trace = LocalMasterRpcReadTrace(phase, LocalMasterRpcReadStage.AUTHORIZATION_ENTRY)
+        var stage by trace
+        var accepted = false
+        try {
+            if (isRetired()) return@withCallback false
+            val entry = gate.withLock { entries.firstOrNull { it.scope.session === context.scope.session } }
+                ?: return@withCallback false
+            stage = LocalMasterRpcReadStage.AUTHORIZATION_SCOPE
+            val profile = entry.operationProfile ?: return@withCallback false
+            val operation = businessOperations.capture(entry.scope.session, context.scope.resource) ?: return@withCallback false
+            val access = operation.access
+            if (access.profile != profile || context.procedureName != operation.procedure || context.procedureVersion != 1 ||
+                !entry.peer.isCurrent()) return@withCallback false
+            stage = LocalMasterRpcReadStage.AUTHORIZATION_CREDENTIALS
+            val credentials = (if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                entry.binding.retainedCredentialsForProtectedOriginalCheck(context)
+            else entry.binding.currentOriginalCredentials(context)) ?: return@withCallback false
+            try {
+                val recovery = context.operation != RpcAuthorizationOperation.Invoke && context.operation != RpcAuthorizationOperation.Execute
+                stage = LocalMasterRpcReadStage.AUTHORIZATION_CURRENT
+                // These exact SDK controls contain no business result and cannot execute a
+                // command. Rejoin the SAME current identity/resource after the queue wait,
+                // as the changes route already does for bodyless controls. Revalidating a
+                // complete stock/financial producer graph for a Receipt delays unrelated
+                // requests behind acknowledgement work. Success, status, duplicates and all
+                // execution still require their complete current typed authorization below.
+                val bodylessControl = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                    (context.operation == RpcAuthorizationOperation.Receipt || context.operation == RpcAuthorizationOperation.Cancel)
+                val operationAdmission = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                    context.operation in setOf(RpcAuthorizationOperation.Invoke, RpcAuthorizationOperation.Execute)
+                // These SDK stages admit the exact request only. The handler performs the
+                // complete typed check before entering the protected kernel. Every result,
+                // status and duplicate release still requires its fresh complete proof.
+                val allowed = if (bodylessControl || operationAdmission) registration.authorizeChangesBusiness(credentials, profile,
+                    emptyList(), entry.peer, entry.scope.session, capacityOnly = true).result ==
+                    LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                else registration.authorizeBusiness(credentials, access, requireRecovery = recovery,
+                    peer = entry.peer, resourceSession = entry.scope.session)
+                currentCoroutineContext().ensureActive()
+                stage = LocalMasterRpcReadStage.AUTHORIZATION_FINAL
+                // Preserve the original short-circuit order; failed-cut observations contain
+                // static source locations only, never original/result/credential DATA.
+                if (!allowed) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.AUTHORIZATION_CURRENT, IllegalStateException())
+                    return@withCallback false
+                }
+                if (!businessOperations.current(entry.scope.session, operation)) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.AUTHORIZATION_FAMILY, IllegalStateException())
+                    return@withCallback false
+                }
+                if (isRetired()) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.FINAL_STATE, IllegalStateException())
+                    return@withCallback false
+                }
+                if (!entry.peer.isCurrent()) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PEER, IllegalStateException())
+                    return@withCallback false
+                }
+                if (!entry.scope.session.isActive) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.AUTHORIZATION_SCOPE, IllegalStateException())
+                    return@withCallback false
+                }
+                accepted = true
+                true
+            } finally { credentials.bearer.destroy() }
+        } finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, null)
+        }
     }
 
     private suspend fun readBusiness(context: RpcCallContext, request: LocalMasterRpcReadRequestV1,
         profile: LocalMasterRpcWorkflowProfile):
         RpcReply<LocalMasterRpcReadResponseV1, LocalMasterClientRpcErrorV1> =
-        businessReply(context, request, LocalMasterRpcBusinessAccess.Read(request.request, profile),
-            { credentials, peer, resourceSession ->
-                registration.readBusiness(credentials, request.request, profile, peer, resourceSession)
-            }, LocalMasterClientRpcProtocolV1::captureRead)
+        changesReply(context, request, profile, listOf(request.request), readProcedureName(profile),
+            LocalMasterChangesRpcProtocolV1.selectorBinding(request.request),
+            { credentials, peer, session -> registration.snapshotBusiness(credentials, profile, request.request, null, peer, session) },
+            { (it as? LocalMasterChangesReplyV1.Unavailable)?.reason },
+            { (it as? LocalMasterChangesReplyV1.Snapshot)?.let { snapshot -> listOf(snapshot.cursor) }.orEmpty() },
+            { actor, result -> LocalMasterClientRpcProtocolV1.captureRead(actor,
+                checkNotNull(result as? LocalMasterChangesReplyV1.Snapshot).data) },
+            { LocalMasterClientRpcErrorV1.UNAVAILABLE })
 
     private suspend fun executeBusiness(context: RpcCallContext, request: LocalMasterRpcExecuteRequestV1,
         profile: LocalMasterRpcWorkflowProfile):
@@ -489,10 +1013,116 @@ internal class LocalRpcMasterSessionIngress(
                 registration.lookupBusiness(credentials, request.identity, profile, peer, resourceSession)
             }, LocalMasterClientRpcProtocolV1::captureLookup)
 
+    private suspend fun changesBusiness(context: RpcCallContext, request: LocalMasterRpcChangesRequestV1,
+        profile: LocalMasterRpcWorkflowProfile, pull: Boolean):
+        RpcReply<LocalMasterRpcChangesResponseV1, LocalMasterChangesFailureV1> {
+        val procedures = LocalMasterChangesRpcProtocolV1.procedures(profile)
+        return changesReply(context, request, profile, listOf(request.selection),
+            if (pull) procedures.PULL.name else procedures.SNAPSHOT.name, request.bindingDigest,
+            { credentials, peer, resourceSession ->
+                if (!pull) registration.snapshotBusiness(credentials, profile, request.selection, request.cursor, peer, resourceSession)
+                else request.cursor?.let { cursor ->
+                    registration.pullBusiness(credentials, profile, request.selection, cursor, peer, resourceSession)
+                } ?: LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+            }, { (it as? LocalMasterChangesReplyV1.Unavailable)?.reason }, {
+                when (it) {
+                    is LocalMasterChangesReplyV1.Snapshot -> listOf(it.cursor)
+                    is LocalMasterChangesReplyV1.Unchanged -> listOf(it.cursor)
+                    is LocalMasterChangesReplyV1.Unavailable -> emptyList()
+                }
+            }, LocalMasterChangesRpcProtocolV1::capture, { it })
+    }
+
+    private suspend fun snapshotBatchBusiness(context: RpcCallContext, request: LocalMasterRpcChangesBatchRequestV1):
+        RpcReply<LocalMasterRpcChangesBatchResponseV1, LocalMasterChangesFailureV1> =
+        changesReply(context, request, LocalMasterRpcWorkflowProfile.LAN_BUSINESS, request.selections,
+            LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name, request.bindingDigest,
+            { credentials, peer, session -> registration.snapshotBatchBusiness(credentials,
+                LocalMasterRpcWorkflowProfile.LAN_BUSINESS, request.selections, peer, session) },
+            { (it as? LocalMasterChangesBatchReplyV1.Unavailable)?.reason },
+            { (it as? LocalMasterChangesBatchReplyV1.Snapshot)?.snapshots?.map { snapshot -> snapshot.cursor }.orEmpty() },
+            LocalMasterChangesBatchRpcProtocolV1::capture, { it })
+
+    private suspend fun <T, R, E> changesReply(context: RpcCallContext, request: LocalMasterRpcOwnedRequestV1,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>, procedure: String, arguments: PayloadDigest,
+        call: suspend (LocalGatewayCredentials, LocalMasterRpcRegisteredPeer, RpcApplicationSession) -> T,
+        failure: (T) -> LocalMasterChangesFailureV1?,
+        cursors: (T) -> List<com.ukkera.pos.database.LocalMasterChangeCursorV1>,
+        capture: (DomainId, T) -> R,
+        error: (LocalMasterChangesFailureV1) -> E): RpcReply<R, E> {
+        fun unavailable(reason: LocalMasterChangesFailureV1 = LocalMasterChangesFailureV1.STORAGE_UNCERTAIN):
+            RpcReply<R, E> = RpcReply.ApplicationError(error(reason))
+        if (!request.claimForCallback()) return unavailable()
+        return withCallback({ unavailable() }, cleanup = {
+            request.destroy(); request.awaitCleanup(); businessRequestCustody.reap()
+        }) {
+            val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.HANDLER, LocalMasterRpcReadStage.AUTHORIZATION_ENTRY)
+            var stage by trace
+            try {
+                val entry = gate.withLock {
+                    if (isRetired()) null else entries.firstOrNull { it.scope.session === context.authorizationScope?.session }
+                } ?: return@withCallback unavailable()
+                if (entry.changesProfile != profile || entry.businessBearerDigest != request.useBearer(::sha256) ||
+                    !entry.peer.isCurrent()) return@withCallback unavailable()
+                val scoped = LocalRpcChangesScope.parse(context.authorizationScope?.resource ?: "", procedure)
+                    ?: return@withCallback unavailable()
+                if (scoped.arguments != arguments) return@withCallback unavailable()
+                val original = entry.binding.originalIdentityFor(entry.scope) ?: return@withCallback unavailable()
+                stage = LocalMasterRpcReadStage.AUTHORIZATION_CREDENTIALS
+                val credentials = (if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                    procedure == LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name)
+                    entry.binding.retainedCredentialsForProtectedOriginalCheck(context)
+                else entry.binding.currentOriginalCredentials(context)) ?: return@withCallback unavailable()
+                try {
+                    if (scoped.noDataOnly) {
+                        // This branch has no callback capable of capturing DATA or a cursor.
+                        val identity = registration.authorizeChangesBusiness(credentials, profile, emptyList(), entry.peer,
+                            entry.scope.session, capacityOnly = true)
+                        return@withCallback unavailable(if (identity.result == LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY)
+                            checkNotNull(scoped.refusal) else LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+                    }
+                    val family = changesFamilies.capture(entry.scope.session, checkNotNull(scoped.family))
+                        ?: return@withCallback unavailable(LocalMasterChangesFailureV1.CURSOR_EXPIRED)
+                    if (family.selections.size != selections.size ||
+                        family.selections.indices.any { !sameSelection(family.selections[it], selections[it]) })
+                        return@withCallback unavailable()
+                    // The actual call performs the protected query/transaction authorization
+                    // and returns its coherent cursor. Compare that result to the immutable
+                    // scope below, then freshly authorize disclosure; a separate preview
+                    // projection before this same read adds no authority or usable result.
+                    stage = LocalMasterRpcReadStage.QUERY_EXECUTION
+                    val result = call(credentials, entry.peer, entry.scope.session)
+                    failure(result)?.let { return@withCallback unavailable(it) }
+                    if (LocalMasterChangesBindingV1.digest(cursors(result)) != scoped.projection)
+                        return@withCallback unavailable(LocalMasterChangesFailureV1.CURSOR_EXPIRED)
+                    stage = LocalMasterRpcReadStage.AUTHORIZATION_CURRENT
+                    // The actual read above already checked its complete current typed query
+                    // and exact coherent cursor. A private return carries no data to the peer;
+                    // SDK Success/Status/Duplicate still reproduce the full projection binding
+                    // immediately before any actual disclosure, including cached output.
+                    val current = if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                        registration.authorizeChangesBusiness(credentials, profile, emptyList(), entry.peer,
+                            entry.scope.session, capacityOnly = true).result == LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                    else registration.authorizeChangesBusiness(credentials, profile, family.selections, entry.peer,
+                        entry.scope.session).let { it.result == LocalMasterChangesRpcAccessResultV1.ALLOWED && it.binding == scoped.projection }
+                    currentCoroutineContext().ensureActive()
+                    if (!current ||
+                        !changesFamilies.current(entry.scope.session, family) || isRetired() || !entry.peer.isCurrent() || !entry.scope.session.isActive)
+                        return@withCallback unavailable(LocalMasterChangesFailureV1.CURSOR_EXPIRED)
+                    stage = LocalMasterRpcReadStage.FINAL_STATE
+                    RpcReply.Success(capture(original.actorId, result))
+                } finally { credentials.bearer.destroy() }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { currentCoroutineContext().ensureActive(); unavailable() }
+            finally { trace.finish() }
+        }
+    }
+
     private suspend fun <T, R> businessReply(context: RpcCallContext, request: LocalMasterRpcOwnedRequestV1,
         received: LocalMasterRpcBusinessAccess,
         call: suspend (LocalGatewayCredentials, LocalMasterRpcRegisteredPeer, RpcApplicationSession) -> T,
-        capture: (DomainId, T) -> R): RpcReply<R, LocalMasterClientRpcErrorV1> {
+        capture: (DomainId, T) -> R,
+        procedureNameOverride: String? = null, requestBinding: PayloadDigest? = null): RpcReply<R, LocalMasterClientRpcErrorV1> {
         if (!request.claimForCallback()) return businessUnavailable()
         return withCallback({ businessUnavailable() }, cleanup = {
             request.destroy()
@@ -503,10 +1133,15 @@ internal class LocalRpcMasterSessionIngress(
                 val entry = gate.withLock {
                     if (isRetired()) null else entries.firstOrNull { it.scope.session === context.authorizationScope?.session }
                 } ?: return@withCallback businessUnavailable()
-                val original = entry.businessAccess ?: return@withCallback businessUnavailable()
+                val profile = entry.operationProfile ?: return@withCallback businessUnavailable()
+                val operation = businessOperations.capture(entry.scope.session,
+                    context.authorizationScope?.resource ?: return@withCallback businessUnavailable())
+                    ?: return@withCallback businessUnavailable()
+                val original = operation.access
                 // The fixed typed handler registration selects the procedure. RpcCallContext
                 // carries the SDK-authorized scope, not procedure name/version metadata.
-                if (!sameAccess(original, received) || context.authorizationScope?.resource != resource(original) ||
+                if (received.profile != profile || operation.procedure != (procedureNameOverride ?: procedureName(received)) ||
+                    operation.requestBinding != requestBinding || !sameBusinessAccess(original, received) ||
                     entry.businessBearerDigest != request.useBearer(::sha256) || !entry.peer.isCurrent())
                     return@withCallback businessUnavailable()
                 val principal = entry.binding.originalIdentityFor(entry.scope) ?: return@withCallback businessUnavailable()
@@ -519,8 +1154,16 @@ internal class LocalRpcMasterSessionIngress(
                     currentCoroutineContext().ensureActive()
                     // The protected operation has settled. Revocation does not roll it back;
                     // a denied/stale output remains undisclosed and recoverable by its original.
-                    if (!registration.authorizeBusiness(credentials, original, requireRecovery = true,
-                            peer = entry.peer, resourceSession = entry.scope.session) ||
+                    val current = if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                        registration.authorizeChangesBusiness(credentials, profile, emptyList(), entry.peer,
+                            entry.scope.session, capacityOnly = true).result == LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                    else registration.authorizeBusiness(credentials, original, requireRecovery = true,
+                        peer = entry.peer, resourceSession = entry.scope.session)
+                    // This private handler return is not disclosure. The official scoped SDK
+                    // freshly checks the complete typed result before both retention/send and
+                    // replay. Keep this original fenced without repeating that graph here.
+                    if (!current ||
+                        !businessOperations.current(entry.scope.session, operation) ||
                         isRetired() || !entry.peer.isCurrent() || !entry.scope.session.isActive)
                         return@withCallback businessUnavailable()
                     RpcReply.Success(capture(principal.actorId, result))
@@ -540,10 +1183,87 @@ internal class LocalRpcMasterSessionIngress(
         }) {
             val temporary = LocalRpcCurrentIdentityRequest(request.useBearer { it.copyOf() })
             try {
-                authenticationGate.withLock {
-                    authenticateOwned(context, temporary, null, CREATION_RESOURCE, request.useBearer(::sha256), creation = true)
+                withAuthenticationAdmission(context) {
+                    authenticateOwned(context, temporary, CREATION_RESOURCE, request.useBearer(::sha256), creation = true)
                 }
             } finally { temporary.destroy() }
+        }
+    }
+
+    /** Identity/resource admission only. Complete physical action authorization and native
+     * preparation remain inside the genuine protected endpoint for each protocol stage. */
+    private suspend fun authenticatePhysical(context: RpcAuthenticationContext,
+        request: LocalMasterPhysicalRpcRequestV1): RpcAuthorizationScope? {
+        if (!request.claimForCallback()) return null
+        return withCallback({ null }, cleanup = {
+            request.destroy(); request.awaitCleanup(); businessRequestCustody.reap()
+        }) { withAuthenticationAdmission(context) {
+            val temporary = LocalRpcCurrentIdentityRequest(request.useBearer { it.copyOf() })
+            try {
+                val base = authenticateOwned(context, temporary, PHYSICAL_RESOURCE,
+                    request.useBearer(::sha256), physicalInteractive = true) ?: return@withAuthenticationAdmission null
+                val entry = gate.withLock { entries.firstOrNull {
+                    it.physicalInteractive && it.scope.session === base.session && it.physical === context.physicalSession
+                } } ?: return@withAuthenticationAdmission null
+                val call = physicalCalls.admit(base.session, request.bindingDigest) ?: return@withAuthenticationAdmission null
+                // The protected exact resource check above has settled. This is immutable
+                // request DATA only; Invoke/Execute/disclosure perform their current checks.
+                entry.binding.retainedOperationScope(context, base, call.resource)
+            } finally { temporary.destroy() }
+        } }
+    }
+
+    private suspend fun authorizePhysical(context: RpcAuthorizationContext): Boolean = withCallback({ false }) {
+        if (isRetired() || context.procedureName != LocalMasterPhysicalRpcProtocolV1.INTERACTIVE.name ||
+            context.procedureVersion != LocalMasterPhysicalRpcProtocolV1.INTERACTIVE.version) return@withCallback false
+        val entry = gate.withLock { entries.firstOrNull {
+            it.physicalInteractive && it.scope.session === context.scope.session
+        } } ?: return@withCallback false
+        val call = physicalCalls.capture(entry.scope.session, context.scope.resource) ?: return@withCallback false
+        val credentials = entry.binding.retainedCredentialsForProtectedOriginalCheck(context) ?: return@withCallback false
+        try {
+            val allowed = registration.physicalInteractiveSessionCurrent(credentials, entry.peer, entry.scope.session)
+            currentCoroutineContext().ensureActive()
+            if (!allowed || isRetired() || !entry.peer.isCurrent() || !physicalCalls.current(entry.scope.session, call))
+                return@withCallback false
+            // A cached or duplicate physical response stays tied to this exact SDK request,
+            // never whichever later same-body poll most recently reached the handler.
+            if (context.operation == RpcAuthorizationOperation.Success || context.operation == RpcAuthorizationOperation.Duplicate) {
+                val delivery = physicalReplies.capture(entry.scope.session, context.requestId, call) ?: return@withCallback false
+                if (!delivery.current()) return@withCallback false
+            }
+            !isRetired() && entry.peer.isCurrent() && physicalCalls.current(entry.scope.session, call)
+        } finally { credentials.bearer.destroy() }
+    }
+
+    private suspend fun physicalInteractive(context: RpcCallContext, request: LocalMasterPhysicalRpcRequestV1):
+        RpcReply<LocalMasterPhysicalRpcResponseV1, LocalMasterClientRpcErrorV1> {
+        if (!request.claimForCallback()) return businessUnavailable()
+        return withCallback({ businessUnavailable() }, cleanup = {
+            request.destroy(); request.awaitCleanup(); businessRequestCustody.reap()
+        }) {
+            try {
+                val entry = gate.withLock { entries.firstOrNull {
+                    it.physicalInteractive && it.scope.session === context.authorizationScope?.session
+                } } ?: return@withCallback businessUnavailable()
+                val resource = context.authorizationScope?.resource ?: return@withCallback businessUnavailable()
+                val call = physicalCalls.capture(entry.scope.session, resource) ?: return@withCallback businessUnavailable()
+                if (call.binding != request.bindingDigest || entry.businessBearerDigest != request.useBearer(::sha256) ||
+                    !entry.peer.isCurrent()) return@withCallback businessUnavailable()
+                val replySlot = physicalReplies.reserve(entry.scope.session, context.requestId, call)
+                    ?: return@withCallback businessUnavailable()
+                val credentials = entry.binding.retainedCredentialsForProtectedOriginalCheck(context) ?: return@withCallback businessUnavailable()
+                try {
+                    val delivery = registration.physicalInteractive(credentials, request.body, entry.peer, entry.scope.session)
+                        ?: return@withCallback businessUnavailable()
+                    if (!physicalReplies.retain(entry.scope.session, replySlot, delivery)) return@withCallback businessUnavailable()
+                    currentCoroutineContext().ensureActive()
+                    if (isRetired() || !entry.peer.isCurrent() || !physicalCalls.current(entry.scope.session, call) || !delivery.current())
+                        businessUnavailable()
+                    else RpcReply.Success(delivery.response)
+                } finally { credentials.bearer.destroy() }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { currentCoroutineContext().ensureActive(); businessUnavailable() }
         }
     }
 
@@ -603,73 +1323,6 @@ internal class LocalRpcMasterSessionIngress(
         }
     }
 
-    private fun resource(access: LocalMasterRpcBusinessAccess): String = when (access.profile) {
-        LocalMasterRpcWorkflowProfile.SUPPLIERS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> SUPPLIER_READ
-            is LocalMasterRpcBusinessAccess.Execute -> SUPPLIER_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> SUPPLIER_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.WAREHOUSES -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> WAREHOUSE_READ
-            is LocalMasterRpcBusinessAccess.Execute -> WAREHOUSE_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> WAREHOUSE_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.REPORTS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> REPORT_READ
-            is LocalMasterRpcBusinessAccess.Execute -> REPORT_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> REPORT_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> STOCK_TRANSFER_READ
-            is LocalMasterRpcBusinessAccess.Execute -> STOCK_TRANSFER_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> STOCK_TRANSFER_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.KITCHEN -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> KITCHEN_READ
-            is LocalMasterRpcBusinessAccess.Execute -> KITCHEN_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> KITCHEN_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.RETAIL_ORDERS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> RETAIL_ORDER_READ
-            is LocalMasterRpcBusinessAccess.Execute -> RETAIL_ORDER_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> RETAIL_ORDER_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> PAYMENT_CORRECTION_READ
-            is LocalMasterRpcBusinessAccess.Execute -> PAYMENT_CORRECTION_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> PAYMENT_CORRECTION_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> CUSTOMER_RECEIPT_READ
-            is LocalMasterRpcBusinessAccess.Execute -> CUSTOMER_RECEIPT_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> CUSTOMER_RECEIPT_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.FOOD_CHECKS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> FOOD_CHECK_READ
-            is LocalMasterRpcBusinessAccess.Execute -> FOOD_CHECK_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> FOOD_CHECK_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> FOOD_CASH_FINANCIAL_READ
-            is LocalMasterRpcBusinessAccess.Execute -> FOOD_CASH_FINANCIAL_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> FOOD_CASH_FINANCIAL_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> FOOD_TABLE_ASSIGNMENT_READ
-            is LocalMasterRpcBusinessAccess.Execute -> FOOD_TABLE_ASSIGNMENT_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> FOOD_TABLE_ASSIGNMENT_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> INVOICE_CAPTURE_READ
-            is LocalMasterRpcBusinessAccess.Execute -> INVOICE_CAPTURE_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> INVOICE_CAPTURE_LOOKUP
-        }
-        LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> when (access) {
-            is LocalMasterRpcBusinessAccess.Read -> INVOICE_MATCHING_READ
-            is LocalMasterRpcBusinessAccess.Execute -> INVOICE_MATCHING_EXECUTE
-            is LocalMasterRpcBusinessAccess.Lookup -> INVOICE_MATCHING_LOOKUP
-        }
-    }
     private fun procedureName(access: LocalMasterRpcBusinessAccess): String = when (access.profile) {
         LocalMasterRpcWorkflowProfile.SUPPLIERS -> when (access) {
             is LocalMasterRpcBusinessAccess.Read -> LocalMasterClientRpcProtocolV1.READ.name
@@ -736,16 +1389,11 @@ internal class LocalRpcMasterSessionIngress(
             is LocalMasterRpcBusinessAccess.Execute -> LocalMasterInvoiceMatchingRpcProtocolV1.EXECUTE.name
             is LocalMasterRpcBusinessAccess.Lookup -> LocalMasterInvoiceMatchingRpcProtocolV1.LOOKUP.name
         }
-    }
-    private fun sameAccess(left: LocalMasterRpcBusinessAccess, right: LocalMasterRpcBusinessAccess): Boolean = when {
-        left.profile != right.profile -> false
-        left is LocalMasterRpcBusinessAccess.Read && right is LocalMasterRpcBusinessAccess.Read ->
-            left.request.query == right.request.query && left.request.payload == right.request.payload
-        left is LocalMasterRpcBusinessAccess.Execute && right is LocalMasterRpcBusinessAccess.Execute ->
-            left.request.operationId == right.request.operationId && left.request.command == right.request.command &&
-                left.request.payload == right.request.payload && left.request.actionApprovalId == right.request.actionApprovalId
-        left is LocalMasterRpcBusinessAccess.Lookup && right is LocalMasterRpcBusinessAccess.Lookup -> left.identity == right.identity
-        else -> false
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> when (access) {
+            is LocalMasterRpcBusinessAccess.Read -> LocalMasterLanBusinessRpcProtocolV1.READ.name
+            is LocalMasterRpcBusinessAccess.Execute -> LocalMasterLanBusinessRpcProtocolV1.EXECUTE.name
+            is LocalMasterRpcBusinessAccess.Lookup -> LocalMasterLanBusinessRpcProtocolV1.LOOKUP.name
+        }
     }
     private fun <R> businessUnavailable(): RpcReply<R, LocalMasterClientRpcErrorV1> =
         RpcReply.ApplicationError(LocalMasterClientRpcErrorV1.UNAVAILABLE)
@@ -796,6 +1444,7 @@ internal class LocalRpcMasterSessionIngress(
     companion object {
         private const val RESOURCE = "pos.session.current"
         private const val CREATION_RESOURCE = "pos.employee-creation"
+        private const val CHANGES_SESSION_RESOURCE = "pos.changes.read-only"
         private const val WAREHOUSE_READ = "pos.warehouse.read"
         private const val WAREHOUSE_EXECUTE = "pos.warehouse.execute"
         private const val WAREHOUSE_LOOKUP = "pos.warehouse.lookup"
@@ -835,8 +1484,16 @@ internal class LocalRpcMasterSessionIngress(
         private const val FOOD_CHECK_EXECUTE = "pos.food-check.execute"
         private const val CUSTOMER_RECEIPT_LOOKUP = "pos.customer-receipt.lookup"
         private const val FOOD_CHECK_LOOKUP = "pos.food-check.lookup"
+        private const val LAN_BUSINESS_READ = "pos.lan-business.read"
+        private const val LAN_BUSINESS_EXECUTE = "pos.lan-business.execute"
+        private const val LAN_BUSINESS_LOOKUP = "pos.lan-business.lookup"
+        private const val OPERATIONS_SESSION_RESOURCE = "pos.business.operations"
+        private const val PHYSICAL_RESOURCE = "pos.physical.interactive"
         private const val MAXIMUM_LOGINS = 128
         private const val MAXIMUM_CALLBACKS = 128
+        // Keep the existing SDK session cap. Refresh only pooled metadata before the
+        // remaining window is too short for a 30s call plus authorization/writer tails.
+        private val RESOURCE_ADMISSION_BUDGET = 60.seconds
         private const val MAXIMUM_BUSINESS_SESSION_LIFETIME_MILLIS = 120_000L
     }
 }

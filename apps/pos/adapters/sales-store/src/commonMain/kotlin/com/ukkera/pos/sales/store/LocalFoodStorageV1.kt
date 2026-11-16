@@ -279,7 +279,13 @@ internal suspend fun foodPortion(view: CommandReadView, order: FoodOrderCut, id:
     val row = foodPortionSummary(bounded, order, id)
     val body = row.envelope.body as FoodBodyV1.Portion
     val batch = foodRead(bounded, LocalFoodProfileV1.PRICE_BATCH, body.priceBatchId) ?: error("food.price_batch_missing")
-    foodOriginalQuotationPortion(bounded, order, row, batch, source, quotationSource)?.let { return it.portion }
+    foodOriginalQuotationPortion(bounded, order, row, batch, source, quotationSource)?.let {
+        // The whole paired quotation was genuinely read and authenticated above. Retain
+        // its exact aliases in the same current stock writer's resource declaration;
+        // returning only the routed portion used to drop output/price/warehouse aliases.
+        bounded.observeRecoveryResources(it.resources)
+        return it.portion
+    }
     source.requireHistorical(bounded, body.recipe)
     val priced = batch.envelope.body as FoodBodyV1.PriceBatch
     check(priced.orderId == body.orderId)

@@ -34,6 +34,28 @@ public class LocalMasterSecurity internal constructor(
     rpcSessionFence: LocalMasterRpcSessionFence = LocalMasterRpcSessionFence(),
 ) {
     init { database.runtimeHistoryOwner?.requireOwnedSecurity(dependencies) }
+    // Validate the exact native dependency above, then coordinate its existing password
+    // primitive with this SAME owner's writer. This wrapper neither substitutes a hasher
+    // nor holds a Room loan during derivation. Non-native stores retain their own provider.
+    private val passwords = database.runtimeHistoryOwner?.let { owner ->
+        object : LocalPasswordHasher {
+            override suspend fun create(password: CharArray, binding: CredentialBinding,
+                pepperReference: ProtectedPepperReference): PasswordHashingResult = try {
+                owner.passwordWork {
+                    check(database.runtimeHistoryOwner === owner)
+                    dependencies.passwords.create(password, binding, pepperReference)
+                }
+            } finally { password.fill('\u0000') }
+
+            override suspend fun verify(password: CharArray, expectedBinding: CredentialBinding,
+                record: PasswordHashRecord): PasswordVerificationResult = try {
+                owner.passwordWork {
+                    check(database.runtimeHistoryOwner === owner)
+                    dependencies.passwords.verify(password, expectedBinding, record)
+                }
+            } finally { password.fill('\u0000') }
+        }
+    } ?: dependencies.passwords
     private val environment = RoomLocalAuthorizationEnvironment {
         dependencies.environment.observe()?.let { RoomLocalAuthorizationObservation(it.issuerContextId, it.moment) }
     }
@@ -50,20 +72,27 @@ public class LocalMasterSecurity internal constructor(
                 peer.publicKeyIdentifier, peer.publicFingerprint, peer::isCurrent)
         }
     }
-    public val principalFactory: TrustedPrincipalFactory = TrustedPrincipalFactory(RoomLocalAccessPrincipalVerifier(
-        scope, store, source, peers, dependencies.maximumConcurrentAuthentication))
+    private val accessVerifier = RoomLocalAccessPrincipalVerifier(
+        scope, store, source, peers, dependencies.maximumConcurrentAuthentication)
+    public val principalFactory: TrustedPrincipalFactory = TrustedPrincipalFactory(
+        database.runtimeHistoryOwner?.let { owner ->
+            object : PrincipalVerifier by accessVerifier {
+                override suspend fun verifyLocal(credentials: LocalGatewayCredentials): VerifiedLocalIdentity? =
+                    owner.accessVerification { accessVerifier.verifyLocal(credentials) }
+            }
+        } ?: accessVerifier)
     public val authorization: TransactionAuthorizationSource = source
     public val transactionApprovals: TransactionApprovalSource = RoomTransactionApprovalSource(store, source, dependencies.entropy)
     private val operations = RoomLocalAuthenticationService(scope, store, source, peers,
-        dependencies.passwords, dependencies.entropy,
+        passwords, dependencies.entropy,
         dependencies.maximumConcurrentAuthentication)
     public val authentication: LocalAuthenticationService = operations
     private val credentialOperations = RoomLocalCredentialAdministration(scope, store, source, peers,
-        principalFactory, dependencies.passwords, dependencies.pepperReference, dependencies.entropy,
+        principalFactory, passwords, dependencies.pepperReference, dependencies.entropy,
         dependencies.provisioning, dependencies.maximumConcurrentAuthentication)
     public val credentials: LocalCredentialAdministration = credentialOperations
     public val administration: LocalAdministrationService = RoomLocalAdministrationService(scope, store, source, peers,
-        principalFactory, dependencies.passwords, dependencies.pepperReference, credentials)
+        principalFactory, passwords, dependencies.pepperReference, credentials)
     private var approvalPreparation: LocalApprovalCommandPreparation? = null
     private var approvalService: LocalActionApprovalService? = null
     private var installationVerifier: LocalBranchInstallationVerifier? = null
@@ -134,7 +163,7 @@ public class LocalMasterSecurity internal constructor(
      */
     public fun createBranchInitializer(verifier: LocalBranchInstallationVerifier): LocalBranchInitializer {
         branchInitializer?.let { check(installationVerifier === verifier); return it }
-        val service = RoomLocalBranchInitializer(scope, store, source, dependencies.passwords,
+        val service = RoomLocalBranchInitializer(scope, store, source, passwords,
             dependencies.pepperReference, dependencies.storageKey, verifier, dependencies.maximumConcurrentAuthentication)
         installationVerifier = verifier
         branchInitializer = service
@@ -147,7 +176,7 @@ public class LocalMasterSecurity internal constructor(
      */
     public fun createApprovalService(preparation: LocalApprovalCommandPreparation): LocalActionApprovalService {
         approvalService?.let { check(approvalPreparation === preparation); return it }
-        val service = RoomLocalActionApprovalService(scope, store, source, peers, principalFactory, dependencies.passwords,
+        val service = RoomLocalActionApprovalService(scope, store, source, peers, principalFactory, passwords,
             dependencies.entropy, preparation, dependencies.maximumConcurrentAuthentication)
         approvalPreparation = preparation
         approvalService = service

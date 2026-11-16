@@ -51,7 +51,7 @@ public class AndroidOriginalRpcHostOwner private constructor(
     public companion object {
         /** Retain under the actual operational Master before any original/SDK work. */
         public fun retainExisting(application: Application, applicationScope: CoroutineScope,
-            original: AndroidOriginalLocalClient, lan: OrganizationLan): AndroidOriginalRpcHostOwner {
+            original: AndroidOriginalLocalClient, lan: OrganizationLan, advertise: Boolean = false): AndroidOriginalRpcHostOwner {
             AndroidLocalNetworkAccess.requireGranted(application)
             val lifetime = LocalRpcOriginalHostOwner.retentionLifetime(applicationScope)
             require(original.belongsTo(application)) { "The original Master application is unavailable" }
@@ -62,7 +62,7 @@ public class AndroidOriginalRpcHostOwner private constructor(
                     {
                         AndroidLocalNetworkAccess.requireGranted(application)
                         RpcPlatform.android(application)
-                    }, lan)
+                    }, lan, advertise)
                 resource.captured.complete(retained)
                 return AndroidOriginalRpcHostOwner(application, retained)
             } catch (failure: Throwable) {

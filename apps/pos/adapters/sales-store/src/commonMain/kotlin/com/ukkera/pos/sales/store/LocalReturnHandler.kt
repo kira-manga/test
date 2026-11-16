@@ -114,7 +114,7 @@ public class LocalReturnHandler(
                 return@LocalSalesPrepared salesUnavailable(LocalSalesUnavailable.SOURCE_REQUIRED)
             }
             val actorEvidence = facts.evidence.domain(intake.value.originalActorId)
-            val evidence = source.evidence(facts, original.sale.value, actorEvidence, now)
+            val evidence = source.evidence(facts, original.sale.value, actorEvidence, now, intake.value.recordedAt)
                 ?: return@LocalSalesPrepared salesUnavailable(LocalSalesUnavailable.SOURCE_REQUIRED)
             // A binding operation may qualify original facts, never amend them to make a claim eligible.
             check(evidence.claimedAt == facts.claimedAt.value && evidence.reason == facts.reason && evidence.evidence == actorEvidence) {

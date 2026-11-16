@@ -102,6 +102,16 @@ internal class DesktopProvisionerRegistryFilesV2(
         replaceVerified(ledgerName(kind), bytes, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_ENVELOPE_BYTES)
     }
 
+    override fun businessPublicationEnvelopeBytes(): ByteArray? {
+        assertContinuity()
+        return requireOpen().read(BUSINESS_PUBLICATIONS, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_ENVELOPE_BYTES)
+    }
+
+    override fun replaceBusinessPublicationEnvelope(bytes: ByteArray) {
+        assertContinuity()
+        replaceVerified(BUSINESS_PUBLICATIONS, bytes, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_ENVELOPE_BYTES)
+    }
+
     override fun toString(): String = "DesktopProvisionerRegistryFilesV2([REDACTED])"
 
     /** (company, effective original): the company record's embedded original wins when present. */
@@ -137,10 +147,11 @@ internal class DesktopProvisionerRegistryFilesV2(
         const val BOOTSTRAP: String = "bootstrap.v2"
         const val COMPANY: String = "company.v2"
         const val ENVELOPE: String = "registry.v2"
+        const val BUSINESS_PUBLICATIONS: String = "ledger-business-publications.v2"
         const val MAX_BOOTSTRAP: Int = 64 * 1024
         const val MAX_COMPANY: Int = 128 * 1024
         val MAX_ENVELOPE: Int = SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_BYTES + 4_096
         fun ledgerName(kind: SelfOwnedCompanyLedgerKindV2): String = "ledger-${kind.name.lowercase()}.v2"
-        val NAMES: Set<String> = setOf(BOOTSTRAP, COMPANY, ENVELOPE) + SelfOwnedCompanyLedgerKindV2.entries.map(::ledgerName)
+        val NAMES: Set<String> = setOf(BOOTSTRAP, COMPANY, ENVELOPE, BUSINESS_PUBLICATIONS) + SelfOwnedCompanyLedgerKindV2.entries.map(::ledgerName)
     }
 }

@@ -83,11 +83,13 @@ public class LocalOrderReadHandler private constructor(private val stockProfile:
     override public fun normalize(input: StoredBytes): StoredBytes =
         LocalOrderReadCodec.encode(LocalOrderReadCodec.decodeQuery(input))
     override public fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile != LocalMasterRpcWorkflowProfile.RETAIL_ORDERS) return false
+        if (profile != LocalMasterRpcWorkflowProfile.RETAIL_ORDERS && profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS) return false
         val query = LocalOrderReadCodec.decodeQuery(normalized)
         return when (query) {
-            is LocalOrderQueryV1.Order, is LocalOrderQueryV1.OwnOrders -> LocalOrderReadCodec.encode(query) == normalized
-            is LocalOrderQueryV1.Handoff -> false
+            is LocalOrderQueryV1.Order, is LocalOrderQueryV1.OwnOrders -> profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS &&
+                LocalOrderReadCodec.encode(query) == normalized
+            is LocalOrderQueryV1.Handoff -> profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                LocalOrderReadCodec.encode(query) == normalized
         }
     }
 

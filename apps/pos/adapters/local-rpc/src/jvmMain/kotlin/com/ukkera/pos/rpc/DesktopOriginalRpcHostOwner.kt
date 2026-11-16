@@ -36,6 +36,12 @@ public class DesktopOriginalRpcHostOwner private constructor(private val owner: 
         /** Retain under the actual operational desktop Master before any original/SDK work. */
         public fun retainExisting(host: SelfOwnedMasterHostOwner, applicationScope: CoroutineScope,
             original: AndroidOriginalLocalClient, lan: OrganizationLan,
+            identityStore: () -> JvmSecureIdentityStore): DesktopOriginalRpcHostOwner =
+            retainExisting(host, applicationScope, original, lan, false, identityStore)
+
+        /** Explicit advertisement configuration, retaining the original trailing-lambda API. */
+        public fun retainExisting(host: SelfOwnedMasterHostOwner, applicationScope: CoroutineScope,
+            original: AndroidOriginalLocalClient, lan: OrganizationLan, advertise: Boolean,
             identityStore: () -> JvmSecureIdentityStore): DesktopOriginalRpcHostOwner {
             val lifetime = LocalRpcOriginalHostOwner.retentionLifetime(applicationScope)
             require(original.belongsTo(host)) { "The original desktop Master is unavailable" }
@@ -43,7 +49,7 @@ public class DesktopOriginalRpcHostOwner private constructor(private val owner: 
             resource.registration = original.retainRpcHostResource(resource)
             try {
                 val retained = LocalRpcOriginalHostOwner(applicationScope, lifetime, resource,
-                    { RpcPlatform.jvm(identityStore()) }, lan)
+                    { RpcPlatform.jvm(identityStore()) }, lan, advertise)
                 resource.captured.complete(retained)
                 return DesktopOriginalRpcHostOwner(retained)
             } catch (failure: Throwable) {

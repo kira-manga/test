@@ -2,6 +2,7 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.*
 import com.ukkera.pos.inventory.store.LocalStockRepository
+import com.ukkera.pos.security.AuthorizationRequirement
 import com.ukkera.pos.security.SecurityAction
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
@@ -48,7 +49,8 @@ public object LocalRetailSupervisorCodecV1 {
  * Apply is a separate explicitly tagged SQL-only operation over an already immutable fact.
  */
 public class LocalRetailSupervisorHandler(private val stock: LocalStockRepository? = null,
-    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1) : MasterCommandHandler {
+    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterCommandHandler, LocalMasterRpcRetainedOriginalAccessProvider {
     override val key: CommandKey get() = LocalRetailSupervisorCodecV1.COMMAND
     override val writableKinds: Set<String> = setOf(LocalFinancialJournalProfileV3.APPLICATION_KIND,
         LocalSalesStoreProfile.COLLECTION_KIND, LocalSalesStoreProfile.RETURN_KIND,
@@ -56,6 +58,17 @@ public class LocalRetailSupervisorHandler(private val stock: LocalStockRepositor
         StockReadEvidenceV1.KIND, COMMERCE_STOCK_LINK_KIND_V2)
     override val claimNamespaces: Set<String> = setOf(LocalSalesStoreProfile.UNIQUE_NAMESPACE, CashNonSaleStoreProfile.CASH_SOURCE_NAMESPACE)
     override fun normalize(input: StoredBytes): StoredBytes = LocalRetailSupervisorCodecV1.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+    override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if (!supportsRpcWorkflow(profile, normalized) || context.key != key) return null
+        return financialOriginalRead(view, context, normalized, originalSources, stock, tenderPolicies = tenderPolicies) { loan ->
+            retailJournalRpcOriginalRequirements(normalized, original,
+                stock?.let { commerceLoan(loan, it, tenderPolicies) } ?: loan, context, tenderPolicies)
+        }
+    }
+
     override suspend fun prepare(normalized: StoredBytes, borrowed: CommandReadView, context: CommandContext): PreparedMutation {
         val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies) } ?: borrowed
         check(context.key == key && context.scope == view.scope &&

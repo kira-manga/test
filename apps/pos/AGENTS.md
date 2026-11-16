@@ -1,6 +1,6 @@
 # POS application contribution rules
 
-Read the repository-root `AGENTS.md`, `docs/pos/planning/WORKFLOW.md` and the
+Start at `docs/pos/START-HERE.md`. Read the repository-root `AGENTS.md`, `docs/pos/planning/WORKFLOW.md` and the
 current owning GitHub Issue before changing this independent POS build.
 
 ## Shared implementation
@@ -21,6 +21,14 @@ All agreed business activities and platform roles remain required. No safety
 bypass, UI-only substitute or test-only checkout service counts as implementation.
 
 ## Verification and delivery
+
+- The owner-directed 16-Nov-2026 issue restructure separates implementation,
+  compilation, tests, integration, packaging and device deliverables. A bounded
+  task closes when its own reviewed/integrated scope and required checks pass;
+  keep every downstream obligation in a separately linked issue. Parent/product
+  completion retains the full requirements below. See
+  `docs/pos/planning/ISSUE-CONVENTIONS.md`.
+
 
 - Development closure requires the entire defined production/platform scope,
   review, passing required unit and non-device integration tests, and no unfinished

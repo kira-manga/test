@@ -41,6 +41,8 @@ import com.ukkera.pos.database.LocalMasterClient
 import com.ukkera.pos.database.LocalMasterAdministrationClient
 import com.ukkera.pos.database.LocalMasterEndpointHealth
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
+import com.ukkera.pos.database.LocalMasterRpcReadStage
+import com.ukkera.pos.database.reportLocalMasterRpcReadFailure
 import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.CompanyScope
@@ -188,10 +190,12 @@ public class LocalEndpointBranchGateway private constructor(
         intents: LocalClientIntentJournalSource, dispatcher: CoroutineDispatcher = Dispatchers.Default) :
         this(connections, credentials, intents, Composition.FULL_BUSINESS, dispatcher)
 
-    private enum class Composition { FULL_BUSINESS, DIRECTORY_ONLY, AUTHENTICATION_ONLY }
+    private enum class Composition { FULL_BUSINESS, DIRECTORY_ONLY, REMOTE_BUSINESS, AUTHENTICATION_ONLY }
 
     private class BusinessAttachment(val endpoint: LocalMasterClient, val installed: LocalWorkflowInstallation,
-        val journal: LocalClientIntentJournal, val fullConnection: LocalMasterClientConnection? = null)
+        val journal: LocalClientIntentJournal, val fullConnection: LocalMasterClientConnection? = null,
+        val remotePhysical: LocalRemoteRetailPhysicalActor? = null,
+        val remotePhysicalInstallation: LocalWorkflowInstallation? = null)
 
     private val closed = MutableStateFlow(false)
     private val signingIn = MutableStateFlow(false)
@@ -209,7 +213,7 @@ public class LocalEndpointBranchGateway private constructor(
     override public val configured: Boolean get() = !closed.value && physicalDrains.value == 0 && failedPhysicalDenials.value.isEmpty()
     override public val signInSecretMaxLength: Int get() = when (composition) {
         Composition.FULL_BUSINESS -> 256
-        Composition.DIRECTORY_ONLY, Composition.AUTHENTICATION_ONLY -> 1024
+        Composition.DIRECTORY_ONLY, Composition.REMOTE_BUSINESS, Composition.AUTHENTICATION_ONLY -> 1024
     }
 
     init {
@@ -220,6 +224,7 @@ public class LocalEndpointBranchGateway private constructor(
                 val endpoint = when (connection) {
                     is LocalMasterClientConnection -> connection.endpoint
                     is LocalDirectoryClientConnection -> connection.endpoint
+                    is LocalRemoteBusinessClientConnection -> connection.endpoint
                     else -> null
                 }
                 endpoint?.health?.collect { health ->
@@ -316,7 +321,7 @@ public class LocalEndpointBranchGateway private constructor(
                             return@snapshot rejected(SignInFailure.UNAVAILABLE)
                         val business = if (composition == Composition.AUTHENTICATION_ONLY) null else
                             businessAttachment(connection, row.identity, tokens.access) ?: return@snapshot rejected(SignInFailure.UNAVAILABLE)
-                        val finalView = if (composition == Composition.DIRECTORY_ONLY) {
+                        val finalView = if (composition == Composition.DIRECTORY_ONLY || composition == Composition.REMOTE_BUSINESS) {
                             // Native acquisition may suspend. Do not publish its preceding Current
                             // or stale policy projection as a newly acquired interactive attachment.
                             val confirmed = currentView(connection, tokens.access)
@@ -351,6 +356,7 @@ public class LocalEndpointBranchGateway private constructor(
         access: OpaqueCredential): BusinessAttachment? {
         val source = intents ?: return null
         if (!connectionCurrent(connection)) return null
+        if (composition == Composition.REMOTE_BUSINESS && source !is LocalAuthenticatedClientIntentJournalSource) return null
         if (directoryProfile in setOf(LocalMasterRpcWorkflowProfile.WAREHOUSES, LocalMasterRpcWorkflowProfile.REPORTS,
                 LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS, LocalMasterRpcWorkflowProfile.KITCHEN,
                 LocalMasterRpcWorkflowProfile.FOOD_CHECKS, LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL,
@@ -360,7 +366,8 @@ public class LocalEndpointBranchGateway private constructor(
                 LocalMasterRpcWorkflowProfile.INVOICE_MATCHING) &&
             source !is LocalAuthenticatedClientIntentJournalSource)
             return null
-        val acquired = if (composition == Composition.DIRECTORY_ONLY && source is LocalAuthenticatedClientIntentJournalSource) {
+        val acquired = if ((composition == Composition.DIRECTORY_ONLY || composition == Composition.REMOTE_BUSINESS) &&
+            source is LocalAuthenticatedClientIntentJournalSource) {
             val borrowed = ownedCredential(connection, access)
             val journal = try { source.acquireAuthenticated(owner, borrowed) } finally { borrowed.bearer.destroy() }
             if (!connectionCurrent(connection) || journal == null || journal.owner != owner) return null
@@ -375,6 +382,15 @@ public class LocalEndpointBranchGateway private constructor(
             }
             Composition.DIRECTORY_ONLY -> (connection as? LocalDirectoryClientConnection)?.takeIf { it.profile == directoryProfile }?.let {
                 BusinessAttachment(it.endpoint, it.installed, journal)
+            }
+            Composition.REMOTE_BUSINESS -> (connection as? LocalRemoteBusinessClientConnection)?.let {
+                // Native enrollment/reopen is retained by the credential root and consumes
+                // only its SAME successful actor journal. A failed physical child does not
+                // invent capability or erase otherwise valid nonphysical business custody.
+                val physical = it.retailPhysicalBinding?.attach(journal)
+                if (!connectionCurrent(connection)) return null
+                BusinessAttachment(it.endpoint, it.installed, journal, remotePhysical = physical,
+                    remotePhysicalInstallation = it.retailPhysicalBinding?.installed)
             }
             Composition.AUTHENTICATION_ONLY -> null
         }
@@ -449,11 +465,18 @@ public class LocalEndpointBranchGateway private constructor(
 
     private suspend fun acquire(session: EndpointSession, refreshRequestedFor: LocalSessionAttachmentKey? = null,
         allowRefresh: Boolean = true, expectedAttachment: LocalSessionAttachmentKey? = null): CheckedCredential? =
-        ownedWork(unavailable = { null }, dispose = { value: CheckedCredential? -> value?.lease?.destroy() }) {
+        ownedWork(unavailable = {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_CREDENTIAL_ADMISSION, null)
+            null
+        }, dispose = { value: CheckedCredential? -> value?.lease?.destroy() }) {
             credentials.requests.withLock {
+                var stage = LocalMasterRpcReadStage.CLIENT_CREDENTIAL_ATTACHMENT
                 try {
-                    if (!session.interactive() || expectedAttachment != null && !session.attachmentCurrent(expectedAttachment))
+                    if (!session.interactive() || expectedAttachment != null && !session.attachmentCurrent(expectedAttachment)) {
+                        reportLocalMasterRpcReadFailure(stage, null)
                         return@withLock null
+                    }
+                    stage = LocalMasterRpcReadStage.CLIENT_CREDENTIAL_RECORD
                     val checked = snapshot { state ->
                         val row = state.sessions.singleOrNull { it.localId == session.localId }
                         if (row == null || row.identity != session.identity || row.phase != StoredSessionPhaseV1.RETAINED ||
@@ -463,16 +486,29 @@ public class LocalEndpointBranchGateway private constructor(
                         // Concurrent explicit refresh requests for one attachment coalesce. A
                         // queued request cannot rotate the successor merely by arriving later.
                         val forceRefresh = refreshRequestedFor != null && refreshRequestedFor == session.attachmentKey
+                        stage = LocalMasterRpcReadStage.CLIENT_CREDENTIAL_CURRENT
                         when (val view = if (forceRefresh) LocalSessionViewResult.Denied else currentView(session.connection, row.access)) {
                             is LocalSessionViewResult.Current -> {
+                                stage = LocalMasterRpcReadStage.CLIENT_CREDENTIAL_IDENTITY_POLICY
                                 if (!sameSession(row, view.view) || !session.acceptPolicy(view.view.policy)) {
+                                    reportLocalMasterRpcReadFailure(stage, null)
                                     session.end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED); null
                                 } else lease(session, row)
                             }
-                            LocalSessionViewResult.Denied -> if (allowRefresh) refreshOwned(session, state, row)
+                            LocalSessionViewResult.Denied -> {
+                                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_CREDENTIAL_DENIED, null)
+                                stage = LocalMasterRpcReadStage.CLIENT_CREDENTIAL_REFRESH
+                                if (allowRefresh) refreshOwned(session, state, row)
                                 else { session.end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED); null }
-                            LocalSessionViewResult.StorageUncertain -> { session.end(LocalSessionLifecycle.STORAGE_UNCERTAIN); null }
+                            }
+                            LocalSessionViewResult.StorageUncertain -> {
+                                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_CREDENTIAL_STORAGE, null)
+                                session.end(LocalSessionLifecycle.STORAGE_UNCERTAIN); null
+                            }
                             LocalSessionViewResult.Unavailable, LocalSessionViewResult.Busy -> {
+                                reportLocalMasterRpcReadFailure(if (view == LocalSessionViewResult.Busy)
+                                    LocalMasterRpcReadStage.CLIENT_CREDENTIAL_BUSY
+                                    else LocalMasterRpcReadStage.CLIENT_CREDENTIAL_UNAVAILABLE, null)
                                 session.end(LocalSessionLifecycle.AUTHORITY_UNAVAILABLE); null
                             }
                         }
@@ -480,11 +516,15 @@ public class LocalEndpointBranchGateway private constructor(
                     // A cached gateway is never upgraded implicitly. If its access check
                     // renewed credentials, only newly published adapters can use the result.
                     if (checked != null && expectedAttachment != null && checked.attachment != expectedAttachment) {
+                        reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_CREDENTIAL_SUCCESSOR, null)
                         checked.lease.destroy()
                         null
                     } else checked
                 } catch (cancelled: CancellationException) { throw cancelled }
-                catch (_: Exception) { session.end(LocalSessionLifecycle.AUTHORITY_UNAVAILABLE); null }
+                catch (failure: Exception) {
+                    reportLocalMasterRpcReadFailure(stage, failure)
+                    session.end(LocalSessionLifecycle.AUTHORITY_UNAVAILABLE); null
+                }
             }
         }
 
@@ -552,6 +592,7 @@ public class LocalEndpointBranchGateway private constructor(
         value.identity == credentials.owner && (when (composition) {
             Composition.FULL_BUSINESS -> value is LocalMasterClientConnection
             Composition.DIRECTORY_ONLY -> value is LocalDirectoryClientConnection && value.profile == directoryProfile
+            Composition.REMOTE_BUSINESS -> value is LocalRemoteBusinessClientConnection
             Composition.AUTHENTICATION_ONLY -> value is LocalAuthenticationOnlyConnection
         }) && value.isCurrent()
 
@@ -639,6 +680,14 @@ public class LocalEndpointBranchGateway private constructor(
             connection.credentialBinding is LocalClientAuthenticationBinding.RemoteOriginalAttachment
 
     public companion object {
+        /** Fixed LAN routes with genuine authenticated actor-journal acquisition on this Client. */
+        public fun remoteBusiness(connections: StateFlow<LocalRemoteBusinessClientConnection?>,
+            credentials: LocalClientCredentialJournal, intents: LocalAuthenticatedClientIntentJournalSource,
+            creation: LocalMasterEmployeeCreationClient? = null,
+            dispatcher: CoroutineDispatcher = Dispatchers.Default): LocalEndpointBranchGateway =
+            LocalEndpointBranchGateway(connections, credentials, intents, Composition.REMOTE_BUSINESS,
+                dispatcher, remoteCreation = creation)
+
         /** One immutable supported business profile on the same exact original session engine. */
         public fun directoryOnly(connections: StateFlow<LocalDirectoryClientConnection?>,
             credentials: LocalClientCredentialJournal, intents: LocalClientIntentJournalSource,
@@ -739,6 +788,10 @@ public class LocalEndpointBranchGateway private constructor(
                 actual.fullConnection?.retailPhysicalBinding?.let { binding ->
                     LocalEndpointRetailPhysicalGateway(binding, actual.journal, source,
                         LocalRetailOriginalCredentialSource { acquireOriginal(key) }, actual.installed)
+                } ?: actual.remotePhysical?.let { physical ->
+                    LocalEndpointRetailPhysicalGateway(actual.endpoint, physical, actual.journal, source,
+                        LocalRetailOriginalCredentialSource { acquireOriginal(key) },
+                        checkNotNull(actual.remotePhysicalInstallation))
                 }
             } ?: UnavailableLocalRetailPhysical
         }
@@ -850,6 +903,15 @@ public class LocalEndpointBranchGateway private constructor(
             if (attachmentOwner.compareAndSet(key, null)) end(LocalSessionLifecycle.REAUTHENTICATION_REQUIRED)
         }
         fun end(reason: LocalSessionLifecycle) {
+            when (reason) {
+                LocalSessionLifecycle.AUTHORITY_UNAVAILABLE -> reportLocalMasterRpcReadFailure(
+                    LocalMasterRpcReadStage.CLIENT_SESSION_AUTHORITY_UNAVAILABLE, null)
+                LocalSessionLifecycle.REAUTHENTICATION_REQUIRED -> reportLocalMasterRpcReadFailure(
+                    LocalMasterRpcReadStage.CLIENT_SESSION_REAUTHENTICATION, null)
+                LocalSessionLifecycle.STORAGE_UNCERTAIN -> reportLocalMasterRpcReadFailure(
+                    LocalMasterRpcReadStage.CLIENT_SESSION_STORAGE_UNCERTAIN, null)
+                else -> Unit
+            }
             attachmentOwner.value = null
             publishedAttachment.value.retired.value = true
             // The gateway retains this exact original if denial fails. Pointer retirement
@@ -1039,16 +1101,19 @@ private fun display(policy: ActivatedLocalPolicy, login: LocalLoginIdentifier, l
             setOf(AppArea.PURCHASING) else emptySet()
         LocalSessionWorkspaceMode.POLICY_FILTERED -> buildSet {
         if (listOf(SecurityAction.CATALOG_READ, SecurityAction.ORDER_CREATE, SecurityAction.COLLECTION_BEGIN,
+                SecurityAction.COLLECTION_RESOLVE, SecurityAction.REFUND_RESOLVE,
                 SecurityAction.OPERATION_RESULT_RECOVERY).any { hint(it) }) add(AppArea.CASHIER)
         if (listOf(SecurityAction.ORDER_READ, SecurityAction.ORDER_HANDOFF, SecurityAction.ORDER_REASSIGN, SecurityAction.KITCHEN_TASK,
                 SecurityAction.ORDER_CREATE, SecurityAction.CATALOG_READ, SecurityAction.RETURN_CLAIM,
                 SecurityAction.RETURN_RECEIPT_LOOKUP, SecurityAction.RETURN_ACCEPT, SecurityAction.FLOOR_READ,
-                SecurityAction.CUSTOMER_RECEIPT_RECORD).any { hint(it) } ||
+                SecurityAction.CUSTOMER_RECEIPT_RECORD, SecurityAction.COLLECTION_RESOLVE,
+                SecurityAction.REFUND_RESOLVE).any { hint(it) } ||
             hint(SecurityAction.FLOOR_CONFIGURE, PermissionVerb.ADMINISTER)) add(AppArea.ORDERS)
         if (listOf(SecurityAction.CASH_READ, SecurityAction.CASH_OPEN, SecurityAction.CASH_REVIEW, SecurityAction.CASH_CONFIGURE).any { hint(it) }) add(AppArea.DRAWER)
         if (hint(SecurityAction.INVENTORY_QUANTITY_READ)) add(AppArea.STOCK)
         if (hint(SecurityAction.CATALOG_READ)) add(AppArea.CATALOG)
         if (hint(SecurityAction.PURCHASING_READ) || hint(SecurityAction.PURCHASING_DOCUMENT_READ) ||
+            hint(SecurityAction.SUPPLIER_CASH_RESOLVE) ||
             hint(SecurityAction.SUPPLIER_ADMINISTRATION, PermissionVerb.ADMINISTER)) add(AppArea.PURCHASING)
         if (hint(SecurityAction.BRANCH_REPORT)) add(AppArea.REPORTS)
         if (hint(SecurityAction.WAREHOUSE_CONFIGURE, PermissionVerb.ADMINISTER) || hint(SecurityAction.TENDER_CONFIGURE, PermissionVerb.ADMINISTER) ||

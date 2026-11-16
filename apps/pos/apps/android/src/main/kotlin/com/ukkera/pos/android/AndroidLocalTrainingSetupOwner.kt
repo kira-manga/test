@@ -5,6 +5,7 @@ import com.ukkera.pos.app.gateway.setup.LocalDeviceAdmissionIntents
 import com.ukkera.pos.app.gateway.setup.LocalFreshDevicePairingIntents
 import com.ukkera.pos.app.gateway.setup.LocalEmployeeSetupIntents
 import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchRecord
+import com.ukkera.pos.app.gateway.setup.LocalLanLaunchRecord
 import com.ukkera.pos.app.gateway.setup.LocalMasterLifecycleIntentStore
 import com.ukkera.pos.app.gateway.setup.LocalSetupCoordinator
 import com.ukkera.pos.security.AndroidTrainingSetupNamespaces
@@ -35,6 +36,8 @@ internal class AndroidLocalTrainingSetupOwner(
         controller = LocalSetupCoordinator(
             services = AndroidLocalSetupNativeServices(application, trainingSlot = slot),
             employeeSetupIntents = LocalEmployeeSetupIntents(storage),
+            lanLaunchRecord = LocalLanLaunchRecord(AndroidLocalMasterLaunchStorage(application,
+                "ukkera.local-lan-launch.v1$suffix", LocalLanLaunchRecord.MAXIMUM_BYTES)),
             launchRecord = LocalMasterLaunchRecord(
                 AndroidLocalMasterLaunchStorage(
                     application,

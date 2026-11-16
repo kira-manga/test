@@ -124,7 +124,8 @@ private suspend fun selectedRetailCurrent(view: CommandReadView, selection: Loca
         }
         if (!normalized && definitions.size > LocalStockStoreProfile.MAX_ITEMS_PER_COMMAND) return null
         val hasPromise = definitions.values.any { it.returnPromise != null }
-        if (!normalized && hasPromise) {
+        val requiresOriginalCapture = hasPromise || definitions.values.any { it.containerDeposit != null }
+        if (!normalized && requiresOriginalCapture) {
             // Preparation precedes authorization on the legacy handler. Retain only the
             // already-verified current sources; the ordinary refusal belongs in evaluation.
             // Do not read publication/history/price/stock closures for a refused legacy quote.
@@ -281,8 +282,10 @@ private class OriginalRetailCatalogue(private val source: LocalCommerceOriginalS
             encodeValue(value, ConfigurationRecord.serializer()) == row.payload)
         val bodyId = when (val body = value.body) {
             is ConfigurationBody.Sku -> {
-                check(body.value.definition.company == source.scope.company() && signatures.verify(body.value.definition.company,
-                    body.value.signingKeyId, LocalConfigurationCodec.canonicalPublication(body.value.definition), body.value.signatureHex))
+                check(body.value.definition.company == source.scope.company())
+                if (!signatures.verify(body.value.definition.company, body.value.signingKeyId,
+                        LocalConfigurationCodec.canonicalPublication(body.value.definition), body.value.signatureHex))
+                    throw LocalSalesQuoteUnavailable(LocalSalesQuoteUnavailableReason.ORIGINAL_PUBLICATION_UNAVAILABLE)
                 check(kind == LocalConfigurationProfile.SKU || kind == LocalConfigurationProfile.PUBLICATION)
                 if (kind == LocalConfigurationProfile.SKU) body.value.definition.skuId else body.value.definition.publicationId
             }

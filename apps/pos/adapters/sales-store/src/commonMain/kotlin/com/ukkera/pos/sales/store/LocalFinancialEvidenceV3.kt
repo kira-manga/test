@@ -228,7 +228,7 @@ internal fun requireRetailRetainedRowV3(origin: RetainedCommandEvidence, row: St
 
 private fun requireRetailRetainedHeaderV3(origin: RetainedCommandEvidence) {
     requireLocalSalesSource(origin.committed && origin.command in setOf(LocalFinancialJournalProfileV3.COLLECTION_COMMAND,
-        LocalFinancialJournalProfileV3.RETURN_COMMAND, LocalRetailSupervisorCodecV1.COMMAND) && origin.jobs.isEmpty() &&
+        LocalFinancialJournalProfileV3.RETURN_COMMAND, LocalRetailSupervisorCodecV1.COMMAND, LocalExchangeCodec.COMMAND) && origin.jobs.isEmpty() &&
         semanticDigest(origin.scope, origin.originalActorId, origin.command, origin.normalized) == origin.semanticDigest &&
         retailJournalDigestV3(origin.result) == origin.resultHash &&
         origin.aggregateWrites.map { it.key }.distinct().size == origin.aggregateWrites.size &&

@@ -17,45 +17,6 @@ import com.ukkera.pos.types.DomainId
  * grants nothing. No V1 value is adapted into V2 custody or vice versa.
  */
 
-internal class SelfOwnedCompanyKeyRef(val keyId: DomainId)
-
-/** Founding facts of the retained company bootstrap (V1 or V2). */
-internal class SelfOwnedCompanyFoundingView(
-    val rootId: DomainId,
-    val actionId: DomainId,
-    val organizationId: DomainId,
-    val companyId: DomainId,
-    val facts: SelfOwnedCompanyFactsV1,
-    private val keyIds: Map<SelfOwnedNativeKeyRoleV1, DomainId>,
-) {
-    fun key(role: SelfOwnedNativeKeyRoleV1): SelfOwnedCompanyKeyRef =
-        SelfOwnedCompanyKeyRef(keyIds[role] ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN))
-    override fun toString(): String = "SelfOwnedCompanyFoundingView([REDACTED])"
-}
-
-internal class SelfOwnedCompanyBootstrapView(
-    val original: SelfOwnedCompanyFoundingView,
-    val headAuthorityId: DomainId,
-    val headEnrollmentId: DomainId,
-    val headName: String,
-    val headLogin: String,
-    private val ids: List<DomainId>,
-) {
-    fun allIds(): List<DomainId> = ids
-    override fun toString(): String = "SelfOwnedCompanyBootstrapView([REDACTED])"
-
-    companion object {
-        fun of(value: LocalCompanyAuthorityBootstrapV1): SelfOwnedCompanyBootstrapView = SelfOwnedCompanyBootstrapView(
-            SelfOwnedCompanyFoundingView(value.original.rootId, value.original.actionId, value.original.organizationId,
-                value.original.companyId, value.original.facts, value.original.keys.associate { it.role to it.keyId }),
-            value.headAuthorityId, value.headEnrollmentId, value.headName, value.headLogin, value.allIds())
-        fun of(value: LocalCompanyAuthorityBootstrapV2): SelfOwnedCompanyBootstrapView = SelfOwnedCompanyBootstrapView(
-            SelfOwnedCompanyFoundingView(value.original.rootId, value.original.actionId, value.original.organizationId,
-                value.original.companyId, value.original.facts, value.original.keys.associate { it.role to it.keyId }),
-            value.headAuthorityId, value.headEnrollmentId, value.headName, value.headLogin, value.allIds())
-    }
-}
-
 internal class SelfOwnedCompanyRegistryView(
     val revision: Long,
     val root: SelfOwnedSignedDocumentV1,
@@ -79,12 +40,12 @@ internal class SelfOwnedCompanyStateView private constructor(
 }
 
 /** Invocation-local head approval of exactly one workflow action; never a session. */
-internal sealed class SelfOwnedCompanyHeadApproval {
-    abstract val accountRevision: Long
-    abstract val credentialRevision: Long
+internal sealed class SelfOwnedCompanyHeadApproval : NativeBusinessPublicationApproval {
+    abstract override val accountRevision: Long
+    abstract override val credentialRevision: Long
     abstract val retainedRevision: Long
-    abstract val boot: Int
-    abstract val expires: Long
+    abstract override val boot: Int
+    abstract override val expires: Long
     override fun toString(): String = "SelfOwnedCompanyHeadApproval([REDACTED])"
 
     class EnrollmentV1(internal val value: AndroidLocalInstallerAuthentication.EmployeeEnrollmentHeadApproval) : SelfOwnedCompanyHeadApproval() {
@@ -102,6 +63,13 @@ internal sealed class SelfOwnedCompanyHeadApproval {
         override val expires get() = value.expires
     }
     class PairingV1(internal val value: AndroidLocalInstallerAuthentication.DevicePairingHeadApproval) : SelfOwnedCompanyHeadApproval() {
+        override val accountRevision get() = value.accountRevision
+        override val credentialRevision get() = value.credentialRevision
+        override val retainedRevision get() = value.retainedRevision
+        override val boot get() = value.boot
+        override val expires get() = value.expires
+    }
+    class BusinessV1(internal val value: AndroidLocalInstallerAuthentication.BusinessPublicationHeadApproval) : SelfOwnedCompanyHeadApproval() {
         override val accountRevision get() = value.accountRevision
         override val credentialRevision get() = value.credentialRevision
         override val retainedRevision get() = value.retainedRevision
@@ -135,8 +103,18 @@ internal interface SelfOwnedCompanyCustody {
     fun companyState(): SelfOwnedCompanyStateView?
     /** Fingerprint of the actual original root key body. */
     fun rootFingerprint(): String
-    /** Android business publications; null on desktop (no desktop business ledger exists). */
+    /** Authenticated original native business ledger; absence grants no publication authority. */
     fun readBusinessPublications(): NativeCompanyBusinessPublicationStateV1?
+
+    fun retainBusinessPublications(next: NativeCompanyBusinessPublicationStateV1): NativeCompanyBusinessPublicationStateV1
+    fun readOriginalSerialCustody(): OriginalLocalSerialCustodyReferenceV1
+    fun recoverOriginalSerialCustody(id: DomainId): OriginalLocalSerialCustodyReferenceV1
+    fun authenticateBusinessPublication(id: DomainId, digest: PayloadDigest, login: String, secret: CharArray,
+        deadline: Long): SelfOwnedCompanyHeadApproval
+    fun requireBusinessPublicationStillCurrent(approval: SelfOwnedCompanyHeadApproval, state: SelfOwnedCompanyStateView,
+        id: DomainId, digest: PayloadDigest)
+    fun signBusinessPublicationEndorsement(record: NativeCompanyBusinessPublicationRecordV1, approval: SelfOwnedCompanyHeadApproval): ByteArray
+    fun verifyBusinessPublication(record: NativeCompanyBusinessPublicationRecordV1)
 
     fun readEmployeeEnrollments(): NativeEmployeeEnrollmentStateV1?
     fun retainEmployeeEnrollments(next: NativeEmployeeEnrollmentStateV1): NativeEmployeeEnrollmentStateV1
@@ -189,6 +167,18 @@ internal class AndroidCompanyCustodyV1(
     override fun rootFingerprint(): String = AndroidP256Primitives.rootFingerprint(keys.rootBody())
     override fun readBusinessPublications(): NativeCompanyBusinessPublicationStateV1? = registry.readBusinessPublications(keys)
 
+    override fun retainBusinessPublications(next: NativeCompanyBusinessPublicationStateV1) = registry.retainBusinessPublications(next, keys)
+    override fun readOriginalSerialCustody() = registry.readOriginalSerialCustody(keys)
+    override fun recoverOriginalSerialCustody(id: DomainId) = registry.recoverOriginalSerialCustody(id, keys)
+    override fun authenticateBusinessPublication(id: DomainId, digest: PayloadDigest, login: String, secret: CharArray,
+        deadline: Long): SelfOwnedCompanyHeadApproval = SelfOwnedCompanyHeadApproval.BusinessV1(
+        authentication.authenticateBusinessPublicationAction(id, digest, login, secret, deadline))
+    override fun requireBusinessPublicationStillCurrent(approval: SelfOwnedCompanyHeadApproval, state: SelfOwnedCompanyStateView,
+        id: DomainId, digest: PayloadDigest) = authentication.requireBusinessPublicationStillCurrent(business(approval), v1(state), id, digest)
+    override fun signBusinessPublicationEndorsement(record: NativeCompanyBusinessPublicationRecordV1, approval: SelfOwnedCompanyHeadApproval) =
+        keys.signBusinessPublicationEndorsement(record, business(approval))
+    override fun verifyBusinessPublication(record: NativeCompanyBusinessPublicationRecordV1) = keys.verifyBusinessPublication(record)
+
     override fun readEmployeeEnrollments() = registry.readEmployeeEnrollments(keys)
     override fun retainEmployeeEnrollments(next: NativeEmployeeEnrollmentStateV1) = registry.retainEmployeeEnrollments(next, keys)
     override fun readEmployeePolicyActivations() = registry.readEmployeePolicyActivations(keys)
@@ -235,6 +225,8 @@ internal class AndroidCompanyCustodyV1(
 
     private fun v1(state: SelfOwnedCompanyStateView): LocalCompanyAuthorityStateV1 =
         state.source as? LocalCompanyAuthorityStateV1 ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
+    private fun business(approval: SelfOwnedCompanyHeadApproval) =
+        (approval as? SelfOwnedCompanyHeadApproval.BusinessV1)?.value ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
     private fun enrollment(approval: SelfOwnedCompanyHeadApproval) =
         (approval as? SelfOwnedCompanyHeadApproval.EnrollmentV1)?.value ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHENTICATION_REFUSED)
     private fun policy(approval: SelfOwnedCompanyHeadApproval) =

@@ -97,6 +97,8 @@ internal class LocalCollectionInteractiveAuthorization(
             view.claim(CashNonSaleStoreProfile.cashSourceClaim(attempt.id)) != null) return null
 
         val tenderResources: Set<RecoveryResourceKey> = when (val tender = attempt.tender) {
+            // Offsets are applied atomically by the exchange command, never interactively recorded.
+            is Tender.ExchangeOffset -> return null
             Tender.Cash -> {
                 if (request.tender != LocalTenderSelectionV1.Cash) return null
                 emptySet()

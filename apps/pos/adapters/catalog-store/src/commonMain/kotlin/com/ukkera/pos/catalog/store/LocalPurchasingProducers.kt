@@ -17,6 +17,7 @@ internal fun purchasingNormalize(key: CommandKey, bytes: StoredBytes): StoredByt
         LocalPurchasingProfile.MATCH_CAPTURED_INVOICE -> LocalPurchasingCodec.matchCapturedInvoice(LocalPurchasingCodec.decodeCapturedMatch(bytes))
         LocalPurchasingProfile.RECORD_CREDIT -> LocalPurchasingCodec.credit(LocalPurchasingCodec.decodeCredit(bytes))
         LocalSupplierCashProfile.COMMAND -> LocalSupplierCashCodec.normalize(bytes)
+        LocalSupplierCashSupervisorCodec.COMMAND -> LocalSupplierCashSupervisorCodec.normalize(bytes)
         LocalSupplierSettlementProfile.ALLOCATE_ADVANCE -> purchasingEncode(LocalSupplierSettlementCodec.allocation(bytes), LocalAllocateSupplierAdvanceV1.serializer())
         else -> error("Unsupported purchasing command")
     }
@@ -26,7 +27,7 @@ internal fun purchasingNormalize(key: CommandKey, bytes: StoredBytes): StoredByt
 
 /** Closed original producer shape, complete claims/writes/result/jobs; no namespace-only trust. */
 internal fun requirePurchasingProducer(evidence: RetainedCommandEvidence) {
-    if (evidence.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierSettlementProfile.ALLOCATE_ADVANCE)) {
+    if (evidence.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND, LocalSupplierSettlementProfile.ALLOCATE_ADVANCE)) {
         requireSupplierSettlementProducer(evidence)
         return
     }

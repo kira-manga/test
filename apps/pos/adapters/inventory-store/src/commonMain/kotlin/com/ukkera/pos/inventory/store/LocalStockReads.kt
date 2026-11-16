@@ -42,7 +42,8 @@ internal fun localStockReadHandlers(repository: LocalStockRepository): List<Mast
 
 private abstract class StockReadHandler(final override val key: ReadKey) : MasterReadHandler {
     final override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && LocalMasterStockTransferRpcKeysV1.accepts(key)
+        profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS &&
+            LocalMasterStockTransferRpcKeysV1.accepts(key) && normalize(normalized) == normalized
 
     final override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         localStockCheck(context.key == key && context.scope == view.scope && queryDigest(context.scope, context.actorId, key, normalized) == context.semanticDigest,

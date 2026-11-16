@@ -1,6 +1,7 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.MasterReadHandler
 import com.ukkera.pos.database.PreparedRead
 import com.ukkera.pos.database.ReadContext
@@ -77,6 +78,9 @@ public class LocalJournalFinancialReadHandler(private val stock: LocalStockRepos
     override public val key: ReadKey get() = LocalFinancialReadCodecV3.QUERY
     override public fun normalize(input: StoredBytes): StoredBytes =
         LocalFinancialReadCodecV3.encode(localSalesDecode(input, LocalFinancialQueryV3.serializer(), 2_048))
+
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
 
     override public suspend fun prepare(normalized: StoredBytes, borrowed: CommandReadView, context: ReadContext): PreparedRead {
         val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies) } ?: borrowed

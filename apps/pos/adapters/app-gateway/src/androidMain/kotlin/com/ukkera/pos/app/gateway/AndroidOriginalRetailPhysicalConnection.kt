@@ -22,6 +22,10 @@ public object AndroidOriginalRetailPhysicalConnection {
         val selected = if (action == LocalOriginalClientJournalAction.ENROLL_FIRST_CLIENT)
             AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL else AndroidOriginalRetailPhysicalAction.REOPEN_EXISTING
         return try {
+            gate.acquireRemoteOriginalOwner(original,
+                if (selected == AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL)
+                    com.ukkera.pos.sales.store.DistributedPhysicalNativeAction.ENROLL_ORIGINAL
+                else com.ukkera.pos.sales.store.DistributedPhysicalNativeAction.REOPEN_EXISTING)
             if (!gate.acquireOriginalOwner(original, selected)) return null
             currentCoroutineContext().ensureActive()
             val endpoint = original.physicalEndpoint(gate) ?: return null

@@ -37,6 +37,19 @@ internal interface SelfOwnedCompanyNativeKeysV2 : SelfOwnedProvisionerNativeKeys
     /** Original ROOT key signature over exactly one retained original-installation commit acknowledgement frame. */
     fun signInstallationAcknowledgement(frame: LocalInstallationCommitAcknowledgementV2): ByteArray =
         selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
+    /**
+     * Original ROOT key signature (64-byte r||s) over exactly one canonical purchasing delegation
+     * body ([LocalCompanyPolicyWireV1.encodeDelegationBody]) whose issuer is this root and whose
+     * subject is this company's POLICY head key. The caller re-checks its retained SIGNING_INTENT
+     * record and head approval before and after; the platform verifies before returning.
+     */
+    fun signCompanyPolicyDelegation(body: ByteArray): ByteArray = selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
+    /**
+     * POLICY head key signature (64-byte r||s) over exactly one canonical purchasing policy body
+     * ([LocalCompanyPolicyWireV1.encodePolicyBody]) authored by this company's POLICY head key under
+     * this root. Same caller/platform obligations as [signCompanyPolicyDelegation].
+     */
+    fun signCompanyPolicy(body: ByteArray): ByteArray = selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
 }
 
 /**
@@ -45,8 +58,10 @@ internal interface SelfOwnedCompanyNativeKeysV2 : SelfOwnedProvisionerNativeKeys
  * ciphertext)` verified BEFORE decryption with the V2 registry key; canonical plaintext; the
  * embedded original registry validated exactly as [SelfOwnedProvisionerRegistryV2]; the head
  * account names the bootstrap head; the enrollment is the actual keys' body signed by the root key
- * over the V2 body frame. Policy and serial-custody records have no desktop workflow yet and are
- * refused (STATE_UNCERTAIN); original-installation claims/admission follow the Android V1 rules.
+ * over the V2 body frame. Company purchasing-policy records follow the Android V1 rules (canonical
+ * bodies, structural cross-check, immutable predecessor chain, ROOT delegation and POLICY head
+ * signatures verified on every read); mandatory serial custody follows the shared monotonic
+ * transition and actual issuer-origin rules; original-installation claims/admission follow V1 rules.
  */
 internal object SelfOwnedCompanyAuthorityV2 {
     fun requireCompanyKeys(keys: SelfOwnedOriginalProvisionerKeys): SelfOwnedCompanyNativeKeysV2 =
@@ -87,6 +102,9 @@ internal object SelfOwnedCompanyAuthorityV2 {
     fun seal(company: LocalCompanyAuthorityBootstrapV2, state: LocalCompanyAuthorityStateV2, keys: SelfOwnedCompanyNativeKeysV2,
         bootOrdinal: Int?): ByteArray {
         known(company.complete() && company.original.enrollmentStarted)
+        // Every company writer, including credential/throttle updates, must leave the
+        // permanent serial marker's already reserved completion bytes/revisions available.
+        if (state.serialCustody != null) requireCapacity(state)
         validate(company, state, keys, bootOrdinal)
         val bytes = sealUnchecked(company, state, keys)
         val aad = SelfOwnedNativeProvisionerWireV2.companyRegistryAad(company)
@@ -118,9 +136,10 @@ internal object SelfOwnedCompanyAuthorityV2 {
         known(head.headAuthorityId == company.headAuthorityId && head.headEnrollmentId == company.headEnrollmentId &&
             head.name == company.headName && head.login == company.headLogin)
         bootOrdinal?.let { known(head.throttleBoot <= it && state.original.installers.all { account -> account.throttleBoot <= it }) }
-        // No desktop policy/serial workflow exists yet: such records are never adopted. Original
-        // installation claims (one D7/request across every attempt) follow the Android V1 rules.
-        known(state.policies.isEmpty() && state.serialCustody == null)
+        // The marker is bound to the actual original issuer; policy records and
+        // original installation claims (one D7/request across every attempt) follow the Android V1 rules.
+        state.serialCustody?.let { requireSerialCustodyOrigin(it, state, company, keys) }
+        validatePolicies(company, state, keys)
         val first = state.installationClaims.firstOrNull()
         for (claim in state.installationClaims) known(first != null && claim.originalRequestId == first.originalRequestId &&
             claim.allocationDigest == first.allocationDigest && claim.definitionDigest == first.definitionDigest)
@@ -165,7 +184,19 @@ internal object SelfOwnedCompanyAuthorityV2 {
         known(b.policyRevision == a.policyRevision + (if (a.policyEnabled != b.policyEnabled) 1L else 0L))
         known(b.installationRevision == a.installationRevision + (if (a.installationEnabled != b.installationEnabled) 1L else 0L))
         known(b.throttleBoot >= a.throttleBoot)
-        known(next.policies.isEmpty() && next.serialCustody == null)
+        try { requireNativeCompanySerialCustodyTransitionV1(previous.serialCustody, next.serialCustody) }
+        catch (_: IllegalArgumentException) { selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
+        known(next.policies.size in previous.policies.size..previous.policies.size + 1)
+        for ((index, old) in previous.policies.withIndex()) {
+            val updated = next.policies[index]
+            known(old.originalActionId == updated.originalActionId && old.headAccountRevision == updated.headAccountRevision &&
+                old.headCredentialRevision == updated.headCredentialRevision && old.purposeRevision == updated.purposeRevision &&
+                old.keyRevision == updated.keyRevision && old.policyBody == updated.policyBody && old.delegationBody == updated.delegationBody &&
+                updated.phase.ordinal in old.phase.ordinal..old.phase.ordinal + 1 &&
+                (old.signedPolicy == null || old.signedPolicy == updated.signedPolicy))
+        }
+        if (next.policies.size > previous.policies.size) known(next.policies.last().phase == LocalCompanyPolicyPhaseV1.PREPARED &&
+            previous.policies.all { it.phase == LocalCompanyPolicyPhaseV1.ISSUED } && previous.installationAdmission == null)
         known(next.installationClaims.size in previous.installationClaims.size..previous.installationClaims.size + 1)
         for ((index, old) in previous.installationClaims.withIndex()) {
             val updated = next.installationClaims[index]
@@ -207,10 +238,24 @@ internal object SelfOwnedCompanyAuthorityV2 {
             8L + LocalBranchInstallationWireV2.MAXIMUM_ACKNOWLEDGEMENT_BYTES + LocalBranchInstallationWireV2.MAXIMUM_SIGNED_ACKNOWLEDGEMENT_BYTES)
         var reserved = if (value.head.reservationId == null) 40L else 0L
         var revisions = 0L
+        value.serialCustody?.let { custody ->
+            val marker = NativeCompanySerialAuthorityCustodyWireV1.encode(custody)
+            try { reserved += NativeCompanySerialAuthorityCustodyWireV1.MAXIMUM_BYTES - marker.size }
+            finally { marker.fill(0) }
+            revisions += custody.reservedCompletionRevisions
+            if (custody.reservedCompletionRevisions > (Long.MAX_VALUE - 1L) - custody.revision)
+                selfOwnedFail(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
+        }
         reserved += 40L * value.original.installers.count { it.reservationId == null }
         for (allocation in value.original.allocations) if (allocation.grant == null) {
             reserved += 4L + SelfOwnedInstallationProfileV1.MAXIMUM_AUTHORITY_DOCUMENT_BYTES
             revisions += if (allocation.phase == LocalProvisionerAllocationPhaseV1.ALLOCATED) 2L else 1L
+        }
+        for (record in value.policies) if (record.signedPolicy == null) {
+            reserved += 4L + LocalCompanyPolicyFormatV1.MAX_ENVELOPE_BYTES
+            // PREPARED -> SIGNING_INTENT uses six more ASCII bytes than PREPARED.
+            if (record.phase == LocalCompanyPolicyPhaseV1.PREPARED) reserved += 6L
+            revisions += if (record.phase == LocalCompanyPolicyPhaseV1.PREPARED) 2L else 1L
         }
         if (value.installationAdmission != null) {
             reserved += 2L * (4 + 36) + 8L + 2L * (4 + 64) + 4L + LocalBranchInstallationWireV2.MAXIMUM_APPROVAL_FRAME_BYTES + 4L
@@ -230,5 +275,83 @@ internal object SelfOwnedCompanyAuthorityV2 {
             revisions > (Long.MAX_VALUE - 1L) - value.original.revision) selfOwnedFail(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
     }
 
-    private fun known(value: Boolean) { if (!value) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
+    private fun requireSerialCustodyOrigin(custody: NativeCompanySerialAuthorityCustodyV1,
+        state: LocalCompanyAuthorityStateV2, company: LocalCompanyAuthorityBootstrapV2, keys: SelfOwnedCompanyNativeKeysV2) {
+        val origin = custody.authority.origin
+        val allocation = state.original.allocations.singleOrNull() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        val coordinates = allocation.body.coordinates
+        known(origin.company == CompanyScope(company.original.organizationId, company.original.companyId) &&
+            origin.foundingActionId == company.original.actionId && origin.rootId == company.original.rootId &&
+            origin.rootKeyId == company.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId &&
+            origin.rootDocumentDigest == PayloadDigest(JvmP256Primitives.documentDigest(state.original.root)) &&
+            origin.rootFingerprint == JvmP256Primitives.rootFingerprint(keys.rootBody()) &&
+            origin.headAuthorityId == company.headAuthorityId && origin.headEnrollmentId == company.headEnrollmentId &&
+            origin.originalIssuerId == company.original.issuerId &&
+            origin.originalIssuerKeyId == company.original.key(SelfOwnedNativeKeyRoleV1.ISSUER).keyId &&
+            origin.originalIssuerDelegationDigest == PayloadDigest(JvmP256Primitives.documentDigest(state.original.delegation)) &&
+            origin.originalScope == coordinates.scope && origin.originalAllocationId == coordinates.allocationId)
+        // The actual target owner joins the complete P2 digest before every workflow use.
+        val reserved = SelfOwnedDesktopCompanyPolicyPublicationV2.reservedIds(company, state)
+        val own = listOf(custody.authority.authorityId, custody.authority.publicationId,
+            custody.originalAuthorityActionId, custody.authoritySigningKeyId)
+        known(own.distinct().size == own.size && own.none { it in reserved })
+    }
+
+    /**
+     * Android V1 policy-record validation over the V2 container: every record is canonical and
+     * structurally the original company's (root, head, POLICY key, single original branch), revisions
+     * count from one, each successor chains to its ISSUED predecessor, and every retained envelope is
+     * the canonical encoding of exactly these bodies with a valid ROOT delegation signature and a valid
+     * POLICY head key signature.
+     */
+    private fun validatePolicies(company: LocalCompanyAuthorityBootstrapV2, state: LocalCompanyAuthorityStateV2,
+        keys: SelfOwnedCompanyNativeKeysV2) {
+        if (state.policies.isEmpty()) return
+        val head = state.head
+        val rootPoint = keys.originalPoint(SelfOwnedNativeKeyRoleV1.ROOT)
+        val policyPoint = keys.headPoint(LocalCompanyHeadKeyRoleV1.POLICY)
+        try {
+            val fingerprint = JvmP256Primitives.rootFingerprint(keys.rootBody())
+            var previous: LocalCompanyPolicyRecordV1? = null
+            for ((index, record) in state.policies.withIndex()) {
+                known(record.headAccountRevision <= head.accountRevision && record.purposeRevision <= head.policyRevision)
+                val policy = try { record.policy() } catch (_: RuntimeException) { uncertain() }
+                val delegation = try { record.delegation() } catch (_: RuntimeException) { uncertain() }
+                try { requireOriginalCompanyPolicyV2(policy, delegation, state.original, company, fingerprint, policyPoint) }
+                catch (_: IllegalArgumentException) { uncertain() }
+                val policyBytes = LocalCompanyPolicyWireV1.encodePolicyBody(policy)
+                val delegationBytes = LocalCompanyPolicyWireV1.encodeDelegationBody(delegation)
+                try {
+                    known(record.policyBody.same(policyBytes) && record.delegationBody.same(delegationBytes) &&
+                        policy.revision.value == index.toLong() + 1L && delegation.revision == policy.revision &&
+                        delegation.subject.accountRevision.value == record.headAccountRevision)
+                    previous?.let { prior ->
+                        val priorPolicy = prior.policy(); val priorDelegation = prior.delegation()
+                        known(prior.phase == LocalCompanyPolicyPhaseV1.ISSUED && policy.policyId == priorPolicy.policyId &&
+                            delegation.delegationId == priorDelegation.delegationId &&
+                            policy.predecessor?.publicationId == priorPolicy.publicationId &&
+                            policy.predecessor?.bodyDigest == LocalCompanyPolicyPublicationCore.digest(prior.policyBody) &&
+                            delegation.predecessor?.publicationId == priorDelegation.publicationId &&
+                            delegation.predecessor?.bodyDigest == LocalCompanyPolicyPublicationCore.digest(prior.delegationBody))
+                    }
+                    record.signedPolicy?.let { envelope ->
+                        val result = try { record.result() } catch (_: RuntimeException) { uncertain() }
+                        val signedDelegation = result.delegations.documents.singleOrNull() ?: run { uncertain() }
+                        val rb = LocalCompanyPolicyWireV1.encodePolicyBody(result.body)
+                        val db = LocalCompanyPolicyWireV1.encodeDelegationBody(signedDelegation.body)
+                        val wire = LocalCompanyPolicyWireV1.encodeSignedPolicy(result)
+                        val ps = result.signature.copyBytes(); val ds = signedDelegation.signature.copyBytes()
+                        try {
+                            known(policyBytes.contentEquals(rb) && delegationBytes.contentEquals(db) && envelope.same(wire) &&
+                                JvmP256Primitives.verify(rootPoint, db, ds) && JvmP256Primitives.verify(policyPoint, rb, ps))
+                        } finally { rb.fill(0); db.fill(0); wire.fill(0); ps.fill(0); ds.fill(0) }
+                    }
+                } finally { policyBytes.fill(0); delegationBytes.fill(0) }
+                previous = record
+            }
+        } finally { rootPoint.fill(0); policyPoint.fill(0) }
+    }
+
+    private fun known(value: Boolean) { if (!value) uncertain() }
+    private fun uncertain(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
 }

@@ -25,6 +25,13 @@ internal interface PairedDeviceCredentialCustodySource {
         validation: PairedDeviceCredentialJournalCustody.NativeValidation): Boolean
 }
 
+/** Platform-native storage custody issued only by the same protected approved target.
+ * This is an opaque source owner, never serialized identity, employee authority or a
+ * caller-supplied currentness predicate. Unsupported platform sources stay absent. */
+public abstract class PairedDevicePhysicalJournalSource internal constructor() {
+    internal abstract fun matches(original: PairedDeviceCredentialJournalCustody): Boolean
+}
+
 public class PairedDeviceCredentialJournalCustody internal constructor(
     private val owner: Any,
     private val target: PairedDeviceCredentialCustodySource,
@@ -49,6 +56,18 @@ public class PairedDeviceCredentialJournalCustody internal constructor(
     private var actorAllocationOpenStarted = false
     private val validations = mutableSetOf<NativeValidation>()
     private var closure: CompletableDeferred<Unit>? = null
+    private var physicalSource: PairedDevicePhysicalJournalSource? = null
+
+    internal fun attachPhysicalSource(source: PairedDevicePhysicalJournalSource) = synchronized(gate) {
+        check(phase == Phase.ISSUED && physicalSource == null && source.matches(this))
+        physicalSource = source
+    }
+
+    /** The original acquisition may end at native handoff. A successfully selected source
+     * subsequently proves its own real OS/key/file custody, alongside actual actor/RPC loans. */
+    public fun physicalJournalSource(owner: Any): PairedDevicePhysicalJournalSource? = synchronized(gate) {
+        if (!belongsTo(owner) || phase == Phase.RETIRED) null else physicalSource?.takeIf { it.matches(this) }
+    }
 
     /** Exact actual root owner (Android Application / desktop root) reference, not scalar DATA. */
     public fun belongsTo(owner: Any): Boolean = this.owner === owner

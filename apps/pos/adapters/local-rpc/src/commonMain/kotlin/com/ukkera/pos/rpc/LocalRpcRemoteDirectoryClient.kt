@@ -5,6 +5,13 @@ import com.ukkera.pos.database.LocalMasterClient
 import com.ukkera.pos.database.LocalMasterClientResultAcceptance
 import com.ukkera.pos.database.LocalMasterEndpointHealth
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
+import com.ukkera.pos.database.LocalMasterLanBusinessRpcKeysV1
+import com.ukkera.pos.database.LocalMasterChangesClient
+import com.ukkera.pos.database.LocalMasterChangeCursorV1
+import com.ukkera.pos.database.LocalMasterChangesReplyV1
+import com.ukkera.pos.database.LocalMasterChangesFailureV1
+import com.ukkera.pos.database.LocalMasterChangesBatchClient
+import com.ukkera.pos.database.LocalMasterChangesBatchReplyV1
 import com.ukkera.pos.database.LocalMasterRpcBusinessAccess
 import com.ukkera.pos.database.LocalMasterReportRpcKeysV1
 import com.ukkera.pos.database.LocalMasterStockTransferRpcKeysV1
@@ -45,12 +52,16 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
     private val owner: LocalRpcOriginalClientOwner,
     internal val authentication: LocalRpcRemoteAuthenticationService,
     public val profile: LocalMasterRpcWorkflowProfile,
-) : LocalMasterClientResultAcceptance {
+) : LocalMasterClientResultAcceptance, LocalMasterChangesClient, LocalMasterChangesBatchClient {
     public val connectionId: DomainId get() = authentication.connectionId
     private val state = MutableStateFlow(LocalMasterEndpointHealth.ACTIVE)
     override public val health: StateFlow<LocalMasterEndpointHealth> = state.asStateFlow()
     public fun isCurrent(): Boolean = state.value == LocalMasterEndpointHealth.ACTIVE && owner.directoryClientCurrent(this)
     internal fun deny() { state.value = LocalMasterEndpointHealth.RETIRED }
+
+    /** Separate actual SDK companion loan; this does not install a Host route or native journal. */
+    public suspend fun physicalCompanion(): com.ukkera.pos.database.LocalMasterPhysicalRpcClientV1? =
+        owner.physicalCompanion(this)
 
     override public suspend fun signIn(connectionId: DomainId, login: LocalLoginIdentifier,
         password: CharArray, explicitDeviceMove: Boolean): LocalAuthenticationResult =
@@ -63,7 +74,8 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
         currentCoroutineContext().ensureActive()
         // An unsupported key cannot escape a closed workflow adapter. This is a
         // capability check, not authorization: the Master still validates the complete request.
-        if (profile == LocalMasterRpcWorkflowProfile.REPORTS && !LocalMasterReportRpcKeysV1.accepts(request.query) ||
+        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && !LocalMasterLanBusinessRpcKeysV1.accepts(request.query) ||
+            profile == LocalMasterRpcWorkflowProfile.REPORTS && !LocalMasterReportRpcKeysV1.accepts(request.query) ||
             profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && !LocalMasterStockTransferRpcKeysV1.accepts(request.query) ||
             profile == LocalMasterRpcWorkflowProfile.KITCHEN && !LocalMasterKitchenRpcKeysV1.accepts(request.query) ||
             profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS && !LocalMasterRetailOrderRpcKeysV1.accepts(request.query) ||
@@ -78,6 +90,54 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
         return owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Read(request, profile),
             { ReadReply.Unavailable(ReadFailure.STORAGE_UNCERTAIN) },
             { ReadReply.Unavailable(ReadFailure.SERVICE_BUSY) }) { bridge, actual, actor -> bridge.read(actual, request, actor) }
+    }
+
+    override public suspend fun snapshot(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1?): LocalMasterChangesReplyV1 {
+        currentCoroutineContext().ensureActive()
+        if (profile != this.profile) return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && !LocalMasterLanBusinessRpcKeysV1.accepts(selection.query))
+            return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.UNKNOWN_QUERY)
+        return owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Read(selection, profile),
+            { LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN) },
+            { LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.SERVICE_BUSY) }) { bridge, actual, actor ->
+            bridge.snapshot(actual, selection, expectedCut, actor)
+        }
+    }
+
+    override public suspend fun pull(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1): LocalMasterChangesReplyV1 {
+        currentCoroutineContext().ensureActive()
+        if (profile != this.profile) return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && !LocalMasterLanBusinessRpcKeysV1.accepts(selection.query))
+            return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.UNKNOWN_QUERY)
+        return owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Read(selection, profile),
+            { LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN) },
+            { LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.SERVICE_BUSY) }) { bridge, actual, actor ->
+            bridge.pull(actual, selection, cursor, actor)
+        }
+    }
+
+    override public suspend fun snapshotBatch(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>): LocalMasterChangesBatchReplyV1 {
+        currentCoroutineContext().ensureActive()
+        if (profile != this.profile || profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val count = selections.size
+        if (count !in 1..32)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+        // Capture the bounded list before the owned worker's identity probe can suspend.
+        // ReadRequest and StoredBytes are immutable; a later caller list edit is not this call.
+        val captured = List(count) { selections[it] }
+        if (captured.sumOf { it.payload.size.toLong() } > 65_536)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+        if (captured.any { !LocalMasterLanBusinessRpcKeysV1.accepts(it.query) })
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.UNKNOWN_QUERY)
+        return owner.directoryExchange(this, credentials, LocalMasterRpcBusinessAccess.Read(captured.first(), profile),
+            { LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN) },
+            { LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.SERVICE_BUSY) }) { bridge, actual, actor ->
+            bridge.snapshotBatch(actual, captured, actor)
+        }
     }
 
     override public suspend fun execute(credentials: LocalGatewayCredentials, request: MutationRequest): MutationReply =
@@ -98,7 +158,8 @@ public class LocalRpcRemoteDirectoryClient internal constructor(
     private suspend fun executeOriginal(credentials: LocalGatewayCredentials, request: MutationRequest,
         accept: (suspend (MutationReply.Recorded) -> Unit)?): MutationReply {
         currentCoroutineContext().ensureActive()
-        if (profile == LocalMasterRpcWorkflowProfile.REPORTS && !LocalMasterReportRpcKeysV1.accepts(request.command) ||
+        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && !LocalMasterLanBusinessRpcKeysV1.accepts(request.command) ||
+            profile == LocalMasterRpcWorkflowProfile.REPORTS && !LocalMasterReportRpcKeysV1.accepts(request.command) ||
             profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && !LocalMasterStockTransferRpcKeysV1.accepts(request.command) ||
             profile == LocalMasterRpcWorkflowProfile.KITCHEN && !LocalMasterKitchenRpcKeysV1.accepts(request.command) ||
             profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS && !LocalMasterRetailOrderRpcKeysV1.accepts(request.command) ||

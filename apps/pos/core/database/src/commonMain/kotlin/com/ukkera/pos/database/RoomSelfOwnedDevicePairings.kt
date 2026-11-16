@@ -22,6 +22,11 @@ internal class RoomSelfOwnedDevicePairings(
             actualSecurity.storageKey.keyId == owner.originalRecord.record.allocation.coordinates.storageKeyId)
     }
 
+    /** Original owner identity only. Every native action and protected membership read
+     * still performs its own current checks; this retains no census, receipt or grant. */
+    internal fun belongsTo(actualOwner: RoomRuntimeHistoryOwner, actualCustody: SelfOwnedNativeHistoryCustody): Boolean =
+        owner === actualOwner && custody === actualCustody && owner.operational && native.belongsTo(actualCustody)
+
     suspend fun prepare(requestId: DomainId, target: LocalDevicePairingTargetDescriptor,
         sdkIdentity: LocalDevicePairingSdkIdentityV2? = null):
         LocalCompanyAuthorityResult<LocalDevicePairingAction> {

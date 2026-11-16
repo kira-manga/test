@@ -7,6 +7,8 @@ import com.ukkera.pos.database.CommandContext
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.database.MasterCommandHandler
+import com.ukkera.pos.database.LocalMasterRpcRetainedResultSourceAccessProvider
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.PreparedMutation
 import com.ukkera.pos.database.ProposedOutcome
 import com.ukkera.pos.database.StoredBytes
@@ -31,6 +33,7 @@ import com.ukkera.pos.sales.SalesUniqueCheck
 import com.ukkera.pos.sales.SalesUniqueKind
 import com.ukkera.pos.sales.SalesVersionCheck
 import com.ukkera.pos.security.SecurityAction
+import com.ukkera.pos.security.AuthorizationRequirement
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Money
 import com.ukkera.pos.types.Revision
@@ -39,7 +42,7 @@ import com.ukkera.pos.types.Revision
  * Real local cash lifecycle commands. Every dependency is read in the kernel's
  * writer transaction; no fixture seed, request snapshot or replacement auth source.
  */
-public class LocalCashHandler : MasterCommandHandler {
+public class LocalCashHandler : MasterCommandHandler, LocalMasterRpcRetainedResultSourceAccessProvider {
     override public val key: CommandKey get() = LocalSalesStoreProfile.CASH_COMMAND
     override public val writableKinds: Set<String> = setOf(
         CashNonSaleStoreProfile.SESSION_KIND, LocalSalesStoreProfile.DRAWER_KIND, LocalSalesStoreProfile.CUSTODIAN_KIND,
@@ -53,6 +56,15 @@ public class LocalCashHandler : MasterCommandHandler {
     )
 
     override public fun normalize(input: StoredBytes): StoredBytes = LocalCashCommandCodec.normalize(input)
+
+    override public fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+
+    override public suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if (!supportsRpcWorkflow(profile, normalized)) return null
+        return localCashRpcRetainedResultRequirements(normalized, view, context)
+    }
 
     override public suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
         check(context.scope == view.scope && context.key == key &&

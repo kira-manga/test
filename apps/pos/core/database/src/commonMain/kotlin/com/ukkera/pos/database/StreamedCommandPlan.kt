@@ -401,7 +401,7 @@ internal class TransactionPlanSpool private constructor(
                 requireOneChange()
             }
             if (write.key.kind in StockRelationalKindsV2.all) access.projection.project(context.scope,
-                StoredAggregate(write.key, write.storageGeneration, write.schema, write.payload, write.payloadDigest))?.let { dao.replaceIndex(it) }
+                StoredAggregate(write.key, write.storageGeneration, write.schema, write.payload, write.payloadDigest))?.let { dao.replaceIndex(it, expected) }
         }
         frames(StreamedSectionV2.CLAIMS) { frame ->
             val claim = (frame as RetainedCommandFrameV2.Claim).value

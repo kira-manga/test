@@ -519,16 +519,9 @@ internal class SelfOwnedDesktopCompanyInstallationV2(
         if (now > Long.MAX_VALUE - SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS) uncertain()
         return now + SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS
     }
-    private fun reservedIds(company: LocalCompanyAuthorityBootstrapV2, state: LocalCompanyAuthorityStateV2): Set<DomainId> = buildSet {
-        addAll(company.allIds())
-        for (allocation in state.original.allocations) {
-            val c = allocation.body.coordinates
-            addAll(listOf(c.allocationId, c.scope.branchId, c.installationId, c.assignmentId, c.deviceId, c.storageInstanceId,
-                c.storageKeyId, c.pepperKeyId, c.targetSigningKeyId, c.firstActorId))
-        }
-        for (claim in state.installationClaims) { add(claim.issuedAttemptId); add(claim.originalRequestId) }
-        state.installationAdmission?.let { add(it.originalRequestId) }
-    }
+    // Includes every retained policy ID, as the Android V1 issuer does.
+    private fun reservedIds(company: LocalCompanyAuthorityBootstrapV2, state: LocalCompanyAuthorityStateV2): Set<DomainId> =
+        SelfOwnedDesktopCompanyPolicyPublicationV2.reservedIds(company, state)
     private fun uncertain(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
 
     override fun toString(): String = "SelfOwnedDesktopCompanyInstallationV2([REDACTED])"

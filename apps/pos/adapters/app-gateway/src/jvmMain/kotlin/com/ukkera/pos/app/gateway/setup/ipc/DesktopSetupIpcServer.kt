@@ -117,16 +117,26 @@ public class DesktopSetupIpcServer(
         val output = connection.dataOutput()
         val input = connection.dataInput()
         val send: (IpcMessage) -> Unit = { message -> DesktopSetupIpcWire.write(output, DesktopSetupIpcWire.Frame(message)) }
+        val lanDiscoveryExtension = java.util.concurrent.atomic.AtomicBoolean(false)
         val profile = controller.compositionProfile
         send(IpcMessage.Hello((profile as? LocalTrainingSdkProfileV1)?.slot?.name, master = profile != null))
         documents.attach(send)
-        val views = scope.launch(Dispatchers.IO) { controller.state.collect { send(IpcMessage.View(IpcView.of(it))) } }
+        val views = scope.launch(Dispatchers.IO) { controller.state.collect {
+            send(IpcMessage.View(IpcView.of(it)))
+            if (lanDiscoveryExtension.get()) send(IpcMessage.LanDiscoveryV2(IpcLanDiscoveryV2.of(it.lan)))
+        } }
         try {
             while (true) {
                 val frame = runInterruptible { DesktopSetupIpcWire.read(input) }
                 try {
                     when (val message = frame.message) {
-                        is IpcMessage.Command -> runCatching { dispatch(message, frame) }
+                        is IpcMessage.Command -> runCatching {
+                            if (message.method == "observeLanDiscoveryV2") {
+                                require(message.secretCount == 0 && frame.secrets.isEmpty())
+                                lanDiscoveryExtension.set(true)
+                                send(IpcMessage.LanDiscoveryV2(IpcLanDiscoveryV2.of(controller.state.value.lan)))
+                            } else dispatch(message, frame)
+                        }
                         is IpcMessage.DocumentImported -> documents.complete(message.id, message)
                         is IpcMessage.DocumentExported -> documents.complete(message.id, message)
                         else -> return // A UI peer never sends service messages.
@@ -170,6 +180,10 @@ public class DesktopSetupIpcServer(
             "approveDeviceAdmission" -> s.approveDeviceAdmission(id(), secret(0))
             "exportFreshDeviceDocument" -> s.exportFreshDeviceDocument(id(), LocalSetupPairingDocumentKind.valueOf(requireNotNull(c.kind)))
             "startLanHost" -> s.startLanHost(requireNotNull(c.lan).value())
+            "startLanHostV2" -> {
+                require(c.number == 0L || c.number == 1L)
+                s.startLanHost(requireNotNull(c.lan).value(advertiseHost = c.number == 1L))
+            }
             "authenticateAndStopLocalMaster" -> s.authenticateAndStopLocalMaster(requireNotNull(c.text), secret(0))
             "authenticateAndResumeLocalMaster" -> s.authenticateAndResumeLocalMaster(requireNotNull(c.text), secret(0))
             else -> Unit // Unknown or Client-role intent: refused without effect.
@@ -201,10 +215,13 @@ public class DesktopSetupIpcServer(
             "beginFreshDevicePairing" -> s.beginFreshDevicePairing()
             "closeFreshDevicePairing" -> s.closeFreshDevicePairing()
             "refreshLanAttachment" -> s.refreshLanAttachment()
+            "refreshLanNetworks" -> s.refreshLanNetworks()
             "closeLanAttachment" -> s.closeLanAttachment()
             "refreshOriginalStatus" -> s.refreshOriginalStatus()
             "lockPresentation" -> s.lockPresentation()
             "resumePresentation" -> s.resumePresentation()
+            "refreshMasterBackups" -> s.refreshMasterBackups()
+            "createMasterBackup" -> s.createMasterBackup()
         }
     }
 
@@ -232,6 +249,8 @@ public class DesktopSetupIpcServer(
             "retireUnsignedDevicePairing" -> s.retireUnsignedDevicePairing(id)
             "recoverFreshDevicePairing" -> s.recoverFreshDevicePairing(id)
             "handoffFreshDeviceAdmission" -> s.handoffFreshDeviceAdmission(id)
+            "verifyMasterBackup" -> s.verifyMasterBackup(id)
+            "restoreMasterBackup" -> s.restoreMasterBackup(id)
         }
     }
 
@@ -249,13 +268,14 @@ public class DesktopSetupIpcServer(
             "reconnectOriginalLocalClient", "recoverOriginalLocalClientWrites", "openEmployeeEnrollment", "beginEmployeeEnrollment",
             "openEmployeePolicies", "closeEmployeePolicies", "beginEmployeePolicy", "openDeviceAdmissions", "closeDeviceAdmissions",
             "openFreshDevicePairing", "beginFreshDevicePairing", "closeFreshDevicePairing", "refreshLanAttachment",
-            "closeLanAttachment", "refreshOriginalStatus", "lockPresentation", "resumePresentation")
+            "closeLanAttachment", "refreshLanNetworks", "refreshOriginalStatus", "lockPresentation", "resumePresentation",
+            "refreshMasterBackups", "createMasterBackup")
         val ID_ARGUMENT: Set<String> = setOf("inspectEmployeeEnrollment", "enrollEmployeeIntentJournal", "reopenEmployeeIntentJournal",
             "recoverEmployeeIntentJournalWrites", "finishEmployeeEnrollment", "inspectEmployeePolicy", "activateApprovedEmployeePolicy",
             "lookupEmployeePolicy", "finishEmployeePolicy", "inspectDeviceAdmission", "admitApprovedDevice", "lookupDeviceAdmission",
             "inspectFreshDevicePairing", "importFreshDeviceIdentity", "prepareFreshDeviceChallenge", "importFreshDevicePossession",
             "proveFreshDeviceTarget", "reviewUnsignedDevicePairingRetirement", "retireUnsignedDevicePairing",
-            "recoverFreshDevicePairing", "handoffFreshDeviceAdmission")
+            "recoverFreshDevicePairing", "handoffFreshDeviceAdmission", "verifyMasterBackup", "restoreMasterBackup")
     }
 }
 

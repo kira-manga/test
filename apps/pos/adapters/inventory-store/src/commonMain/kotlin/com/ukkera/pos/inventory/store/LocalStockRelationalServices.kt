@@ -38,6 +38,15 @@ public class LocalStockRelationalTransaction internal constructor(
     private var foodExposure: CollectionExposure? = null
     private val millis: Long get() = recordedAt.value.toEpochMilliseconds()
 
+    /** Share only bounded, normally completed immutable producer proofs while this exact
+     * proposal owns its real TEMP spool/native loan. Every lookup still reopens/matches the
+     * original and direct sources; current rows, claims, ranges and selected writes are fresh.
+     * The existing private read scope clears on normal, exceptional and cancelled exit. */
+    public suspend fun <T> withCompletedProducerProof(block: suspend () -> T): T {
+        work.requireOpen()
+        return read.withCompletedProducerProof(block)
+    }
+
     /** Actual capture-bound reader of THIS still-open transaction. Unchanged reservations,
      * issues and full memberships are retained on the SAME sink as commerce effects; a sinkless
      * read, caller DTO or cloned view cannot stand in for a literal BEFORE posting proof. */
@@ -473,6 +482,7 @@ private class StockAdminHandler(private val repository: LocalStockRepository, pr
     override fun normalize(input: StoredBytes): StoredBytes = LocalStockRelationalCommandsV2.encode(LocalStockRelationalCommandsV2.decode(input))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
         if (profile != LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS) return false
+        if (normalize(normalized) != normalized) return false
         val transfer = LocalStockRelationalCommandsV2.decode(normalized) as? LocalStockRelationalCommand.Transfer ?: return false
         // Body classification only. Actual source safety, custody, revision, warehouse and
         // current employee authority are still proved by the installed Master transaction.

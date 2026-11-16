@@ -68,42 +68,84 @@ internal class DesktopPairedJournalFile(
     override fun initialManifest(): ByteArray = when (kind) {
         ClientJournalKind.ACTOR_ALLOCATIONS -> PairedDeviceActorAllocationJournal.originalEmptyManifest(this, checkNotNull(allocationCustody))
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.originalEmptyManifest(this)
-        ClientJournalKind.CREDENTIALS -> error("client.paired.desktop.kind")
+        ClientJournalKind.CREDENTIALS, ClientJournalKind.READ_VIEWS_V1 -> error("client.paired.desktop.kind")
     }
 
     fun validateExisting() = when (kind) {
         ClientJournalKind.ACTOR_ALLOCATIONS -> PairedDeviceActorAllocationJournal.validateExisting(this, checkNotNull(allocationCustody))
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.validateExisting(this)
-        ClientJournalKind.CREDENTIALS -> error("client.paired.desktop.kind")
+        ClientJournalKind.CREDENTIALS, ClientJournalKind.READ_VIEWS_V1 -> error("client.paired.desktop.kind")
     }
 
     fun ledger(): PairedDeviceActorAllocationJournal? =
         allocationCustody?.let { PairedDeviceActorAllocationJournal.fromExisting(this, it) }
-    fun attach(facet: ClientJournalPhysicalOwner) { check(headAdmitted); work.requireActive(); work.attachSuccessfulOwner(facet) }
+    fun attach(facet: ClientJournalPhysicalOwner) = attachAdmittedOwner(facet)
     fun isCurrentOwner(facet: ClientJournalPhysicalOwner): Boolean = work.isCurrentOwner(facet)
 }
 
 /**
  * Successful desktop ledger/actor owner, reached only after full typed validation, native head
- * admission and continuity. It lends no physical custody, so drain is immediate.
+ * admission and continuity. Physical loans keep THIS successful native owner alive until the
+ * actual distributed journal owner has certainly drained its work and evidence custody.
  */
 internal class DesktopPairedJournalOwner private constructor(private val file: DesktopPairedJournalFile) : PairedClientJournalOwner {
     override val intentJournal: LocalClientIntentJournal? =
         if (file.kind == ClientJournalKind.INTENTS) AndroidEncryptedClientIntentJournal.fromExisting(file) else null
     override val actorAllocationJournal: PairedDeviceActorAllocationJournal? = file.ledger()
-    @Volatile private var denied = false
-    private val facet = object : ClientJournalPhysicalOwner {
-        override fun denyPhysical() { denied = true }
-        override val physicalDenied: Boolean get() = denied
-        override val physicalLoansDrained: Boolean get() = true
-        override suspend fun awaitPhysicalDrain() = Unit
-    }
+    private val facet = ClientJournalPhysicalLoans()
     init {
         file.attach(facet)
         actorAllocationJournal?.attachSuccessfulOwner(this)
     }
 
-    override fun isCurrent(): Boolean = !denied && file.isCurrentOwner(facet)
+    override fun isCurrent(): Boolean = !facet.physicalDenied && file.isCurrentOwner(facet)
+    private fun ownsPhysical(journal: LocalClientIntentJournal): Boolean =
+        file.kind == ClientJournalKind.INTENTS && intentJournal === journal && actorAllocationJournal == null &&
+            journal.owner == LocalClientIdentity(file.deviceOwner.scope, checkNotNull(file.actorId), file.deviceOwner.deviceId)
+
+    override fun capturePhysical(journal: LocalClientIntentJournal): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody? =
+        if (!ownsPhysical(journal) || !isCurrent()) null else facet.capture()
+
+    override suspend fun recheckPhysical(journal: LocalClientIntentJournal): Boolean {
+        if (!ownsPhysical(journal) || !isCurrent()) return false
+        val checked = file.owned {
+            object : ClientJournalTask<Boolean> {
+                override fun execute(): Boolean {
+                    check(ownsPhysical(journal) && isCurrent())
+                    // Unchanged full manifest/archive codec and the same native head/file cut.
+                    AndroidEncryptedClientIntentJournal.validateExisting(file)
+                    file.assertContinuity()
+                    return ownsPhysical(journal) && isCurrent()
+                }
+                override fun discard(value: Boolean) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return checked is ClientJournalOutcome.Value && checked.value && ownsPhysical(journal) && isCurrent()
+    }
+    private fun ownsPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean =
+        file.kind == ClientJournalKind.ACTOR_ALLOCATIONS && actorAllocationJournal === ledger && intentJournal == null
+
+    override fun capturePhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody? =
+        if (!ownsPhysicalRecovery(ledger) || !isCurrent()) null else facet.capture()
+
+    override suspend fun recheckPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean {
+        if (!ownsPhysicalRecovery(ledger) || !isCurrent()) return false
+        val result = file.owned {
+            object : ClientJournalTask<Boolean> {
+                override fun execute(): Boolean {
+                    check(ownsPhysicalRecovery(ledger) && isCurrent())
+                    file.validateExisting() // Complete authenticated allocation history.
+                    file.assertContinuity()
+                    return ownsPhysicalRecovery(ledger) && isCurrent()
+                }
+                override fun discard(value: Boolean) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return result is ClientJournalOutcome.Value && result.value && ownsPhysicalRecovery(ledger) && isCurrent()
+    }
+
     override suspend fun close() { file.closeOwner() }
     override fun toString(): String = "DesktopPairedJournalOwner([REDACTED])"
 

@@ -145,6 +145,26 @@ private fun foodPaymentInput(row: StoredAggregate, operationId: OperationId): Fo
 internal fun foodPaymentCutInputs(cut: FoodFinancialCollectionCut): List<FoodFinancialInputV1> = listOf(foodPaymentInput(cut.row),
     foodPaymentInput(cut.order.order), foodPaymentInput(cut.order.ownerIndex)) + cut.portions.map(::foodPaymentInput) + cut.batches.map(::foodPaymentInput)
 
+/** Two genuinely fresh reads compare complete literal values, not decoded price-object identity.
+ * Both cuts have already independently qualified their actual originals in the same writer.
+ * Preserve every row/body/frame field and the full canonical quote for every original batch. */
+internal fun sameFoodPaymentCutInputs(left: List<FoodFinancialInputV1>, right: List<FoodFinancialInputV1>): Boolean =
+    left.size == right.size && left.zip(right).all { (a, b) ->
+        a.copy(financial = null) == b.copy(financial = null) && run {
+            val x = a.financial; val y = b.financial
+            when {
+                x == null || y == null -> x == null && y == null
+                x.copy(originalBatches = emptyList()) != y.copy(originalBatches = emptyList()) -> false
+                x.originalBatches.size != y.originalBatches.size -> false
+                else -> x.originalBatches.zip(y.originalBatches).all { (first, second) ->
+                    first.id == second.id && first.sourceDigest == second.sourceDigest &&
+                        com.ukkera.pos.pricing.StoredPricingSnapshotCodec.encode(first.quote) ==
+                        com.ukkera.pos.pricing.StoredPricingSnapshotCodec.encode(second.quote)
+                }
+            }
+        }
+    }
+
 /**
  * Payment uses the already locked authentic recipe/price originals; it never reprices or sends.
  * Every current row still requires its actual complete producer and direct original proof.

@@ -5,6 +5,7 @@ import com.ukkera.pos.app.LocalField
 import com.ukkera.pos.app.LocalText
 
 internal fun actionLabel(action: LocalAction): LocalText = when (action) {
+    LocalAction.RETURN_EXCHANGE_APPLY -> text("Apply return to replacement (exchange) — no cash movement", "تطبيق المرتجع على البديل (استبدال) — دون حركة نقدية")
     LocalAction.RETURN_STOCK_POST -> text("Post inspected original return stock — no payout", "ترحيل مخزون المرتجع الأصلي بعد الفحص — دون صرف")
     LocalAction.RETURN_RIGHTS_ACTIVATE -> text("Activate documentary return-rights policy", "تفعيل سياسة حقوق المرتجعات الوثائقية")
     LocalAction.SERIAL_REGISTRATION_ACTIVATE -> text("Activate exact serial registration", "تفعيل تسجيل المسلسل الدقيق")
@@ -20,6 +21,10 @@ internal fun actionLabel(action: LocalAction): LocalText = when (action) {
     LocalAction.FOOD_PAYMENT_APPLY -> text("Apply the recorded food original", "تطبيق إفادة الطعام الأصلية المسجلة")
     LocalAction.FOOD_PAYMENT_RESOLUTION -> text("Retain linked FOOD UNKNOWN resolution", "حفظ تسوية مرتبطة لنتيجة طعام مجهولة")
     LocalAction.FOOD_PAYMENT_RESOLUTION_APPLY -> text("Apply the retained FOOD resolution — SQL only", "تطبيق تسوية الطعام المحفوظة — قاعدة البيانات فقط")
+    LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW -> text("Audited FOOD refund supervisor review", "مراجعة مشرف مدققة لرد الطعام")
+    LocalAction.FOOD_REFUND_SUPERVISOR_APPLY -> text("Supervised FOOD refund accounting", "محاسبة رد الطعام بإشراف")
+    LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW -> text("Audited supplier payout supervisor review", "مراجعة مشرف مدققة لصرف المورد")
+    LocalAction.SUPPLIER_CASH_SUPERVISOR_APPLY -> text("Supervised supplier payout accounting", "محاسبة صرف المورد بإشراف")
     LocalAction.FOOD_SUPERVISOR_REVIEW -> text("Audited FOOD supervisor review", "مراجعة مشرف للطعام مدققة")
     LocalAction.FOOD_SUPERVISOR_APPLY -> text("Supervised FOOD accounting — SQL only", "محاسبة الطعام بإشراف — قاعدة البيانات فقط")
     in foodFinancialActions -> foodFinancialActionLabel(action)
@@ -39,6 +44,9 @@ internal fun actionLabel(action: LocalAction): LocalText = when (action) {
     LocalAction.CASH_ADD_CLOSE_NOTE -> text("Add linked close explanation", "إضافة تفسير مرتبط بالإغلاق")
     LocalAction.CASH_DROP_TO_SAFE -> text("Record cash transfer to safe", "تسجيل تحويل النقدية إلى الخزنة")
     LocalAction.CASH_RECEIVE_SAFE -> text("Acknowledge actual safe receipt", "تأكيد الاستلام الفعلي بالخزنة")
+    LocalAction.CASH_ISSUE_SAFE_FLOAT -> text("Issue counted float from safe to a drawer", "صرف عهدة معدودة من الخزنة إلى درج")
+    LocalAction.CASH_RECEIVE_SAFE_FLOAT -> text("Count and receive float from safe", "عد واستلام عهدة من الخزنة")
+    LocalAction.CASH_RECALL_SAFE_FLOAT -> text("Recall unacknowledged float to safe", "استرداد عهدة غير مؤكدة إلى الخزنة")
     LocalAction.CASH_NON_SALE -> text("Record a non-sale cash movement", "تسجيل حركة نقدية غير بيعية")
     LocalAction.ORDER_CREATE -> text("Create local order", "إنشاء طلب محلي")
     LocalAction.ORDER_REPLACE -> text("Replace unlocked order selection", "استبدال أصناف طلب غير مقفل")

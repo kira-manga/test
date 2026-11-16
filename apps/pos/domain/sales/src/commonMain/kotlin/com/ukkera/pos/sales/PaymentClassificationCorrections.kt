@@ -89,7 +89,10 @@ public object PaymentClassificationCorrections {
         requireSales(!sameClassification(previousClassification, correctedTender), SalesRule.TENDER_MISMATCH)
         evidence.requireActor(actor)
         requireReason(reason)
+        // A restricted exchange offset is neither correctable nor a correction target.
+        requireSales(payment.tender !is Tender.ExchangeOffset, SalesRule.TENDER_MISMATCH)
         when (correctedTender) {
+            is Tender.ExchangeOffset -> throw SalesRuleViolation(SalesRule.TENDER_MISMATCH)
             Tender.Cash -> requireSales(terminal == null && reference == null, SalesRule.INVALID_EVIDENCE)
             is Tender.External -> {
                 ExternalTenderEvidence(evidence, terminal, reference)

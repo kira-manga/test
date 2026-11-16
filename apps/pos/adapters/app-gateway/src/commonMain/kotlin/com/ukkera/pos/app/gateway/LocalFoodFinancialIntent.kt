@@ -140,7 +140,7 @@ private suspend fun routeFreshFoodFinancial(access: GatewayAccess, intent: Local
     }
     if (!access.installed.has(LocalStockRelationalQueriesV2.PROFILE)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
     val normalized = LocalStockRelationalQueriesV2.normalized(access.read(LocalStockRelationalQueriesV2.profile()).payload)
-    if (access.installed.isFoodCashFinancialOnly && !normalized)
+    if ((access.installed.isFoodCashFinancialOnly || access.installed.isLanBusiness) && !normalized)
         throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
     val key = if (normalized) LocalFoodStockCodecV2.COMMAND else LocalFoodFinancialProfileV1.COMMAND
     if (!access.installed.has(key)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)

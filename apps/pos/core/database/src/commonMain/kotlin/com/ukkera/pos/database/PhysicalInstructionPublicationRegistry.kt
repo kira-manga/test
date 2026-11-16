@@ -286,6 +286,18 @@ internal class PhysicalInstructionPublicationRegistry(
         }
     }
 
+    /** Additive remote DATA ceiling from the SAME adopted publication/window and core clocks.
+     * No new window is created. The Client additionally subtracts its whole before-Begin age. */
+    internal fun remoteOriginalValidityMillis(instruction: PhysicalPublishedInstruction): Long? {
+        if (observedUse(instruction, instruction.binding.lifetime, Use.SAMPLE, null) == null) return null
+        val state = atom.value
+        val entry = state.entries.getOrNull(state.index(instruction.binding.lifetime)) ?: return null
+        val observed = state.last ?: return null
+        if (state.serviceDenied || state.continuityUnavailable || entry.phase != Phase.ADOPTED ||
+            entry.binding !== instruction.binding || entry.publication !== instruction) return null
+        return entry.window?.remainingMillis(observed, state.lastWall)
+    }
+
     /** Association only. Adoption/capture MUST still use their own same-source atomic phase. */
     internal fun matchesPublished(instruction: PhysicalPublishedInstruction): Boolean {
         val state = atom.value
@@ -580,6 +592,21 @@ internal class PhysicalInteractiveAccessWindow(
             observed.moment.elapsedMillis < originalExpiresAtElapsedMillis &&
             (businessExpiresAtElapsedMillis == null || observed.moment.elapsedMillis < businessExpiresAtElapsedMillis) &&
             (businessDeadlineExclusive == null || (wall != null && wall < businessDeadlineExclusive))
+
+    fun remainingMillis(observed: RoomLocalAuthorizationObservation, wall: UtcInstant?): Long? {
+        if (!current(observed, wall)) return null
+        var remaining = minOf(originalExpiresAtElapsedMillis,
+            businessExpiresAtElapsedMillis ?: originalExpiresAtElapsedMillis) - observed.moment.elapsedMillis
+        businessDeadlineExclusive?.let { end ->
+            val currentWall = wall ?: return null
+            val floor = currentWall.value.toEpochMilliseconds()
+            val ceiling = if (currentWall.value.nanosecondsOfSecond % 1_000_000 == 0) floor
+                else checkedAddPositive(floor, 1L)
+            if (end.value.toEpochMilliseconds() <= ceiling) return null
+            remaining = minOf(remaining, checkedPositiveDifference(end.value.toEpochMilliseconds(), ceiling))
+        }
+        return remaining.takeIf { it > 0 }
+    }
 
     fun boundToBusinessDeadline(deadline: UtcInstant?, prelude: RoomLocalAuthorizationObservation,
         wall: UtcInstant): PhysicalInteractiveAccessWindow {

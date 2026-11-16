@@ -3,6 +3,7 @@ package com.ukkera.pos.database
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.LocalDeviceAdmission
+import com.ukkera.pos.security.LocalEmployeePrincipal
 import com.ukkera.pos.security.ProtectedLocalAccount
 import com.ukkera.pos.security.SessionGeneration
 import com.ukkera.pos.security.SessionStatus
@@ -57,6 +58,14 @@ internal class LocalMasterRpcResourceSession(
 
     /** Pure irreversible POS retirement only; no SDK getter, clock or callback. */
     internal fun stateCurrent(): Boolean = !denied.value && retained.value
+
+    /** Complete immutable identity comparison only, never authentication or permission.
+     * The endpoint supplies its freshly verified principal after the actual queue wait. */
+    internal fun matchesOriginal(principal: LocalEmployeePrincipal): Boolean =
+        principal.authenticationPurpose == AuthenticationPurpose.INTERACTIVE && principal.authenticationPurpose == identity.purpose &&
+            principal.scope == identity.scope && principal.actorId == identity.actorId && principal.deviceId == identity.deviceId &&
+            principal.sessionId == identity.sessionId && principal.sessionGeneration == identity.generation &&
+            principal.admissionRevision == identity.admissionRevision
 }
 
 /** Exact admitted device for a private authentication exchange, never an employee grant. */
@@ -161,7 +170,17 @@ internal class LocalMasterRpcSessionFence {
         val session: RpcApplicationSession,
         val identity: LocalMasterRpcSessionIdentity?,
         val exchangeDevice: LocalMasterRpcExchangeDeviceIdentity? = null,
+        // Denial-only native device census before the fresh association read. No scope
+        // can use it until the same pending device completes that actual read.
+        val pendingExchangeDevice: LocalMasterRpcExchangeDeviceIdentity? = null,
+        // Exact actual SDK physical object, denial metadata while its native device is
+        // still unknown. Any admission transition cuts this pending observation.
+        val pendingExchangeOrigin: Any? = null,
+        val exchangeOrigin: Any? = null,
         val resourceDisclosure: Boolean = false,
+        // Inert, immutable expected result binding, staged BEFORE fresh principal work.
+        // It selects denial only; it never authenticates or grants a business resource.
+        val resultCandidate: LocalMasterRpcSessionIdentity? = null,
         val active: MutableStateFlow<Boolean> = MutableStateFlow(true),
     )
     private val sessions = mutableListOf<Entry>()
@@ -195,6 +214,24 @@ internal class LocalMasterRpcSessionFence {
         session: RpcApplicationSession,
         identity: LocalMasterRpcSessionIdentity,
     ): Boolean = retainEmployeeSession(token, observed, session, identity, resourceDisclosure = true)
+
+    /** Reuse only an exact continuously retained identity session after fresh verification.
+     * This adds no entry, changes no identity and cannot promote a resource/exchange scope.
+     * New admission still requires its original epoch; relevant writes retire this entry. */
+    internal suspend fun existingIdentitySessionCurrent(token: Any, session: RpcApplicationSession,
+        identity: LocalMasterRpcSessionIdentity): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive || identity.purpose != AuthenticationPurpose.INTERACTIVE ||
+            session.principal != identity.actorId.value || session.sessionId != identity.sessionId.value) return false
+        val current = gate.withLock {
+            !denied.value && origin.value === token && sessions.any {
+                it.session === session && it.identity == identity && it.exchangeDevice == null &&
+                    !it.resourceDisclosure && it.active.value
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return current && session.isActive && !denied.value
+    }
 
     private suspend fun retainEmployeeSession(
         token: Any,
@@ -256,12 +293,117 @@ internal class LocalMasterRpcSessionFence {
                 when {
                     existing != null -> existing.exchangeDevice == device
                     sessions.size >= MAXIMUM_SESSIONS -> false
-                    else -> { sessions.add(Entry(session, null, device)); true }
+                    else -> { sessions.add(Entry(session, null, exchangeDevice = device)); true }
                 }
             }
         }
         currentCoroutineContext().ensureActive()
         return retained && session.isActive
+    }
+
+    /** Exact completed device-only scope. Pending admission, employee results and
+     * resource scopes cannot be reused for immutable native original delivery. */
+    internal suspend fun deviceOnlyExchangeCurrent(token: Any, session: RpcApplicationSession,
+        device: LocalMasterRpcExchangeDeviceIdentity): Boolean {
+        currentCoroutineContext().ensureActive()
+        return gate.withLock {
+            !denied.value && origin.value === token && session.isActive && sessions.any {
+                it.session === session && it.active.value && !it.resourceDisclosure && it.identity == null && it.resultCandidate == null &&
+                    it.exchangeDevice == device && it.pendingExchangeOrigin == null
+            }
+        }
+    }
+
+    internal suspend fun prepareNativeAuthenticationExchange(token: Any, session: RpcApplicationSession,
+        origin: Any): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive) return false
+        val prepared = gate.withLock {
+            if (denied.value || this.origin.value !== token) false
+            else {
+                val existing = sessions.firstOrNull { it.session === session }
+                when {
+                    existing != null -> existing.active.value && !existing.resourceDisclosure &&
+                        (existing.exchangeOrigin === origin && existing.exchangeDevice != null ||
+                            existing.identity == null && existing.pendingExchangeOrigin === origin)
+                    sessions.size >= MAXIMUM_SESSIONS -> false
+                    else -> { sessions.add(Entry(session, null, pendingExchangeOrigin = origin)); true }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return prepared && session.isActive && !denied.value
+    }
+
+    /** Only the registration calls this after its actual fresh complete native census. */
+    internal suspend fun completeNativeAuthenticationExchange(token: Any, session: RpcApplicationSession,
+        origin: Any, device: LocalMasterRpcExchangeDeviceIdentity): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive) return false
+        val completed = gate.withLock {
+            val index = sessions.indexOfFirst { it.session === session }
+            if (denied.value || this.origin.value !== token || index < 0) false
+            else {
+                val existing = sessions[index]
+                when {
+                    !existing.active.value || existing.resourceDisclosure -> false
+                    existing.exchangeOrigin === origin -> existing.exchangeDevice == device
+                    existing.identity != null || existing.pendingExchangeOrigin !== origin || existing.exchangeDevice != null -> false
+                    else -> {
+                        sessions[index] = existing.copy(exchangeDevice = device, exchangeOrigin = origin, pendingExchangeOrigin = null)
+                        true
+                    }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return completed && session.isActive && !denied.value
+    }
+
+    internal suspend fun prepareAuthenticationExchangeSession(token: Any, session: RpcApplicationSession,
+        device: LocalMasterRpcExchangeDeviceIdentity): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive) return false
+        val prepared = gate.withLock {
+            if (denied.value || origin.value !== token) false
+            else {
+                val existing = sessions.firstOrNull { it.session === session }
+                when {
+                    existing != null -> existing.active.value && !existing.resourceDisclosure &&
+                        (existing.exchangeDevice == device || existing.identity == null &&
+                            existing.pendingExchangeDevice == device)
+                    sessions.size >= MAXIMUM_SESSIONS -> false
+                    else -> { sessions.add(Entry(session, null, pendingExchangeDevice = device)); true }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return prepared && session.isActive && !denied.value
+    }
+
+    /** Only after the registration's fresh protected native association read. */
+    internal suspend fun completeAuthenticationExchangeSession(token: Any, session: RpcApplicationSession,
+        device: LocalMasterRpcExchangeDeviceIdentity): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive) return false
+        val completed = gate.withLock {
+            val index = sessions.indexOfFirst { it.session === session }
+            if (denied.value || origin.value !== token || index < 0) false
+            else {
+                val existing = sessions[index]
+                when {
+                    !existing.active.value || existing.resourceDisclosure -> false
+                    existing.exchangeDevice == device -> true
+                    existing.identity != null || existing.pendingExchangeDevice != device -> false
+                    else -> {
+                        sessions[index] = existing.copy(exchangeDevice = device, pendingExchangeDevice = null)
+                        true
+                    }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return completed && session.isActive && !denied.value
     }
 
     /**
@@ -298,6 +440,68 @@ internal class LocalMasterRpcSessionFence {
         return attached && session.isActive
     }
 
+    /**
+     * Publish an immutable expected result to the revocation census BEFORE principal work.
+     * The view is DATA, not authenticated identity. A later fresh principal must match every
+     * field. Staging can only add cutoffs: it grants neither disclosure nor business authority.
+     * Relevant account/session/device/policy/unknown mutations irreversibly retire this exact
+     * entry before writing, including a mutation while verification waits for the writer.
+     */
+    internal suspend fun prepareAuthenticationExchangeResult(
+        token: Any, session: RpcApplicationSession, device: LocalMasterRpcExchangeDeviceIdentity,
+        candidate: LocalMasterRpcSessionIdentity,
+    ): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive || candidate.purpose != AuthenticationPurpose.INTERACTIVE ||
+            candidate.scope != device.scope || candidate.deviceId != device.deviceId ||
+            candidate.admissionRevision != device.admissionRevision) return false
+        val prepared = gate.withLock {
+            if (denied.value || origin.value !== token) false else {
+                val index = sessions.indexOfFirst { it.session === session }
+                if (index < 0) false else {
+                    val original = sessions[index]
+                    when {
+                        !original.active.value || original.exchangeDevice != device || original.resourceDisclosure -> false
+                        original.identity != null && original.identity != candidate -> false
+                        original.resultCandidate != null -> original.resultCandidate == candidate
+                        else -> { sessions[index] = original.copy(resultCandidate = candidate); true }
+                    }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return prepared && session.isActive
+    }
+
+    /**
+     * Complete only that pre-staged candidate after fresh protected principal verification.
+     * Unrelated writes may advance the global epoch; the continuously retained, selectively
+     * fenced candidate replaces no epoch-based admission API and cannot revive a retired entry.
+     */
+    internal suspend fun completeAuthenticationExchangeResult(
+        token: Any, session: RpcApplicationSession, device: LocalMasterRpcExchangeDeviceIdentity,
+        identity: LocalMasterRpcSessionIdentity,
+    ): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!session.isActive) return false
+        val attached = gate.withLock {
+            if (denied.value || origin.value !== token) false else {
+                val index = sessions.indexOfFirst { it.session === session }
+                if (index < 0) false else {
+                    val original = sessions[index]
+                    when {
+                        !original.active.value || original.exchangeDevice != device || original.resourceDisclosure ||
+                            original.resultCandidate != identity -> false
+                        original.identity != null -> original.identity == identity
+                        else -> { sessions[index] = original.copy(identity = identity); true }
+                    }
+                }
+            }
+        }
+        currentCoroutineContext().ensureActive()
+        return attached && session.isActive
+    }
+
     /** Only actual successful SDK revocation releases an exact census entry. */
     internal suspend fun revokeApplicationSession(token: Any, session: RpcApplicationSession) {
         check(origin.value === token)
@@ -321,7 +525,12 @@ internal class LocalMasterRpcSessionFence {
                     if (it.resourceDisclosure) invalidation.invalidatesResource(identity)
                     else invalidation.invalidates(identity)
                 } == true ||
-                    it.exchangeDevice?.let(invalidation::invalidatesExchange) == true
+                    it.exchangeDevice?.let(invalidation::invalidatesExchange) == true ||
+                    it.pendingExchangeDevice?.let(invalidation::invalidatesExchange) == true ||
+                    it.pendingExchangeOrigin != null && invalidation !== LocalMasterRpcSessionInvalidation.None &&
+                        invalidation !is LocalMasterRpcSessionInvalidation.Account &&
+                        invalidation !is LocalMasterRpcSessionInvalidation.Policy ||
+                    it.resultCandidate?.let(invalidation::invalidatesResource) == true
             }.map { it.session }
         }
         revokeCaptured(captured)

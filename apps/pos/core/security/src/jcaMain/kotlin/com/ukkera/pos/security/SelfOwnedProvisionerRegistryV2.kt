@@ -35,6 +35,9 @@ internal interface SelfOwnedProvisionerRegistryStoreV2 : SelfOwnedOriginalRegist
     /** Atomically replaces the [kind] ledger envelope with the exact core-sealed [bytes]. */
     fun replaceCompanyLedgerEnvelope(kind: SelfOwnedCompanyLedgerKindV2, bytes: ByteArray): Unit =
         selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
+    /** Actual additive publication custody; absence is available only from a capable native store. */
+    fun businessPublicationEnvelopeBytes(): ByteArray? = selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
+    fun replaceBusinessPublicationEnvelope(bytes: ByteArray): Unit = selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
     override fun originalBootstrap(): SelfOwnedOriginalBootstrap? = bootstrapRecordV2()?.let { SelfOwnedOriginalBootstrap.V2(it) }
     override fun readOriginalRegistryState(keys: SelfOwnedOriginalProvisionerKeys): SelfOwnedOriginalRegistryState? {
         val desktopKeys = SelfOwnedProvisionerRegistryV2.requireDesktopKeys(keys)

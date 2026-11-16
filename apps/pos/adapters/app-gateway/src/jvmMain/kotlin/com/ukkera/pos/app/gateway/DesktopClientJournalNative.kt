@@ -65,6 +65,84 @@ internal class DesktopClientJournalNative(
     private val keys: DesktopJournalKeys,
     private val facts: DesktopJournalPlatformFacts,
 ) : ClientJournalNative {
+    override fun forkReadViews(work: ClientJournalWork): ClientJournalNative =
+        DesktopClientJournalNative(parent, work, keys, facts)
+
+    override fun readViewPurposeExists(rootName: String, journalId: DomainId): Boolean {
+        work.requireActive()
+        facts.requireCurrent()
+        val target = parent.resolve(rootName).resolve(journalId.value)
+        // readAttributes distinguishes genuine absence from access/IO failures.
+        return try { Files.readAttributes(target, java.nio.file.attribute.BasicFileAttributes::class.java,
+            LinkOption.NOFOLLOW_LINKS); true }
+        catch (_: java.nio.file.NoSuchFileException) { false }
+    }
+
+    private var readViewResetChannel: FileChannel? = null
+    private var readViewResetLock: FileLock? = null
+
+    override fun quarantineReadViews(purpose: ClientReadViewPurpose) {
+        work.requireActive()
+        assertBase() // SAME live parent, actual original lock and native identity.
+        check(readViewResetChannel == null && readViewResetLock == null)
+        val cacheRoot = parent.resolve(purpose.rootName)
+        known(cacheRoot != root && cacheRoot.parent == parent)
+        val cache = cacheRoot.resolve(purpose.journalId.value)
+        try {
+            val base = cacheStampOrNull(cacheRoot)
+            if (base != null) {
+                requireDirectory(base)
+                known(base.device == held.getValue(parent).device)
+                val previous = cacheStampOrNull(cache)
+                if (previous != null) {
+                    requireDirectory(previous)
+                    known(previous.device == base.device)
+                    val lockPath = cache.resolve(ClientJournalFileCore.LOCK)
+                    cacheStampOrNull(lockPath)?.let { expected ->
+                        requireFile(expected, 0, allowEmpty = true)
+                        // A busy/foreign cache owner is never quarantined. Retain every
+                        // actual resource until confirmed close, including failed acquisition.
+                        val channel = FileChannel.open(lockPath, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS)
+                        readViewResetChannel = channel
+                        readViewResetLock = try { channel.tryLock() } catch (_: OverlappingFileLockException) { null }
+                        known(readViewResetLock?.isValid == true && expected.sameFile(stamp(lockPath)))
+                    }
+                    val destination = (0 until ClientReadViewPurpose.MAX_QUARANTINES)
+                        .map { cacheRoot.resolve(purpose.journalId.value + ".quarantine-" + it) }
+                        .firstOrNull { cacheStampOrNull(it) == null } ?: error("client.read-views.quarantine-capacity")
+                    work.requireActive()
+                    known(previous.sameDirectory(stamp(cache)) && base.sameDirectory(stamp(cacheRoot)))
+                    Files.move(cache, destination, StandardCopyOption.ATOMIC_MOVE)
+                    known(cacheStampOrNull(cache) == null && previous.sameDirectory(stamp(destination)))
+                    syncDirectory(cacheRoot)
+                    known(base.sameDirectory(stamp(cacheRoot)))
+                }
+            }
+            // These exact aliases are a separate disposable purpose. Never touch the
+            // original intent, credential or allocation key/head namespaces.
+            val heads = keys.keyNames(purpose.headKeyPrefix)
+            known(heads.size <= ClientReadViewPurpose.MAX_RESET_HEAD_KEYS && heads.distinct().size == heads.size &&
+                heads.all { it.startsWith(purpose.headKeyPrefix) })
+            for (name in heads + listOf(purpose.dataKeyAlias)) {
+                work.requireActive(); facts.requireCurrent()
+                if (keys.keyExists(name)) keys.deleteKey(name)
+                known(!keys.keyExists(name))
+            }
+            known(keys.keyNames(purpose.headKeyPrefix).isEmpty())
+            assertBase()
+        } finally {
+            try {
+                readViewResetLock?.let { held -> held.release(); known(!held.isValid); readViewResetLock = null }
+                readViewResetChannel?.let { held -> held.close(); known(!held.isOpen); readViewResetChannel = null }
+            } catch (failure: Throwable) { work.nativeClosureUnknown(); throw failure }
+        }
+    }
+
+    private fun cacheStampOrNull(path: Path): DesktopFileStamp? {
+        try { Files.readAttributes(path, java.nio.file.attribute.BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS) }
+        catch (_: java.nio.file.NoSuchFileException) { return null }
+        return stamp(path)
+    }
     private lateinit var root: Path
     private lateinit var directory: Path
     private lateinit var archiveDirectory: Path
@@ -264,6 +342,7 @@ internal class DesktopClientJournalNative(
         keys.decrypt(name, nonce, ciphertext, aad)
 
     override fun release() {
+        known(readViewResetChannel == null && readViewResetLock == null)
         lock?.let { held -> if (held.isValid) held.release(); lock = null }
         lockChannel?.close(); lockChannel = null
         held.clear()

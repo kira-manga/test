@@ -8,6 +8,7 @@ import com.ukkera.pos.app.gateway.LocalAuthenticationOnlyConnection
 import com.ukkera.pos.app.gateway.LocalBranchDisplayLabels
 import com.ukkera.pos.app.gateway.LocalClientPublication
 import com.ukkera.pos.app.gateway.LocalClientRole
+import com.ukkera.pos.app.gateway.LocalRemoteBusinessClientConnection
 import com.ukkera.pos.app.gateway.LocalDirectoryClientConnection
 import com.ukkera.pos.app.gateway.LocalEndpointBranchGateway
 import com.ukkera.pos.app.gateway.LocalOriginalClientJournalAction
@@ -54,6 +55,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -79,6 +81,9 @@ public class DesktopLocalSetupNativeServices(
     private val publication: LocalClientPublication,
     private val trainingSlot: LocalTrainingCompositionSlot? = null,
 ) : LocalSetupNativeServices {
+    override suspend fun observeLanNetworks(): List<com.ukkera.pos.app.setup.LocalSetupLanNetwork> =
+        com.ukkera.pos.app.gateway.setup.LocalSetupNativeLanNetworks.observe()
+
     override val compositionProfile: LocalCompositionSdkProfileV1 =
         trainingSlot?.let { LocalTrainingSdkProfileV1(it) } ?: LocalMasterSdkProfileV1
     private var freshTargetTransfer: FreshDeviceTarget? = null
@@ -148,7 +153,7 @@ public class DesktopLocalSetupNativeServices(
                 val holder = LanClient(scope, originalPairingActionId, settings, this, value)
                 lanClient = holder // Transfer and ceremony fence precede the native constructor.
                 try {
-                    holder.capture(DesktopOriginalRpcClientOwner.retainExisting(scope, value, originalPairingActionId,
+                    holder.capture(DesktopOriginalRpcClientOwner.retainRecoverableExisting(scope, value, originalPairingActionId,
                         settings.lan, platform.identityStore))
                     holder
                 } catch (failure: Throwable) { holder.retainFailure(failure); throw failure }
@@ -211,9 +216,14 @@ public class DesktopLocalSetupNativeServices(
         private val denied = AtomicBoolean(false)
         private val ownedJob = SupervisorJob()
         private val owned = CoroutineScope(retainedScope.coroutineContext.minusKey(Job) + ownedJob)
+        private var preparing: Deferred<LocalOriginalRpcClientOwner>? = null
+        private var discovering: Deferred<Unit>? = null
+        private var selectedCandidateId: DomainId? = null
         private var connecting: Deferred<Unit>? = null
         private var selectedEndpoint: LocalSetupLanEndpoint? = null
         private var closing: Deferred<Unit>? = null
+        private var recovering: Deferred<Unit>? = null
+        private val transportChanging = AtomicBoolean(false)
         private var custody: PairedDeviceCredentialJournalCustody? = null
         private var credentials: DesktopPairedDeviceClientCredentials? = null
         private val authentication = AtomicReference<LanAuthentication?>(null)
@@ -236,14 +246,23 @@ public class DesktopLocalSetupNativeServices(
         }
         fun owns(value: LocalSetupLanAuthentication): Boolean = authentication.get() === value && value.isCurrent()
         private fun current(): Boolean = !denied.get() && source.owns(this) && retainedScope.coroutineContext[Job]?.isActive == true
+        private fun workCurrent(): Boolean = current() && !transportChanging.get()
 
-        override suspend fun connect(endpoint: LocalSetupLanEndpoint) {
+        override val discoveredMasters: kotlinx.coroutines.flow.Flow<List<com.ukkera.pos.app.setup.LocalSetupLanDiscoveredMaster>> =
+            kotlinx.coroutines.flow.flow {
+                captured.await().discoveredMasters.collect { entries ->
+                    emit(if (current()) entries.map { entry ->
+                        com.ukkera.pos.app.setup.LocalSetupLanDiscoveredMaster(entry.candidateId, entry.displayName,
+                            entry.fingerprint, entry.matchesOriginalMaster)
+                    } else emptyList())
+                }
+            }
+
+        private suspend fun prepareOwned(): LocalOriginalRpcClientOwner {
             currentCoroutineContext().ensureActive()
-            val selected = settings.validateEndpoint(endpoint)
             val pending = gate.withLock {
                 check(current()) { "Original Client attachment is retired" }
-                selectedEndpoint?.let { check(it == endpoint) { "Selected endpoint differs" } }
-                connecting ?: owned.async(start = CoroutineStart.LAZY) {
+                preparing ?: owned.async(start = CoroutineStart.LAZY) {
                     val rpc = captured.await()
                     settings.credentialAction?.let { action ->
                         check(current())
@@ -261,53 +280,164 @@ public class DesktopLocalSetupNativeServices(
                         credentials = acquired.credentials
                         check(current() && acquired.credentials.isCurrent())
                     }
-                    rpc.connect(selected) // Native readbacks, exact target close, actual SDK negotiation.
                     check(current())
-                    val journal = credentials
-                    if (journal != null) {
-                        val approved = checkNotNull(rpc.approvedMaster.value)
-                        check(journal.credentials.owner.scope == approved.scope &&
-                            journal.credentials.owner.deviceId == approved.targetDeviceId && journal.isCurrent())
-                        val labels = LocalBranchDisplayLabels(approved.scope, "Company " + approved.scope.companyId.value,
-                            "Branch " + approved.scope.branchId.value)
-                        val profile = settings.workflow.masterRpcProfile()
-                        val attachment = if (profile != null) {
-                            val endpoint = rpc.directoryClient(profile)
-                            val intents = checkNotNull(journal.actorIntentSource(rpc)) { "Actor intent custody is unavailable" }
-                            check(endpoint.isCurrent() && journal.isCurrent() && current())
-                            val connection = LocalDirectoryClientConnection(endpoint, endpoint.connectionId,
-                                journal.credentials.owner, labels, profile,
-                                supplierReferences = profile == LocalMasterRpcWorkflowProfile.SUPPLIERS
-                            ) { current() && journal.isCurrent() && endpoint.isCurrent() }
-                            // Same retained original Client; the Master authorizes each creation call.
-                            val creation = rpc.employeeCreationClient(endpoint)
-                            check(creation.isCurrent() && endpoint.isCurrent() && current())
-                            val gateway = LocalEndpointBranchGateway.directoryWithEmployeeCreation(MutableStateFlow(connection),
-                                journal.credentials, intents, profile, creation)
-                            LanAuthentication(gateway, journal, endpoint::isCurrent)
-                        } else {
-                            val service = rpc.authenticationService()
-                            check(service.isCurrent())
-                            val connection = LocalAuthenticationOnlyConnection(service, service.connectionId,
-                                journal.credentials.owner, labels) { current() && journal.isCurrent() && service.isCurrent() }
-                            val gateway = LocalEndpointBranchGateway.authenticationOnly(MutableStateFlow(connection), journal.credentials)
-                            LanAuthentication(gateway, journal, service::isCurrent)
-                        }
-                        authentication.set(attachment) // Retain before checks/delivery; close owns the gateway.
-                        check(attachment.isCurrent())
-                    }
-                }.also { selectedEndpoint = endpoint; connecting = it; it.start() }
+                    rpc
+                }.also { preparing = it; it.start() }
+            }
+            val rpc = pending.await()
+            currentCoroutineContext().ensureActive()
+            check(current())
+            return rpc
+        }
+
+        override suspend fun startDiscovery() {
+            currentCoroutineContext().ensureActive()
+            val pending = gate.withLock {
+                check(workCurrent() && recovering?.isCompleted != false && selectedEndpoint == null && selectedCandidateId == null) {
+                    "Original Client discovery is unavailable"
+                }
+                discovering ?: owned.async(start = CoroutineStart.LAZY) {
+                    val rpc = prepareOwned()
+                    rpc.startDiscovery()
+                    check(current())
+                }.also { recovering = null; discovering = it; it.start() }
             }
             pending.await()
             currentCoroutineContext().ensureActive()
-            check(current())
-            captured.await().connect(selected) // Reobserve the same retained connection.
+            gate.withLock { check(workCurrent() && discovering === pending) { "Original discovery generation is retired" } }
+        }
+
+        override suspend fun connect(endpoint: LocalSetupLanEndpoint) {
+            settings.validateEndpoint(endpoint)
+            connectSelected(endpoint, null)
+        }
+
+        override suspend fun connectDiscovered(candidateId: DomainId) {
+            connectSelected(null, candidateId)
+        }
+
+        private suspend fun connectSelected(endpoint: LocalSetupLanEndpoint?, candidateId: DomainId?) {
+            currentCoroutineContext().ensureActive()
+            check((endpoint == null) != (candidateId == null))
+            val pending = gate.withLock {
+                check(workCurrent() && recovering?.isCompleted != false) { "Original Client attachment is retired" }
+                if (connecting != null) check(selectedEndpoint == endpoint && selectedCandidateId == candidateId) {
+                    "Selected Master differs"
+                }
+                connecting ?: owned.async(start = CoroutineStart.LAZY) {
+                    val rpc = prepareOwned()
+                    if (endpoint != null) rpc.connect(settings.validateEndpoint(endpoint))
+                    else rpc.connectDiscovered(checkNotNull(candidateId))
+                    publishAuthentication(rpc)
+                }.also {
+                    selectedEndpoint = endpoint
+                    selectedCandidateId = candidateId
+                    recovering = null
+                    connecting = it
+                    it.start()
+                }
+            }
+            pending.await()
+            currentCoroutineContext().ensureActive()
+            gate.withLock { check(workCurrent() && connecting === pending) { "Original Client generation is retired" } }
+            val rpc = captured.await()
+            // Reobserve the same physical session; never acquire another owner or journal.
+            if (endpoint != null) rpc.connect(settings.validateEndpoint(endpoint))
+            else rpc.connectDiscovered(checkNotNull(candidateId))
             authentication.get()?.let { check(it.isCurrent()) }
+        }
+
+        private suspend fun publishAuthentication(rpc: LocalOriginalRpcClientOwner) {
+            check(workCurrent())
+            val journal = credentials
+            if (journal != null) {
+                val approved = checkNotNull(rpc.approvedMaster.value)
+                check(journal.credentials.owner.scope == approved.scope &&
+                    journal.credentials.owner.deviceId == approved.targetDeviceId && journal.isCurrent())
+                val labels = LocalBranchDisplayLabels(approved.scope, "Company " + approved.scope.companyId.value,
+                    "Branch " + approved.scope.branchId.value)
+                val profile = settings.workflow.masterRpcProfile()
+                val attachment = if (profile != null) {
+                    val endpoint = rpc.directoryClient(profile)
+                    val intents = checkNotNull(journal.actorIntentSource(rpc)) { "Actor intent custody is unavailable" }
+                    check(endpoint.isCurrent() && journal.isCurrent() && current())
+                    // Same retained original Client; the Master authorizes every business call.
+                    val creation = rpc.employeeCreationClient(endpoint)
+                    check(creation.isCurrent() && endpoint.isCurrent() && current())
+                    val gateway = if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) {
+                        val connection = LocalRemoteBusinessClientConnection(endpoint, endpoint.connectionId,
+                            journal.credentials.owner, labels) { workCurrent() && journal.isCurrent() && endpoint.isCurrent() }
+                        LocalEndpointBranchGateway.remoteBusiness(MutableStateFlow(connection), journal.credentials, intents, creation)
+                    } else {
+                        val connection = LocalDirectoryClientConnection(endpoint, endpoint.connectionId,
+                            journal.credentials.owner, labels, profile,
+                            supplierReferences = profile == LocalMasterRpcWorkflowProfile.SUPPLIERS
+                        ) { workCurrent() && journal.isCurrent() && endpoint.isCurrent() }
+                        LocalEndpointBranchGateway.directoryWithEmployeeCreation(MutableStateFlow(connection),
+                            journal.credentials, intents, profile, creation)
+                    }
+                    LanAuthentication(gateway, journal, endpoint::isCurrent)
+                } else {
+                    val service = rpc.authenticationService()
+                    check(service.isCurrent())
+                    val connection = LocalAuthenticationOnlyConnection(service, service.connectionId,
+                        journal.credentials.owner, labels) { workCurrent() && journal.isCurrent() && service.isCurrent() }
+                    val gateway = LocalEndpointBranchGateway.authenticationOnly(MutableStateFlow(connection), journal.credentials)
+                    LanAuthentication(gateway, journal, service::isCurrent)
+                }
+                authentication.set(attachment) // Retain before checks/delivery; close owns the gateway.
+                check(attachment.isCurrent())
+            }
+        }
+
+        override suspend fun recoverTransport() {
+            currentCoroutineContext().ensureActive()
+            val pending = gate.withLock {
+                check(current() && closing == null) { "Original Client attachment is retired" }
+                recovering ?: run {
+                    check(preparing?.isCompleted == true && preparing?.isCancelled == false &&
+                        (discovering != null || connecting != null)) { "Original native preparation is unconfirmed" }
+                    val oldDiscovery = discovering
+                    val oldConnection = connecting
+                    transportChanging.set(true) // Deny every old connection closure before draining it.
+                    try { authentication.get()?.denyNewWork() }
+                    catch (failure: Throwable) { denialFailure.compareAndSet(null, failure) }
+                    owned.async(start = CoroutineStart.LAZY) {
+                        oldDiscovery?.join()
+                        oldConnection?.join()
+                        // A just-finishing connect may have retained its gateway after initial denial.
+                        authentication.get()?.let { old -> old.denyNewWork(); old.actualGateway.closeAndAwait() }
+                        denialFailure.get()?.let { throw it }
+                        val rpc = checkNotNull(preparing).await()
+                        rpc.recoverTransport()
+                        gate.withLock {
+                            check(current() && closing == null && credentials?.isCurrent() != false) {
+                                "Recovered native Client attachment is retired"
+                            }
+                            authentication.set(null)
+                            discovering = null
+                            connecting = null
+                            selectedEndpoint = null
+                            selectedCandidateId = null
+                            transportChanging.set(false)
+                        }
+                    }.also { recovering = it; it.start() }
+                }
+            }
+            pending.await()
+            currentCoroutineContext().ensureActive()
+            gate.withLock { check(workCurrent() && recovering === pending) { "Native Client recovery is retired" } }
+        }
+
+        @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+        override fun transportConnectedNow(): Boolean {
+            if (!workCurrent() || !captured.isCompleted || captured.isCancelled) return false
+            return try { captured.getCompleted().transportConnectedNow() } catch (_: Exception) { false }
         }
 
         override suspend fun authentication(): LocalSetupLanAuthentication? {
             currentCoroutineContext().ensureActive()
-            check(current())
+            check(workCurrent())
             return authentication.get()?.takeIf { it.isCurrent() }
         }
 
@@ -318,7 +448,7 @@ public class DesktopLocalSetupNativeServices(
         ) : LocalSetupLanAuthentication {
             private val locallyDenied = AtomicBoolean(false)
             override val gateway: BranchUiGateway get() = actualGateway
-            override fun isCurrent(): Boolean = !locallyDenied.get() && current() &&
+            override fun isCurrent(): Boolean = !locallyDenied.get() && workCurrent() &&
                 authentication.get() === this && journal.isCurrent() && rpcCurrent() && actualGateway.configured
             override fun denyNewWork() { locallyDenied.set(true); actualGateway.close() }
         }
@@ -334,6 +464,9 @@ public class DesktopLocalSetupNativeServices(
                             if (failure == null) failure = caught else if (failure !== caught) failure!!.addSuppressed(caught)
                         }
                     }
+                    attempt { gate.withLock { recovering }?.join() }
+                    attempt { gate.withLock { preparing }?.join() }
+                    attempt { gate.withLock { discovering }?.join() }
                     attempt { gate.withLock { connecting }?.join() }
                     attempt { authentication.get()?.actualGateway?.closeAndAwait() }
                     attempt { captured.await().close() }

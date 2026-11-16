@@ -94,7 +94,7 @@ public sealed interface LocalConfigurationDetailV1 {
 public class LocalConfigurationHandler(
     private val signatures: CompanyPublicationSignatureVerifier,
     nativePublications: LocalCompanyBusinessPublications? = null,
-) : MasterCommandHandler {
+) : MasterCommandHandler, LocalMasterRpcRetainedResultAccessProvider {
     private val unitAuthority = LocalCatalogUnitAuthority(nativePublications)
     private val productAuthority = LocalCatalogProductAuthority(nativePublications)
     override val key: CommandKey = LocalConfigurationProfile.COMMAND
@@ -108,12 +108,40 @@ public class LocalConfigurationHandler(
             LocalConfigurationCodec.decode(normalized) is LocalConfigurationRequestV1.ConfigureSupplier
         LocalMasterRpcWorkflowProfile.WAREHOUSES ->
             LocalConfigurationCodec.decode(normalized) is LocalConfigurationRequestV1.ConfigureWarehouse
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> normalize(normalized) == normalized &&
+            when (LocalConfigurationCodec.decode(normalized)) {
+                is LocalConfigurationRequestV1.InstallCompanySku, is LocalConfigurationRequestV1.ConfigureWarehouse,
+                is LocalConfigurationRequestV1.ApproveReceiving, is LocalConfigurationRequestV1.ConfigureTender,
+                is LocalConfigurationRequestV1.ConfigureSupplier, is LocalConfigurationRequestV1.ConfigureSalesRoute -> true
+            }
         LocalMasterRpcWorkflowProfile.REPORTS, LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS,
         LocalMasterRpcWorkflowProfile.KITCHEN, LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
         LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS, LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
         LocalMasterRpcWorkflowProfile.FOOD_CHECKS, LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS,
         LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
         LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL -> false
+    }
+
+    override fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        context: CommandContext): List<AuthorizationRequirement> {
+        check(profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && supportsRpcWorkflow(profile, normalized) &&
+            context.key == key && semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)
+        val request = LocalConfigurationCodec.decode(normalized)
+        val (target, action) = when (request) {
+            is LocalConfigurationRequestV1.InstallCompanySku -> request.publication.definition.skuId to SecurityAction.CATALOG_ACTIVATE
+            is LocalConfigurationRequestV1.ConfigureWarehouse -> request.warehouse.id to SecurityAction.WAREHOUSE_CONFIGURE
+            is LocalConfigurationRequestV1.ApproveReceiving -> request.approval.id to
+                if (request.approval.kind == LocalBasisKindV1.OPENING) SecurityAction.OPENING_INVENTORY_APPROVE else SecurityAction.PURCHASING_APPROVE
+            is LocalConfigurationRequestV1.ConfigureTender -> request.tender.id to SecurityAction.TENDER_CONFIGURE
+            is LocalConfigurationRequestV1.ConfigureSupplier -> request.supplier.id to SecurityAction.SUPPLIER_ADMINISTRATION
+            is LocalConfigurationRequestV1.ConfigureSalesRoute -> request.route.id to SecurityAction.WAREHOUSE_CONFIGURE
+        }
+        val amount = (request as? LocalConfigurationRequestV1.ApproveReceiving)?.approval?.lines?.fold(Money(Currency.EGP, 0)) {
+            total, line -> total + line.maximumOwnedValue
+        }
+        return listOf(AuthorizationRequirement(Permission(action, PermissionVerb.ADMINISTER), context.scope,
+            ActionBinding(target, Revision(0), context.semanticDigest, context.operationId, "local.configuration.original"),
+            if (amount != null) LimitUse.Monetary(amount) else LimitUse.NotApplicable))
     }
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
@@ -485,6 +513,12 @@ private class ConfigurationReadHandler(private val signatures: CompanyPublicatio
         encodeValue(decodeValue(input, LocalConfigurationQueryV1.serializer()), LocalConfigurationQueryV1.serializer())
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
         val kind = when (profile) {
+            LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> {
+                val query = decodeValue(normalized, LocalConfigurationQueryV1.serializer())
+                return query.kind in setOf(LocalConfigurationProfile.SKU, LocalConfigurationProfile.WAREHOUSE,
+                    LocalConfigurationProfile.BASIS, LocalConfigurationProfile.TENDER, LocalConfigurationProfile.SUPPLIER,
+                    LocalConfigurationProfile.SALES_ROUTE) && normalize(normalized) == normalized
+            }
             LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> {
                 val query = decodeValue(normalized, LocalConfigurationQueryV1.serializer())
                 return query.kind in setOf(LocalConfigurationProfile.SUPPLIER, LocalConfigurationProfile.SKU) &&

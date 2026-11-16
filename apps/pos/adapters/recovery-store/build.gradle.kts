@@ -21,15 +21,26 @@ kotlin {
     }
     iosArm64()
     iosSimulatorArm64()
+    applyDefaultHierarchyTemplate()
     sourceSets {
+        // Shared JVM desktop + Android Master backup adapters (JCA AEAD, files, SQLite observation).
+        val jcaMain by creating { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jcaMain)
+        androidMain.get().dependsOn(jcaMain)
+        jcaMain.dependencies {
+            implementation(libs.sqlite.bundled)
+            implementation(libs.coroutines.core)
+        }
         commonMain.dependencies {
             api(project(":core:recovery"))
             api(project(":core:security"))
             implementation(libs.serialization.json)
             implementation(libs.coroutines.core)
         }
-        jvmMain.dependencies {
-            implementation(libs.sqlite.bundled)
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
         }
+        jvmTest.dependencies { implementation(kotlin("test-junit")) }
     }
 }

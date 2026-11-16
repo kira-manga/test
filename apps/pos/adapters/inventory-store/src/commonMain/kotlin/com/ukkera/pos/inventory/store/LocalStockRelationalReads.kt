@@ -331,7 +331,8 @@ public class LocalStockHistoryPage(public val skuId: DomainId, public val wareho
 internal class StockHistoryRead(private val repository: LocalStockRepository) : MasterReadHandler {
     override val key: ReadKey = LocalStockRelationalQueriesV2.HISTORY
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS
+        profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS &&
+            normalize(normalized) == normalized
     override fun normalize(input: StoredBytes): StoredBytes = stockEncode(stockDecode(input, StockHistoryQueryV2.serializer()).also {
         it.requireValid() }, StockHistoryQueryV2.serializer())
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {

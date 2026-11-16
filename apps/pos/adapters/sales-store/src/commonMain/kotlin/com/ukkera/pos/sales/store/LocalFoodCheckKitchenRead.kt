@@ -204,7 +204,8 @@ public class LocalFoodCheckKitchenReadHandler(
     override fun normalize(input: StoredBytes): StoredBytes =
         LocalFoodCheckKitchenCodecV1.encode(LocalFoodCheckKitchenCodecV1.query(input))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) &&
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL ||
+            profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) &&
             normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead =
         foodReads.prepareKitchenCheck(LocalFoodCheckKitchenCodecV1.query(normalized), view, context)
@@ -221,7 +222,8 @@ public class LocalFoodCheckKitchenReadHandlerV2(
     override fun normalize(input: StoredBytes): StoredBytes =
         LocalFoodCheckKitchenCodecV2.encode(LocalFoodCheckKitchenCodecV2.query(input))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) &&
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL ||
+            profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) &&
             normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead =
         foodReads.prepareKitchenCheckV2(LocalFoodCheckKitchenCodecV2.query(normalized), view, context)
@@ -238,7 +240,8 @@ public class LocalFoodCheckKitchenReadHandlerV3(
     override fun normalize(input: StoredBytes): StoredBytes =
         LocalFoodCheckKitchenCodecV3.encode(LocalFoodCheckKitchenCodecV3.query(input))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) &&
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL ||
+            profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) &&
             normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead =
         foodReads.prepareKitchenCheckV3(LocalFoodCheckKitchenCodecV3.query(normalized), view, context)

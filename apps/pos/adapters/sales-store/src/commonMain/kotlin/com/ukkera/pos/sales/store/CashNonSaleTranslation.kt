@@ -22,8 +22,13 @@ import com.ukkera.pos.sales.PaymentRecord
 import com.ukkera.pos.sales.ReceiptEntitlementChanged
 import com.ukkera.pos.sales.RefundObservationRecorded
 import com.ukkera.pos.sales.RefundRecord
+import com.ukkera.pos.sales.ExchangeOffsetRecorded
+import com.ukkera.pos.sales.DepositChanged
 import com.ukkera.pos.sales.ReturnClaimChanged
 import com.ukkera.pos.sales.SafeCustodyReceipt
+import com.ukkera.pos.sales.SafeFloatChanged
+import com.ukkera.pos.sales.SafeFloatIssued
+import com.ukkera.pos.sales.SafeFloatLedgerChanged
 import com.ukkera.pos.sales.SafeTransferChanged
 import com.ukkera.pos.sales.SalePosted
 import com.ukkera.pos.sales.SalesAggregate
@@ -67,11 +72,11 @@ internal fun validateNonSaleTransition(
         }
         // No else: a new domain effect requires a conscious adapter decision.
         is CashAssignmentOpened, is CashAssignmentReleased, is ClosingCustodyReleased, is CashCountRecorded,
-        is SafeTransferChanged, is SafeCustodyReceipt,
+        is SafeTransferChanged, is SafeCustodyReceipt, is SafeFloatIssued, is SafeFloatChanged, is SafeFloatLedgerChanged,
         is OrderChanged, is OrderReassigned, is HandoffOffered, is HandoffCancelled, is HandoffAccepted,
         is CollectionChanged, is CollectionObservationRecorded, is PaymentRecord, is SalePosted,
         is ReceiptEntitlementChanged, is ReturnClaimChanged, is AcceptedReturnChanged,
-        is RefundObservationRecorded, is RefundRecord -> return null
+        is RefundObservationRecorded, is RefundRecord, is ExchangeOffsetRecorded, is DepositChanged -> return null
     }
     val movement = moved ?: return null
     if (changed?.session !== after) return null

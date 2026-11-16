@@ -32,7 +32,6 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
-import java.util.concurrent.atomic.AtomicLong
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.Mac
@@ -42,7 +41,7 @@ import javax.crypto.spec.SecretKeySpec
 
 /**
  * jvmTest-ONLY Linux stand-ins for the macOS OS seam of the desktop Master platform: POSIX
- * (`unix:*` attributes, O_EXCL create, 0700/0600, rename, FileChannel locks) and software key
+ * (numeric Unix attributes, O_EXCL create, 0700/0600, rename, FileChannel locks) and software key
  * custody. They prove the shared desktop platform/owner wiring, never native custody or OS
  * protection. Self-authored, NOT an independent test double. Synthetic data only.
  */
@@ -58,7 +57,9 @@ internal class LinuxPosixTestFiles(override val baseDirectory: String) : Desktop
     override fun observe(path: String): DesktopStamp? = if (!Files.exists(Path.of(path), LinkOption.NOFOLLOW_LINKS)) null else stamp(Path.of(path))
 
     fun stamp(path: Path): DesktopStamp {
-        val a = Files.readAttributes(path, "unix:*", LinkOption.NOFOLLOW_LINKS)
+        // Query every field the unchanged stamp actually uses. unix:* additionally
+        // resolves owner/group names through NSS; numeric uid is the checked identity.
+        val a = Files.readAttributes(path, "unix:dev,ino,uid,mode,nlink,size,lastModifiedTime,ctime", LinkOption.NOFOLLOW_LINKS)
         val mode = a["mode"] as Int
         val kind = when (mode and 0xf000) { 0x4000 -> DesktopEntryKind.DIRECTORY; 0x8000 -> DesktopEntryKind.FILE; else -> DesktopEntryKind.OTHER }
         fun nanos(key: String) = (a[key] as java.nio.file.attribute.FileTime).to(java.util.concurrent.TimeUnit.NANOSECONDS)
@@ -173,6 +174,7 @@ internal class MemoryIdentityStore : JvmSecureIdentityStore {
 internal class LinuxTestOs(
     base: Path,
     private val target: SelfOwnedNativeInstalledTargetBindingV1,
+    private val diagnostics: (String) -> Unit = {},
 ) : DesktopOriginalOs {
     override val platform: SelfOwnedNativePlatformV2 = SelfOwnedNativePlatformV2.MACOS
     override val files: LinuxPosixTestFiles = LinuxPosixTestFiles(base.toString())
@@ -181,7 +183,9 @@ internal class LinuxTestOs(
     override val supportedProtections: Set<SelfOwnedKeyProtectionV1> = setOf(SelfOwnedKeyProtectionV1.OS_ISOLATED)
     private val identityStore = MemoryIdentityStore()
     private var boot = 0
-    private val elapsed = AtomicLong(10_000L)
+    // Real monotonic elapsed time: continuity/crypto observations must not consume a
+    // millisecond per clock read and manufacture native deadline/process-exclusion failures.
+    private val elapsedOriginNanos = System.nanoTime()
     var session: SelfOwnedNativeBootSessionV2 = sessionOf(0)
         private set
     fun nextBoot() { session = sessionOf(++boot) }
@@ -189,7 +193,9 @@ internal class LinuxTestOs(
     override fun observeInstalledTarget(): SelfOwnedNativeInstalledTargetBindingV1 = target
     override fun observeBootSession(): SelfOwnedNativeBootSessionV2 = session
     override fun principal(): SelfOwnedProcessPrincipal = SelfOwnedProcessPrincipal.MacUid(files.ownerName.toInt())
-    override fun elapsedMillis(): Long = elapsed.addAndGet(1)
-    override fun elapsedRealtimeNanos(): Long = elapsed.get() * 1_000_000L
+    override fun elapsedMillis(): Long = elapsedRealtimeNanos() / 1_000_000L
+    override fun elapsedRealtimeNanos(): Long = 10_000_000_000L + (System.nanoTime() - elapsedOriginNanos)
     override fun openSdkIdentityStore(profile: SelfOwnedNativeProfileV1): JvmSecureIdentityStore = identityStore
+    override fun info(message: String) = diagnostics("I $message")
+    override fun warn(message: String) = diagnostics("W $message")
 }

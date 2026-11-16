@@ -2,10 +2,12 @@ package com.ukkera.pos.database
 
 import com.ukkera.pos.recovery.OperationIdentity
 import com.ukkera.pos.security.LocalAuthenticatedPeer
+import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.LocalAuthenticationEntropy
 import com.ukkera.pos.security.LocalAuthenticationEnvironment
 import com.ukkera.pos.security.LocalEmployeePrincipal
 import com.ukkera.pos.security.LocalGatewayCredentials
+import com.ukkera.pos.security.LocalSessionView
 import com.ukkera.pos.security.LocalSessionViewResult
 import com.ukkera.pos.security.TrustedPrincipalFactory
 import com.ukkera.pos.types.DomainId
@@ -40,9 +42,39 @@ public class LocalMasterRpcPeerRegistration internal constructor(
     public val client: LocalMasterClient,
     public val principals: TrustedPrincipalFactory,
 ) {
+    // Only this actual retained Host registration owns staged invocations and their cleanup.
+    internal val physicalInvocations = LocalMasterRpcPhysicalRegistry(this)
+
+    /** Actual Host closure only. Exact SDK application resource is captured inside core. */
+    public suspend fun physicalInteractive(credentials: LocalGatewayCredentials,
+        body: LocalMasterPhysicalRpcBodyV1, peer: LocalMasterRpcRegisteredPeer,
+        resourceSession: RpcApplicationSession): LocalMasterPhysicalRpcDelivery? =
+        registry.physicalInteractive(this, credentials, body, peer, resourceSession)
+
+    /** Transport eligibility only. Exact per-action authorization remains at the
+     * protected endpoint/native gate, separately from this current resource identity. */
+    public suspend fun physicalInteractiveSessionCurrent(credentials: LocalGatewayCredentials,
+        peer: LocalMasterRpcRegisteredPeer, resourceSession: RpcApplicationSession): Boolean =
+        registry.physicalInteractiveSessionCurrent(this, credentials, peer, resourceSession)
+
+    /** Device-only immutable-evidence scope; never an employee resource or result. */
+    public suspend fun physicalOriginalSessionCurrent(session: RpcApplicationSession,
+        peer: LocalMasterRpcRegisteredPeer): Boolean = registry.physicalOriginalSessionCurrent(this, session, peer)
+
+    /** Device-only immutable evidence recovery. No employee result, grant or fresh action. */
+    public suspend fun physicalOriginal(request: LocalMasterPhysicalOriginalRequestV1,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): LocalMasterPhysicalOriginalResponseV1? =
+        registry.physicalOriginal(this, request, peer, session)
+
     /** No supplied admission, connection ID, currentness predicate or latest-key lookup. */
     public suspend fun register(physicalSession: RpcPhysicalSession): LocalMasterRpcRegisteredPeer? =
         registry.register(this, physicalSession)
+
+    /** Stage denial before the one actual complete native association census. No employee
+     * or business scope is admitted here; the private Host supplies its real SDK objects. */
+    public suspend fun registerAuthenticationExchange(session: RpcApplicationSession,
+        physicalSession: RpcPhysicalSession): LocalMasterRpcRegisteredPeer? =
+        registry.registerAuthenticationExchange(this, session, physicalSession)
 
     /** SDK expiry hint derived from this Master's current session and original native clock. */
     public suspend fun remainingSessionLifetimeMillis(credentials: LocalGatewayCredentials): Long? =
@@ -60,6 +92,11 @@ public class LocalMasterRpcPeerRegistration internal constructor(
         session: RpcApplicationSession, original: LocalEmployeePrincipal): Boolean =
         registry.retainApplicationSession(this, epoch, session, original)
 
+    /** Existing identity-only SDK object after fresh original verification, never admission. */
+    public suspend fun existingIdentitySessionCurrent(session: RpcApplicationSession,
+        original: LocalEmployeePrincipal): Boolean =
+        registry.existingIdentitySessionCurrent(this, session, original)
+
     /** Business output has a separate policy-fenced SDK session, never an identity-only scope. */
     public suspend fun retainResourceApplicationSession(epoch: LocalMasterRpcSessionEpoch,
         session: RpcApplicationSession, original: LocalEmployeePrincipal): Boolean =
@@ -70,11 +107,27 @@ public class LocalMasterRpcPeerRegistration internal constructor(
         session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer): Boolean =
         registry.retainAuthenticationExchangeSession(this, epoch, session, peer)
 
+    /** Staged device invalidation census followed by the actual fresh native association
+     * read. This supplies no employee identity or business resource. */
+    public suspend fun retainVerifiedAuthenticationExchangeSession(session: RpcApplicationSession,
+        peer: LocalMasterRpcRegisteredPeer): Boolean =
+        registry.retainVerifiedAuthenticationExchangeSession(this, session, peer)
+
     /** Post-issuance capture precedes fresh result verification; attachment is irreversible. */
     public suspend fun attachAuthenticationExchangeResult(epoch: LocalMasterRpcSessionEpoch,
         session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer,
         original: LocalEmployeePrincipal): Boolean =
         registry.attachAuthenticationExchangeResult(this, epoch, session, peer, original)
+
+    /** Expected display result DATA only; stage before fresh principal work, never a grant. */
+    public suspend fun prepareAuthenticationExchangeResult(session: RpcApplicationSession,
+        peer: LocalMasterRpcRegisteredPeer, view: LocalSessionView): Boolean =
+        registry.prepareAuthenticationExchangeResult(this, session, peer, view)
+
+    /** Fresh verified principal must match the same continuously retained candidate exactly. */
+    public suspend fun completeAuthenticationExchangeResult(session: RpcApplicationSession,
+        peer: LocalMasterRpcRegisteredPeer, original: LocalEmployeePrincipal): Boolean =
+        registry.completeAuthenticationExchangeResult(this, session, peer, original)
 
     /** Await exact SDK revocation before releasing an expired login's private binding. */
     public suspend fun revokeApplicationSession(session: RpcApplicationSession): Unit =
@@ -91,6 +144,28 @@ public class LocalMasterRpcPeerRegistration internal constructor(
         profile: LocalMasterRpcWorkflowProfile, peer: LocalMasterRpcRegisteredPeer,
         resourceSession: RpcApplicationSession): ReadReply =
         registry.readBusiness(this, credentials, request, profile, peer, resourceSession)
+
+    /** Scoped progress uses the same genuine physical peer and protected audience as reads. */
+    public suspend fun snapshotBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1?, peer: LocalMasterRpcRegisteredPeer,
+        resourceSession: RpcApplicationSession): LocalMasterChangesReplyV1 =
+        registry.snapshotBusiness(this, credentials, profile, selection, expectedCut, peer, resourceSession)
+
+    public suspend fun pullBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1, peer: LocalMasterRpcRegisteredPeer,
+        resourceSession: RpcApplicationSession): LocalMasterChangesReplyV1 =
+        registry.pullBusiness(this, credentials, profile, selection, cursor, peer, resourceSession)
+
+    public suspend fun snapshotBatchBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>, peer: LocalMasterRpcRegisteredPeer,
+        resourceSession: RpcApplicationSession): LocalMasterChangesBatchReplyV1 =
+        registry.snapshotBatchBusiness(this, credentials, profile, selections, peer, resourceSession)
+
+    /** Read-only family check; its inert classification is not an accepting resource grant. */
+    public suspend fun authorizeChangesBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>, peer: LocalMasterRpcRegisteredPeer, resourceSession: RpcApplicationSession,
+        capacityOnly: Boolean = false): LocalMasterChangesRpcAuthorizationV1 =
+        registry.authorizeChangesBusiness(this, credentials, profile, selections, peer, resourceSession, capacityOnly)
 
     public suspend fun executeBusiness(credentials: LocalGatewayCredentials, request: MutationRequest,
         profile: LocalMasterRpcWorkflowProfile, peer: LocalMasterRpcRegisteredPeer,
@@ -170,6 +245,7 @@ internal class LocalMasterRpcPeerRegistry(
     private val denied = MutableStateFlow(false)
     private val registration = MutableStateFlow<LocalMasterRpcPeerRegistration?>(null)
     private val registrationSlot = Semaphore(1)
+    private val registrationQueue = Semaphore(MAX_ENTRIES)
     private var connectionOrdinal = 0L // Only the admitted registration worker changes it.
 
     internal fun bind(lifetime: LocalMasterRpcPeerRegistrationLifetime, trust: LocalMasterRpcTrust,
@@ -213,6 +289,17 @@ internal class LocalMasterRpcPeerRegistry(
         return retained && ownsCurrent(token)
     }
 
+    internal suspend fun existingIdentitySessionCurrent(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, original: LocalEmployeePrincipal): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || original.scope != owner.originalScope) return false
+        val identity = LocalMasterRpcSessionIdentity(original.scope, original.actorId, original.deviceId,
+            original.sessionId, original.sessionGeneration, original.admissionRevision, original.authenticationPurpose)
+        val current = sessionFence.existingIdentitySessionCurrent(token, session, identity)
+        currentCoroutineContext().ensureActive()
+        return current && ownsCurrent(token)
+    }
+
     internal suspend fun retainAuthenticationExchangeSession(token: LocalMasterRpcPeerRegistration,
         epoch: LocalMasterRpcSessionEpoch, session: RpcApplicationSession,
         peer: LocalMasterRpcRegisteredPeer): Boolean {
@@ -221,6 +308,51 @@ internal class LocalMasterRpcPeerRegistry(
         val retained = sessionFence.retainAuthenticationExchangeSession(token, epoch, session, device)
         currentCoroutineContext().ensureActive()
         return retained && ownsCurrent(token) && peer.isCurrent()
+    }
+
+    internal suspend fun retainVerifiedAuthenticationExchangeSession(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer): Boolean {
+        val trace = LocalMasterRpcReadTrace(LocalMasterRpcReadTracePhase.AUTHENTICATE,
+            LocalMasterRpcReadStage.EXCHANGE_DEVICE_CANDIDATE)
+        var stage by trace
+        var accepted = false
+        try {
+            currentCoroutineContext().ensureActive()
+            val device = exchangeDevice(token, session, peer) ?: return false
+            if (!sessionFence.prepareAuthenticationExchangeSession(token, session, device)) return false
+            // register() can reuse a continuously retained peer. This distinct protected read
+            // must actually reobserve the original native association AFTER staging denial.
+            stage = LocalMasterRpcReadStage.EXCHANGE_ADMISSION_READ
+            val fresh = token.trust.readPeerAssociation(token.appId, peer.physicalSession.peer) ?: return false
+            currentCoroutineContext().ensureActive()
+            stage = LocalMasterRpcReadStage.EXCHANGE_NATIVE_CURRENT
+            if (!ownsCurrent(token) || !peer.isCurrent() || !fresh.belongsTo(owner) || !fresh.isCurrent()) return false
+            // Native reads materialize new admission objects. Compare the complete canonical
+            // record (including descriptors/capabilities), never object identity or revision alone.
+            stage = LocalMasterRpcReadStage.EXCHANGE_ADMISSION_RECORD
+            val expectedAdmission = ProtectedLocalSecurityCodec.encodeAdmission(peer.association.admission)
+            val observedAdmission = ProtectedLocalSecurityCodec.encodeAdmission(fresh.admission)
+            try { if (!expectedAdmission.contentEquals(observedAdmission)) return false }
+            finally { expectedAdmission.fill(0); observedAdmission.fill(0) }
+            stage = LocalMasterRpcReadStage.EXCHANGE_SDK_RECORD
+            val expected = peer.association.sdkIdentity.copyWireBytes()
+            val observed = fresh.sdkIdentity.copyWireBytes()
+            try { if (!expected.contentEquals(observed)) return false }
+            finally { expected.fill(0); observed.fill(0) }
+            stage = LocalMasterRpcReadStage.EXCHANGE_DEVICE_COMPLETION
+            val completed = sessionFence.completeAuthenticationExchangeSession(token, session, device)
+            if (!completed && !session.isActive) stage = LocalMasterRpcReadStage.EXCHANGE_SESSION_INACTIVE
+            currentCoroutineContext().ensureActive()
+            if (completed) stage = LocalMasterRpcReadStage.EXCHANGE_FINAL_CURRENT
+            accepted = completed && ownsCurrent(token) && peer.isCurrent() && fresh.isCurrent()
+            return accepted
+        } catch (failure: Throwable) {
+            reportLocalMasterRpcReadFailure(stage, failure)
+            throw failure
+        } finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcReadFailure(stage, null)
+        }
     }
 
     internal suspend fun attachAuthenticationExchangeResult(token: LocalMasterRpcPeerRegistration,
@@ -233,6 +365,29 @@ internal class LocalMasterRpcPeerRegistry(
         val identity = LocalMasterRpcSessionIdentity(original.scope, original.actorId, original.deviceId,
             original.sessionId, original.sessionGeneration, original.admissionRevision, original.authenticationPurpose)
         val attached = sessionFence.attachAuthenticationExchangeResult(token, epoch, session, device, identity)
+        currentCoroutineContext().ensureActive()
+        return attached && ownsCurrent(token) && peer.isCurrent()
+    }
+
+    internal suspend fun prepareAuthenticationExchangeResult(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer, view: LocalSessionView): Boolean {
+        currentCoroutineContext().ensureActive()
+        val device = exchangeDevice(token, session, peer) ?: return false
+        if (view.scope != device.scope || view.deviceId != device.deviceId) return false
+        val candidate = LocalMasterRpcSessionIdentity(view.scope, view.actorId, view.deviceId,
+            view.sessionId, view.generation, device.admissionRevision, AuthenticationPurpose.INTERACTIVE)
+        val prepared = sessionFence.prepareAuthenticationExchangeResult(token, session, device, candidate)
+        currentCoroutineContext().ensureActive()
+        return prepared && ownsCurrent(token) && peer.isCurrent()
+    }
+
+    internal suspend fun completeAuthenticationExchangeResult(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer, original: LocalEmployeePrincipal): Boolean {
+        currentCoroutineContext().ensureActive()
+        val device = exchangeDevice(token, session, peer) ?: return false
+        val identity = LocalMasterRpcSessionIdentity(original.scope, original.actorId, original.deviceId,
+            original.sessionId, original.sessionGeneration, original.admissionRevision, original.authenticationPurpose)
+        val attached = sessionFence.completeAuthenticationExchangeResult(token, session, device, identity)
         currentCoroutineContext().ensureActive()
         return attached && ownsCurrent(token) && peer.isCurrent()
     }
@@ -260,6 +415,14 @@ internal class LocalMasterRpcPeerRegistry(
         currentCoroutineContext().ensureActive()
         if (!ownsCurrent(token)) return false
         val endpoint = token.client as? LocalMasterEndpoint ?: return false
+        if (access.profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) {
+            val exactPeer = peer ?: return false
+            val retained = changesResource(token, credentials, exactPeer, resourceSession ?: return false) ?: return false
+            val allowed = endpoint.authorizeRpcBusinessOriginal(credentials, access, requireRecovery, retained) ==
+                LocalMasterRpcAccessResult.ALLOWED
+            currentCoroutineContext().ensureActive()
+            return allowed && ownsCurrent(token) && exactPeer.isCurrent() && retained.current()
+        }
         val audience = if (access.profile == LocalMasterRpcWorkflowProfile.KITCHEN)
             kitchenAudience(token, peer, resourceSession, access) ?: return false else null
         val allowed = endpoint.authorizeRpcBusiness(credentials, access, requireRecovery, audience) == LocalMasterRpcAccessResult.ALLOWED
@@ -276,6 +439,168 @@ internal class LocalMasterRpcPeerRegistry(
         val endpoint = token.client as? LocalMasterEndpoint
             ?: return ReadReply.Unavailable(ReadFailure.AUTHORIZATION_DENIED)
         return endpoint.readRpcBusiness(credentials, request, audience)
+    }
+
+    internal suspend fun snapshotBusiness(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile, selection: ReadRequest,
+        expectedCut: LocalMasterChangeCursorV1?, peer: LocalMasterRpcRegisteredPeer,
+        session: RpcApplicationSession): LocalMasterChangesReplyV1 {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || peer.registry !== this || !peer.isCurrent() || !session.isActive)
+            return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val endpoint = token.client as? LocalMasterEndpoint
+            ?: return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val audience = if (profile == LocalMasterRpcWorkflowProfile.KITCHEN)
+            kitchenAudience(token, peer, session, LocalMasterRpcBusinessAccess.Read(selection, profile))
+                ?: return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+            else null
+        val result = if (audience == null) endpoint.snapshot(credentials, profile, selection, expectedCut)
+            else endpoint.snapshotRpcBusiness(credentials, profile, selection, expectedCut, audience)
+        currentCoroutineContext().ensureActive()
+        return if (ownsCurrent(token) && peer.isCurrent() && session.isActive && (audience == null || audience.current())) result
+            else LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+    }
+
+    internal suspend fun pullBusiness(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile, selection: ReadRequest,
+        cursor: LocalMasterChangeCursorV1, peer: LocalMasterRpcRegisteredPeer,
+        session: RpcApplicationSession): LocalMasterChangesReplyV1 {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || peer.registry !== this || !peer.isCurrent() || !session.isActive)
+            return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val endpoint = token.client as? LocalMasterEndpoint
+            ?: return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val audience = if (profile == LocalMasterRpcWorkflowProfile.KITCHEN)
+            kitchenAudience(token, peer, session, LocalMasterRpcBusinessAccess.Read(selection, profile))
+                ?: return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+            else null
+        val result = if (audience == null) endpoint.pull(credentials, profile, selection, cursor)
+            else endpoint.pullRpcBusiness(credentials, profile, selection, cursor, audience)
+        currentCoroutineContext().ensureActive()
+        return if (ownsCurrent(token) && peer.isCurrent() && session.isActive && (audience == null || audience.current())) result
+            else LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+    }
+
+    internal suspend fun snapshotBatchBusiness(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): LocalMasterChangesBatchReplyV1 {
+        val retained = changesResource(token, credentials, peer, session)
+            ?: return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        if (profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val endpoint = token.client as? LocalMasterEndpoint
+            ?: return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        val reply = endpoint.snapshotBatchRpcOriginal(credentials, profile, selections, retained)
+        currentCoroutineContext().ensureActive()
+        return if (ownsCurrent(token) && peer.isCurrent() && retained.current()) reply
+            else LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+    }
+
+    internal suspend fun authorizeChangesBusiness(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession,
+        capacityOnly: Boolean): LocalMasterChangesRpcAuthorizationV1 {
+        fun denied() = LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
+        // Capture exact retained DATA here; the endpoint freshly authenticates and joins
+        // this identity after its actual queue wait, before protected query authorization.
+        val retained = changesResource(token, credentials, peer, session) ?: return denied()
+        val endpoint = token.client as? LocalMasterEndpoint ?: return denied()
+        val result = if (capacityOnly) endpoint.authorizeChangesCapacity(credentials, profile, retained)
+            else if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                endpoint.authorizeChangesBusiness(credentials, profile, selections, retained)
+            else {
+                if (selections.size != 1) return denied()
+                when (val snapshot = snapshotBusiness(token, credentials, profile, selections.single(), null, peer, session)) {
+                    is LocalMasterChangesReplyV1.Snapshot -> LocalMasterChangesRpcAuthorizationV1(
+                        LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(listOf(snapshot.cursor)))
+                    is LocalMasterChangesReplyV1.Unchanged -> denied()
+                    is LocalMasterChangesReplyV1.Unavailable -> LocalMasterChangesRpcAuthorizationV1(
+                        if (snapshot.reason == LocalMasterChangesFailureV1.CAPACITY_EXCEEDED) LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                        else if (snapshot.reason == LocalMasterChangesFailureV1.MALFORMED_REQUEST) LocalMasterChangesRpcAccessResultV1.MALFORMED_ONLY
+                        else if (snapshot.reason in setOf(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED,
+                                LocalMasterChangesFailureV1.WRONG_SCOPE, LocalMasterChangesFailureV1.UNKNOWN_QUERY)) LocalMasterChangesRpcAccessResultV1.DENIED
+                        else LocalMasterChangesRpcAccessResultV1.UNAVAILABLE, null)
+                }
+            }
+        currentCoroutineContext().ensureActive()
+        return if (ownsCurrent(token) && peer.isCurrent() && retained.current()) result else denied()
+    }
+
+    /** Actual retained SDK resource DATA only. It neither authenticates nor authorizes. */
+    private suspend fun changesResource(token: LocalMasterRpcPeerRegistration, credentials: LocalGatewayCredentials,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): LocalMasterRpcResourceSession? {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || peer.registry !== this || !peer.isCurrent() ||
+            credentials.connectionId != peer.nativePeer.connectionId || session.peer != peer.physicalSession.peer.fingerprint) return null
+        val retained = sessionFence.captureResourceSession(token, session) ?: return null
+        val identity = retained.identity
+        val admission = peer.association.admission
+        if (identity.purpose != AuthenticationPurpose.INTERACTIVE || identity.scope != owner.originalScope ||
+            !admission.admitted || admission.scope != identity.scope || admission.deviceId != identity.deviceId ||
+            admission.revision != identity.admissionRevision || session.principal != identity.actorId.value ||
+            session.sessionId != identity.sessionId.value) return null
+        return retained.takeIf { ownsCurrent(token) && peer.isCurrent() && it.current() }
+    }
+
+    /** Actual retained SDK resource and freshly checked exact original identity, never request claims. */
+    private suspend fun changesSession(token: LocalMasterRpcPeerRegistration, credentials: LocalGatewayCredentials,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): LocalMasterRpcResourceSession? {
+        currentCoroutineContext().ensureActive()
+        val retained = changesResource(token, credentials, peer, session) ?: return null
+        val original = token.principals.authenticateLocal(credentials) ?: return null
+        val identity = retained.identity
+        if (original.authenticationPurpose != identity.purpose || original.scope != identity.scope ||
+            original.actorId != identity.actorId || original.deviceId != identity.deviceId ||
+            original.sessionId != identity.sessionId || original.sessionGeneration != identity.generation ||
+            original.admissionRevision != identity.admissionRevision) return null
+        currentCoroutineContext().ensureActive()
+        return retained.takeIf { ownsCurrent(token) && peer.isCurrent() && it.current() }
+    }
+
+    internal suspend fun physicalInteractiveSessionCurrent(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): Boolean {
+        val retained = changesSession(token, credentials, peer, session) ?: return false
+        val endpoint = token.client as? LocalMasterEndpoint ?: return false
+        return endpoint.physicalRemoteGate != null && ownsCurrent(token) && peer.isCurrent() && retained.current()
+    }
+
+    internal suspend fun physicalOriginalSessionCurrent(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, peer: LocalMasterRpcRegisteredPeer): Boolean {
+        val device = exchangeDevice(token, session, peer) ?: return false
+        val endpoint = token.client as? LocalMasterEndpoint ?: return false
+        return endpoint.physicalRemoteGate != null && sessionFence.deviceOnlyExchangeCurrent(token, session, device) &&
+            ownsCurrent(token) && peer.isCurrent() && session.isActive
+    }
+
+    internal suspend fun physicalInteractive(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials, body: LocalMasterPhysicalRpcBodyV1,
+        peer: LocalMasterRpcRegisteredPeer, session: RpcApplicationSession): LocalMasterPhysicalRpcDelivery? {
+        // changesSession is the existing full exact original-principal/resource/admission join.
+        // It captures an actual ResourceSession, not a caller-nominated identity or predicate.
+        val retained = changesSession(token, credentials, peer, session) ?: return null
+        val endpoint = token.client as? LocalMasterEndpoint ?: return null
+        if (endpoint.physicalRemoteGate == null) return null
+        val origin = LocalMasterRpcPhysicalOrigin(token, peer, retained)
+        return token.physicalInvocations.exchange(origin, credentials, body).takeIf {
+            ownsCurrent(token) && peer.isCurrent() && retained.current()
+        }
+    }
+
+    internal suspend fun physicalOriginal(token: LocalMasterRpcPeerRegistration,
+        request: LocalMasterPhysicalOriginalRequestV1, peer: LocalMasterRpcRegisteredPeer,
+        session: RpcApplicationSession): LocalMasterPhysicalOriginalResponseV1? {
+        currentCoroutineContext().ensureActive()
+        if (!physicalOriginalSessionCurrent(token, session, peer) || peer.registry !== this ||
+            !peer.association.admission.admitted || peer.association.admission.scope != owner.originalScope) return null
+        val endpoint = token.client as? LocalMasterEndpoint ?: return null
+        val sameGate = endpoint.physicalRemoteGate ?: return null
+        val device = LocalMasterPhysicalOriginalDevice(token, peer)
+        val retained = sameGate.retainRemoteOriginal(device, request)
+        currentCoroutineContext().ensureActive()
+        if (!physicalOriginalSessionCurrent(token, session, peer) || !device.owns(sameGate) || endpoint.physicalRemoteGate !== sameGate) return null
+        val body = request.originalBody.copyBytes()
+        val digest = try { com.ukkera.pos.security.sha256(body) } finally { body.fill(0) }
+        return LocalMasterPhysicalOriginalResponseV1(request.clientAllocationId, digest, retained)
     }
 
     internal suspend fun executeBusiness(token: LocalMasterRpcPeerRegistration,
@@ -349,25 +674,66 @@ internal class LocalMasterRpcPeerRegistry(
         return entry.nativePeer.takeIf { current }
     }
 
+    internal suspend fun registerAuthenticationExchange(token: LocalMasterRpcPeerRegistration,
+        session: RpcApplicationSession, physical: RpcPhysicalSession): LocalMasterRpcRegisteredPeer? {
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || session.peer != physical.peer.fingerprint || !physical.isConnected ||
+            physical.closure.value != RpcPhysicalSessionClosure.Open) return null
+        if (!sessionFence.prepareNativeAuthenticationExchange(token, session, physical)) return null
+        // New registration already performs the real complete census. A cached exact peer
+        // explicitly rereads it once here. Both reads occur AFTER the pending denial cut.
+        val peer = registerPeer(token, physical, freshExisting = true) ?: return null
+        val device = exchangeDevice(token, session, peer) ?: return null
+        if (!sessionFence.completeNativeAuthenticationExchange(token, session, physical, device)) return null
+        currentCoroutineContext().ensureActive()
+        return peer.takeIf { ownsCurrent(token) && it.isCurrent() && session.isActive }
+    }
+
     internal suspend fun register(token: LocalMasterRpcPeerRegistration,
-        physical: RpcPhysicalSession): LocalMasterRpcRegisteredPeer? {
+        physical: RpcPhysicalSession): LocalMasterRpcRegisteredPeer? = registerPeer(token, physical, freshExisting = false)
+
+    private suspend fun refreshRegisteredAssociation(token: LocalMasterRpcPeerRegistration,
+        peer: LocalMasterRpcRegisteredPeer): Boolean {
+        if (!ownsCurrent(token) || !peer.isCurrent()) return false
+        val fresh = token.trust.readPeerAssociation(token.appId, peer.physicalSession.peer) ?: return false
+        currentCoroutineContext().ensureActive()
+        if (!ownsCurrent(token) || !peer.isCurrent() || !fresh.belongsTo(owner) || !fresh.isCurrent()) return false
+        val expectedAdmission = ProtectedLocalSecurityCodec.encodeAdmission(peer.association.admission)
+        val observedAdmission = ProtectedLocalSecurityCodec.encodeAdmission(fresh.admission)
+        try { if (!expectedAdmission.contentEquals(observedAdmission)) return false }
+        finally { expectedAdmission.fill(0); observedAdmission.fill(0) }
+        val expected = peer.association.sdkIdentity.copyWireBytes()
+        val observed = fresh.sdkIdentity.copyWireBytes()
+        try { if (!expected.contentEquals(observed)) return false }
+        finally { expected.fill(0); observed.fill(0) }
+        return ownsCurrent(token) && peer.isCurrent() && fresh.isCurrent()
+    }
+
+    private suspend fun registerPeer(token: LocalMasterRpcPeerRegistration,
+        physical: RpcPhysicalSession, freshExisting: Boolean): LocalMasterRpcRegisteredPeer? {
         currentCoroutineContext().ensureActive()
         if (!ownsCurrent(token) || !physical.isConnected || physical.closure.value != RpcPhysicalSessionClosure.Open) return null
         // Existing exact entries do not compete with another peer's native admission read.
         atom.value.entries.firstOrNull { it.physicalSession === physical }?.let {
             val current = it.isCurrent()
             currentCoroutineContext().ensureActive()
-            return it.takeIf { current }
+            return if (current && (!freshExisting || refreshRegisteredAssociation(token, it))) it else null
         }
-        if (!registrationSlot.tryAcquire()) return null
+        if (!registrationQueue.tryAcquire()) return null
+        var slotOwned = false
         var published: LocalMasterRpcRegisteredPeer? = null
         try {
+            // Waiting owns no native work or peer authority. Concurrent first connections
+            // share the original reader instead of treating contention as withdrawn trust.
+            registrationSlot.acquire()
+            slotOwned = true
+            currentCoroutineContext().ensureActive()
             if (!ownsCurrent(token)) return null
             // An already retired exact physical object is not a new connection.
             atom.value.entries.firstOrNull { it.physicalSession === physical }?.let {
                 val current = it.isCurrent()
                 currentCoroutineContext().ensureActive()
-                return it.takeIf { current }
+                return if (current && (!freshExisting || refreshRegisteredAssociation(token, it))) it else null
             }
             val association = token.trust.readPeerAssociation(token.appId, physical.peer) ?: return null
             currentCoroutineContext().ensureActive()
@@ -389,7 +755,10 @@ internal class LocalMasterRpcPeerRegistry(
         } catch (failure: Throwable) {
             published?.invalidate()
             throw failure
-        } finally { registrationSlot.release() }
+        } finally {
+            if (slotOwned) registrationSlot.release()
+            registrationQueue.release()
+        }
     }
 
     internal fun isCurrent(entry: LocalMasterRpcRegisteredPeer): Boolean {
@@ -397,11 +766,24 @@ internal class LocalMasterRpcPeerRegistry(
         val before = atom.value
         if (entry.registry !== this || denied.value || before.retired || !entry.permitsIdentity ||
             before.entries.none { it === entry }) return false
+        var failureStage = LocalMasterRpcReadStage.PEER_OWNER_ENDED
+        var diagnosticFailure: Throwable? = null
         val current = try {
-            token != null && ownsCurrent(token) && entry.association.belongsTo(owner) && entry.association.isCurrent() &&
-                entry.physicalSession.isConnected && entry.physicalSession.closure.value == RpcPhysicalSessionClosure.Open
-        } catch (_: Throwable) { false }
-        if (!current) { entry.invalidate(); return false }
+            if (token == null || !ownsCurrent(token)) false
+            else {
+                failureStage = LocalMasterRpcReadStage.PEER_ASSOCIATION_ENDED
+                if (!entry.association.belongsTo(owner) || !entry.association.isCurrent()) false
+                else {
+                    failureStage = LocalMasterRpcReadStage.PEER_SDK_LINK_ENDED
+                    entry.physicalSession.isConnected && entry.physicalSession.closure.value == RpcPhysicalSessionClosure.Open
+                }
+            }
+        } catch (failure: Throwable) { diagnosticFailure = failure; false }
+        if (!current) {
+            reportLocalMasterRpcReadFailure(failureStage, diagnosticFailure)
+            entry.invalidate()
+            return false
+        }
         val after = atom.value
         return !denied.value && !after.retired && entry.permitsIdentity && after.entries.any { it === entry }
     }
@@ -415,6 +797,7 @@ internal class LocalMasterRpcPeerRegistry(
     internal suspend fun awaitCleanup() {
         retireAll()
         withContext(NonCancellable) {
+            registration.value?.physicalInvocations?.close()
             sessionFence.awaitSessionRevocation()
             // Drain a registration already between settlement and publication before
             // taking the complete cleanup census. Future registrations are denied.
@@ -489,6 +872,7 @@ internal class LocalMasterRpcPeerRegistry(
             entry.invalidate()
             withContext(NonCancellable) {
                 try {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.MASTER_PHYSICAL_ENTRY_CLEANUP, Throwable())
                     entry.physicalSession.close()
                     if (entry.physicalSession.closure.value == RpcPhysicalSessionClosure.Closed) removeClosed(entry)
                 } catch (_: Throwable) {

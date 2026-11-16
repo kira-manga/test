@@ -101,6 +101,61 @@ internal class AndroidSelfOwnedLocalSecurity(
         }
     }
 
+    /** All selected tags and the same original's postflight must succeed before any output. */
+    suspend fun openBatch(reference: ProtectedStorageKeyReference,
+        selections: List<ProtectedLocalOpenSelection>): LocalBatchOpenResult {
+        currentCoroutineContext().ensureActive()
+        if (reference != configuration.storageReference)
+            return LocalBatchOpenResult.Unavailable(ProtectedKeyFailure.KEY_UNAVAILABLE)
+        if (selections.size !in 1..4)
+            return LocalBatchOpenResult.Unavailable(ProtectedKeyFailure.CORRUPT_PROTECTED_STATE)
+        val selected = selections.toList()
+        if (selected.size !in 1..4 || selected.any { selection ->
+                val expected = selection.expected; val sealed = selection.sealed
+                expected.key.scope != configuration.scope || sealed.binding != expected || sealed.keyReference != reference ||
+                    sealed.formatVersion != ProtectedLocalStorageFormat.FORMAT_VERSION ||
+                    sealed.algorithm != ProtectedLocalStorageFormat.ALGORITHM ||
+                    sealed.ciphertextAndTagSize !in (1 + ProtectedLocalStorageFormat.TAG_BYTES)..
+                        (expected.table.maximumPlaintextBytes + ProtectedLocalStorageFormat.TAG_BYTES)
+            }) return LocalBatchOpenResult.Unavailable(ProtectedKeyFailure.CORRUPT_PROTECTED_STATE)
+        val result = work.run {
+            // Copy row bytes only after actual worker admission. No caller callback runs in
+            // the native segment. Every temporary input/output belongs to this one task.
+            val inputs = mutableListOf<BatchOpenInput>()
+            fun clearInputs() { inputs.forEach { it.clear() } }
+            try {
+                for (selection in selected) {
+                    val nonce = selection.sealed.copyNonce()
+                    var ciphertext: ByteArray? = null
+                    try {
+                        val bytes = selection.sealed.copyCiphertextAndTag(); ciphertext = bytes
+                        inputs += BatchOpenInput(nonce, bytes, selection.expected.aad(reference),
+                            selection.expected.table.maximumPlaintextBytes)
+                    } catch (failure: Throwable) { nonce.fill(0); ciphertext?.fill(0); throw failure }
+                }
+                ownedTask(clear = ::clearInputs, discard = { values: List<ByteArray> -> values.forEach { it.fill(0) } }) {
+                    val output = mutableListOf<ByteArray>()
+                    try {
+                        for (input in inputs) output += openNative(input.aad, input.nonce, input.ciphertext, input.maximumPlaintext)
+                        output.toList()
+                    } catch (failure: Throwable) { output.forEach { it.fill(0) }; throw failure }
+                }
+            } catch (failure: Throwable) { clearInputs(); throw failure }
+        }
+        return when (result) {
+            is AndroidOwnedResult.Value -> try {
+                currentCoroutineContext().ensureActive()
+                LocalBatchOpenResult.Opened(result.value.map { LocalOpenResult.Opened(it) })
+            } finally { result.value.forEach { it.fill(0) } }
+            is AndroidOwnedResult.Unavailable -> LocalBatchOpenResult.Unavailable(protectedFailure(result.reason))
+        }
+    }
+
+    private class BatchOpenInput(val nonce: ByteArray, val ciphertext: ByteArray, val aad: ByteArray,
+        val maximumPlaintext: Int) {
+        fun clear() { nonce.fill(0); ciphertext.fill(0); aad.fill(0) }
+    }
+
     /** DISTINCT original branch pepper, never P1's installer pepper or a caller-selected alias. */
     suspend fun hmacSha256(reference: ProtectedPepperReference, message: ByteArray): PepperMacResult {
         currentCoroutineContext().ensureActive()

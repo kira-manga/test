@@ -12,11 +12,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 internal enum class LocalWorkBusy { NONE, READING, FOOD_PREVIEW, REFERENCES, STAGING, SUBMITTING, LOOKUP, ORIGINAL_LOOKUP, PENDING, ACKNOWLEDGING, REPORT_EXPORT, REPORT_EXPORT_LOOKUP, ATTACHMENT_REVIEW,
@@ -104,6 +106,7 @@ internal data class LocalWorkspaceState(
     val attachmentReviewRequired: Boolean = false,
     val actionApproval: LocalActionApprovalPresentation? = null,
     val actionApprovalLookupWorking: Boolean = false,
+    val liveUpdatesDeferred: Boolean = false,
 ) {
     val working: Boolean get() = busy != LocalWorkBusy.NONE
     val managerOrderReview: Boolean get() = workflow.isManagerOrderReview(search)
@@ -225,6 +228,12 @@ internal class LocalWorkflowController(
     private var heldActionApprovalLookup: Job? = null
     private var reportLifecycle: Job? = null
     private var foodPreviewLifecycle: Job? = null
+    private var liveReadUpdates: Job? = null
+    private data class LiveReadSelection(val generation: Long, val query: LocalWorkflowQuery)
+    private val liveReadSelection = MutableStateFlow<LiveReadSelection?>(null)
+    private var liveReadGeneration = 0L
+    private var visibleReadQuery: LocalWorkflowQuery? = null
+    private var deferredReadUpdate: Pair<LocalWorkflowQuery, LocalWorkflowReadUpdate>? = null
     private var foodPreviewEpoch = 0L
     private var purchasingDocumentEpoch = 0L
     private var actionApprovalEpoch = 0L
@@ -322,6 +331,8 @@ internal class LocalWorkflowController(
             foodPreviewLifecycle = scope.launch {
                 lifecycle.collect { state ->
                     if (state != LocalSessionLifecycle.ACTIVE) {
+                        liveReadSelection.value = null
+                        deferredReadUpdate = null
                         foodPreviewEpoch++
                         if (this@LocalWorkflowController.state.value.busy in documentaryWorkKinds ||
                             this@LocalWorkflowController.state.value.busy in approvalWorkKinds) work?.cancel()
@@ -330,8 +341,11 @@ internal class LocalWorkflowController(
                         heldActionApprovalLookup = null
                         clearPurchasingDocuments()
                         mutableState.value = this@LocalWorkflowController.state.value.copy(
-                            foodPricePreview = null, foodPricePreviewProblem = null, actionApproval = null, actionApprovalLookupWorking = false,
-                            originalLookupInput = "", originalLookupProblem = null)
+                            page = null, foodPricePreview = null, foodPricePreviewProblem = null,
+                            referencePicker = this@LocalWorkflowController.state.value.referencePicker?.copy(page = null),
+                            actionApproval = null, actionApprovalLookupWorking = false,
+                            originalLookupInput = "", originalLookupProblem = null, liveUpdatesDeferred = false)
+                        (gateway as? LocalWorkflowLiveViews)?.invalidateReadViews()
                     }
                 }
             }
@@ -346,6 +360,7 @@ internal class LocalWorkflowController(
             watchReportLifecycle(lifecycle)
         }
         syncGuard()
+        startLiveReadUpdates()
         // A renewed entry never repeats staging, submission, acknowledgement or a physical
         // action. Reports have no input draft and may perform their normal fresh protected read.
         if (!state.value.attachmentReviewRequired) load()
@@ -562,6 +577,10 @@ internal class LocalWorkflowController(
         cleanup.attempt { heldActionApprovalLookup?.cancel(); heldActionApprovalLookup = null }
         cleanup.attempt { reportLifecycle?.cancel(); reportLifecycle = null }
         cleanup.attempt { foodPreviewLifecycle?.cancel(); foodPreviewLifecycle = null }
+        cleanup.attempt { liveReadUpdates?.cancel(); liveReadUpdates = null }
+        liveReadSelection.value = null
+        visibleReadQuery = null
+        deferredReadUpdate = null
         frozen = null
         originalAction = null
         continuation = null
@@ -585,6 +604,75 @@ internal class LocalWorkflowController(
     }
 
     fun close() { try { deactivate() } finally { inertNonphysicalContinuation = null; closed = true } }
+
+    private fun startLiveReadUpdates() {
+        val views = gateway as? LocalWorkflowLiveViews ?: return
+        liveReadUpdates?.cancel()
+        val epoch = activation
+        liveReadUpdates = scope.launch {
+            coroutineScope {
+                // A deferred replacement must be adopted once its form/native owner releases
+                // the workspace, even if no further network notification arrives.
+                launch { state.collect { applyDeferredReadUpdate() } }
+                liveReadSelection.collectLatest { selection ->
+                    if (selection == null) return@collectLatest
+                    val query = selection.query
+                    views.readUpdates(query).collect { update ->
+                        currentCoroutineContext().ensureActive()
+                        if (!current(epoch) || !runtime.navigator.isActiveEntry(owner) || liveReadSelection.value != selection)
+                            return@collect
+                        when (update) {
+                            is LocalWorkflowReadUpdate.Unavailable -> {
+                                deferredReadUpdate = null
+                                // Preserve entered forms and original recovery/physical state.
+                                // An unavailable projection never becomes an empty/zero record.
+                                mutableState.value = state.value.copy(page = null, readProblem = update.problem,
+                                    foodPricePreview = null, foodPricePreviewProblem = null, liveUpdatesDeferred = false)
+                                permissionFailure(update.problem)
+                            }
+                            else -> {
+                                val owned = when (update) {
+                                    is LocalWorkflowReadUpdate.Available -> LocalWorkflowReadUpdate.Available(snapshotPage(update.page))
+                                    else -> update
+                                }
+                                deferredReadUpdate = query to owned
+                                if (!applyDeferredReadUpdate())
+                                    mutableState.value = state.value.copy(liveUpdatesDeferred = true)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun canAdoptLiveRead(): Boolean = current() && runtime.navigator.isActiveEntry(owner) &&
+        session.lifecycle?.value?.let { it == LocalSessionLifecycle.ACTIVE } != false && !state.value.working &&
+        !state.value.attachmentReviewRequired && !configurationOwnsDraft && !retailPhysical.blocksParentWork &&
+        !supplierPhysical.blocksParentWork && state.value.actionApproval == null &&
+        state.value.form == null && state.value.formInput == null && !state.value.formFrozen &&
+        state.value.referencePicker == null && !state.value.purchasingDocuments.hasDraft
+
+    /** Returns false only when a genuine current owner requires deferral. */
+    private fun applyDeferredReadUpdate(): Boolean {
+        val retained = deferredReadUpdate ?: return true
+        if (!current() || liveReadSelection.value?.query != retained.first) return true
+        if (!canAdoptLiveRead()) return false
+        deferredReadUpdate = null // Linearize before applyPage invokes child guard callbacks.
+        mutableState.value = state.value.copy(liveUpdatesDeferred = false)
+        when (val update = retained.second) {
+            is LocalWorkflowReadUpdate.Available -> applyPage(retained.first, update.page)
+            LocalWorkflowReadUpdate.RestartRequired -> {
+                val root = retained.first.rootReadSelection()
+                liveReadSelection.value = null
+                mutableState.value = state.value.copy(branchReportQuery = root.branchReport ?: state.value.branchReportQuery,
+                    foodQuery = root.food ?: state.value.foodQuery, page = null, readProblem = null)
+                load() // Protected read only; never stages, submits, acknowledges or acts physically.
+            }
+            is LocalWorkflowReadUpdate.Unavailable -> Unit // Applied immediately above, never deferred.
+        }
+        return true
+    }
 
     /** One existing entry guard owns both the ordinary workflow and native publication form. */
     fun companyCatalogGuard(draft: Boolean, working: Boolean) {
@@ -1678,6 +1766,9 @@ internal class LocalWorkflowController(
         if (!invoiceWorkspaceCompatible()) return
         if (!foodCheckWorkspaceCompatible()) return // Preserve unrelated retained originals without invoking this profile.
         val query = currentQuery(cursor)
+        liveReadSelection.value = null // Fence an old selector before any read can suspend.
+        visibleReadQuery = query
+        deferredReadUpdate = null
         if (!customerReceiptWorkspaceCompatible()) {
             readUnavailable(LocalServiceProblem.INVALID_INPUT)
             return
@@ -1690,7 +1781,7 @@ internal class LocalWorkflowController(
         if (query.workflow.isManagerOrderContext(query.search)) retailPhysical.deactivate()
         mutableState.value = state.value.copy(page = null, foodPricePreview = null, foodPricePreviewProblem = null, readProblem = null, form = null, openingCounts = null, referencePicker = null, issue = null,
             stageProblem = null, pending = emptyList(), pendingLoaded = false, pendingProblem = null,
-            pendingCursor = null, pendingPageIsFirst = true, foodUnavailable = null)
+            pendingCursor = null, pendingPageIsFirst = true, foodUnavailable = null, liveUpdatesDeferred = false)
         if (query.workflow == LocalWorkflow.REPORTS && query.branchReport?.section == LocalBranchReportSection.RETAIL_TENDER_BREAKDOWNS &&
             query.branchReport.selectedSaleId == null) {
             // Selection-only state; no authorized source read or empty/zero report is inferred.
@@ -1716,7 +1807,11 @@ internal class LocalWorkflowController(
             if (!current(ticket)) return@run
             when (result) {
                 is LocalReadResult.Available -> applyPage(query, result.page)
-                is LocalReadResult.Unavailable -> readUnavailable(result.problem)
+                is LocalReadResult.Unavailable -> {
+                    if (result.problem == LocalServiceProblem.READ_RESTART_REQUIRED)
+                        deferredReadUpdate = query to LocalWorkflowReadUpdate.RestartRequired
+                    readUnavailable(result.problem)
+                }
             }
             if (current(ticket) && documentaryCurrent()) readPurchasingDocumentSources(ticket)
         }
@@ -1781,7 +1876,9 @@ internal class LocalWorkflowController(
             state.value.priceDraft?.takeIf { it.controls == metadata }?.copy(issue = null)
                 ?: LocalPricePreviewDraft(metadata, preview?.quantity?.canonical.orEmpty(), preview?.channel)
         }
-        mutableState.value = state.value.copy(page = snapshotPage(page), readProblem = null, priceDraft = draft)
+        deferredReadUpdate = null
+        visibleReadQuery = query
+        mutableState.value = state.value.copy(page = snapshotPage(page), readProblem = null, priceDraft = draft, liveUpdatesDeferred = false)
         activateSupplierPhysical()
     }
 
@@ -1812,9 +1909,11 @@ internal class LocalWorkflowController(
                 return
             }
         }
+        deferredReadUpdate = null
+        visibleReadQuery = query
         mutableState.value = state.value.copy(page = snapshotPage(page),
             form = state.value.form?.let { if (preserveMenuDraft) it.copy(confirmed = false) else it },
-            foodPricePreview = null, foodPricePreviewProblem = null, readProblem = null, foodUnavailable = null)
+            foodPricePreview = null, foodPricePreviewProblem = null, readProblem = null, foodUnavailable = null, liveUpdatesDeferred = false)
     }
 
     private fun foodReadFailure(problem: LocalServiceProblem, preserveMenuDraft: Boolean) {
@@ -1842,7 +1941,9 @@ internal class LocalWorkflowController(
             readUnavailable(LocalServiceProblem.REPORT_RESTART_REQUIRED)
             return
         }
-        mutableState.value = state.value.copy(page = snapshotPage(page), readProblem = null)
+        deferredReadUpdate = null
+        visibleReadQuery = query
+        mutableState.value = state.value.copy(page = snapshotPage(page), readProblem = null, liveUpdatesDeferred = false)
     }
 
     fun refreshPending(token: NavigationToken, nextPage: Boolean = false) {
@@ -3216,6 +3317,9 @@ internal class LocalWorkflowController(
                     mutableState.value = state.value.copy(busy = LocalWorkBusy.NONE,
                         purchasingDocuments = state.value.purchasingDocuments.copy(workingDocumentId = null))
                     work = null
+                    if (kind == LocalWorkBusy.READING && gateway is LocalWorkflowLiveViews &&
+                        session.lifecycle?.value?.let { it == LocalSessionLifecycle.ACTIVE } != false)
+                        liveReadSelection.value = visibleReadQuery?.let { LiveReadSelection(++liveReadGeneration, it) }
                     syncGuard()
                 }
             }
@@ -3241,7 +3345,7 @@ internal class LocalWorkflowController(
             (state.value.form?.dirty == true || state.value.formInput?.dirty == true) && !state.value.formFrozen -> LeaveGuard.DIRTY
             else -> LeaveGuard.CLEAN
         }
-        if (desired == guardKind) return
+        if (desired == guardKind) { applyDeferredReadUpdate(); return }
         editorBeforeGuard = runtime.navigator.state.value.revision
         if (desired == LeaveGuard.CLEAN) removeGuard()
         else {
@@ -3249,6 +3353,7 @@ internal class LocalWorkflowController(
             guardKind = if (guard != null) desired else LeaveGuard.CLEAN
         }
         editorAfterGuard = runtime.navigator.state.value.revision
+        applyDeferredReadUpdate()
     }
 
     private fun removeGuard() {

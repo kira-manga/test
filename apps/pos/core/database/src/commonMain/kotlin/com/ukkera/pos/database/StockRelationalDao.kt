@@ -332,16 +332,24 @@ internal class StockRelationalDao(internal val loan: StockSqlLoan) {
     }
 
     /** Only owner-called after complete CAS/claims/invalidation; no commit or second writer. */
-    suspend fun replaceIndex(projected: StockIndexRecordV2) {
+    suspend fun replaceIndex(projected: StockIndexRecordV2, expectedGeneration: Revision?) {
         val table = StockIndexTableV2.forKind(projected.identity.key.kind)
         val values = fields(projected)
         stockSqlRequireV2(values.size == table.allColumns.size)
-        loan.sql("INSERT INTO main.${table.table} (${table.allColumns.joinToString(",") { "`$it`" }}) VALUES (${values.joinToString(",") { "?" }}) " +
-            "ON CONFLICT(scope,recordKind,recordId) DO UPDATE SET " +
-            table.allColumns.drop(3).joinToString(",") { "`$it`=excluded.`$it`" }) { statement ->
-            values.forEachIndexed { index, value -> if (value == null) statement.bindNull(index + 1) else statement.bindStockScalar(index + 1, value) }
+        stockSqlRequireV2(projected.identity.generation == (expectedGeneration?.next() ?: Revision(1)))
+        // Native identity guards run before an UPSERT's conflict branch. Use the same sealed
+        // aggregate CAS to choose INSERT or UPDATE, preserving the existing rowid and key.
+        val sql = if (expectedGeneration == null)
+            "INSERT INTO main.${table.table} (${table.allColumns.joinToString(",") { "`$it`" }}) VALUES (${values.joinToString(",") { "?" }})"
+        else "UPDATE main.${table.table} SET " + table.allColumns.drop(3).joinToString(",") { "`$it`=?" } +
+            " WHERE scope=? AND recordKind=? AND recordId=? AND aggregateGeneration=?"
+        val parameters = if (expectedGeneration == null) values
+            else values.drop(3) + values.take(3) + StockSqlScalar.Number(expectedGeneration.value)
+        loan.sql(sql) { statement ->
+            parameters.forEachIndexed { index, value -> if (value == null) statement.bindNull(index + 1) else statement.bindStockScalar(index + 1, value) }
             stockSqlRequireV2(!statement.step())
         }
+        loan.sql("SELECT changes()") { stockSqlRequireV2(it.step() && it.getLong(0) == 1L && !it.step()) }
     }
 
     private suspend fun metadata(table: StockIndexTableV2, where: String, arguments: List<StockSqlScalar>, order: String, limit: Int): List<Long> =

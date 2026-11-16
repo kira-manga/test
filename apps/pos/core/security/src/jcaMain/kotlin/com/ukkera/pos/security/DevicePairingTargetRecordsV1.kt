@@ -294,20 +294,31 @@ internal object TargetSdkWireV2 {
             boot(variant), long(), octets(LocalDevicePairingProfileV2.MAXIMUM_SDK_IDENTITY_BYTES))
     }.also { canonical(bytes, signingIntent(it, variant)) }
     fun readyMessage(identity: ByteArray, ready: ByteArray, acquisition: ByteArray, intent: ByteArray, variant: TargetWireVariant = TargetWireVariant.ANDROID_V1): ByteArray = selfOwnedEncode(
-        "target-private-original-native-sdk-association-snapshot/v2", DevicePairingTargetLimitsV1.SDK_READY_MAX - 1024) {
+        variant.domain("target-private-original-native-sdk-association-snapshot/v2"), DevicePairingTargetLimitsV1.SDK_READY_MAX - 1024) {
         purpose(variant); field(identity); field(ready); field(acquisition); field(intent)
         string("ORIGINAL_SDK_ASSOCIATION_DATA_ONLY_NO_MASTER_HEAD_ADMISSION_SESSION_OR_SERVING_AUTHORITY")
     }
     fun decodeReadyMessage(value: SelfOwnedOctetsV1, variant: TargetWireVariant = TargetWireVariant.ANDROID_V1): TargetSdkReadyFields {
         val bytes = value.copyBytes()
-        return try { selfOwnedDecode(bytes, variant.domain("target-private-original-native-sdk-association-snapshot/v2")) {
-            purpose(variant); val identity = octets(DevicePairingTargetLimitsV1.IDENTITY_MAX)
-            val ready = octets(DevicePairingTargetLimitsV1.READY_MAX)
-            val acquisition = octets(DevicePairingTargetLimitsV1.SDK_ACQUISITION_MAX)
-            val intent = octets(DevicePairingTargetLimitsV1.SDK_SIGNING_INTENT_MAX)
-            require(string(128) == "ORIGINAL_SDK_ASSOCIATION_DATA_ONLY_NO_MASTER_HEAD_ADMISSION_SESSION_OR_SERVING_AUTHORITY")
-            TargetSdkReadyFields(identity, ready, acquisition, intent)
-        } } finally { bytes.fill(0) }
+        return try {
+            val base = "target-private-original-native-sdk-association-snapshot/v2"
+            val header = SelfOwnedWireReaderV1(bytes)
+            require(header.string(128) == SelfOwnedInstallationProfileV1.ID)
+            val domain = header.string(128)
+            // Earlier desktop writers signed the unsuffixed inner domain while retaining
+            // the DESKTOP purpose and desktop outer record. Read that exact original only;
+            // never rewrite/re-sign it or retry acquisition. The purpose below still rejects
+            // Android records, and the core verifies every nested original and native signature.
+            require(domain == variant.domain(base) || variant == TargetWireVariant.DESKTOP_V2 && domain == base)
+            selfOwnedDecode(bytes, domain) {
+                purpose(variant); val identity = octets(DevicePairingTargetLimitsV1.IDENTITY_MAX)
+                val ready = octets(DevicePairingTargetLimitsV1.READY_MAX)
+                val acquisition = octets(DevicePairingTargetLimitsV1.SDK_ACQUISITION_MAX)
+                val intent = octets(DevicePairingTargetLimitsV1.SDK_SIGNING_INTENT_MAX)
+                require(string(128) == "ORIGINAL_SDK_ASSOCIATION_DATA_ONLY_NO_MASTER_HEAD_ADMISSION_SESSION_OR_SERVING_AUTHORITY")
+                TargetSdkReadyFields(identity, ready, acquisition, intent)
+            }
+        } finally { bytes.fill(0) }
     }
     fun ready(value: TargetSdkReady, variant: TargetWireVariant = TargetWireVariant.ANDROID_V1): ByteArray = selfOwnedEncode(variant.domain("target-signed-original-native-sdk-association-state/v2"),
         DevicePairingTargetLimitsV1.SDK_READY_MAX) { purpose(variant); octets(value.message); octets(value.signature) }

@@ -31,6 +31,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":ui:app"))
             api(project(":core:database"))
+            api(project(":adapters:recovery-store"))
             implementation(project(":adapters:catalog-store"))
             implementation(project(":adapters:sales-store"))
             implementation(project(":adapters:inventory-store"))

@@ -9,13 +9,16 @@ import android.system.OsConstants
 import android.util.AtomicFile
 import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchRecord
 import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchStorage
+import com.ukkera.pos.app.gateway.setup.LocalLaunchStorageNamespace
 import java.io.File
 
 /** Android private-file/atomic-write adapter. No record codec, role or restart decisions. */
 internal class AndroidLocalMasterLaunchStorage(
     private val application: Application,
     private val directoryName: String = "ukkera.local-master-launch.v1",
+    private val maximumBytes: Int = LocalMasterLaunchRecord.MAXIMUM_BYTES,
 ) : LocalMasterLaunchStorage {
+    init { require(maximumBytes in 1..com.ukkera.pos.app.gateway.setup.LocalLanLaunchRecord.MAXIMUM_BYTES) }
     private var closureUncertain = false
 
     private inline fun <T> protectedIo(block: () -> T): T {
@@ -31,11 +34,8 @@ internal class AndroidLocalMasterLaunchStorage(
     @Synchronized
     override fun read(): ByteArray? {
         val root = directory(create = false) ?: return null
-        val names = names(root)
-        require(names.all { it in FILES })
-        if (names.isEmpty()) return null
+        if (!LocalLaunchStorageNamespace.requireSettled(names(root))) return null
         // Do not use AtomicFile.openRead: it may roll an interrupted stop back to an older value.
-        check(names == setOf(FILE)) { "Local launch record write remains unresolved" }
         val file = File(root, FILE)
         regular(file)
         val descriptor = openDescriptor(file.path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
@@ -43,7 +43,7 @@ internal class AndroidLocalMasterLaunchStorage(
         try {
             val before = Os.fstat(descriptor)
             require(OsConstants.S_ISREG(before.st_mode) && before.st_uid == Process.myUid() &&
-                before.st_nlink == 1L && (before.st_mode and 511) == 384 && before.st_size in 1..MAXIMUM_BYTES.toLong())
+                before.st_nlink == 1L && (before.st_mode and 511) == 384 && before.st_size in 1..maximumBytes.toLong())
             val bytes = ByteArray(before.st_size.toInt()).also { retainedBytes = it }
             try {
                 var offset = 0
@@ -64,10 +64,12 @@ internal class AndroidLocalMasterLaunchStorage(
 
     @Synchronized
     override fun replaceAndForce(bytes: ByteArray) {
-        require(bytes.size in 1..MAXIMUM_BYTES)
+        require(bytes.size in 1..maximumBytes)
         val root = checkNotNull(directory(create = true))
         val names = names(root)
-        require(names.all { it in FILES })
+        // AtomicFile.startWrite may truncate .new or restore .bak. Refuse both before it
+        // can mutate any pending bytes; explicit STOP is not permission to guess recovery.
+        LocalLaunchStorageNamespace.requireSettled(names)
         names.forEach { regular(File(root, it)) }
         val atomic = AtomicFile(File(root, FILE))
         val output = atomic.startWrite()
@@ -109,7 +111,7 @@ internal class AndroidLocalMasterLaunchStorage(
             AndroidNativeFiles.openDirectory(root.path).use { cursor ->
                 while (true) {
                     val name = cursor.nextName() ?: break
-                    require(names.size < FILES.size && name in FILES && names.add(name))
+                    require(names.size < LocalLaunchStorageNamespace.MAXIMUM_FILES && names.add(name))
                 }
             }
         }
@@ -119,7 +121,7 @@ internal class AndroidLocalMasterLaunchStorage(
     private fun regular(file: File) {
         val stat = Os.lstat(file.path)
         require(OsConstants.S_ISREG(stat.st_mode) && stat.st_uid == Process.myUid() &&
-            stat.st_nlink == 1L && (stat.st_mode and 511) == 384 && stat.st_size <= MAXIMUM_BYTES)
+            stat.st_nlink == 1L && (stat.st_mode and 511) == 384 && stat.st_size <= maximumBytes)
     }
 
     private fun forceDirectory(file: File) {
@@ -134,8 +136,6 @@ internal class AndroidLocalMasterLaunchStorage(
     }
 
     private companion object {
-        const val FILE = "launch"
-        const val MAXIMUM_BYTES = LocalMasterLaunchRecord.MAXIMUM_BYTES
-        val FILES = setOf(FILE, "$FILE.new", "$FILE.bak")
+        const val FILE = LocalLaunchStorageNamespace.FILE_NAME
     }
 }

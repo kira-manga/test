@@ -11,8 +11,9 @@ import com.ukkera.pos.types.*
 /** Genuine synchronous FOOD CASH lane, installed beside the SAME actual native gate. */
 public class LocalFoodPaymentHandler(private val stock: LocalStockRepository,
     private val recipes: TransactionFoodStockSource,
-    private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource) : MasterCommandHandler,
-    LocalMasterRpcRetainedResultSourceAccessProvider {
+    private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterCommandHandler,
+    LocalMasterRpcRetainedResultSourceAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
     override val key: CommandKey get() = LocalFoodPaymentProfile.COMMAND
     override val writableKinds: Set<String> = LocalFoodPaymentProfile.gatedKinds + setOf(LocalFoodPaymentProfile.APPLICATION,
         LocalFoodPaymentProfile.EVENT, LocalFoodFinancialProfileV1.COLLECTION, LocalFoodFinancialProfileV1.FRAME,
@@ -24,14 +25,21 @@ public class LocalFoodPaymentHandler(private val stock: LocalStockRepository,
     override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalFoodPaymentInteractiveAuthorization(stock, recipes)
     override fun normalize(input: StoredBytes): StoredBytes = LocalFoodPaymentCodec.normalize(input)
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL && normalize(normalized) == normalized &&
-            LocalFoodPaymentCodec.decode(normalized) is LocalFoodPaymentRequest.ApplyOriginal
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized &&
+            LocalFoodPaymentCodec.decode(normalized).let { profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL && it is LocalFoodPaymentRequest.ApplyOriginal ||
+                profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && it is LocalFoodPaymentRequest.ApplyResolution }
+
+    override fun supportsRpcPhysicalRetainedResult(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalFoodPaymentCodec.decode(normalized).let { it is LocalFoodPaymentRequest.StartCash || it is LocalFoodPaymentRequest.RecordResolution }
 
     override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
         view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
-        if (!supportsRpcWorkflow(profile, normalized) || context.scope != view.scope || context.key != key ||
+        if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.scope != view.scope || context.key != key ||
             semanticDigest(context.scope, context.originalActorId, key, normalized) != context.semanticDigest) return null
-        return foodCashFinancialRetainedPaymentRequirements(normalized, FoodReadView(commerceLoan(view, stock)), context, recipes)
+        return if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+            foodPaymentLanRetainedRequirements(normalized, FoodReadView(commerceLoan(view, stock)), context, recipes, originalSources)
+        else foodCashFinancialRetainedPaymentRequirements(normalized, FoodReadView(commerceLoan(view, stock)), context, recipes, originalSources)
     }
 
     override fun physicalRecordingAction(normalized: StoredBytes): PhysicalRecordingAction? = when (LocalFoodPaymentCodec.decode(normalized)) {
@@ -109,7 +117,7 @@ public class LocalFoodPaymentHandler(private val stock: LocalStockRepository,
             val cash = LocalSalesStorage.cash(view, request.sessionId)
             val inputs = foodPaymentCutInputs(cut)
             val cashInput = foodFinancialCashInput(cash)
-            check(inputs == foodPaymentCutInputs(supportCut) && cashInput == foodFinancialCashInput(supportCash))
+            check(sameFoodPaymentCutInputs(inputs, foodPaymentCutInputs(supportCut)) && cashInput == foodFinancialCashInput(supportCash))
             val actualReserved = linkedMapOf<DomainId, LocalStockPaymentCut>()
             val actualIssued = linkedMapOf<DomainId, LocalStockPaymentIssuedCut>()
             for (entry in cut.value.portions) when (entry.stockOrigin) {

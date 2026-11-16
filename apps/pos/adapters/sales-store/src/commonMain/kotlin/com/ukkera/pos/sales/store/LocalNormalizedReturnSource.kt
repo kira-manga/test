@@ -179,6 +179,7 @@ private class NormalizedRefundPredecessors(private val view: CommandReadView, pr
         // to the exact CASE insert, rather than accepting a self-consistent shortened list.
         val attempt = value.attempts.lastOrNull() ?: unavailable()
         requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("refund_attempt", attempt.id)) == value.id)
+        (attempt.tender as? Tender.ExchangeOffset)?.let { offset -> return exchangeStep(image, value, attempt, offset) }
         val locator = view.claim(retailJournalAttemptClaimV3(attempt.id)) ?: unavailable()
         val slot = slots[attempt.id] ?: readRetailSlot(view, OperationId(locator.value)).also { slots[attempt.id] = it }
         val target = slot.value.target
@@ -218,6 +219,20 @@ private class NormalizedRefundPredecessors(private val view: CommandReadView, pr
             }
         }
         unavailable()
+    }
+
+    /** One exchange appends ALL of its offset slices, so one step returns to the exact pre-exchange image. */
+    private suspend fun exchangeStep(image: NormalizedRefundImage, value: AcceptedReturn, attempt: RefundAttempt,
+        offset: Tender.ExchangeOffset): NormalizedRefundStep {
+        requireLocalSalesSource(offset.returnId == value.id && attempt.status == AttemptStatus.ATTESTED_PAID)
+        val record = readExchangeRecord(view, offset.exchangeId)
+        val original = view.retainedCommand(record.value.operationId) ?: unavailable()
+        requireLocalSalesSource(original.command == LocalExchangeCodec.COMMAND && matches(original, image) &&
+            normalizedReturnRowMatches(original, record.stored) && attempt.originalOperationId == original.operationId &&
+            record.value.returnId == value.id && value.attempts.takeLastWhile { it.originalOperationId == original.operationId }
+                .map { it.id }.toSet() == record.value.slices.map { it.attemptId }.toSet())
+        requireLocalSalesSource(runCatching { requireExchangeOriginal(original) }.getOrNull() == record.value)
+        return NormalizedRefundStep(original, record.value.accepted)
     }
 
     private fun matches(original: RetainedCommandEvidence, image: NormalizedRefundImage): Boolean =

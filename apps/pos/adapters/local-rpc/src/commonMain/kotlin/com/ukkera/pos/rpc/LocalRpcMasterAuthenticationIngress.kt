@@ -2,6 +2,10 @@ package com.ukkera.pos.rpc
 
 import com.ukkera.pos.database.LocalMasterRpcPeerRegistration
 import com.ukkera.pos.database.LocalMasterRpcRegisteredPeer
+import com.ukkera.pos.database.LocalMasterRpcAuthenticationTrace
+import com.ukkera.pos.database.LocalMasterRpcAuthenticationTracePhase
+import com.ukkera.pos.database.LocalMasterRpcAuthenticationStage
+import com.ukkera.pos.database.reportLocalMasterRpcAuthenticationStage
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.LocalAuthenticationResult
 import com.ukkera.pos.security.LocalEmployeePrincipal
@@ -76,6 +80,7 @@ internal class LocalRpcMasterAuthenticationIngress(
     private val registration: LocalMasterRpcPeerRegistration,
     cleanupScope: CoroutineScope,
     private val parent: Job,
+    private val ownsRegistration: Boolean = true,
 ) {
     private class ResultAuthority(val original: LocalEmployeePrincipal, val access: OpaqueCredential)
 
@@ -160,14 +165,14 @@ internal class LocalRpcMasterAuthenticationIngress(
     fun deny() {
         retired.value = true
         closeDecodedRetention()
-        registration.retireAll()
+        if (ownsRegistration) registration.retireAll()
     }
 
     private fun isRetired(): Boolean = retired.value || !parent.isActive
 
     suspend fun closeOwned() = withContext(NonCancellable) {
         deny()
-        registration.awaitSessionRevocation()
+        if (ownsRegistration) registration.awaitSessionRevocation()
         cleanupJob.cancelAndJoin()
         gate.withLock { if (callbacks == 0) drained.complete(Unit) }
         drained.await()
@@ -220,18 +225,33 @@ internal class LocalRpcMasterAuthenticationIngress(
 
     private suspend fun authenticate(procedureVersion: Int, context: RpcAuthenticationContext,
         request: LocalRpcAuthenticationRequest): RpcAuthorizationScope? {
-        if (!request.claimForCallback()) return null
-        return withCallback({ null }, cleanup = {
+        if (!request.claimForCallback()) {
+            reportLocalMasterRpcAuthenticationStage(LocalMasterRpcAuthenticationStage.REQUEST_CLAIM)
+            return null
+        }
+        if (request.action != LocalRpcAuthenticationAction.CURRENT)
+            reportLocalMasterRpcAuthenticationStage(LocalMasterRpcAuthenticationStage.EXCHANGE_ENTERED)
+        return withCallback({
+            reportLocalMasterRpcAuthenticationStage(LocalMasterRpcAuthenticationStage.CALLBACK_CAPACITY)
+            null
+        }, cleanup = {
             request.destroyAndAwaitCleanup()
             reapDecodedRequests()
         }) {
-            admissionGate.withLock { authenticateOwned(procedureVersion, context, request) }
+            val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.AUTHENTICATE,
+                LocalMasterRpcAuthenticationStage.ADMISSION_WAIT)
+            try { admissionGate.withLock { authenticateOwned(procedureVersion, context, request) } }
+            finally { trace.finish() }
         }
     }
 
     private suspend fun authenticateOwned(procedureVersion: Int, context: RpcAuthenticationContext,
         request: LocalRpcAuthenticationRequest): RpcAuthorizationScope? {
         var unretained: RpcApplicationSession? = null
+        val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.AUTHENTICATE,
+            LocalMasterRpcAuthenticationStage.REQUEST_SHAPE)
+        var stage by trace
+        var accepted = false
         try {
             currentCoroutineContext().ensureActive()
             if (isRetired() || !request.validateShape() || context.peer != context.physicalSession.peer) return null
@@ -239,22 +259,26 @@ internal class LocalRpcMasterAuthenticationIngress(
                 request.action != LocalRpcAuthenticationAction.CURRENT) return null
             discardExpiredEntries()
             val digest = requestDigest(request)
-            val epoch = registration.captureSessionEpoch() ?: return null
-            val peer = registration.register(context.physicalSession) ?: return null
-            currentCoroutineContext().ensureActive()
-            if (isRetired() || !peer.isCurrent()) return null
+            stage = LocalMasterRpcAuthenticationStage.SESSION_EPOCH_CAPTURE
+            registration.captureSessionEpoch() ?: return null
             val original = gate.withLock {
                 entries.firstOrNull { it.physical === context.physicalSession &&
                     it.procedureVersion == procedureVersion && it.exchangeId == request.exchangeId }
             }
             if (original != null) {
-                if (original.action != request.action || original.digest != digest || original.peer !== peer ||
+                stage = LocalMasterRpcAuthenticationStage.ORIGINAL_EXCHANGE
+                if (original.action != request.action || original.digest != digest ||
                     original.gate.withLock { original.expired } || !original.scope.session.isActive) return null
-                if (!registration.retainAuthenticationExchangeSession(epoch, original.scope.session, peer)) return null
+                stage = LocalMasterRpcAuthenticationStage.SESSION_RETENTION
+                val peer = registration.registerAuthenticationExchange(original.scope.session, context.physicalSession) ?: return null
+                if (original.peer !== peer) return null
+                stage = LocalMasterRpcAuthenticationStage.EXCHANGE_PUBLICATION
                 return original.scope.takeIf { !isRetired() && peer.isCurrent() && it.session.isActive }
+                    .also { accepted = it != null }
             }
             // Versions have separate bounded original namespaces. V1 polling cannot consume
             // its non-read quota or v2 renewal capacity; no live original is evicted.
+            stage = LocalMasterRpcAuthenticationStage.EXCHANGE_CAPACITY
             if (gate.withLock {
                 failedSessions.isNotEmpty() || if (request.action == LocalRpcAuthenticationAction.CURRENT) {
                     entries.count { it.procedureVersion == procedureVersion &&
@@ -262,19 +286,28 @@ internal class LocalRpcMasterAuthenticationIngress(
                 } else entries.count { it.procedureVersion == procedureVersion &&
                     it.action != LocalRpcAuthenticationAction.CURRENT } >= MAXIMUM_ISSUING_EXCHANGES
             }) return null
+            stage = LocalMasterRpcAuthenticationStage.PEER_FINGERPRINT
             val fingerprint = context.peer.fingerprint ?: return null
             val session = RpcApplicationSession(fingerprint, DEVICE_EXCHANGE_PRINCIPAL,
                 request.exchangeId, EXCHANGE_LIFETIME_SECONDS.seconds)
             unretained = session
             val scope = RpcAuthorizationScope(session, RESOURCE)
-            if (!registration.retainAuthenticationExchangeSession(epoch, session, peer)) return null
+            stage = LocalMasterRpcAuthenticationStage.PEER_REGISTRATION
+            val peer = registration.registerAuthenticationExchange(session, context.physicalSession) ?: return null
+            currentCoroutineContext().ensureActive()
+            stage = LocalMasterRpcAuthenticationStage.PEER_CURRENT
+            if (isRetired() || !peer.isCurrent()) return null
             val entry = Entry(context.physicalSession, procedureVersion, request.exchangeId, request.action, digest, peer, scope)
+            stage = LocalMasterRpcAuthenticationStage.EXCHANGE_PUBLICATION
             val published = gate.withLock {
                 if (isRetired() || !peer.isCurrent() || !session.isActive) false
                 else { entries.add(entry); true }
             }
             if (!published) return null
             unretained = null
+            accepted = true
+            if (request.action != LocalRpcAuthenticationAction.CURRENT)
+                reportLocalMasterRpcAuthenticationStage(LocalMasterRpcAuthenticationStage.EXCHANGE_ACCEPTED)
             return scope
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -282,6 +315,8 @@ internal class LocalRpcMasterAuthenticationIngress(
             currentCoroutineContext().ensureActive()
             return null
         } finally {
+            trace.finish()
+            if (!accepted) reportLocalMasterRpcAuthenticationStage(stage)
             withContext(NonCancellable) {
                 unretained?.let { session ->
                     try { registration.revokeApplicationSession(session) }
@@ -297,22 +332,30 @@ internal class LocalRpcMasterAuthenticationIngress(
 
     private suspend fun authorize(procedureVersion: Int, context: RpcAuthorizationContext): Boolean =
         withCallback({ false }) {
+            val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.AUTHORIZE,
+                LocalMasterRpcAuthenticationStage.AUTHORIZATION_DESCRIPTOR)
+            var stage by trace
+            var allowed = false
+            try {
             if (isRetired() || context.procedureName != authenticationExchangeProcedure.name ||
                 context.procedureVersion != procedureVersion || context.scope.resource != RESOURCE) {
                 return@withCallback false
             }
+            stage = LocalMasterRpcAuthenticationStage.AUTHORIZATION_ENTRY
             val entry = gate.withLock { entries.firstOrNull {
                 it.procedureVersion == procedureVersion && it.scope.session === context.scope.session
             } }
                 ?: return@withCallback false
             if (procedureVersion == authenticationCurrentProcedure.version && context.scope !== entry.scope)
                 return@withCallback false
+            stage = LocalMasterRpcAuthenticationStage.AUTHORIZATION_PHYSICAL
             if (context.originalPhysicalSession !== entry.physical || context.physicalSession !== entry.physical ||
                 context.peer != entry.physical.peer || !entry.peer.isCurrent()) return@withCallback false
             var disposable: OpaqueCredential? = null
             var trackedAuthority = false
             var authoritySettled = false
             try {
+                stage = LocalMasterRpcAuthenticationStage.AUTHORIZATION_SESSION
                 val authority = entry.gate.withLock {
                     if (entry.expired || !entry.scope.session.isActive) return@withCallback false
                     entry.authority?.also {
@@ -324,6 +367,7 @@ internal class LocalRpcMasterAuthenticationIngress(
                     }
                 }
                 if (authority != null) {
+                    stage = LocalMasterRpcAuthenticationStage.AUTHORIZATION_RESULT
                     val bearer = disposable ?: return@withCallback false
                     val current = authenticateDisposable(entry.peer, bearer)
                     authoritySettled = true
@@ -331,9 +375,10 @@ internal class LocalRpcMasterAuthenticationIngress(
                     if (!sameOriginal(authority.original, current)) return@withCallback false
                 }
                 currentCoroutineContext().ensureActive()
+                stage = LocalMasterRpcAuthenticationStage.AUTHORIZATION_FINAL
                 !isRetired() && entry.peer.isCurrent() && entry.gate.withLock {
                     !entry.expired && entry.scope.session.isActive && entry.authority === authority
-                }
+                }.also { allowed = it }
             } finally {
                 disposable?.destroy()
                 if (trackedAuthority) withContext(NonCancellable) {
@@ -342,6 +387,10 @@ internal class LocalRpcMasterAuthenticationIngress(
                         if (!authoritySettled) entry.authorityUncertain = true
                     }
                 }
+            }
+            } finally {
+                trace.finish()
+                if (!allowed) reportLocalMasterRpcAuthenticationStage(stage)
             }
         }
 
@@ -366,6 +415,11 @@ internal class LocalRpcMasterAuthenticationIngress(
     private suspend fun exchangeOwned(procedureVersion: Int, context: RpcCallContext,
         request: LocalRpcAuthenticationRequest, onStarted: (Entry) -> Unit):
         RpcReply<LocalRpcAuthenticationResponse, LocalRpcAuthenticationError> {
+        if (request.action != LocalRpcAuthenticationAction.CURRENT)
+            reportLocalMasterRpcAuthenticationStage(LocalMasterRpcAuthenticationStage.HANDLER_ENTERED)
+        val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.HANDLER,
+            LocalMasterRpcAuthenticationStage.HANDLER_ENTERED)
+        var stage by trace
         try {
             currentCoroutineContext().ensureActive()
             if (isRetired() || !request.validateShape()) return unavailable()
@@ -401,9 +455,11 @@ internal class LocalRpcMasterAuthenticationIngress(
                 LocalRpcAuthenticationAction.CURRENT -> {
                     var cleanResult = false
                     val reply = withRequestBearer(entry, request) { credentials ->
+                        stage = LocalMasterRpcAuthenticationStage.CURRENT_SERVICE
                         val result = if (procedureVersion == authenticationCurrentProcedure.version)
                             registration.currentAfterExecutionSettles(credentials)
                         else registration.client.current(credentials)
+                        stage = LocalMasterRpcAuthenticationStage.RESULT_ATTACHMENT
                         cleanResult = result is LocalSessionViewResult.Current || result is LocalSessionViewResult.Denied ||
                             result is LocalSessionViewResult.Busy
                         if (result is LocalSessionViewResult.Current) {
@@ -434,7 +490,7 @@ internal class LocalRpcMasterAuthenticationIngress(
         } catch (_: Exception) {
             currentCoroutineContext().ensureActive()
             return unavailable()
-        }
+        } finally { trace.finish() }
     }
 
     private suspend fun authenticationResult(entry: Entry, request: LocalRpcAuthenticationRequest,
@@ -458,19 +514,28 @@ internal class LocalRpcMasterAuthenticationIngress(
 
     /** Copy and freshly verify only after the durable service result has settled. */
     private suspend fun attachResult(entry: Entry, access: OpaqueCredential, view: LocalSessionView): Boolean {
+        val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.ATTACH_RESULT,
+            LocalMasterRpcAuthenticationStage.RESULT_EPOCH)
+        var stage by trace
         var retained: OpaqueCredential? = access.useBytes(::OpaqueCredential)
         try {
             currentCoroutineContext().ensureActive()
             if (isRetired() || !entry.peer.isCurrent() || !entry.scope.session.isActive) return false
-            val epoch = registration.captureSessionEpoch() ?: return false
+            // Register the exact expected view as denial-only census metadata before the
+            // principal read queues. Unrelated business writes cannot invalidate this result;
+            // relevant employee/session/device/policy writes still retire it before commit.
+            if (!registration.prepareAuthenticationExchangeResult(entry.scope.session, entry.peer, view)) return false
             val bearer = retained ?: return false
+            stage = LocalMasterRpcAuthenticationStage.RESULT_PRINCIPAL
             val principal = authenticateDisposable(entry.peer, bearer) ?: return false
             currentCoroutineContext().ensureActive()
             if (principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE || principal.scope != view.scope ||
                 principal.scope != entry.peer.nativePeer.scope || principal.deviceId != view.deviceId ||
                 principal.deviceId != entry.peer.nativePeer.deviceId || principal.actorId != view.actorId ||
                 principal.sessionId != view.sessionId || principal.sessionGeneration != view.generation) return false
-            if (!registration.attachAuthenticationExchangeResult(epoch, entry.scope.session, entry.peer, principal)) return false
+            stage = LocalMasterRpcAuthenticationStage.RESULT_ATTACHMENT
+            if (!registration.completeAuthenticationExchangeResult(entry.scope.session, entry.peer, principal)) return false
+            stage = LocalMasterRpcAuthenticationStage.RESULT_PUBLICATION
             val published = entry.gate.withLock {
                 if (isRetired() || entry.expired || !entry.scope.session.isActive || entry.authority != null || !entry.peer.isCurrent()) false
                 else {
@@ -481,7 +546,7 @@ internal class LocalRpcMasterAuthenticationIngress(
             }
             currentCoroutineContext().ensureActive()
             return published
-        } finally { retained?.destroy() }
+        } finally { retained?.destroy(); trace.finish() }
     }
 
     private suspend fun authenticateDisposable(peer: LocalMasterRpcRegisteredPeer,

@@ -1,30 +1,39 @@
 package com.ukkera.pos.security
 
 import com.ukkera.pos.types.DomainId
-import org.bouncycastle.math.ec.rfc8032.Ed25519
 
-/** Execute-only participant of the same native owner/worker. It never opens a second owner. */
-internal class AndroidLocalCompanyBusinessPublications(
-    private val environment: SelfOwnedOriginalEnvironment,
-    private val registry: LocalProvisionerRegistryStore,
-    private val keys: LocalProvisionerNativeKeys,
-    private val work: AndroidOwnedInstallationWork,
-    private val issuance: AndroidLocalCompanyIssuanceGate,
-    private val history: AndroidSelfOwnedHistoryAnchor,
+/** Shared publication state machine. Native storage, keys, clocks and head ceremony are ports;
+ * no platform substitutes current catalog, completion membership or approval for original history. */
+internal class LocalCompanyBusinessPublicationCore(
+    private val custody: NativeBusinessPublicationCustody,
+    private val originalHistory: () -> OriginalNativeHistorySnapshot,
 ) {
     private val actionOwner = Any()
-    private val authentication = AndroidLocalInstallerAuthentication(environment, registry, keys, work, issuance)
     private var trust: NativeCompanyPublicationTrust? = null
+    private var issuerHistoryCut: OriginalNativeHistorySnapshot? = null
+
+    /** Only the native private bridge supplies its already authenticated cut, while holding
+     * the original owner's exclusion. It reobserves that full cut before effects and after
+     * the operation, before private delivery. Reuse here is limited to immutable P2 issuer
+     * identity/coordinates; every custody, current head, key and access check still runs.
+     * Nothing survives this synchronous invocation or authorizes a later request. */
+    fun <T> withVerifiedIssuerHistory(original: OriginalNativeHistorySnapshot, block: () -> T): T {
+        check(issuerHistoryCut == null)
+        issuerHistoryCut = original
+        return try { block() } finally { issuerHistoryCut = null }
+    }
+
+    private fun issuerHistory(): OriginalNativeHistorySnapshot = issuerHistoryCut ?: originalHistory()
 
     fun readTrust(): NativeCompanyPublicationTrust {
         // A failed refresh must never leave an older completeness projection usable.
         trust?.invalidateCompletedSnapshot()
         val original = original()
-        val fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody())
+        val fingerprint = custody.rootFingerprint()
         val result = trust ?: NativeCompanyPublicationTrust(
             CompanyScope(original.original.organizationId, original.original.companyId), fingerprint).also { trust = it }
         if (result.rootFingerprint != fingerprint) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        val state = registry.readBusinessPublications(keys)
+        val state = custody.readBusinessPublications()
         requireOriginalSerialSource(state)
         result.retainVerified(state?.records.orEmpty().filter { it.phase == CompanyBusinessPublicationPhase.COMPLETED }.map {
             VerifiedNativeCompanyPublication(it.keyId, it.kind, it.digest, it.publicKey)
@@ -50,9 +59,9 @@ internal class AndroidLocalCompanyBusinessPublications(
      * output they reference. Current completion membership is never an earlier cut. */
     fun selectOriginalHistory(original: OriginalNativeHistorySnapshot): NativeBusinessPublicationHistorySelection {
         val companyOriginal = this.original()
-        val fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody())
+        val fingerprint = custody.rootFingerprint()
         val company = CompanyScope(companyOriginal.original.organizationId, companyOriginal.original.companyId)
-        val state = registry.readBusinessPublications(keys)
+        val state = custody.readBusinessPublications()
         requireOriginalSerialSource(state)
         val proofs = original.record.businessPublicationObservations + listOfNotNull(original.record.pending?.businessPublications)
         val completed = state?.records.orEmpty().filter { it.phase == CompanyBusinessPublicationPhase.COMPLETED }
@@ -76,25 +85,25 @@ internal class AndroidLocalCompanyBusinessPublications(
                 }
                 // Deduplicate native cryptographic work across manifests, never membership.
                 authenticated.getOrPut(record.originalActionId) {
-                    keys.verifyBusinessPublication(record)
+                    custody.verifyBusinessPublication(record)
                     completedOutput(record, fingerprint)
                 }
             }
             NativeCompanyBusinessPublicationSnapshot(manifest.company, fingerprint, manifest.generation,
                 outputs, manifest.nativeLedgerPresent)
         }
-        registry.assertContinuity()
+        custody.assertContinuity()
         return NativeBusinessPublicationHistorySelection(actionOwner, original, state, proofs, snapshots)
     }
 
     fun reobserveOriginalHistory(selection: NativeBusinessPublicationHistorySelection, original: OriginalNativeHistorySnapshot) {
         this.original()
         if (selection.nativeOwner !== actionOwner || selection.original !== original ||
-            registry.readBusinessPublications(keys) !== selection.ledgerIdentity) {
+            custody.readBusinessPublications() !== selection.ledgerIdentity) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         }
         selection.requireActualTraversal()
-        registry.assertContinuity()
+        custody.assertContinuity()
     }
 
     private fun completedOutput(record: NativeCompanyBusinessPublicationRecordV1, fingerprint: String): CompanyBusinessPublicationOutput {
@@ -107,7 +116,7 @@ internal class AndroidLocalCompanyBusinessPublications(
 
     fun retained(): List<CompanyBusinessPublicationReference> {
         readTrust()
-        return registry.readBusinessPublications(keys)?.records.orEmpty().map {
+        return custody.readBusinessPublications()?.records.orEmpty().map {
             CompanyBusinessPublicationReference(it.originalActionId, it.publicationId, it.entityId, it.phase, it.kind)
         }
     }
@@ -117,12 +126,12 @@ internal class AndroidLocalCompanyBusinessPublications(
         requireNewIssuance()
         val company = state()
         val origin = readActualSerialIssuerOrigin()
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
         if (!company.head.enabled) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
         if (company.serialCustody != null || ledger?.records.orEmpty().any { it.kind.isOriginalSerialKindV1() })
             selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val reserved = serialAuthorityReservedIdentityIds(ledger, null)
-        val authority = AndroidP256Primitives.newId(); val publication = AndroidP256Primitives.newId()
+        val authority = custody.newId(); val publication = custody.newId()
         if (authority == publication || authority in reserved || publication in reserved) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         val definition = LocalPublishedSerialAuthorityV1(authority, publication, origin)
         return makeNativeSerialAuthorityProposal(definition)
@@ -131,7 +140,7 @@ internal class AndroidLocalCompanyBusinessPublications(
     /** BEFORE retaining a requester origin: an old unowned native request is not adoptable. */
     fun requireFreshPrivateSerialOrigin(proposal: CompanyBusinessPublicationProposal) {
         requireNewIssuance()
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
         if (!state().head.enabled) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
         if (ledger?.records.orEmpty().any { it.publicationId == proposal.publicationId })
             selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
@@ -158,7 +167,7 @@ internal class AndroidLocalCompanyBusinessPublications(
         requireNewIssuance()
         val origin = readActualSerialIssuerOrigin()
         val authority = requireOriginalSerialAuthority(proposal)
-        val company = state(); val ledger = registry.readBusinessPublications(keys)
+        val company = state(); val ledger = custody.readBusinessPublications()
         company.serialCustody?.let { custody ->
             if (custody.authority != authority || custody.authority.origin != origin || custody.intent != null)
                 selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
@@ -192,7 +201,7 @@ internal class AndroidLocalCompanyBusinessPublications(
     fun statusPrivateSerialPublication(proposal: CompanyBusinessPublicationProposal): CompanyBusinessPublicationReference? {
         original()
         readActualSerialIssuerOrigin()
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
         requireOriginalSerialSource(ledger)
         val record = ledger?.records?.singleOrNull { it.publicationId == proposal.publicationId }
         record?.let { requireSameProposal(it, proposal) }
@@ -211,7 +220,7 @@ internal class AndroidLocalCompanyBusinessPublications(
             CompanyBusinessPublicationKind.SERIAL_REGISTRATION_V1 -> requireOriginalSerialRegistration(proposal)
             else -> selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_INPUT)
         }
-        registry.assertContinuity()
+        custody.assertContinuity()
         return record?.let { CompanyBusinessPublicationReference(it.originalActionId, it.publicationId,
             it.entityId, it.phase, it.kind) }
     }
@@ -219,7 +228,7 @@ internal class AndroidLocalCompanyBusinessPublications(
     /** Authenticate the actual immutable member before effects AND again before private delivery. */
     fun requirePrivateSerialPublication(id: DomainId, proposal: CompanyBusinessPublicationProposal) {
         original()
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         requireOriginalSerialSource(ledger)
         val record = ledger.records.singleOrNull { it.originalActionId == id }
@@ -238,13 +247,13 @@ internal class AndroidLocalCompanyBusinessPublications(
     /** The broad business facade never rejoins a private serial action by a supplied ID. */
     fun requireNonSerialFacadeAction(id: DomainId) {
         original()
-        val record = registry.readBusinessPublications(keys)?.records?.singleOrNull { it.originalActionId == id }
+        val record = custody.readBusinessPublications()?.records?.singleOrNull { it.originalActionId == id }
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         if (record.kind.isOriginalSerialKindV1()) selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     }
 
     fun readOriginalSerialAuthority(): NativeOriginalLocalSerialAuthority {
-        val ledger = registry.readBusinessPublications(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+        val ledger = custody.readBusinessPublications() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         requireOriginalSerialSource(ledger)
         val custody = state().serialCustody ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         val record = ledger.records.singleOrNull { it.originalActionId == custody.originalAuthorityActionId }
@@ -259,7 +268,7 @@ internal class AndroidLocalCompanyBusinessPublications(
     fun readOriginalSerialCustody(): OriginalLocalSerialCustodyReferenceV1 {
         val custody = state().serialCustody ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         if (custody.authority.origin != readActualSerialIssuerOrigin()) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        return registry.readOriginalSerialCustody(keys)
+        return this.custody.readOriginalSerialCustody()
     }
 
     fun recoverOriginalSerialCustody(originalActionId: DomainId): OriginalLocalSerialCustodyReferenceV1 {
@@ -268,7 +277,7 @@ internal class AndroidLocalCompanyBusinessPublications(
         // Settling native custody is not business-trust qualification. In particular
         // an exact retained SIGNING_INTENT stays unavailable for business use; this
         // lookup path never signs or regenerates its missing output.
-        return registry.recoverOriginalSerialCustody(originalActionId, keys)
+        return custody.recoverOriginalSerialCustody(originalActionId)
     }
 
     fun originalSerialRegistrationAllocation(): NativeLocalSerialRegistrationAllocation {
@@ -288,7 +297,7 @@ internal class AndroidLocalCompanyBusinessPublications(
         if (proposal.company != company) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
         val head = state().head
         if (!head.enabled) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
         val serial = if (proposal.kind == CompanyBusinessPublicationKind.SERIAL_REGISTRATION_V1)
             requireOriginalSerialRegistration(proposal) else null
         val authority = if (proposal.kind == CompanyBusinessPublicationKind.SERIAL_AUTHORITY_V1) {
@@ -310,9 +319,9 @@ internal class AndroidLocalCompanyBusinessPublications(
                 selfOwnedFail(SelfOwnedInstallationFailureV1.CAPACITY_EXHAUSTED)
             }
             // BEGIN pairing-owned identity preflight V1 (legacy references unchanged).
-            val pairingReserved = registry.devicePairingReservedIdentityIds(keys)
+            val pairingReserved = custody.devicePairingReservedIdentityIds()
             val employeeReserved = if (serial == null && authority == null) emptySet() else
-                registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
+                custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
             val serialIds = serial?.let { listOf(it.serialId, it.registrationId, it.publicationId) }.orEmpty() +
                 authority?.let { listOf(it.authorityId, it.publicationId) }.orEmpty()
             val allocationIds = if (serial == null && authority == null) emptyList() else originalAllocationIdentityIds()
@@ -323,7 +332,7 @@ internal class AndroidLocalCompanyBusinessPublications(
             val reserved = original.allIds().toSet() + ledger?.records.orEmpty().flatMap {
                 it.reservedIdentityIdsV1()
             } + listOf(proposal.publicationId, proposal.entityId) + serialIds + pairingReserved + employeeReserved + allocationIds
-            val actionId = AndroidP256Primitives.newId(); val keyId = AndroidP256Primitives.newId()
+            val actionId = custody.newId(); val keyId = custody.newId()
             if (actionId == keyId || actionId in reserved || keyId in reserved) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
             val content = proposal.copyCanonicalContent()
             val prepared = try { NativeCompanyBusinessPublicationRecordV1(actionId, company, proposal.kind, proposal.publicationId,
@@ -335,7 +344,7 @@ internal class AndroidLocalCompanyBusinessPublications(
                 selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
             }
             requireNewIssuance()
-            registry.retainBusinessPublications(next, keys).records.single { it.originalActionId == actionId }
+            custody.retainBusinessPublications(next).records.single { it.originalActionId == actionId }
         }
         val current = state().head
         if (!current.enabled || current.accountRevision != head.accountRevision || current.credentialRevision != head.credentialRevision) {
@@ -345,7 +354,7 @@ internal class AndroidLocalCompanyBusinessPublications(
     }
 
     fun review(id: DomainId): CompanyBusinessPublicationAction {
-        val ledger = registry.readBusinessPublications(keys)
+        val ledger = custody.readBusinessPublications()
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         val record = ledger.records.singleOrNull { it.originalActionId == id }
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
@@ -365,17 +374,17 @@ internal class AndroidLocalCompanyBusinessPublications(
             requireOriginalSerialAuthority(record.proposal())
         val current = state().head
         if (!current.enabled) selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
-        val now = work.clock()
+        val now = custody.clock()
         if (now > Long.MAX_VALUE - SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         }
         return CompanyBusinessPublicationAction(actionOwner, record.originalActionId, record.proposal(), record.keyId,
-            AndroidP256Primitives.rootFingerprint(keys.rootBody()), original.original.facts.companyName, current.name, current.login,
-            current.accountRevision, current.credentialRevision, environment.bootCount, now + SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS)
+            custody.rootFingerprint(), original.original.facts.companyName, current.name, current.login,
+            current.accountRevision, current.credentialRevision, custody.boot, now + SelfOwnedInstallationProfileV1.PENDING_ACTION_MILLIS)
     }
 
     fun approve(action: CompanyBusinessPublicationAction, login: String, secret: CharArray): CompanyBusinessPublicationOutput {
-        var ledger = registry.readBusinessPublications(keys) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
+        var ledger = custody.readBusinessPublications() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         var record = ledger.records.singleOrNull { it.originalActionId == action.originalActionId }
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         requireAction(action, record, current = false)
@@ -389,58 +398,57 @@ internal class AndroidLocalCompanyBusinessPublications(
         val actionMessage = NativeCompanyBusinessPublicationWireV1.actionMessage(record, original())
         val actionDigest = try { sha256(actionMessage) } finally { actionMessage.fill(0) }
         val approval = publicationPhase("head-authentication") {
-            authentication.authenticateBusinessPublicationAction(record.originalActionId, actionDigest,
+            custody.authenticatePublication(record.originalActionId, actionDigest,
                 login, secret, action.expiresElapsedMillis)
         }
-        authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+        custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
         requireAction(action, record, current = true); requireNewIssuance()
         if (completed) {
             // A cached serial action is not private recovery authority. Authenticate the
             // actual named head even for an unchanged completed result; never sign again.
             val result = recover(record.originalActionId)
             return try {
-                authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+                custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
                 requireAction(action, record, current = true); requireNewIssuance()
                 result
             } catch (failure: Throwable) { result.discardUndeliveredSerialContent(); throw failure }
         }
         // This seed is generated once in this invocation and never persisted/exported. A
         // lost signing intent cannot generate another key or repeat a signature on reopen.
-        val seed = AndroidP256Primitives.randomBytes(Ed25519.SECRET_KEY_SIZE)
-        val point = ByteArray(Ed25519.PUBLIC_KEY_SIZE)
-        val signature = ByteArray(Ed25519.SIGNATURE_SIZE)
+        var point = ByteArray(0)
+        var signature = ByteArray(0)
         var endorsement: ByteArray? = null
-        val content = record.content.copyBytes()
+        var content = ByteArray(0)
+        val contentKey = custody.newContentKey()
         try {
-            publicationPhase("key-generation") { Ed25519.generatePublicKey(seed, 0, point, 0) }
-            if (!publicationPhase("key-validation") { Ed25519.validatePublicKeyFull(point, 0) })
-                selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
-            authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+            content = record.content.copyBytes()
+            point = publicationPhase("key-generation") { contentKey.publicPoint() }
+            custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
             requireNewIssuance()
             record = record.copy(phase = CompanyBusinessPublicationPhase.SIGNING_INTENT,
                 head = NativeCompanyBusinessPublicationHeadV1(approval.accountRevision, approval.credentialRevision, approval.boot, approval.expires),
                 publicKey = SelfOwnedOctetsV1(point))
-            ledger = registry.retainBusinessPublications(ledger.next(record), keys)
+            ledger = custody.retainBusinessPublications(ledger.next(record))
             if (ledger.records.single { it.originalActionId == record.originalActionId } != record) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-            authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+            custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
             requireNewIssuance()
-            publicationPhase("content-signing") { Ed25519.sign(seed, 0, point, 0, content, 0, content.size, signature, 0) }
+            signature = publicationPhase("content-signing") { contentKey.sign(content) }
             if (!publicationPhase("content-verification") { nativeBusinessPublicationVerifyEd25519(point, content, signature) })
                 selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
-            endorsement = publicationPhase("root-endorsement") { keys.signBusinessPublicationEndorsement(record, approval) }
+            endorsement = publicationPhase("root-endorsement") { custody.signBusinessPublicationEndorsement(record, approval) }
             publicationPhase("completion-currentness") {
-                authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+                custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
                 requireNewIssuance()
             }
             val completed = publicationPhase("completion-record") {
                 record.copy(phase = CompanyBusinessPublicationPhase.COMPLETED,
                     contentSignature = SelfOwnedOctetsV1(signature), rootEndorsement = SelfOwnedOctetsV1(requireNotNull(endorsement)))
             }
-            publicationPhase("completion-retention") { registry.retainBusinessPublications(ledger.next(completed), keys) }
+            publicationPhase("completion-retention") { custody.retainBusinessPublications(ledger.next(completed)) }
             val result = publicationPhase("completion-recovery") { recover(completed.originalActionId) }
             return try {
                 publicationPhase("completion-delivery-currentness") {
-                    authentication.requireBusinessPublicationStillCurrent(approval, state(), record.originalActionId, actionDigest)
+                    custody.requirePublicationStillCurrent(approval, record.originalActionId, actionDigest)
                     requireNewIssuance()
                 }
                 result
@@ -448,23 +456,23 @@ internal class AndroidLocalCompanyBusinessPublications(
                 if (result.proposal.kind.isOriginalSerialKindV1()) result.discardUndeliveredSerialContent()
                 throw failure
             }
-        } finally { seed.fill(0); point.fill(0); signature.fill(0); endorsement?.fill(0); content.fill(0) }
+        } finally { contentKey.clear(); point.fill(0); signature.fill(0); endorsement?.fill(0); content.fill(0) }
     }
 
     /** Fixed phase names and elapsed durations only; no keys, credentials, content or IDs.
      * Observation neither changes the owned work deadline nor grants currentness. */
     private inline fun <T> publicationPhase(phase: String, action: () -> T): T {
-        val started = work.platform.elapsedMillis()
-        try { work.platform.info("Company publication phase: $phase-entered") }
+        val started = custody.elapsedMillis()
+        try { custody.info("Company publication phase: $phase-entered") }
         catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
         val result = action()
-        try { work.platform.info("Company publication phase: $phase-returned; durationMillis=${work.platform.elapsedMillis() - started}") }
+        try { custody.info("Company publication phase: $phase-returned; durationMillis=${custody.elapsedMillis() - started}") }
         catch (_: Throwable) { /* Diagnostic failure cannot change the native outcome. */ }
         return result
     }
 
     fun recover(id: DomainId): CompanyBusinessPublicationOutput {
-        val record = registry.readBusinessPublications(keys)?.records?.singleOrNull { it.originalActionId == id }
+        val record = custody.readBusinessPublications()?.records?.singleOrNull { it.originalActionId == id }
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         if (record.phase != CompanyBusinessPublicationPhase.COMPLETED) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         val signature = record.contentSignature.copyBytes()
@@ -474,7 +482,7 @@ internal class AndroidLocalCompanyBusinessPublications(
 
     private fun requireAction(action: CompanyBusinessPublicationAction, record: NativeCompanyBusinessPublicationRecordV1, current: Boolean) {
         if (action.owner !== actionOwner || action.originalActionId != record.originalActionId || action.signingKeyId != record.keyId ||
-            action.rootFingerprint != AndroidP256Primitives.rootFingerprint(keys.rootBody())) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
+            action.rootFingerprint != custody.rootFingerprint()) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
         requireSameProposal(record, action.proposal)
         if (record.kind == CompanyBusinessPublicationKind.SERIAL_REGISTRATION_V1)
             requireOriginalSerialRegistration(record.proposal())
@@ -483,7 +491,7 @@ internal class AndroidLocalCompanyBusinessPublications(
         if (current) {
             val head = state().head
             if (!head.enabled || action.accountRevision != head.accountRevision || action.credentialRevision != head.credentialRevision ||
-                action.boot != environment.bootCount || work.clock() >= action.expiresElapsedMillis) {
+                action.boot != custody.boot || custody.clock() >= action.expiresElapsedMillis) {
                 selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
             }
         }
@@ -501,7 +509,7 @@ internal class AndroidLocalCompanyBusinessPublications(
         val value = try { proposal.readSerialRegistrationDefinition() }
         catch (_: IllegalArgumentException) { selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT) }
         val actual = readActualSerialIssuerOrigin()
-        val source = registry.readBusinessPublications(keys) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
+        val source = custody.readBusinessPublications() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
         val namespace = source.records.singleOrNull { it.publicationId == value.serialAuthority.publicationId &&
             it.kind == CompanyBusinessPublicationKind.SERIAL_AUTHORITY_V1 && it.phase == CompanyBusinessPublicationPhase.COMPLETED }
             ?: selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
@@ -536,35 +544,14 @@ internal class AndroidLocalCompanyBusinessPublications(
     }
 
     /** Actual original root/issuer/grant plus the target owner's complete P2 binding. */
-    private fun readActualSerialIssuerOrigin(): LocalCompanySerialIssuerOriginV1 {
-        val original = original()
-        val company = state()
-        val allocated = company.original.allocations.singleOrNull()
-            ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        val grant = allocated.grant ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        if (allocated.phase != LocalProvisionerAllocationPhaseV1.GRANT_RETAINED)
-            selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        val allocation = history.snapshotOriginal().record.allocation
-        val scope = allocation.coordinates.scope
-        val rootDigest = PayloadDigest(AndroidP256Primitives.documentDigest(company.original.root))
-        val issuerDigest = PayloadDigest(AndroidP256Primitives.documentDigest(company.original.delegation))
-        if (scope.company() != CompanyScope(original.original.organizationId, original.original.companyId) ||
-            scope != allocated.body.coordinates.scope || allocation.coordinates.allocationId != allocated.body.coordinates.allocationId ||
-            allocation.p1RootDocumentDigest != rootDigest || allocation.p1DelegationDigest != issuerDigest ||
-            allocation.p1PreparationDigest != PayloadDigest(AndroidP256Primitives.documentDigest(grant)))
-            selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
-        return LocalCompanySerialIssuerOriginV1(scope.company(), original.original.actionId, original.original.rootId,
-            original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId, rootDigest, AndroidP256Primitives.rootFingerprint(keys.rootBody()),
-            original.headAuthorityId, original.headEnrollmentId, original.original.issuerId,
-            original.original.key(SelfOwnedNativeKeyRoleV1.ISSUER).keyId, issuerDigest,
-            scope, allocation.coordinates.allocationId, allocation.digest)
-    }
+    private fun readActualSerialIssuerOrigin(): LocalCompanySerialIssuerOriginV1 =
+        custody.actualSerialIssuerOrigin(issuerHistory())
 
     private fun serialAuthorityReservedIdentityIds(ledger: NativeCompanyBusinessPublicationStateV1?,
         retainedActionId: DomainId?): Set<DomainId> = original().allIds().toSet() +
         ledger?.records.orEmpty().filterNot { it.originalActionId == retainedActionId }.flatMap { it.reservedIdentityIdsV1() } +
-        originalAllocationIdentityIds() + registry.devicePairingReservedIdentityIds(keys) +
-        registry.readEmployeeEnrollments(keys)?.records.orEmpty().flatMap { it.nativeIds() }
+        originalAllocationIdentityIds() + custody.devicePairingReservedIdentityIds() +
+        custody.readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() }
 
     private fun requireSerialAuthorityReservedIdentities(authority: LocalPublishedSerialAuthorityV1,
         ledger: NativeCompanyBusinessPublicationStateV1?, retainedActionId: DomainId?) {
@@ -573,16 +560,15 @@ internal class AndroidLocalCompanyBusinessPublications(
             selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
     }
 
-    private fun originalAllocationIdentityIds(): List<DomainId> = history.snapshotOriginal().record.allocation.coordinates.let {
+    private fun originalAllocationIdentityIds(): List<DomainId> = issuerHistory().record.allocation.coordinates.let {
         listOf(it.allocationId, it.scope.organizationId, it.scope.companyId, it.scope.branchId, it.installationId,
             it.assignmentId, it.deviceId, it.storageInstanceId, it.storageKeyId, it.pepperKeyId,
             it.targetSigningKeyId, it.firstActorId)
     }
-    private fun state(): LocalCompanyAuthorityStateV1 = registry.readCompanyState(keys)
-        ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
-    private fun original(): LocalCompanyAuthorityBootstrapV1 {
-        work.requireActive(); environment.requireExistingOriginalObservation(); registry.assertContinuity()
-        return registry.companyBootstrapRecord() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
+    private fun state(): NativeBusinessPublicationCompany = custody.businessState()
+    private fun original(): SelfOwnedCompanyBootstrapView {
+        custody.requireOriginalObservation()
+        return custody.companyOriginal() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
     }
-    private fun requireNewIssuance() { original(); issuance.requireIssuance(null) }
+    private fun requireNewIssuance() { original(); custody.requireNewIssuance() }
 }

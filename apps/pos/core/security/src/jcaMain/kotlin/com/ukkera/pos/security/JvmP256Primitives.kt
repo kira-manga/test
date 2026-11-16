@@ -15,6 +15,10 @@ import java.security.spec.ECPoint
 import java.security.spec.ECPublicKeySpec
 import java.security.spec.EllipticCurve
 import java.util.UUID
+import org.bouncycastle.crypto.ec.CustomNamedCurves
+import org.bouncycastle.crypto.params.ECDomainParameters
+import org.bouncycastle.crypto.params.ECPublicKeyParameters
+import org.bouncycastle.crypto.signers.ECDSASigner
 
 /** Fixed P-256/JCA primitives shared by Android and desktop native owners; no custody or authority. */
 internal object JvmP256Primitives {
@@ -29,6 +33,51 @@ internal object JvmP256Primitives {
     private val parameters = ECParameterSpec(EllipticCurve(ECFieldFp(p), a, b), ECPoint(gx, gy), n, 1)
     private val halfN = n.shiftRight(1)
     private val random = SecureRandom()
+    // The already-pinned lightweight implementation avoids repeated provider EC multiplication
+    // without replacing a JCA provider or retaining a signature/nonce/possession decision.
+    private val verificationDomain = ECDomainParameters(CustomNamedCurves.getByName("secp256r1"))
+    // Public curve arithmetic only. Keep BC's point precomputation across fresh nonce
+    // verifications; no signature result, private key, native state or grant is retained.
+    private val verificationPoints = java.util.LinkedHashMap<ECPoint, org.bouncycastle.math.ec.ECPoint>(16, 0.75f, true)
+    private fun verificationPoint(key: ECPublicKey): org.bouncycastle.math.ec.ECPoint {
+        val coordinates = key.w
+        synchronized(verificationPoints) { verificationPoints[coordinates]?.let { return it } }
+        val calculated = verificationDomain.curve.createPoint(coordinates.affineX, coordinates.affineY)
+        return synchronized(verificationPoints) {
+            verificationPoints[coordinates] ?: calculated.also {
+                verificationPoints[coordinates] = it
+                if (verificationPoints.size > 64) verificationPoints.entries.iterator().run { next(); remove() }
+            }
+        }
+    }
+
+    /** Pure cryptographic results only: exact point, signature and SHA-256 message input.
+     * Native files, current history, admission, policy and clocks are still read and checked
+     * by their owners on every operation. A previous signature never proves current state.
+     * These private copies contain no document body, credential, permission or native handle.
+     */
+    private class VerifiedSignature(val point: ByteArray, val messageHash: ByteArray, val signature: ByteArray) {
+        private val hash = 31 * (31 * point.contentHashCode() + messageHash.contentHashCode()) + signature.contentHashCode()
+        override fun hashCode(): Int = hash
+        override fun equals(other: Any?): Boolean = other is VerifiedSignature &&
+            point.contentEquals(other.point) && messageHash.contentEquals(other.messageHash) && signature.contentEquals(other.signature)
+        fun clear() { point.fill(0); messageHash.fill(0); signature.fill(0) }
+    }
+    private const val MAXIMUM_VERIFIED_SIGNATURES = 1024
+    private val verifiedSignatures = java.util.LinkedHashMap<VerifiedSignature, Boolean>(16, 0.75f, true)
+
+    /** No provider work or caller callback runs under this short memory-only gate. */
+    private fun rememberVerified(candidate: VerifiedSignature): Boolean = synchronized(verifiedSignatures) {
+        if (verifiedSignatures[candidate] == true) return@synchronized false
+        verifiedSignatures[candidate] = true
+        if (verifiedSignatures.size > MAXIMUM_VERIFIED_SIGNATURES) {
+            val entries = verifiedSignatures.entries.iterator()
+            val oldest = entries.next().key
+            entries.remove()
+            oldest.clear()
+        }
+        true
+    }
 
     fun randomBytes(size: Int): ByteArray {
         require(size in 1..64)
@@ -84,11 +133,39 @@ internal object JvmP256Primitives {
     }
 
     fun verify(publicPoint: ByteArray, message: ByteArray, raw: ByteArray): Boolean = try {
+        require(publicPoint.size == 65 && raw.size == 64 &&
+            message.size <= SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_BYTES + 65_536)
+        // Hash and verify the SAME immutable bytes, even if a caller later clears its input.
+        val point = publicPoint.copyOf()
+        val body = message.copyOf()
+        val signature = raw.copyOf()
+        try {
+            val candidate = VerifiedSignature(point.copyOf(), hash(body), signature.copyOf())
+            var retained = false
+            try {
+                if (synchronized(verifiedSignatures) { verifiedSignatures[candidate] == true }) true
+                else {
+                    val verified = verifyFresh(point, body, signature)
+                    // Failed/malformed inputs never populate the cache. ECDSA already signs
+                    // SHA-256(message); the exact point and raw signature also remain in its key.
+                    if (verified) retained = rememberVerified(candidate)
+                    verified
+                }
+            } finally { if (!retained) candidate.clear() }
+        } finally { point.fill(0); body.fill(0); signature.fill(0) }
+    } catch (_: Exception) { false }
+
+    /** Nonce-based native possession proofs are single use and never enter the reuse cache. */
+    fun verifyFresh(publicPoint: ByteArray, message: ByteArray, raw: ByteArray): Boolean = try {
         require(message.size <= SelfOwnedInstallationProfileV1.MAXIMUM_REGISTRY_BYTES + 65_536)
         val key = publicKey(publicPoint)
-        val der = toDer(raw)
-        try { Signature.getInstance("SHA256withECDSA").run { initVerify(key); update(message); verify(der) } }
-        finally { der.fill(0) }
+        val (r, s) = signatureScalars(raw)
+        val point = verificationPoint(key)
+        val verifier = ECDSASigner()
+        verifier.init(false, ECPublicKeyParameters(point, verificationDomain))
+        val digest = hash(message)
+        try { verifier.verifySignature(digest, r, s) }
+        finally { digest.fill(0) }
     } catch (_: Exception) { false }
 
     fun signDocument(role: SelfOwnedDocumentRoleV1, body: ByteArray, key: PrivateKey): SelfOwnedSignedDocumentV1 {
@@ -149,16 +226,22 @@ internal object JvmP256Primitives {
 
     /** Reject high-S wire signatures; native DER is reconstructed minimally, never guessed. */
     fun toDer(raw: ByteArray): ByteArray {
-        require(raw.size == 64)
-        val rb = raw.copyOfRange(0, 32); val sb = raw.copyOfRange(32, 64)
-        val r = try { BigInteger(1, rb) } finally { rb.fill(0) }
-        val s = try { BigInteger(1, sb) } finally { sb.fill(0) }
-        require(r.signum() > 0 && r < n && s.signum() > 0 && s <= halfN)
+        val (r, s) = signatureScalars(raw)
         val rd = r.toByteArray(); val sd = s.toByteArray()
         return try {
             byteArrayOf(0x30, (4 + rd.size + sd.size).toByte(), 2, rd.size.toByte()) + rd +
                 byteArrayOf(2, sd.size.toByte()) + sd
         } finally { rd.fill(0); sd.fill(0) }
+    }
+
+    /** Same strict P1363 scalar validation for DER output and direct verification. */
+    private fun signatureScalars(raw: ByteArray): Pair<BigInteger, BigInteger> {
+        require(raw.size == 64)
+        val rb = raw.copyOfRange(0, 32); val sb = raw.copyOfRange(32, 64)
+        val r = try { BigInteger(1, rb) } finally { rb.fill(0) }
+        val s = try { BigInteger(1, sb) } finally { sb.fill(0) }
+        require(r.signum() > 0 && r < n && s.signum() > 0 && s <= halfN)
+        return r to s
     }
 
     private fun scalar32(value: BigInteger): ByteArray {

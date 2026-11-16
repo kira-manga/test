@@ -1,3 +1,5 @@
+> **Superseded (14 November 2026).** Historical record only — not current status, backlog or decisions. Start at [START-HERE](../../docs/pos/START-HERE.md); GitHub issues are authoritative.
+
 # Integration status
 
 ## SDK source increment — Linux host publication (28 October 2026)

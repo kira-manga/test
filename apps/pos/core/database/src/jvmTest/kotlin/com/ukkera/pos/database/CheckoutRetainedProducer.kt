@@ -395,6 +395,7 @@ private class CheckoutAfterEnvelope(private val evidence: RetainedCommandEvidenc
                     cashPayments++
                 }
                 is Tender.External -> external += payment.amount
+                is Tender.ExchangeOffset -> checkoutAfterReject()
             }
         }
         // These are subset/lower-bound AFTER facts, NOT global pending completeness, an empty-

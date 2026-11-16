@@ -17,7 +17,8 @@ internal class PurchasingInvoiceReadV2(private val stock: LocalStockRepository) 
     }
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile !in setOf(LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING)) return false
+        if (profile !in setOf(LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+                LocalMasterRpcWorkflowProfile.LAN_BUSINESS)) return false
         val query = LocalPurchasingCodec.decodeQuery(normalized)
         return query.section == LocalPurchasingSectionV1.INVOICE && !query.export && normalize(normalized) == normalized
     }

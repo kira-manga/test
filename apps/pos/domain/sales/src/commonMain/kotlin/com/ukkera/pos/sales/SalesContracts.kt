@@ -52,6 +52,10 @@ public data class SalesCommand(
 public enum class SalesAggregate {
     DRAWER_ASSIGNMENT, CUSTODIAN_ASSIGNMENT, CASH_SESSION, CLOSING_WORK_INDEX,
     SAFE_TRANSFER, SAFE_CUSTODY, ORDER, COLLECTION, RETURN_ENTITLEMENT, RETURN_CLAIM, ACCEPTED_RETURN,
+    /** Additive: safe-to-drawer float issue and the per-safe float ledger. */
+    SAFE_FLOAT, SAFE_FLOAT_LEDGER,
+    /** Additive: receipt-linked container deposit entitlement. */
+    DEPOSIT_ENTITLEMENT,
 }
 
 public data class SalesVersionCheck(
@@ -64,6 +68,12 @@ public enum class SalesUniqueKind {
     CASH_SESSION, OPENING_FLOAT_SOURCE, ACTIVE_DRAWER, ACTIVE_CUSTODIAN, CASH_SOURCE, SAFE_TRANSFER,
     ORDER, HANDOFF_OFFER, HANDOFF_ACCEPTANCE, COLLECTION, PAYMENT_ATTEMPT, PAYMENT_RECORD,
     SALE, SALE_ORDER, RETURN_ENTITLEMENT, RETURN_CLAIM, CLAIM_ACCEPTANCE, ACCEPTED_RETURN, REFUND_ATTEMPT, REFUND_RECORD,
+    /** Additive: one issue identity per safe float. */
+    SAFE_FLOAT,
+    /** Additive: one restricted offset per exchange identity. */
+    EXCHANGE,
+    /** Additive: one deposit per identity and per original sold portion; one identity per deposit refund. */
+    DEPOSIT, DEPOSIT_PORTION, DEPOSIT_REFUND,
 }
 
 /** Each key is scoped by the command's authenticated branch, not globally. */

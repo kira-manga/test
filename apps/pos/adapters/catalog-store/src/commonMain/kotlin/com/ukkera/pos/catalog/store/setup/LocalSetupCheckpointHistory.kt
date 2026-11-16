@@ -40,6 +40,7 @@ import kotlin.coroutines.cancellation.CancellationException
  */
 public class LocalSetupCheckpointHistoryProducer(
     private val signatures: CompanyPublicationSignatureVerifier,
+    private val stockRepository: com.ukkera.pos.inventory.store.LocalStockRepository? = null,
 ) : RuntimeHistoryBusinessProducer {
     override val commands: Set<CommandKey> = setOf(
         LocalSetupCheckpointProfileV1.CONFIGURE,
@@ -223,7 +224,7 @@ public class LocalSetupCheckpointHistoryProducer(
             record.masterAuthorityEpoch != evidenceEpoch(command)) return false
         val effect = com.ukkera.pos.inventory.store.LocalStockOpeningEvidenceV1Source.observe(
             com.ukkera.pos.database.RuntimeHistoricalSetupReadView(command), request.openingOperationId,
-            request.receiptId) ?: return false
+            request.receiptId, stockRepository) ?: return false
         val line = effect.lines.singleOrNull { it.sourceId == request.sourceId } ?: return false
         if (effect.effectDigest != record.stockEffectDigest || effect.effectRevision != record.stockEffectRevision ||
             line.skuId != record.skuId || line.warehouseId != record.warehouseId || line.quantity != record.quantity ||
@@ -364,7 +365,7 @@ public class LocalSetupCheckpointHistoryProducer(
         actualFloat: List<Pair<AggregateKey, LocalSetupOpeningFloatRowRecordV1>>):
         Pair<List<LocalSetupOpeningStockRowRefV1>, List<LocalSetupOpeningFloatRowRefV1>>? =
         verifyOpeningManifest(com.ukkera.pos.database.RuntimeHistoricalSetupReadView(command), command.scope,
-            installationId, request, actualStock, actualFloat)
+            installationId, request, actualStock, actualFloat, stockRepository)
 
     private suspend fun LocalSetupOriginalBindingV1.matchesHistorical(command: RuntimeHistoricalCommand): Boolean =
         command.matchesOriginalSetup(installationId, originalRequestId, issuedAttemptId, attemptSequence,

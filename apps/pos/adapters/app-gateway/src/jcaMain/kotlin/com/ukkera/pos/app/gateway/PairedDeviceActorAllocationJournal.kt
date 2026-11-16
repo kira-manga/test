@@ -14,6 +14,13 @@ internal interface PairedClientJournalOwner {
     val intentJournal: LocalClientIntentJournal?
     val actorAllocationJournal: PairedDeviceActorAllocationJournal?
     fun isCurrent(): Boolean
+    /** Only the SAME privately published successful actor intent journal can borrow custody. */
+    fun capturePhysical(journal: LocalClientIntentJournal): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody?
+    /** Full typed/native/head recheck under that exact owner's worker; no stored login grant. */
+    suspend fun recheckPhysical(journal: LocalClientIntentJournal): Boolean
+    /** Raw original recovery only; loan of the SAME genuine allocation-journal owner. */
+    fun capturePhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody?
+    suspend fun recheckPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean
     suspend fun close()
 }
 
@@ -107,6 +114,44 @@ internal class PairedDeviceActorAllocationJournal private constructor(
         }
     }
 
+    /** Complete protected allocation history, not employee authorization. Only existing native
+     * physical catalogues may be selected from it; no actor intent journal is opened here. */
+    suspend fun physicalRecoverySelections(): List<PairedPhysicalOriginalSelection>? {
+        val owner = successfulOwner.get() ?: return null
+        if (!isCurrent() || !owner.recheckPhysicalRecovery(this) || !isCurrent()) return null
+        val result = file.owned {
+            object : ClientJournalTask<List<PairedPhysicalOriginalSelection>> {
+                override fun execute(): List<PairedPhysicalOriginalSelection> {
+                    check(isCurrent() && successfulOwner.get() === owner)
+                    return readState().records.map { PairedPhysicalOriginalSelection(this@PairedDeviceActorAllocationJournal, it) }
+                }
+                override fun discard(value: List<PairedPhysicalOriginalSelection>) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return if (!isCurrent() || successfulOwner.get() !== owner) null else when (result) {
+            is ClientJournalOutcome.Value -> result.value
+            ClientJournalOutcome.Unavailable -> null
+        }
+    }
+
+    suspend fun recheckPhysicalRecovery(selection: PairedPhysicalOriginalSelection): Boolean {
+        val owner = successfulOwner.get() ?: return false
+        if (selection.ledger !== this || !isCurrent() || !owner.recheckPhysicalRecovery(this)) return false
+        val result = file.owned {
+            object : ClientJournalTask<Boolean> {
+                override fun execute(): Boolean = isCurrent() && successfulOwner.get() === owner &&
+                    readState().records.singleOrNull { it.actorId == selection.actorId } == selection.record && isCurrent()
+                override fun discard(value: Boolean) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return result is ClientJournalOutcome.Value && result.value && isCurrent() && successfulOwner.get() === owner
+    }
+
+    fun capturePhysicalRecovery(selection: PairedPhysicalOriginalSelection): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody? =
+        if (selection.ledger !== this || !isCurrent()) null else successfulOwner.get()?.capturePhysicalRecovery(this)
+
     private fun readState(): PairedDeviceActorAllocationState =
         file.readManifest(MAX_PAIRED_ACTOR_ALLOCATION_BYTES).useWiped { bytes ->
             decodePairedActorAllocationState(bytes, origin, file.journalId, file.keyId)
@@ -129,6 +174,17 @@ internal class PairedDeviceActorAllocationJournal private constructor(
             fromExisting(file, custody).readState()
         }
     }
+}
+
+/** Selection DATA retaining the actual ledger. Its scalars never attest native force or an
+ * employee right; every use rechecks the complete original allocation and actual native owner. */
+internal class PairedPhysicalOriginalSelection internal constructor(
+    val ledger: PairedDeviceActorAllocationJournal,
+    internal val record: PairedDeviceActorAllocationRecord,
+) {
+    val actorId: DomainId get() = record.actorId
+    val journalId: DomainId get() = record.journalId
+    override fun toString(): String = "PairedPhysicalOriginalSelection([REDACTED])"
 }
 
 internal const val MAX_PAIRED_ACTOR_ALLOCATIONS: Int = 256

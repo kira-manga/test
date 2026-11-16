@@ -13,13 +13,14 @@ public class LocalSupervisorReviewHistoryProducer(
     tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
 ) : RuntimeHistoryBusinessProducer {
     private val retailSources = LocalRetailSupervisorReviewHistorySources(tenderPolicies)
-    override val commands: Set<CommandKey> = setOf(LocalRetailSupervisorCodecV1.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND)
+    override val commands: Set<CommandKey> = setOf(LocalRetailSupervisorCodecV1.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND)
 
     /** Trusted registry subtype dispatch only. Once selected, a failed Review join must
      * retain its hold; it must not fall back to an Apply producer or a rejection importer. */
     public fun isReviewRequest(key: CommandKey, normalized: StoredBytes): Boolean = when (key) {
         LocalRetailSupervisorCodecV1.COMMAND -> LocalRetailSupervisorCodecV1.decode(normalized) is LocalRetailSupervisorRequestV1.Review
         LocalFoodPaymentSupervisorCodec.COMMAND -> LocalFoodPaymentSupervisorCodec.decode(normalized) is LocalFoodPaymentSupervisorRequest.Review
+        LocalFoodRefundSupervisorCodec.COMMAND -> LocalFoodRefundSupervisorCodec.decode(normalized) is LocalFoodRefundSupervisorRequest.Review
         else -> false
     }
 
@@ -36,6 +37,8 @@ public class LocalSupervisorReviewHistoryProducer(
         return when (profile) {
             RuntimeHistoricalSupervisorReviewProfile.RETAIL -> retail(command)
             RuntimeHistoricalSupervisorReviewProfile.FOOD -> food(command)
+            RuntimeHistoricalSupervisorReviewProfile.FOOD_REFUND -> foodRefund(command)
+            RuntimeHistoricalSupervisorReviewProfile.SUPPLIER_CASH -> false // Separate purchasing producer owns this profile.
         }
     }
 
@@ -76,6 +79,26 @@ public class LocalSupervisorReviewHistoryProducer(
         command.requireSupervisorReviewRejection(ProposedOutcome.Reject("food.payment.supervisor.reviewed",
             LocalFoodPaymentSupervisorCodec.review(expected)), slot.domain.financialResources.toSet() +
             foodPaymentAuthorityResources(slot.requirement()) + recordingAuthority(command.actorId))
+        return true
+    }
+
+    private suspend fun foodRefund(command: RuntimeHistoricalCommand): Boolean {
+        check(command.command == LocalFoodRefundSupervisorCodec.COMMAND && LocalFoodRefundSupervisorCodec.normalize(command.normalized) == command.normalized)
+        val request = LocalFoodRefundSupervisorCodec.decode(command.normalized) as? LocalFoodRefundSupervisorRequest.Review ?: return false
+        val original = LocalFoodRefundSupervisorHistorySources.original(command, request.originalRecordingOperationId)
+        val resolution = LocalFoodRefundSupervisorHistorySources.resolution(command, original)
+        val slot = original.slot.value
+        val expected = LocalFoodRefundSupervisorReview(foodRefundOriginalSummary(original),
+            (LocalFoodRefundCodec.decode(original.raw.value.body()) as LocalFoodRefundRequest.RecordOriginal).outcome,
+            resolution?.let(::foodRefundResolutionSummary), resolution?.let {
+                (LocalFoodRefundCodec.decode(it.raw.value.body()) as LocalFoodRefundRequest.RecordResolution).outcome
+            })
+        command.requireRequirement(salesAuthorizationRequirement(SecurityAction.REFUND_RESOLVE, command.scope,
+            original.slot.stored.key.id, Revision(0), command.operationId, command.semanticDigest, "food.refund.supervisor.review",
+            slot.originalActorId, slot.domain.amount))
+        command.requireSupervisorReviewRejection(ProposedOutcome.Reject("food.refund.supervisor.reviewed",
+            LocalFoodRefundSupervisorCodec.review(expected)), slot.domain.financialResources.toSet() +
+            foodRefundAuthorityResources(slot.requirement()) + recordingAuthority(command.actorId))
         return true
     }
 

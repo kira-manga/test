@@ -14,24 +14,13 @@ import android.system.StructStat
 import com.ukkera.pos.database.AndroidOriginalLocalClient
 import com.ukkera.pos.database.OriginalPhysicalEmployeeEnrollment
 import com.ukkera.pos.database.belongsTo
-import com.ukkera.pos.security.LocalCompanyAuthorityResult
-import com.ukkera.pos.security.LocalEmployeeEnrollmentProfileV1
 import com.ukkera.pos.recovery.AuthorityIdentity
 import com.ukkera.pos.security.SelfOwnedStorageKeySecurity
-import com.ukkera.pos.types.DomainId
 import java.io.File
 import java.io.FileDescriptor
-import java.security.MessageDigest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-
-public enum class AndroidOriginalRetailPhysicalAction {
-    /** Explicit once-only admission on the actual acknowledged, untouched original C1. */
-    ENROLL_ORIGINAL,
-    /** Existing protected catalogues/journals only; no missing path or file is created. */
-    REOPEN_EXISTING,
-}
 
 /**
  * Genuine original Android cohost backing for retail payment, existing accepted RETAIL refund
@@ -60,110 +49,27 @@ public object AndroidOriginalRetailPhysicalRecording {
         currentCoroutineContext().ensureActive()
         if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null ||
             composition.mode != original.compositionMode) return false
-        val coordinates = original.material.coordinates
         val keySecurity = when (original.material.storageKeySecurity) {
             SelfOwnedStorageKeySecurity.SOFTWARE -> AndroidPhysicalSpoolKeySecurity.SOFTWARE
             SelfOwnedStorageKeySecurity.TRUSTED_ENVIRONMENT -> AndroidPhysicalSpoolKeySecurity.TRUSTED_ENVIRONMENT
             SelfOwnedStorageKeySecurity.STRONGBOX -> AndroidPhysicalSpoolKeySecurity.STRONGBOX
             SelfOwnedStorageKeySecurity.HARDWARE_KIND_UNSPECIFIED -> AndroidPhysicalSpoolKeySecurity.HARDWARE_KIND_UNSPECIFIED
         }
-        val master = LocalPhysicalCatalogueBinding(coordinates.scope, coordinates.installationId,
-            coordinates.deviceId, originalPhysicalCatalogueId(original, "master"), LocalPhysicalSpoolRole.MASTER,
-            coordinates.storageKeyId)
-        val client = LocalPhysicalCatalogueBinding(coordinates.scope, coordinates.installationId,
-            coordinates.deviceId, originalPhysicalCatalogueId(original, "client"), LocalPhysicalSpoolRole.CLIENT,
-            coordinates.storageKeyId)
-        val identity = OriginalAndroidPhysicalOwnerIdentity(master, client,
-            AuthorityIdentity(coordinates.assignmentId, coordinates.deviceId, original.receipt.core.authorityEpoch),
-            coordinates.firstActorId, original.receipt.digest, original)
-        val history = when (val consumed = original.originalConsumedPhysicalEmployees()) {
-            is LocalCompanyAuthorityResult.Value -> consumed.value
-            // Preserve the exact founding path. Missing actual history cannot census an
-            // employee allocation or qualify an employee; no account/SDK/row fallback exists.
-            is LocalCompanyAuthorityResult.Unavailable -> emptyList()
-        }
-        if (history.size > LocalEmployeeEnrollmentProfileV1.MAXIMUM_ACTIONS ||
-            history.map { it.actorId }.distinct().size != history.size ||
-            history.map { it.originalActionId }.distinct().size != history.size ||
-            !history.all { it.belongsTo(original) }) return false
-        val enrolled = backend.installOriginalAndroidOwners(identity, history) { attempt ->
-            val enroll = action == AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL
-            if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null ||
-                (enroll && !original.permitsFirstEnrollment())) return@installOriginalAndroidOwners false
-            val namespace = OriginalAndroidPhysicalNamespace(application, original, listOf(master, client), history,
-                enroll, composition)
-            // Capture the preparation owner before its first mkdir/open/fsync. The same gate
-            // mutex serializes master close, including cleanup of partial native acquisition.
-            attempt.nativePreparation = namespace
-            namespace.prepare()
-            attempt.unreturnedNativeOwner = true
-            val first = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, master, keySecurity, composition)
-                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, master, keySecurity, composition)
-            if (first !is LocalPhysicalCatalogueOpen.Opened) {
-                if (first === LocalPhysicalCatalogueOpen.Busy) attempt.unreturnedNativeOwner = false
-                return@installOriginalAndroidOwners false
-            }
-            attempt.master = first.catalogue
-            // The master is now captured; reserve this same uncertainty slot for the client.
-            attempt.unreturnedNativeOwner = true
-            val second = if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, client, keySecurity, composition)
-                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, client, keySecurity, composition)
-            if (second !is LocalPhysicalCatalogueOpen.Opened) {
-                if (second === LocalPhysicalCatalogueOpen.Busy) attempt.unreturnedNativeOwner = false
-                return@installOriginalAndroidOwners false
-            }
-            attempt.client = second.catalogue
-            attempt.unreturnedNativeOwner = false
-            val masterReceipts = namespace.verifyCatalogue(first.catalogue, attempt)
-            val clientReceipts = namespace.verifyCatalogue(second.catalogue, attempt)
-            requireMatchingOriginalPhysicalReceipts(masterReceipts, clientReceipts)
-            if (!original.belongsTo(application) || original.physicalEndpoint(backend.registeredOwner) == null ||
-                (enroll && !original.permitsFirstEnrollment())) return@installOriginalAndroidOwners false
-            if (namespace.close() != LocalPhysicalSpoolClose.CLOSED) return@installOriginalAndroidOwners false
-            attempt.nativePreparation = null
-            true
-        }
-        currentCoroutineContext().ensureActive()
-        return enrolled && original.belongsTo(application) && history.all { it.belongsTo(original) } &&
-            original.physicalEndpoint(backend.registeredOwner) != null
+        val enroll = action == AndroidOriginalRetailPhysicalAction.ENROLL_ORIGINAL
+        return LocalOriginalRetailPhysicalAcquisition.acquire(original, backend, enroll, ANDROID_ORIGINAL_PHYSICAL_PROFILE,
+            original.material.coordinates.storageKeyId,
+            stillOwned = { original.belongsTo(application) && original.physicalEndpoint(backend.registeredOwner) != null },
+            namespace = { owners, history -> OriginalAndroidPhysicalNamespace(application, original, owners, history, enroll, composition) },
+            openCatalogue = { owner ->
+                if (enroll) AndroidPreallocatedPhysicalJournal.createCatalogue(application, owner, keySecurity, composition)
+                else AndroidPreallocatedPhysicalJournal.openCatalogue(application, owner, keySecurity, composition)
+            })
     }
 }
 
-/** Receipt-bound fixed identities, never fresh random IDs chosen after a failed open. */
-private fun originalPhysicalCatalogueId(original: AndroidOriginalLocalClient, role: String): DomainId {
-    val coordinates = original.material.coordinates
-    val body = listOf("ukkera.android.original-retail-physical-catalogue/v1",
-        coordinates.scope.organizationId.value, coordinates.scope.companyId.value, coordinates.scope.branchId.value,
-        coordinates.deviceId.value, coordinates.installationId.value, coordinates.storageKeyId.value,
-        coordinates.firstActorId.value, original.receipt.core.originalRequestId.value, original.receipt.digest.value, role)
-        .joinToString("\n").encodeToByteArray(throwOnInvalidSequence = true)
-    return try {
-        val hash = MessageDigest.getInstance("SHA-256").digest(body)
-        try {
-            val hex = buildString(32) {
-                for (index in 0 until 16) {
-                    val value = hash[index].toInt() and 255
-                    append("0123456789abcdef"[value ushr 4]); append("0123456789abcdef"[value and 15])
-                }
-            }
-            DomainId("${hex.take(8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}")
-        } finally { hash.fill(0) }
-    } finally { body.fill(0) }
-}
-
-private fun requireMatchingOriginalPhysicalReceipts(master: List<LocalPhysicalJournalReceipt>,
-    client: List<LocalPhysicalJournalReceipt>) {
-    val left = master.associateBy { it.binding.requirement.masterAllocationId }
-    val right = client.associateBy { it.binding.requirement.masterAllocationId }
-    check(left.size == master.size && right.size == client.size && left.keys == right.keys)
-    for ((id, receipt) in left) {
-        val paired = checkNotNull(right[id])
-        check(receipt.binding.requirement.canonicalBytes == paired.binding.requirement.canonicalBytes &&
-            receipt.binding.allocationId != paired.binding.allocationId &&
-            receipt.nativeIdentity.fileIdentity != paired.nativeIdentity.fileIdentity &&
-            receipt.nativeIdentity.directoryIdentity != paired.nativeIdentity.directoryIdentity)
-    }
-}
+private val ANDROID_ORIGINAL_PHYSICAL_PROFILE = OriginalPhysicalRecordingProfile(
+    "ukkera.android.original-retail-physical-catalogue/v1",
+    LocalPhysicalSpoolStorageProfileV1.ANDROID_API30_APP_PRIVATE_FALLOCATE_V1)
 
 /**
  * Bounded private provisioning and complete existing-only census. This object owns temporary
@@ -177,7 +83,7 @@ private class OriginalAndroidPhysicalNamespace(
     private val employees: List<OriginalPhysicalEmployeeEnrollment>,
     private val enroll: Boolean,
     private val composition: AndroidPhysicalCompositionNamespaceV1,
-) : PhysicalJournalNativePreparation {
+) : OriginalPhysicalNativeNamespace {
     private val uid = Process.myUid()
     private val pid = Process.myPid()
     private val directories = linkedMapOf<File, OriginalPhysicalDirectory>()
@@ -186,7 +92,7 @@ private class OriginalAndroidPhysicalNamespace(
     private var closing = false
     private var closeResult: LocalPhysicalSpoolClose? = null
 
-    fun prepare() {
+    override fun prepare() {
         requireCurrent()
         check(owners.size == 2 && owners.map { it.catalogueId }.distinct().size == 2 &&
             owners.all { it.scope == original.peer.scope && it.deviceId == original.peer.deviceId &&
@@ -226,67 +132,14 @@ private class OriginalAndroidPhysicalNamespace(
         requireCurrent()
     }
 
-    /** Selectors come from the authenticated catalogue; filesystem bytes never supply a receipt. */
-    fun verifyCatalogue(catalogue: LocalPhysicalAllocationCatalogue,
-        attempt: PhysicalJournalGateOwnerAttempt): List<LocalPhysicalJournalReceipt> {
-        requireCurrent()
-        check(catalogue.binding in owners && catalogue.storageProfile == LocalPhysicalSpoolStorageProfileV1.ANDROID_API30_APP_PRIVATE_FALLOCATE_V1)
-        val selectors = catalogue.retainedAllocationSelectors() ?: error("physical.original.catalogue")
-        check(selectors.size <= LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES *
-            LocalPhysicalJournalFormatV1.MAX_CATALOGUE_GENERATIONS && selectors.distinct().size == selectors.size)
-        val receipts = ArrayList<LocalPhysicalJournalReceipt>(selectors.size)
-        for (id in selectors) {
-            requireCurrent()
-            val receipt = catalogue.readExpectedReceipt(id) ?: error("physical.original.catalogue_receipt")
-            val requirement = receipt.binding.requirement
-            val foundingActor = requirement.originalActorId == original.material.coordinates.firstActorId
-            val employee = if (foundingActor) null else employees.singleOrNull { witness ->
-                witness.actorId == requirement.originalActorId && witness.belongsTo(original) &&
-                    witness.authority == AuthorityIdentity(original.material.coordinates.assignmentId,
-                        original.peer.deviceId, original.receipt.core.authorityEpoch) &&
-                    witness.receiptDigest == original.receipt.digest && witness.firstActorId == original.material.coordinates.firstActorId &&
-                    witness.installationId == catalogue.binding.installationId && witness.scope == requirement.scope &&
-                    witness.deviceId == requirement.clientDeviceId
-            }
-            check(receipt.binding.owner == catalogue.binding && (foundingActor || employee != null) &&
-                requirement.scope == original.peer.scope && requirement.masterDeviceId == original.peer.deviceId &&
-                requirement.clientDeviceId == original.peer.deviceId &&
-                requirement.masterStorageProfile == catalogue.storageProfile && requirement.clientStorageProfile == catalogue.storageProfile)
-            val domain = localPhysicalDomainOwners(requirement)
-            check((domain.domain === LocalRetailPaymentJournalDomain || domain.domain === LocalRetailRefundJournalDomain ||
-                    domain.domain === LocalFoodCashJournalDomain || domain.domain === LocalSupplierCashJournalDomain) &&
-                domain.authority == AuthorityIdentity(original.material.coordinates.assignmentId,
-                    original.peer.deviceId, original.receipt.core.authorityEpoch) &&
-                domain.master == owners.single { it.role == LocalPhysicalSpoolRole.MASTER } &&
-                domain.client == owners.single { it.role == LocalPhysicalSpoolRole.CLIENT })
-            attempt.unreturnedNativeOwner = true
-            val opened = catalogue.openExisting(id, domain.domain)
-            if (opened !is LocalPhysicalJournalOpen.Opened) {
-                if (opened !== LocalPhysicalJournalOpen.Held) attempt.unreturnedNativeOwner = false
-                error("physical.original.journal")
-            }
-            attempt.journals.add(opened.journal)
-            attempt.unreturnedNativeOwner = false
-            val snapshot = (opened.journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot
-                ?: error("physical.original.journal_origin")
-            check(opened.journal.receipt.sourceCommitment == receipt.sourceCommitment && snapshot.receipt.sourceCommitment == receipt.sourceCommitment)
-            // A readable ALLOCATED/Started cell without an observation is still exactly that
-            // retained state. It never becomes NOT_PAID, unused return rights or another instruction.
-            check(opened.journal.close() == LocalPhysicalSpoolClose.CLOSED) { "physical.original.journal_close" }
-            check(attempt.journals.remove(opened.journal))
-            receipts.add(receipt)
-        }
-        check(receipts.size == selectors.size)
-        val census = catalogue.nativeFileCensus()
-        val role = roleDirectory(catalogue.binding)
+    /** The authenticated catalogue's own census; filesystem names never supply a receipt. */
+    override fun requireCensus(owner: LocalPhysicalCatalogueBinding, census: LocalPhysicalCatalogueNativeCensus) {
+        val role = roleDirectory(owner)
         requireEntries(File(role, "anchor"), census.anchorFilenames)
         requireEntries(File(role, "catalogue"), census.catalogueFilenames)
         for (index in 0 until LocalPhysicalJournalFormatV1.CATALOGUE_ENTRIES) {
             requireEntries(File(role, slotName(index)), census.journalFilenames[index] ?: emptySet())
         }
-        if (enroll) check(receipts.isEmpty())
-        requireCurrent()
-        return receipts
     }
 
     private fun roleDirectory(owner: LocalPhysicalCatalogueBinding): File {
@@ -294,7 +147,7 @@ private class OriginalAndroidPhysicalNamespace(
         return File(File(File(File(parent, composition.journalDirectoryName), owner.installationId.value), owner.catalogueId.value), owner.role.name.lowercase())
     }
 
-    private fun requireCurrent() {
+    override fun requireCurrent() {
         check(!closing && !Thread.currentThread().isInterrupted && Build.VERSION.SDK_INT >= AndroidNativeKeyPolicy.MINIMUM_ANDROID_API &&
             Process.myUid() == uid && Process.myPid() == pid && uid == application.applicationInfo.uid &&
             application.applicationContext === application && !application.isDeviceProtectedStorage &&
@@ -362,10 +215,10 @@ private class OriginalAndroidPhysicalNamespace(
 
 private fun slotName(index: Int): String = "slot-${index.toString().padStart(3, '0')}"
 
-private enum class OriginalPhysicalDirectoryRole { APP_DATA, FRAMEWORK_NO_BACKUP, PRIVATE }
+internal enum class OriginalPhysicalDirectoryRole { APP_DATA, FRAMEWORK_NO_BACKUP, PRIVATE }
 
 /** No borrowed stream, close retry or descriptor replacement. */
-private class OriginalPhysicalDirectory(private val path: File, private val role: OriginalPhysicalDirectoryRole) {
+internal class OriginalPhysicalDirectory(private val path: File, private val role: OriginalPhysicalDirectoryRole) {
     private var descriptor: FileDescriptor? = null
     private var stamp: OriginalPhysicalDirectoryStamp? = null
     private var closing = false
@@ -408,7 +261,7 @@ private class OriginalPhysicalDirectory(private val path: File, private val role
     }
 }
 
-private data class OriginalPhysicalDirectoryStamp(val device: Long, val inode: Long, val uid: Int, val gid: Int, val mode: Int) {
+internal data class OriginalPhysicalDirectoryStamp(val device: Long, val inode: Long, val uid: Int, val gid: Int, val mode: Int) {
     fun require(role: OriginalPhysicalDirectoryRole, actualUid: Int) {
         check(OsConstants.S_ISDIR(mode) && uid == actualUid)
         when (role) {

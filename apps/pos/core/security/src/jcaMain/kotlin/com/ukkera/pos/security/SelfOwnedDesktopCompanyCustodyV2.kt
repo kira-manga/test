@@ -7,7 +7,7 @@ import com.ukkera.pos.types.DomainId
  * Android V1 registry ledgers, original-root endorsements and installer authentication step for
  * step, with only the at-rest custody changed:
  *
- * - each of the four ledgers is the shared record grammar inside the closed V2 ledger frame, sealed
+ * - each ledger is the shared record grammar inside the closed V2 ledger frame, sealed
  *   by the V2 registry key with its own ledger AAD (embedding the complete company-registry AAD)
  *   and signed by the issuer over `registrySignature(aad, nonce, ciphertext)`; the signature is
  *   verified BEFORE decryption, the plaintext must be canonical and every record is validated
@@ -22,8 +22,9 @@ import com.ukkera.pos.types.DomainId
  * - head approvals come only from [SelfOwnedDesktopCompanyHeadV2] (durable throttle, verified boot
  *   ledger, revocation serialized with commit).
  *
- * Business publications and serial custody have no desktop ledger: [readBusinessPublications] is
- * null and the business workflow stays refused on desktop.
+ * Business publications use the unchanged shared record and endorsement grammar. Serial authority
+ * adds the mandatory company-container marker before its companion ledger cut, with exact-cut
+ * recovery only; an unresolved signing intent never regenerates a key or output.
  */
 internal class SelfOwnedDesktopCompanyCustodyV2(
     private val environment: SelfOwnedOriginalEnvironment,
@@ -40,53 +41,186 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
     override fun companyOriginal(): SelfOwnedCompanyBootstrapView? = registry.companyBootstrapRecordV2()?.let { SelfOwnedCompanyBootstrapView.of(it) }
     override fun companyState(): SelfOwnedCompanyStateView? = head.readState()?.let { SelfOwnedCompanyStateView.of(it) }
     override fun rootFingerprint(): String = JvmP256Primitives.rootFingerprint(keys.rootBody())
-    override fun readBusinessPublications(): NativeCompanyBusinessPublicationStateV1? = null
+
+
+    // Exact same-owner authenticated envelope identity for actual history read-close/reobserve.
+    private var businessIdentity: Pair<SelfOwnedOctetsV1, NativeCompanyBusinessPublicationStateV1>? = null
+
+    override fun readBusinessPublications(): NativeCompanyBusinessPublicationStateV1? {
+        val company = head.readState() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+        val source = readBusinessPublicationsSource()
+        val custody = company.serialCustody
+        if (custody == null) known(source?.records.orEmpty().none { it.kind.isOriginalSerialKindV1() })
+        else try { custody.requireSettledSource(source) } catch (_: IllegalArgumentException) { uncertain() }
+        return source
+    }
+
+    private fun readBusinessPublicationsSource(): NativeCompanyBusinessPublicationStateV1? {
+        val state = readLedger(SelfOwnedBusinessPublicationLedgerV2, NativeCompanyBusinessPublicationWireV1::decode,
+            NativeCompanyBusinessPublicationWireV1::encode, ::validateBusinessPublications) { bytes, value ->
+            val previous = businessIdentity
+            if (previous != null && previous.first.same(bytes)) {
+                known(previous.second == value)
+                previous.second
+            } else value.also { businessIdentity = SelfOwnedOctetsV1(bytes) to it }
+        }
+        if (state == null) businessIdentity = null
+        return state
+    }
+
+    override fun retainBusinessPublications(next: NativeCompanyBusinessPublicationStateV1): NativeCompanyBusinessPublicationStateV1 {
+        val company = head.readState() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+        val previous = readBusinessPublications()
+        NativeCompanyBusinessPublicationWireV1.validateTransition(previous, next)
+        validateBusinessPublications(next, requireCompany())
+        val beforeIds = previous?.records.orEmpty().flatMap { it.reservedIdentityIdsV1() }.toSet()
+        val newIds = next.records.flatMap { it.reservedIdentityIdsV1() }.filterNot { it in beforeIds }
+        requireNoNewPairingIdentityCollisions(newIds)
+        requireNoNewPolicyIdentityCollisions(newIds)
+        requireNoNewDeviceAdmissionIdentityCollisions(newIds)
+        val employees = readEmployeeEnrollments()?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
+        if (newIds.any { it in employees }) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
+        // Reserve all completion bytes BEFORE retaining the permanent mandatory marker.
+        val plaintext = NativeCompanyBusinessPublicationWireV1.encodeWithCompletionCapacity(next)
+        try {
+            val changed = next.records.filter { it.kind.isOriginalSerialKindV1() && it !in previous?.records.orEmpty() }
+            known(changed.size <= 1)
+            val intent = changed.singleOrNull()?.let {
+                val pending = try { company.serialCustody?.beginNext(previous, next, it)
+                    ?: NativeCompanySerialAuthorityCustodyV1.firstIntent(previous, next, it) }
+                catch (_: IllegalArgumentException) { uncertain() }
+                head.retainSerialCustody(company, pending).serialCustody ?: uncertain()
+            }
+            replaceLedger(SelfOwnedBusinessPublicationLedgerV2, plaintext)
+            if (intent != null) {
+                val actual = readBusinessPublicationsSource() ?: uncertain()
+                val current = head.readState() ?: uncertain()
+                known(actual == next && current.serialCustody == intent)
+                val settled = try { intent.settleActualNext(actual) } catch (_: IllegalArgumentException) { uncertain() }
+                head.retainSerialCustody(current, settled)
+            }
+        } finally { plaintext.fill(0) }
+        return (readBusinessPublications() ?: uncertain()).also { known(it == next) }
+    }
+
+    override fun readOriginalSerialCustody(): OriginalLocalSerialCustodyReferenceV1 =
+        head.readState()?.serialCustody?.reference() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+
+    override fun recoverOriginalSerialCustody(id: DomainId): OriginalLocalSerialCustodyReferenceV1 {
+        val state = head.readState() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+        val custody = state.serialCustody ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+        val pending = custody.intent
+        if (pending == null) {
+            val source = readBusinessPublications() ?: uncertain()
+            known(source.records.any { it.kind.isOriginalSerialKindV1() && it.originalActionId == id })
+            return custody.reference()
+        }
+        if (pending.originalActionId != id) selfOwnedFail(SelfOwnedInstallationFailureV1.ORIGINAL_ACTION_REQUIRED)
+        val source = readBusinessPublicationsSource() ?: uncertain()
+        val settled = try { custody.settleActualNext(source) } catch (_: IllegalArgumentException) { uncertain() }
+        val retained = head.retainSerialCustody(state, settled).serialCustody ?: uncertain()
+        readBusinessPublications() ?: uncertain()
+        return retained.reference()
+    }
+
+    private fun validateBusinessPublications(value: NativeCompanyBusinessPublicationStateV1, original: LocalCompanyAuthorityBootstrapV2) {
+        val company = CompanyScope(original.original.organizationId, original.original.companyId)
+        val state = head.readState() ?: uncertain()
+        val reserved = SelfOwnedDesktopCompanyPolicyPublicationV2.reservedIds(original, state)
+        known(value.records.all { it.company == company && it.originalActionId !in reserved && it.keyId !in reserved &&
+            it.originalActionId != it.keyId && it.originalActionId != it.publicationId && it.keyId != it.publicationId })
+        val ids = value.records.flatMap { listOf(it.originalActionId, it.keyId) }
+        known(ids.distinct().size == ids.size)
+        value.records.filter { it.phase == CompanyBusinessPublicationPhase.COMPLETED }.forEach(::verifyBusinessPublication)
+    }
+
+    override fun authenticateBusinessPublication(id: DomainId, digest: PayloadDigest, login: String, secret: CharArray,
+        deadline: Long): SelfOwnedCompanyHeadApproval = SelfOwnedCompanyHeadApproval.DesktopV2(
+        head.authenticate(SelfOwnedDesktopHeadCeremonyV2.BUSINESS_PUBLICATION, id, digest, login, secret, deadline))
+    override fun requireBusinessPublicationStillCurrent(approval: SelfOwnedCompanyHeadApproval, state: SelfOwnedCompanyStateView,
+        id: DomainId, digest: PayloadDigest) = head.requireStillCurrent(desktop(approval), v2(state),
+            SelfOwnedDesktopHeadCeremonyV2.BUSINESS_PUBLICATION, id, digest)
+
+    override fun signBusinessPublicationEndorsement(record: NativeCompanyBusinessPublicationRecordV1,
+        approval: SelfOwnedCompanyHeadApproval): ByteArray {
+        val original = requireOriginalForKey()
+        val retained = readBusinessPublications()?.records?.singleOrNull { it.originalActionId == record.originalActionId }
+        val approved = record.head ?: keyFailure()
+        if (retained != record || record.phase != CompanyBusinessPublicationPhase.SIGNING_INTENT ||
+            approved.accountRevision != approval.accountRevision || approved.credentialRevision != approval.credentialRevision ||
+            approved.boot != approval.boot || approved.expiresElapsedMillis != approval.expires) keyFailure()
+        val action = NativeCompanyBusinessPublicationWireV1.actionMessage(record, original)
+        val digest = try { sha256(action) } finally { action.fill(0) }
+        val current = {
+            requireBusinessPublicationStillCurrent(approval, companyState() ?: keyFailure(), record.originalActionId, digest)
+            if (readBusinessPublications()?.records?.singleOrNull { it.originalActionId == record.originalActionId } != record) keyFailure()
+        }
+        current()
+        return signRoot(NativeCompanyBusinessPublicationWireV1.endorsementMessage(record, original), current)
+    }
+    override fun verifyBusinessPublication(record: NativeCompanyBusinessPublicationRecordV1) {
+        if (record.phase != CompanyBusinessPublicationPhase.COMPLETED || record.rootEndorsement.size != 64) keyFailure()
+        val original = requireOriginalForKey()
+        if (record.company != CompanyScope(original.original.organizationId, original.original.companyId)) keyFailure()
+        verifyRoot(NativeCompanyBusinessPublicationWireV1.endorsementMessage(record, original), record.rootEndorsement)
+        val point = record.publicKey.copyBytes(); val content = record.content.copyBytes(); val signature = record.contentSignature.copyBytes()
+        try { if (!nativeBusinessPublicationVerifyEd25519(point, content, signature)) keyFailure() }
+        finally { point.fill(0); content.fill(0); signature.fill(0) }
+    }
 
     // ---- Ledger custody -------------------------------------------------------------------------
 
     private fun requireCompany(): LocalCompanyAuthorityBootstrapV2 =
         registry.companyBootstrapRecordV2() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.HEAD_ENROLLMENT_REQUIRED)
 
-    private fun <T> readLedger(kind: SelfOwnedCompanyLedgerKindV2, decode: (ByteArray) -> T, encode: (T) -> ByteArray,
-        validate: (T, LocalCompanyAuthorityBootstrapV2) -> Unit): T? {
+    private fun <T> readLedger(kind: SelfOwnedCompanyLedgerDefinitionV2, decode: (ByteArray) -> T, encode: (T) -> ByteArray,
+        validate: (T, LocalCompanyAuthorityBootstrapV2) -> Unit, observed: (ByteArray, T) -> T = { _, state -> state }): T? {
         assertContinuity()
         val company = requireCompany()
         companyState() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
-        val stored = registry.companyLedgerEnvelopeBytes(kind) ?: return null
-        val envelope = try {
-            when (val decoded = SelfOwnedNativeCompanyLedgerWireV2.decodeEnvelope(stored)) {
+        val stored = when (kind) {
+            is SelfOwnedCompanyLedgerKindV2 -> registry.companyLedgerEnvelopeBytes(kind)
+            SelfOwnedBusinessPublicationLedgerV2 -> registry.businessPublicationEnvelopeBytes()
+        } ?: return null
+        try {
+            val envelope = when (val decoded = SelfOwnedNativeCompanyLedgerWireV2.decodeEnvelope(stored)) {
                 is SelfOwnedInstalledIdentityResultV2.Data -> decoded.value
                 is SelfOwnedInstalledIdentityResultV2.Refused -> uncertain()
             }
-        } finally { stored.fill(0) }
-        val aad = SelfOwnedNativeCompanyLedgerWireV2.aad(kind, company)
-        try {
-            SelfOwnedProvisionerRegistryV2.requireIssuerSignature(keys, aad, envelope)
-            val framed = keys.openRegistryV2(aad, envelope)
+            val aad = SelfOwnedNativeCompanyLedgerWireV2.aad(kind, company)
             try {
-                val records = when (val decoded = SelfOwnedNativeCompanyLedgerWireV2.decodeLedger(kind, framed)) {
-                    is SelfOwnedInstalledIdentityResultV2.Data -> decoded.value
-                    is SelfOwnedInstalledIdentityResultV2.Refused -> uncertain()
-                }
+                SelfOwnedProvisionerRegistryV2.requireIssuerSignature(keys, aad, envelope)
+                val framed = keys.openRegistryV2(aad, envelope)
                 try {
-                    val state = try { decode(records) } catch (_: IllegalArgumentException) { uncertain() }
-                    val canonical = encode(state)
-                    try { known(canonical.contentEquals(records)) } finally { canonical.fill(0) }
-                    validate(state, company); assertContinuity()
-                    return state
-                } finally { records.fill(0) }
-            } finally { framed.fill(0) }
-        } finally { aad.fill(0); envelope.clear() }
+                    val records = when (val decoded = SelfOwnedNativeCompanyLedgerWireV2.decodeLedger(kind, framed)) {
+                        is SelfOwnedInstalledIdentityResultV2.Data -> decoded.value
+                        is SelfOwnedInstalledIdentityResultV2.Refused -> uncertain()
+                    }
+                    try {
+                        val state = try { decode(records) } catch (_: IllegalArgumentException) { uncertain() }
+                        val canonical = encode(state)
+                        try { known(canonical.contentEquals(records)) } finally { canonical.fill(0) }
+                        validate(state, company); assertContinuity()
+                        return observed(stored, state)
+                    } finally { records.fill(0) }
+                } finally { framed.fill(0) }
+            } finally { aad.fill(0); envelope.clear() }
+        } finally { stored.fill(0) }
     }
 
     /** Seals the exact (capacity-checked) record grammar [plaintext] as the [kind] ledger. */
-    private fun replaceLedger(kind: SelfOwnedCompanyLedgerKindV2, plaintext: ByteArray) {
+    private fun replaceLedger(kind: SelfOwnedCompanyLedgerDefinitionV2, plaintext: ByteArray) {
         val company = requireCompany()
         val framed = try { SelfOwnedNativeCompanyLedgerWireV2.encodeLedger(kind, plaintext) } finally { plaintext.fill(0) }
         val aad = SelfOwnedNativeCompanyLedgerWireV2.aad(kind, company)
         val envelope = try { keys.sealRegistryV2(aad, framed) } finally { framed.fill(0); aad.fill(0) }
         val bytes = try { SelfOwnedNativeCompanyLedgerWireV2.encodeEnvelope(envelope) } finally { envelope.clear() }
-        try { registry.replaceCompanyLedgerEnvelope(kind, bytes) } finally { bytes.fill(0) }
+        try {
+            when (kind) {
+                is SelfOwnedCompanyLedgerKindV2 -> registry.replaceCompanyLedgerEnvelope(kind, bytes)
+                SelfOwnedBusinessPublicationLedgerV2 -> registry.replaceBusinessPublicationEnvelope(bytes)
+            }
+        } finally { bytes.fill(0) }
     }
 
     override fun readEmployeeEnrollments(): NativeEmployeeEnrollmentStateV1? = readLedger(SelfOwnedCompanyLedgerKindV2.EMPLOYEE_ENROLLMENTS,
@@ -100,6 +234,7 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
         val existingActions = previous?.records.orEmpty().map { it.originalActionId }.toSet()
         requireNoNewPairingIdentityCollisions(next.records.filter { it.originalActionId !in existingActions }.flatMap { it.nativeIds() })
         val previousIds = previous?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
+        requireNoNewBusinessIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         requireNoNewPolicyIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         requireNoNewDeviceAdmissionIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         replaceLedger(SelfOwnedCompanyLedgerKindV2.EMPLOYEE_ENROLLMENTS, NativeEmployeeEnrollmentWireV1.encodeWithCompletionCapacity(next))
@@ -118,6 +253,7 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
         val existingActions = previous?.records.orEmpty().map { it.originalActionId }.toSet()
         requireNoNewPairingIdentityCollisions(next.records.filter { it.originalActionId !in existingActions }.flatMap { it.nativeIds() })
         val previousIds = previous?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
+        requireNoNewBusinessIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         requireNoNewDeviceAdmissionIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         replaceLedger(SelfOwnedCompanyLedgerKindV2.EMPLOYEE_POLICY_ACTIVATIONS,
             NativeEmployeePolicyActivationWireV1.encodeWithCompletionCapacity(next))
@@ -133,6 +269,7 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
         NativeDevicePairingWireV1.validateTransition(previous, next)
         validateDevicePairings(next, company)
         val previousIds = previous?.records.orEmpty().flatMap { it.nativeIds() }.toSet()
+        requireNoNewBusinessIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         requireNoNewPolicyIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         requireNoNewDeviceAdmissionIdentityCollisions(next.records.flatMap { it.nativeIds() }.filterNot { it in previousIds })
         replaceLedger(SelfOwnedCompanyLedgerKindV2.DEVICE_PAIRINGS, NativeDevicePairingWireV1.encodeWithCompletionCapacity(next))
@@ -150,6 +287,7 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
         val previous = readDeviceAdmissions()
         NativeDeviceAdmissionWireV1.validateTransition(previous, next)
         validateDeviceAdmissions(next, company)
+        requireNoNewBusinessIdentityCollisions(next.records.map { it.dispatchId }.filterNot { id -> previous?.records.orEmpty().any { it.dispatchId == id } })
         NativeDeviceAdmissionWireV1.requireCompletionCapacity(next, 4096,
             next.records.maxOf { it.pairing.body.requested().retainedAdmissions.size })
         replaceLedger(SelfOwnedCompanyLedgerKindV2.DEVICE_ADMISSIONS, NativeDeviceAdmissionWireV1.encode(next))
@@ -158,6 +296,11 @@ internal class SelfOwnedDesktopCompanyCustodyV2(
 
     override fun deviceAdmissionReservedIdentityIds(): Set<DomainId> =
         readDeviceAdmissions()?.records.orEmpty().map { it.dispatchId }.toSet()
+
+    private fun requireNoNewBusinessIdentityCollisions(ids: List<DomainId>) {
+        val reserved = readBusinessPublications()?.records.orEmpty().flatMap { it.reservedIdentityIdsV1() }.toSet()
+        if (ids.any { it in reserved }) selfOwnedFail(SelfOwnedInstallationFailureV1.CONFLICT)
+    }
 
     private fun requireNoNewPairingIdentityCollisions(ids: List<DomainId>) {
         val reserved = devicePairingReservedIdentityIds()

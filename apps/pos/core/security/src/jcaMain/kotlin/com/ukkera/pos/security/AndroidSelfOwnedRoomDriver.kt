@@ -73,6 +73,25 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
         frame = null; frameInvocation = null
     }
     internal fun requireAttached(value: SelfOwnedNativeRoomFrame) { check(frame === value && ready && !closed) }
+    /**
+     * Native-only consistent copy between frames: `VACUUM INTO` a new private file on the SAME
+     * owned connection (no second handle, no live-file copy). The destination must not exist.
+     * Returns the copied schema version and Room identity read from the original connection.
+     */
+    internal fun captureBackupInto(destinationPath: String): Pair<Int, String> = coroutines.nativeSql {
+        work.requireActive(); check(ready && !closed && frame == null)
+        val destination = File(destinationPath)
+        check(destination.isAbsolute && !destination.exists() && destination.parentFile?.isDirectory == true &&
+            destination.canonicalPath != File(databasePath).canonicalPath)
+        val actual = checkNotNull(connection)
+        actual.requireNoLiveSteppedStatements()
+        val version = actual.scalarLong("PRAGMA main.user_version").toInt()
+        val identity = actual.scalarText("SELECT identity_hash FROM room_master_table WHERE id=42")
+        actual.vacuumInto(destinationPath)
+        actual.requireNoLiveSteppedStatements()
+        actual.requireCaptureSpool()
+        version to identity
+    }
     internal fun closeNative() {
         if (closed) return
         coroutines.requireActualClose()
@@ -137,6 +156,7 @@ public class AndroidSelfOwnedRoomDriver internal constructor(
         fun scalarText(sql: String): String = prepare(sql).use { check(it.step()); it.getText(0) }
         fun scalarLong(sql: String): Long = prepare(sql).use { check(it.step()); it.getLong(0) }
         private fun execute(sql: String) { prepare(sql).use { check(!it.step()) } }
+        fun vacuumInto(path: String) { prepare("VACUUM main INTO ?").use { it.bindText(1, path); check(!it.step()) } }
         fun installCaptureSpool() {
             for (objectSql in NativeHistoryOwnedSqlV2.captureObjects.values) objectSql.sql?.let(::execute)
             requireCaptureSpool()

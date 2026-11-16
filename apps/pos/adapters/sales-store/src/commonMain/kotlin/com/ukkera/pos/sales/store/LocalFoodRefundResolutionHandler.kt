@@ -7,7 +7,7 @@ import com.ukkera.pos.security.SecurityAction
 import com.ukkera.pos.security.sha256
 import com.ukkera.pos.types.*
 
-/** Current same-paying-actor retain-only UNKNOWN resolver at Start's fixed operation ID. */
+/** Current independently authorized retain-only UNKNOWN resolver at Start's fixed operation ID. */
 internal suspend fun prepareFoodRefundResolution(request: LocalFoodRefundRequest.RecordResolution,
     normalized: StoredBytes, view: CommandReadView, context: CommandContext,
     stock: LocalStockRepository): PreparedMutation {
@@ -17,7 +17,7 @@ internal suspend fun prepareFoodRefundResolution(request: LocalFoodRefundRequest
         return foodRefundUnavailablePreparation(context, DomainId(request.target.recordingOperationId.value))
     val parent = readFoodRefundRaw(view, request.target.recordingOperationId, stock)
     val slot = parent.slot.value
-    if (slot.target != request.target || slot.originalActorId != context.originalActorId) return foodRefundUnavailablePreparation(context, parent.slot.stored.key.id)
+    if (slot.target != request.target) return foodRefundUnavailablePreparation(context, parent.slot.stored.key.id)
     val requirement = slot.requirement()
     check(request.originalBodyDigest == parent.raw.value.bodyDigest &&
         LocalFoodRefundCashJournalDomain.classifyOriginal(requirement, parent.raw.value.body()) == LocalPhysicalOriginalKind.UNKNOWN)

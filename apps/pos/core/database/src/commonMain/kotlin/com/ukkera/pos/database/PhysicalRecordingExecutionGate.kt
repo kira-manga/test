@@ -98,7 +98,13 @@ public class PhysicalRecordingAdmission(
 /** Owned by the store. Stop/retirement is denying and cannot be reversed by a native adapter. */
 internal class PhysicalRecordingServiceLatch(private val instructions: PhysicalInstructionPublicationRegistry? = null) {
     private val denied = MutableStateFlow(false)
-    fun deny() { instructions?.denyService(); denied.value = true }
+    fun deny() {
+        val previouslyDenied = denied.value
+        instructions?.denyService()
+        denied.value = true
+        if (!previouslyDenied) try { reportPhysicalRecordingFailure(IllegalStateException()) }
+            catch (_: Throwable) { /* Observation cannot change the completed denial. */ }
+    }
     fun current(): Boolean = !denied.value
 }
 

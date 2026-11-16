@@ -12,6 +12,9 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -226,6 +229,7 @@ public class AndroidSelfOwnedMasterService private constructor(
     public val mode: StateFlow<LocalMasterLifecycleMode> = life.asStateFlow()
     private val lifecycleGate=Any()
     private val installationSlot=Semaphore(1)
+    private val rpcTrustReadQueue = Semaphore(128)
     private val installation=AtomicReference<Job?>(null)
     private val closing=AtomicReference<CompletableDeferred<Boolean>?>(null)
     private var roomOwner: RoomRuntimeHistoryOwner?=null
@@ -526,13 +530,24 @@ public class AndroidSelfOwnedMasterService private constructor(
             if (busy) SelfOwnedInstallationFailureV1.BUSY else SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     private suspend fun sameDevicePairingBridge(original: AndroidOriginalLocalClient): RoomSelfOwnedDevicePairings {
         check(ownsOriginalClient(original) && original.belongsToOwner(ownerToken))
-        val native = LocalCompanyDevicePairings.acquireOriginal(custody)
-        check(native is LocalCompanyAuthorityResult.Value && native.value.belongsTo(custody))
-        check(ownsOriginalClient(original))
         val owner = checkNotNull(roomOwner)
         check(owner.operational && owner.originalScope == original.peer.scope)
-        devicePairingBridge?.let { check(it.native === native.value); return it }
-        return RoomSelfOwnedDevicePairings(owner, custody, native.value).also { devicePairingBridge = it }
+        devicePairingBridge?.let {
+            check(it.belongsTo(owner, custody) && ownsOriginalClient(original))
+            return it
+        }
+        // Acquiring this exact original handle performs native IO. The service's
+        // installation slot does not exclude business Room work, so acquisition must
+        // join the same owner loan before entering the native worker. Later reads use
+        // the retained handle but still reread the complete protected census/receipts
+        // under RoomLocalMasterRpcTrust's own settled loan for every request.
+        return owner.serialPublicationLoan {
+            check(ownsOriginalClient(original) && owner === roomOwner)
+            val native = LocalCompanyDevicePairings.acquireOriginal(custody)
+            check(native is LocalCompanyAuthorityResult.Value && native.value.belongsTo(custody))
+            check(ownsOriginalClient(original) && owner === roomOwner)
+            RoomSelfOwnedDevicePairings(owner, custody, native.value).also { devicePairingBridge = it }
+        }
     }
     private abstract inner class DevicePairingWork<T>(final override val original: AndroidOriginalLocalClient):
         EmployeeWork<LocalCompanyAuthorityResult<T>> {
@@ -619,33 +634,65 @@ public class AndroidSelfOwnedMasterService private constructor(
         private fun requireCurrent() {
             check(ownsOriginalClient(original) && (hostRegistration == null || ownsRpcHostRegistration(hostRegistration)))
         }
-        override suspend fun readCurrent(exactAppId: AppId, expected: Set<PeerFingerprint>?): Set<PeerFingerprint> {
-            currentCoroutineContext().ensureActive()
+        override val hostClientInvalidations: Flow<Unit> get() = flow {
             requireCurrent()
-            check(installationSlot.tryAcquire())
-            // The service retains this actual worker and its slot. SDK cancellation only
-            // abandons the reply; it cannot release the writer or race native service close.
-            val result = launchEmployeeOwned(RpcHostTrustReadWork(original, exactAppId, expected, hostRegistration), awaitActualWork = true)
-            currentCoroutineContext().ensureActive()
-            requireCurrent()
-            return when (result) {
-                is LocalCompanyAuthorityResult.Value -> result.value
-                is LocalCompanyAuthorityResult.Unavailable -> protectedLocalUnavailable()
+            val owner = checkNotNull(roomOwner)
+            check(owner.operational && owner.originalCustody === custody)
+            owner.admissionInvalidations.collect {
+                requireCurrent()
+                check(roomOwner === owner && owner.operational)
+                emit(Unit)
             }
         }
-        override suspend fun readPeerAssociation(exactAppId: AppId, peer: PeerIdentity): LocalMasterRpcPeerAssociation? {
+        override suspend fun readCurrent(exactAppId: AppId, expected: Set<PeerFingerprint>?): Set<PeerFingerprint> =
+            readOwned { RpcHostTrustReadWork(original, exactAppId, expected, hostRegistration) }
+
+        override suspend fun readPeerAssociation(exactAppId: AppId, peer: PeerIdentity): LocalMasterRpcPeerAssociation? =
+            readOwned { RpcHostPeerAssociationReadWork(original, exactAppId, peer, hostRegistration) }
+                .also { check(it == null || it.isCurrent()) }
+
+        private suspend fun <T> readOwned(prepare: () -> DevicePairingWork<T>): T {
             currentCoroutineContext().ensureActive()
             requireCurrent()
-            check(installationSlot.tryAcquire())
-            val result = launchEmployeeOwned(RpcHostPeerAssociationReadWork(original, exactAppId, peer, hostRegistration), awaitActualWork = true)
-            currentCoroutineContext().ensureActive()
-            requireCurrent()
-            return when (result) {
-                is LocalCompanyAuthorityResult.Value -> result.value.also { check(it == null || it.isCurrent()) }
-                is LocalCompanyAuthorityResult.Unavailable -> protectedLocalUnavailable()
+            if (!rpcTrustReadQueue.tryAcquire()) protectedLocalUnavailable()
+            var slotOwned = false
+            var submitted = false
+            try {
+                // Read-only wait precedes native admission, owns no native work, and cannot
+                // extend a running worker's watchdog. Admission/admin work uses this SAME
+                // service slot; transient contention is not evidence of a withdrawn peer.
+                val admitted = withTimeoutOrNull(30_000L) {
+                    installationSlot.acquire()
+                    slotOwned = true
+                    true
+                }
+                if (admitted != true) protectedLocalUnavailable()
+                currentCoroutineContext().ensureActive()
+                requireCurrent()
+                // The predecessor releases this slot in its finally, just before its Job
+                // becomes completed. Join that actual worker outside lifecycle/native gates;
+                // otherwise a newly admitted read can be spuriously refused as BUSY in that
+                // completion gap. Holding the released slot excludes another successor.
+                synchronized(lifecycleGate) { installation.get() }?.join()
+                currentCoroutineContext().ensureActive()
+                requireCurrent()
+                val task = prepare()
+                submitted = true
+                // Accepted work and its slot survive SDK cancellation until real settlement.
+                val result = launchEmployeeOwned(task, awaitActualWork = true)
+                currentCoroutineContext().ensureActive()
+                requireCurrent()
+                return when (result) {
+                    is LocalCompanyAuthorityResult.Value -> result.value
+                    is LocalCompanyAuthorityResult.Unavailable -> protectedLocalUnavailable()
+                }
+            } finally {
+                if (slotOwned && !submitted) installationSlot.release()
+                rpcTrustReadQueue.release()
             }
         }
     }
+
     private inner class RpcHostTrustReadWork(original: AndroidOriginalLocalClient, val exactAppId: AppId,
         val expected: Set<PeerFingerprint>?, val hostRegistration: AndroidOriginalRpcHostRegistration? = null):
         DevicePairingWork<Set<PeerFingerprint>>(original) {
@@ -817,7 +864,10 @@ public class AndroidSelfOwnedMasterService private constructor(
                 if (installation.get()?.isCompleted == false) return task.busy()
                 scope.launch(start = CoroutineStart.LAZY) {
                     try { response.complete(task.perform()) }
-                    catch (_: Throwable) { response.complete(task.unavailable()) }
+                    catch (failure: Throwable) {
+                        reportMasterFailure(platform.diagnostics, "Original master native work refused", failure)
+                        response.complete(task.unavailable())
+                    }
                     finally { try { task.clearInput() } finally { installationSlot.release() } }
                 }.also { installation.set(it); launched = true }
             }
@@ -1185,6 +1235,29 @@ public class AndroidSelfOwnedMasterService private constructor(
         }
     }
 
+    /**
+     * Consistent full-state copy of the OPERATIONAL Master database into [destinationPath] (an
+     * absolute, not-yet-existing file in the Master's own owner-only capture directory). Runs in
+     * the installation slot, serialized with every writer loan under native exclusion; returns
+     * DATA only (no authority). Null when the Master is not operational, closing or busy.
+     */
+    public suspend fun captureFullStateSnapshot(destinationPath: String): LocalMasterStateCapture? {
+        currentCoroutineContext().ensureActive()
+        if (life.value != LocalMasterLifecycleMode.OPERATIONAL || closing.get() != null) return null
+        if (!installationSlot.tryAcquire()) return null
+        try {
+            if (life.value != LocalMasterLifecycleMode.OPERATIONAL || closing.get() != null) return null
+            val owner = roomOwner ?: return null
+            val coordinates = originalMaterial.coordinates
+            if (!owner.operational || !sameCoordinates(coordinates, owner.originalRecord.record.allocation.coordinates)) return null
+            val capture = owner.captureBackupSnapshot(destinationPath)
+            return LocalMasterStateCapture(coordinates.scope, coordinates.installationId, capture.schemaVersion,
+                capture.roomIdentityHash, capture.historyGeneration, capture.historyRecordDigest)
+        } finally {
+            installationSlot.release()
+        }
+    }
+
     /** Fresh native binding DATA from the actual Master-owned custody, not its inert context. */
     public suspend fun readOwnedOriginalNativeBinding(): SelfOwnedNativeReadResult {
         currentCoroutineContext().ensureActive()
@@ -1371,17 +1444,7 @@ public class AndroidSelfOwnedMasterService private constructor(
                                 else LocalMasterInstallationOutcome.Unresolved)
                         }
                     } catch(failure: Throwable) {
-                        // Only bounded static source locations. Throwable messages/arguments can
-                        // contain secrets or protected records and must never enter diagnostics.
-                        try {
-                            val locations=failure.stackTrace.filter {
-                                it.className.startsWith("com.ukkera.pos.")
-                            }.take(6).joinToString(" <- ") {
-                                "${it.className}.${it.methodName}:${it.lineNumber}"
-                            }
-                            platform.diagnostics.warn(
-                                "Original installation refused: ${failure.javaClass.simpleName}; $locations")
-                        } catch (_: Throwable) { /* Diagnostics never affect the retained outcome. */ }
+                        reportMasterFailure(platform.diagnostics, "Original installation refused", failure)
                         response.complete(originalInstallationFailure())
                     } finally {
                         ownedHead.fill('\u0000'); ownedPassword.fill('\u0000'); prepared?.clear(); installationSlot.release()
@@ -1587,6 +1650,7 @@ public class AndroidSelfOwnedMasterService private constructor(
                 } finally { installationSlot.release() }
                 life.value=LocalMasterLifecycleMode.CLOSED; completion.complete(true)
             } catch(failure: Throwable) {
+                reportMasterFailure(platform.diagnostics, "Original master close unconfirmed", failure)
                 life.value=LocalMasterLifecycleMode.UNRESOLVED; custody.denyDataUse(); completion.complete(false)
             } finally { watchdog.close(); scope.cancel() }
         }
@@ -1633,7 +1697,10 @@ public class AndroidSelfOwnedMasterService private constructor(
                 currentCoroutineContext().ensureActive()
                 return AndroidSelfOwnedMasterOpenResult.Opened(candidate).also { delivered=true }
             } catch(cancelled: CancellationException) { throw cancelled }
-            catch(failure: Exception) { return AndroidSelfOwnedMasterOpenResult.Unresolved(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
+            catch(failure: Exception) {
+                reportMasterFailure(platform.diagnostics, "Original master open refused", failure)
+                return AndroidSelfOwnedMasterOpenResult.Unresolved(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+            }
             finally {
                 if(!delivered) withContext(NonCancellable) {
                     val actual=service
@@ -1648,4 +1715,16 @@ public class AndroidSelfOwnedMasterService private constructor(
             }
         }
     }
+}
+
+/** Static source locations only: a diagnostic never releases retained custody or changes refusal. */
+private fun reportMasterFailure(diagnostics: SelfOwnedMasterDiagnostics, phase: String, failure: Throwable) {
+    try {
+        val locations = failure.stackTrace.filter {
+            it.className.startsWith("com.ukkera.pos.")
+        }.take(6).joinToString(" <- ") {
+            "${it.className}.${it.methodName}:${it.lineNumber}"
+        }
+        diagnostics.warn("$phase: ${failure.javaClass.simpleName}; $locations")
+    } catch (_: Throwable) { /* No diagnostic failure may change the protected outcome. */ }
 }

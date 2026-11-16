@@ -15,7 +15,6 @@ import com.ukkera.pos.database.AndroidSelfOwnedMasterOpenResult
 import com.ukkera.pos.database.AndroidSelfOwnedMasterService
 import com.ukkera.pos.sales.store.UnavailableSalesPhysicalRecordingCapacityV2
 import com.ukkera.pos.sales.store.UnavailableSalesRecordingCapacity
-import com.ukkera.pos.sales.store.UnavailableSalesReturnPolicy
 import com.ukkera.pos.security.LocalCompanyAuthorityResult
 import com.ukkera.pos.security.LocalCompanyAuthorityFailure
 import com.ukkera.pos.security.LocalCompanyBusinessPublications

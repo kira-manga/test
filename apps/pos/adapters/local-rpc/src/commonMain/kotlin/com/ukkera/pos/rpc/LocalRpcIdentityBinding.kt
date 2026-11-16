@@ -24,6 +24,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 /**
  * Legacy identity-only provenance, never an RPC-body or discovery lookup.
@@ -95,6 +97,9 @@ public class LocalRpcIdentityBinding private constructor(
     private val applicationSession: RpcApplicationSession,
     private val originalRpcPhysicalSession: RpcPhysicalSession?,
     private val originalAssociation: LocalMasterRpcPeerAssociation?,
+    private val resourceLifetime: Duration,
+    private val resourceBegan: TimeMark,
+    private var initialAssociatedContext: RpcAuthenticationContext? = null,
 ) {
     private val gate: Mutex = Mutex()
     private var retired: Boolean = false
@@ -110,6 +115,7 @@ public class LocalRpcIdentityBinding private constructor(
      */
     public suspend fun authorizationScope(peer: PeerIdentity, resource: String): RpcAuthorizationScope? {
         currentCoroutineContext().ensureActive()
+        gate.withLock { initialAssociatedContext = null }
         if (originalRpcPhysicalSession != null) return null
         return withOriginalPrincipal(peer, null) { RpcAuthorizationScope(applicationSession, resource) }
     }
@@ -120,15 +126,62 @@ public class LocalRpcIdentityBinding private constructor(
         resource: String,
     ): RpcAuthorizationScope? {
         currentCoroutineContext().ensureActive()
+        gate.withLock { initialAssociatedContext = null }
         if (originalRpcPhysicalSession == null) return null
         return withOriginalPrincipal(context.peer, context.physicalSession) {
             RpcAuthorizationScope(applicationSession, resource)
         }
     }
 
+    /** One-use metadata immediately after this binding's actual fresh associated
+     * verification. Only the identical owned SDK callback can take it. The Host must
+     * retain it under its captured core epoch and freshly authorize the query before
+     * returning a scope. Invoke, Execute and disclosure retain their fresh checks.
+     * Public/legacy binding routes never receive this candidate. */
+    internal suspend fun takeInitialAssociatedScope(context: RpcAuthenticationContext, resource: String): RpcAuthorizationScope? {
+        currentCoroutineContext().ensureActive()
+        return gate.withLock {
+            val initial = initialAssociatedContext
+            initialAssociatedContext = null
+            if (initial !== context || originalAssociation == null || originalRpcPhysicalSession == null ||
+                context.physicalSession !== originalRpcPhysicalSession || context.peer != originalSdkPeer ||
+                retired || !applicationSession.isActive || !rpcPhysicalCurrent() || !originalPhysicalPeer.isCurrent()) null
+            else RpcAuthorizationScope(applicationSession, resource)
+        }
+    }
+
+    /** Denial-only scheduling DATA. A pooled scope near its original expiry must not
+     * start another request that can outlive it. This neither renews that SDK session
+     * nor authenticates an employee; a successor is freshly verified and core-fenced.
+     * Existing in-flight scopes stay retained until their actual revocation/expiry. */
+    internal suspend fun canAdmitResource(minimumRemaining: Duration): Boolean {
+        currentCoroutineContext().ensureActive()
+        if (!minimumRemaining.isPositive() || !minimumRemaining.isFinite()) return false
+        return gate.withLock {
+            val elapsed = resourceBegan.elapsedNow()
+            !retired && applicationSession.isActive && !elapsed.isNegative() &&
+                elapsed + minimumRemaining < resourceLifetime
+        }
+    }
+
     /** Original immutable metadata only, not a fresh authorization or resource grant. */
     internal fun originalIdentityFor(scope: RpcAuthorizationScope): LocalEmployeePrincipal? =
         originalPrincipal.takeIf { scope.session === applicationSession }
+
+    /** Immutable SDK resource DATA after the protected endpoint has freshly joined the
+     * exact retained original. This performs no employee verification and grants nothing:
+     * the operation and every SDK authorization still require their current protected checks.
+     * Neither an SDK twin nor a different physical callback can borrow this binding. */
+    internal suspend fun retainedOperationScope(context: RpcAuthenticationContext,
+        originalScope: RpcAuthorizationScope, resource: String): RpcAuthorizationScope? {
+        currentCoroutineContext().ensureActive()
+        if (originalRpcPhysicalSession == null || originalScope.session !== applicationSession ||
+            context.physicalSession !== originalRpcPhysicalSession || context.peer != originalSdkPeer) return null
+        return gate.withLock {
+            if (retired || !applicationSession.isActive || !rpcPhysicalCurrent() || !originalPhysicalPeer.isCurrent()) null
+            else RpcAuthorizationScope(applicationSession, resource)
+        }
+    }
 
     /**
      * Reauthenticate the original credentials for this exact owner session and callback peer.
@@ -168,6 +221,44 @@ public class LocalRpcIdentityBinding private constructor(
     }
 
     /**
+     * Original credential DATA for a protected port that freshly authenticates and joins
+     * the exact retained resource identity AFTER its queue wait. This performs no employee
+     * verification and grants no authority. LAN changes and business authorization use it;
+     * their endpoints enforce that original identity plus current operation/disclosure rights.
+     * Other paths retain currentOriginalCredentials and their existing checks.
+     */
+    internal suspend fun retainedCredentialsForProtectedOriginalCheck(
+        context: RpcAuthorizationContext,
+    ): LocalGatewayCredentials? {
+        currentCoroutineContext().ensureActive()
+        if (originalRpcPhysicalSession == null || context.scope.session !== applicationSession ||
+            context.originalPhysicalSession !== originalRpcPhysicalSession ||
+            context.physicalSession !== originalRpcPhysicalSession || context.peer != originalSdkPeer) return null
+        return try {
+            gate.withLock {
+                if (retired || !applicationSession.isActive || !rpcPhysicalCurrent() || !originalPhysicalPeer.isCurrent()) null
+                else LocalGatewayCredentials(originalPhysicalPeer.connectionId, ownedBearer.useBytes(::OpaqueCredential))
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { currentCoroutineContext().ensureActive(); null }
+    }
+
+    /** Handler credential DATA only. The receiving protected port must freshly verify
+     * this exact original after its queue wait; this borrowed copy grants no authority. */
+    internal suspend fun retainedCredentialsForProtectedOriginalCheck(context: RpcCallContext): LocalGatewayCredentials? {
+        currentCoroutineContext().ensureActive()
+        if (originalRpcPhysicalSession == null || context.authorizationScope?.session !== applicationSession ||
+            context.physicalSession !== originalRpcPhysicalSession || context.peer != originalSdkPeer) return null
+        return try {
+            gate.withLock {
+                if (retired || !applicationSession.isActive || !rpcPhysicalCurrent() || !originalPhysicalPeer.isCurrent()) null
+                else LocalGatewayCredentials(originalPhysicalPeer.connectionId, ownedBearer.useBytes(::OpaqueCredential))
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (_: Exception) { currentCoroutineContext().ensureActive(); null }
+    }
+
+    /**
      * Irreversible local retirement and release of the owned bearer, followed by SDK revocation.
      * In-flight verifiers own disposable copies; retirement winning the final check prevents their
      * publication. Physical bindings also await exact SDK teardown; failure remains observable in
@@ -181,13 +272,30 @@ public class LocalRpcIdentityBinding private constructor(
             gate.withLock {
                 if (!retired) {
                     retired = true
+                    initialAssociatedContext = null
                     ownedBearer.destroy()
                 }
             }
             applicationSession.revoke()
-            originalRpcPhysicalSession?.close()
+            originalRpcPhysicalSession?.let { physical ->
+                com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                    com.ukkera.pos.database.LocalMasterRpcReadStage.MASTER_PHYSICAL_LINK_RETIREMENT, Throwable())
+                physical.close()
+            }
         }
         callerContext.ensureActive()
+    }
+
+    /** Reject a private candidate that never escaped an authentication callback. Revoke
+     * its exact SDK application session before releasing the bearer. A refusal here is
+     * not retirement of the separately admitted physical connection shared by other work. */
+    internal suspend fun releaseUnpublishedApplicationSession(): Unit = withContext(NonCancellable) {
+        gate.withLock {
+            retired = true
+            initialAssociatedContext = null
+            ownedBearer.destroy()
+        }
+        applicationSession.revoke()
     }
 
     /** Release a naturally expired/disconnected login without claiming physical teardown.
@@ -196,6 +304,7 @@ public class LocalRpcIdentityBinding private constructor(
         check(originalRpcPhysicalSession?.isConnected == false || !applicationSession.isActive)
         gate.withLock {
             retired = true
+            initialAssociatedContext = null
             ownedBearer.destroy()
         }
         applicationSession.revoke()
@@ -321,7 +430,7 @@ public class LocalRpcIdentityBinding private constructor(
                                 current.association !== original.association || !current.matches(peer) ||
                                 !physical.isConnected) null else current.nativePeer
                         }
-                    }, lifetime, physical, original.association)
+                    }, lifetime, physical, original.association, context)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -338,6 +447,7 @@ public class LocalRpcIdentityBinding private constructor(
             lifetime: Duration,
             rpcPhysicalSession: RpcPhysicalSession?,
             association: LocalMasterRpcPeerAssociation? = null,
+            initialAssociatedContext: RpcAuthenticationContext? = null,
         ): LocalRpcIdentityBinding? {
             var retainedBearer: OpaqueCredential? = null
             var unownedSession: RpcApplicationSession? = null
@@ -374,6 +484,7 @@ public class LocalRpcIdentityBinding private constructor(
                 if (currentPeer == null) return null
                 if (!sameCurrentPhysicalPeer(physicalPeer, currentPeer) || rpcPhysicalSession?.isConnected == false) return null
 
+                val resourceBegan = TimeSource.Monotonic.markNow()
                 val session = RpcApplicationSession(
                     peer = fingerprint,
                     principal = principal.actorId.value,
@@ -387,7 +498,7 @@ public class LocalRpcIdentityBinding private constructor(
 
                 val binding = LocalRpcIdentityBinding(
                     peer, physicalPeer, principal, bearer, principalFactory, provenance, session, rpcPhysicalSession,
-                    association,
+                    association, lifetime, resourceBegan, initialAssociatedContext,
                 )
                 retainedBearer = null
                 unownedSession = null

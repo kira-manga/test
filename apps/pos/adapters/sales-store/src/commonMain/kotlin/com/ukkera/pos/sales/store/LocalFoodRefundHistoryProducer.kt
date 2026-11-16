@@ -20,7 +20,13 @@ public class LocalFoodRefundHistoryProducer : RuntimeHistoryBusinessProducer {
         val original = (command.original as? RetainedOriginalV2.Legacy)?.evidence ?: return false
         check(original.scope == command.scope && original.operationId == command.operationId && original.originalActorId == command.actorId &&
             original.command == command.command && original.semanticDigest == command.semanticDigest && original.recordedAt == command.recordedAt &&
-            LocalFoodRefundCodec.normalize(command.normalized) == command.normalized)
+            normalizeFoodRefundCommand(command.command, command.normalized) == command.normalized)
+        if (command.command == LocalFoodRefundSupervisorCodec.COMMAND) {
+            val selected = foodRefundApplySelection(command.command, command.normalized)
+            if (!original.committed) return applicationRefusal(command, original, selected)
+            return if (selected.phase == LocalFoodRefundFactPhase.ORIGINAL) apply(command, original, selected.factOperationId)
+                else applyResolution(command, original, selected.factOperationId)
+        }
         return when (val request = LocalFoodRefundCodec.decode(command.normalized)) {
             is LocalFoodRefundRequest.StartCash -> start(command, original, request)
             is LocalFoodRefundRequest.RecordOriginal -> raw(command, original, request)
@@ -28,6 +34,21 @@ public class LocalFoodRefundHistoryProducer : RuntimeHistoryBusinessProducer {
             is LocalFoodRefundRequest.ApplyOriginal -> apply(command, original, request.recordingOperationId)
             is LocalFoodRefundRequest.ApplyResolution -> applyResolution(command, original, request.resolutionOperationId)
         }
+    }
+
+    /** Exact early refusal from fully joined native BEFORE facts, never a fabricated
+     * historical read view or a handler invocation. Other reconciliation causes stay held
+     * until their own complete financial/capacity first-refusal proof is available. */
+    private suspend fun applicationRefusal(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
+        selected: FoodRefundApplySelection): Boolean {
+        if (command.authority != RuntimeHistoricalAuthority.EMPLOYEE_COMMAND || !selected.supervised) return false
+        check(!original.committed && original.nativeOriginalProvenance == null && original.aggregateWrites.isEmpty() &&
+            original.claimChanges.isEmpty() && original.jobs.isEmpty())
+        val proof = LocalFoodRefundApplicationFirstRefusal(command).prove() ?: return false
+        check(original.code == proof.proposal.code && original.result == proof.proposal.result)
+        command.requireRequirement(proof.requirement)
+        command.requireFinancialSupervisorApplicationRejection(proof.proposal, proof.resources)
+        return true
     }
 
     private suspend fun start(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
@@ -138,7 +159,7 @@ public class LocalFoodRefundHistoryProducer : RuntimeHistoryBusinessProducer {
         val proof = LocalFoodRefundProducer.requireApply(original, raw.slot.start.evidence, raw.original.evidence)
         val observed = command.requireLegacyReadEvidence() ?: return false
         requireFoodRefundHistorySources(command, observed)
-        command.requireRequirement(salesAuthorizationRequirement(SecurityAction.REFUND_RECORD,
+        command.requireRequirement(salesAuthorizationRequirement(if (selection.supervised) SecurityAction.REFUND_RESOLVE else SecurityAction.REFUND_RECORD,
             command.scope, proof.cut.refund.id, proof.cut.refund.revision, command.operationId, command.semanticDigest,
             "food.refund.apply", raw.slot.value.originalActorId, raw.slot.value.domain.amount))
         command.requireLegacyEffects(proof.proposal, proof.resources)
@@ -183,7 +204,7 @@ public class LocalFoodRefundHistoryProducer : RuntimeHistoryBusinessProducer {
         check(command.aggregateSource(foodRefundResolutionKey(command.operationId)) == null &&
             command.aggregateSource(foodRefundApplicationKey(command.operationId)) == null)
         val slot = parent.slot.value
-        check(command.actorId == slot.originalActorId)
+        check(command.actorId == request.resolverActorId && proof.raw.recordingActorId == command.actorId)
         check(proof.raw.target == slot.target && command.operationId == slot.target.resolutionOperationId)
         val resources = slot.domain.financialResources.toSet() + foodRefundAuthorityResources(slot.requirement()) + recordingAuthority(command.actorId)
         command.requireRequirement(salesAuthorizationRequirement(SecurityAction.REFUND_RESOLVE, command.scope,

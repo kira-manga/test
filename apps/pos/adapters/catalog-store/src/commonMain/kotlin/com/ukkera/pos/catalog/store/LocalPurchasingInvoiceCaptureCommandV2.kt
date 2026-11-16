@@ -26,7 +26,7 @@ internal class PurchasingInvoiceCaptureHandlerV2(private val catalog: Purchasing
         catch (_: ArithmeticException) { throw IllegalArgumentException("Unsupported purchasing input precision or range") }
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE && normalize(normalized) == normalized
+        (profile == LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized
 
     /** Disclosure checks the exact original capture permission without preparing its sources again. */
     override fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,

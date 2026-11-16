@@ -5,6 +5,7 @@ import dev.p2pkit.core.AppId
 import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.rpc.RpcTrustPurpose
 import dev.p2pkit.rpc.RpcTrustStore
+import kotlinx.coroutines.flow.Flow
 
 /**
  * HostClients-only projection of the exact native Master's protected admission state.
@@ -17,12 +18,16 @@ import dev.p2pkit.rpc.RpcTrustStore
  * SelectedHosts and SelectedHostPreference are deliberately unsupported.
  *
  * The SDK caches its loaded pins. Composition must finish native admission/withdrawal settlement
- * and release the Master/native/Room loans before invoking SDK approval/revocation. A stale cached
- * mutation that differs from the current projection fails closed; this adapter does not reload it.
+ * and release the Master/native/Room loans before reconstructing the SDK role. The retained
+ * original Host observes database invalidations, rechecks the complete native census and closes
+ * the old role before replacement. A stale cached mutation fails with a typed membership change;
+ * this adapter never approves or revokes a device by editing its pins.
  */
 public class LocalRpcTrustStore(
     private val masterTrust: LocalMasterRpcTrust,
 ) : RpcTrustStore {
+    internal val hostClientInvalidations: Flow<Unit> get() = masterTrust.hostClientInvalidations
+
     @Throws(Exception::class)
     public override suspend fun load(appId: AppId, purpose: RpcTrustPurpose): Set<PeerFingerprint> {
         requireHostClients(purpose)

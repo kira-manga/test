@@ -9,7 +9,7 @@ import com.ukkera.pos.types.*
 internal class FoodRefundResolutionOriginal(val raw: LocalFoodRefundResolutionRaw,
     val original: FoodRefundRawOriginal, val proposal: ProposedOutcome.Apply)
 
-/** Whole same-paying-actor FOOD UNKNOWN resolution proof; no supervisor/custody takeover. */
+/** Whole FOOD UNKNOWN/resolver proof; original payout custody never changes. */
 internal object LocalFoodRefundResolutionProducer {
     suspend fun requireRaw(original: RetainedCommandEvidence, historicalStart: RetainedCommandEvidence,
         originalUnknown: RetainedCommandEvidence): FoodRefundResolutionOriginal {
@@ -21,11 +21,11 @@ internal object LocalFoodRefundResolutionProducer {
         val requirement = slot.requirement()
         foodRefundRequireEarlier(originalUnknown, original)
         check(original.scope == slot.scope && request.target == slot.target && original.operationId == slot.target.resolutionOperationId &&
-            original.originalActorId == slot.originalActorId && request.resolverActorId == slot.originalActorId &&
+            request.resolverActorId == original.originalActorId &&
             request.originalBodyDigest == parent.raw.bodyDigest &&
             LocalFoodRefundCashJournalDomain.classifyOriginal(requirement, parent.raw.body()) == LocalPhysicalOriginalKind.UNKNOWN)
         LocalFoodRefundResolutionDescriptor.create(requirement, parent.raw.body(), original.originalActorId, original.normalized)
-        val raw = LocalFoodRefundResolutionRaw(1, original.scope, slot.target, slot.originalActorId, slot.originalActorId,
+        val raw = LocalFoodRefundResolutionRaw(1, original.scope, slot.target, slot.originalActorId, original.originalActorId,
             original.normalized.copyBytes().decodeToString(throwOnInvalidSequence = true), sha256(original.normalized.copyBytes()),
             parent.raw.bodyDigest, original.semanticDigest, parent.raw.slotDigest, original.recordedAt)
         val proposal = ProposedOutcome.Apply(LocalFoodRefundCodec.result(LocalFoodRefundResult.RawRetained(slot.target,
@@ -53,8 +53,8 @@ internal object LocalFoodRefundResolutionProducer {
         foodRefundRequireEarlier(resolution, original)
         foodRefundRequireEarlier(originalUnknownApplication, original)
         val outcome = (LocalFoodRefundCodec.decode(raw.body()) as LocalFoodRefundRequest.RecordResolution).outcome
-        check(selection.factOperationId == slot.target.resolutionOperationId && original.originalActorId == slot.originalActorId &&
-            raw.recordingActorId == slot.originalActorId &&
+        check(selection.factOperationId == slot.target.resolutionOperationId &&
+            (selection.supervised || original.originalActorId == slot.originalActorId && raw.recordingActorId == slot.originalActorId) &&
             original.operationId !in setOf(slot.target.intentOperationId, slot.target.recordingOperationId, slot.target.resolutionOperationId) &&
             outcome !is LocalFoodRefundOutcome.Unknown)
         requireFoodRefundApplicableOutcome(outcome, slot.domain.amount)
@@ -72,7 +72,11 @@ internal object LocalFoodRefundResolutionProducer {
             event.originalUnknownApplicationOperationId == originalUnknownApplication.operationId)
         val after = foodRefundAfterRefund(original, frame, cut.refund.id)
         val cashAfter = foodPaymentAfterCash(original, cut.cash.id, cashInput.storageRevision.next())
-        val movement = FoodRefundCashHistory.requireApplied(cut.refund, after, cut.cash, cashAfter, slot.target.attemptId,
+        val movement = if (selection.supervised) FoodRefundCashHistory.requireSupervisedApplied(cut.refund, after,
+            cut.cash, cashAfter, slot.target.attemptId, slot.target.resolutionOperationId, original.operationId,
+            slot.originalActorId, raw.recordingActorId, original.originalActorId, slot.target.recordingOperationId,
+            parent.bodyDigest, foodRefundOutcome(outcome, raw.recordingActorId))
+        else FoodRefundCashHistory.requireApplied(cut.refund, after, cut.cash, cashAfter, slot.target.attemptId,
             slot.target.resolutionOperationId, original.operationId, slot.originalActorId,
             foodRefundOutcome(outcome, raw.recordingActorId), resolvingUnknown = true)
         val financialRevisions = listOf(LocalFoodStorageRevisionV1(LocalFoodFinancialProfileV1.REFUND,
@@ -85,7 +89,9 @@ internal object LocalFoodRefundResolutionProducer {
             financialRevisions + LocalFoodStorageRevisionV1(LocalFoodRefundProfile.APPLICATION,
                 DomainId(slot.target.resolutionOperationId.value), Revision(2)), LocalFoodRefundFactPhase.RESOLUTION)
         val extra = listOf(foodPaymentCashWrite(cashAfter, cashInput.storageRevision)) + listOfNotNull(movement?.let {
-            cashMovementLiteralWrite(original.scope, original.operationId, original.originalActorId, it, original.recordedAt)
+            if (selection.supervised) foodRefundSupervisedMovementLiteralWrite(original.scope, original.operationId,
+                original.originalActorId, original.semanticDigest, original.normalized, slot, parent, raw, it, original.recordedAt)
+            else cashMovementLiteralWrite(original.scope, original.operationId, original.originalActorId, it, original.recordedAt)
         }) + foodRefundApplicationWrite(application, Revision(1))
         val record = after.attempts.single { it.id == slot.target.attemptId }.refund
         val claims = listOfNotNull(record?.let { ClaimChange.Acquire(LocalSalesStoreProfile.unique("refund_record", it.attemptId), after.id) },

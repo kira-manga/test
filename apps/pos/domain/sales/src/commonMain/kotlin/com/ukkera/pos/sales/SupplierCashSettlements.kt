@@ -56,6 +56,25 @@ public object SupplierCashSettlements {
         return finishValue(command.operationId, commitment, session, attemptId, paid, evidence, command.reasonCode)
     }
 
+    /** Fresh scoped SUPPLIER_CASH_RESOLVE over a proved immutable observation. The
+     * purchasing owner proves the whole original/UNKNOWN/raw graph before this call. */
+    public fun finishSupervised(command: SalesCommand, commitment: SupplierCashCommitment, session: CashSession,
+        expectedSessionRevision: Revision, assignments: CashAssignmentReadSet, attemptId: DomainId,
+        recordingOperationId: OperationId, recordingActorId: DomainId, originalUnknownOperationId: OperationId?,
+        originalUnknownBodyDigest: PayloadDigest?, paid: Boolean, evidence: CashierEvidence): SupplierCashChange {
+        val expected = supplierCashAuthorizationRequirement(session.scope, commitment, command.operationId,
+            command.payloadDigest, command.reasonCode, session.custodianId, resolution = true)
+        requireSales(command.authorization.principalKind == PrincipalKind.LOCAL_EMPLOYEE &&
+            command.authorization.approvalId == null && command.authorization.isBoundTo(expected), SalesRule.PERMISSION_DENIED)
+        requireRevision(session.revision, expectedSessionRevision)
+        requireSupplierAssignment(session, assignments)
+        requireRecordedObservation(session.custodianId, recordingOperationId, recordingActorId, command.operationId,
+            originalUnknownOperationId, originalUnknownBodyDigest, evidence)
+        requireReason(command.reasonCode)
+        return finishValue(command.operationId, commitment, session, attemptId, paid, evidence,
+            command.reasonCode, recordingActorId)
+    }
+
     /** Literal historic images only; this does not run a command or create an authorization. */
     public fun requireHistoricalReserve(
         before: CashSession, after: CashSession, commitment: SupplierCashCommitment,
@@ -102,12 +121,37 @@ public object SupplierCashSettlements {
         return finishValue(applicationOperationId, commitment, before, attemptId, paid, evidence, reasonCode)
     }
 
+    /** Literal immutable supervisor images only; this creates no employee or cash permit. */
+    public fun historicalSupervisedFinishImage(before: CashSession, commitment: SupplierCashCommitment,
+        originalActorId: DomainId, assignments: CashAssignmentReadSet, attemptId: DomainId,
+        recordingOperationId: OperationId, recordingActorId: DomainId, applicationOperationId: OperationId,
+        originalUnknownOperationId: OperationId?, originalUnknownBodyDigest: PayloadDigest?,
+        paid: Boolean, evidence: CashierEvidence, reasonCode: String): SupplierCashChange {
+        requireSessionOwner(before, originalActorId)
+        requireSupplierAssignment(before, assignments)
+        requireRecordedObservation(originalActorId, recordingOperationId, recordingActorId, applicationOperationId,
+            originalUnknownOperationId, originalUnknownBodyDigest, evidence)
+        requireReason(reasonCode)
+        return finishValue(applicationOperationId, commitment, before, attemptId, paid, evidence, reasonCode, recordingActorId)
+    }
+
+    /** Literal cash movement from an already proved exact observed original. Original
+     * cash custodian and actual recorder are distinct DATA; this grants neither authority. */
+    public fun recordedPayoutMovement(commitment: SupplierCashCommitment, sessionId: DomainId, originalActorId: DomainId,
+        attemptId: DomainId, applicationOperationId: OperationId, recordingOperationId: OperationId,
+        recordingActorId: DomainId, originalUnknownOperationId: OperationId?, originalUnknownBodyDigest: PayloadDigest?,
+        evidence: CashierEvidence, reasonCode: String): CashMovement {
+        requireRecordedObservation(originalActorId, recordingOperationId, recordingActorId, applicationOperationId,
+            originalUnknownOperationId, originalUnknownBodyDigest, evidence)
+        requireReason(reasonCode)
+        return literalPayoutMovement(commitment, sessionId, originalActorId, attemptId, applicationOperationId, evidence, reasonCode)
+    }
+
     /** Literal immutable cash-out vocabulary, never an expense, stock effect or permission. */
     public fun payoutMovement(commitment: SupplierCashCommitment, sessionId: DomainId, originalActorId: DomainId,
         attemptId: DomainId, applicationOperationId: OperationId, evidence: CashierEvidence, reasonCode: String): CashMovement {
         evidence.requireActor(originalActorId); requireReason(reasonCode)
-        return CashMovement(attemptId, applicationOperationId, sessionId, originalActorId,
-            CashMovementKind.INVENTORY_SETTLEMENT, -commitment.amount, commitment.amount.zero(), commitment.amount.zero(), evidence, reasonCode)
+        return literalPayoutMovement(commitment, sessionId, originalActorId, attemptId, applicationOperationId, evidence, reasonCode)
     }
 
     private fun authorizeSupplier(command: SalesCommand, commitment: SupplierCashCommitment,
@@ -123,7 +167,8 @@ public object SupplierCashSettlements {
 
     private fun finishValue(operationId: OperationId, commitment: SupplierCashCommitment,
         session: CashSession, attemptId: DomainId, paid: Boolean, evidence: CashierEvidence,
-        reasonCode: String): SupplierCashChange {
+        reasonCode: String, recordingActorId: DomainId = session.custodianId): SupplierCashChange {
+        evidence.requireActor(recordingActorId)
         requireSales(session.status == CashSessionStatus.OPEN && attemptId in session.pendingAttemptIds,
             SalesRule.PAYMENT_UNRESOLVED)
         sameCurrency(session.expectedCash, commitment.amount)
@@ -133,10 +178,26 @@ public object SupplierCashSettlements {
             else session.totals
         val expectedCash = if (paid) session.expectedCash - commitment.amount else session.expectedCash
         requireSales(expectedCash.minor >= reserve.minor, SalesRule.INSUFFICIENT_DRAWER_CASH)
-        val movement = if (paid) payoutMovement(commitment, session.id, session.custodianId, attemptId, operationId, evidence, reasonCode) else null
+        val movement = if (paid) literalPayoutMovement(commitment, session.id, session.custodianId, attemptId, operationId, evidence, reasonCode) else null
         return SupplierCashChange(session.update(totals = totals, expectedCash = expectedCash,
             reservedCashOut = reserve, cashLedgerRevision = if (paid) session.cashLedgerRevision.next()
             else session.cashLedgerRevision, pendingAttemptIds = session.pendingAttemptIds - attemptId), movement)
+    }
+
+    private fun literalPayoutMovement(commitment: SupplierCashCommitment, sessionId: DomainId, originalActorId: DomainId,
+        attemptId: DomainId, applicationOperationId: OperationId, evidence: CashierEvidence, reasonCode: String): CashMovement =
+        CashMovement(attemptId, applicationOperationId, sessionId, originalActorId, CashMovementKind.INVENTORY_SETTLEMENT,
+            -commitment.amount, commitment.amount.zero(), commitment.amount.zero(), evidence, reasonCode)
+
+    private fun requireRecordedObservation(originalActorId: DomainId, recordingOperationId: OperationId,
+        recordingActorId: DomainId, applicationOperationId: OperationId, originalUnknownOperationId: OperationId?,
+        originalUnknownBodyDigest: PayloadDigest?, evidence: CashierEvidence) {
+        requireSales(recordingOperationId != applicationOperationId, SalesRule.INVALID_EVIDENCE)
+        evidence.requireActor(recordingActorId)
+        if (originalUnknownOperationId == null)
+            requireSales(originalUnknownBodyDigest == null && recordingActorId == originalActorId, SalesRule.INVALID_EVIDENCE)
+        else requireSales(originalUnknownBodyDigest != null &&
+            setOf(originalUnknownOperationId, recordingOperationId, applicationOperationId).size == 3, SalesRule.INVALID_EVIDENCE)
     }
 
     private fun requireSupplierAssignment(session: CashSession, assignments: CashAssignmentReadSet) {

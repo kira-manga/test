@@ -48,6 +48,8 @@ kotlin {
         }
         jvmTest.dependencies {
             implementation(kotlin("test-junit"))
+            // Real software-key signatures for the Linux-only genuine process fixture.
+            implementation(libs.bouncycastle.provider)
             // Test-only official JVM manual endpoint/provisioning used by the DR-A09
             // in-memory transport harness. No production dependency is added.
             implementation("io.github.apdelrahman1911:p2p-network-provisioning-desktop:0.8.0-rc12")
@@ -94,6 +96,18 @@ val localRpcJvmJar = project(":adapters:local-rpc").tasks.named<Jar>("jvmJar")
 tasks.named<KotlinCompile>("compileTestKotlinJvm") {
     friendPaths.from(localRpcJvmMain.flatMap { it.destinationDirectory })
     friendPaths.from(localRpcJvmJar.flatMap { it.archiveFile })
+}
+// The genuine multi-process fixture reuses internal native journal composition.
+// Configure after evaluation: app-gateway already evaluates database, so an
+// evaluationDependsOn in the other direction would form a configuration cycle.
+// Friendship applies only to tests and supplies no production acquisition seam.
+gradle.projectsEvaluated {
+    val gatewayJvmMain = project(":adapters:app-gateway").tasks.named<KotlinCompile>("compileKotlinJvm")
+    val gatewayJvmJar = project(":adapters:app-gateway").tasks.named<Jar>("jvmJar")
+    tasks.named<KotlinCompile>("compileTestKotlinJvm") {
+        friendPaths.from(gatewayJvmMain.flatMap { it.destinationDirectory })
+        friendPaths.from(gatewayJvmJar.flatMap { it.archiveFile })
+    }
 }
 tasks.withType<Test>().configureEach {
     maxHeapSize = "256m"

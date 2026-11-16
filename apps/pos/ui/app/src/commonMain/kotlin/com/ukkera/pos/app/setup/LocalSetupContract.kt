@@ -125,10 +125,18 @@ public interface LocalSetupController {
     public fun closeFreshDevicePairing() { }
     /** Existing operational Master only. Does not reopen, install or authenticate an employee. */
     public fun startLanHost(input: LocalSetupLanInput) { }
+    /** Read-only native interface observations; never starts discovery or a transport role. */
+    public fun refreshLanNetworks() { }
+    /** Transfers the exact approved original target to an owner-scoped discovery lifetime. */
+    public fun startLanDiscovery(input: LocalSetupLanInput) { }
+    /** Opaque current candidate selection; metadata alone never grants Master trust. */
+    public fun connectDiscoveredLanClient(candidateId: DomainId) { }
     /** Transfers the retained approved fresh target; no supplied trust store or pin. */
     public fun connectLanClient(input: LocalSetupLanInput, endpoint: LocalSetupLanEndpoint) { }
     /** Explicitly reobserves this same attachment; never reconnects or retargets automatically. */
     public fun refreshLanAttachment() { }
+    /** Retain native custody and reconnect only after confirming full old transport close. */
+    public fun recoverLanClient() { }
     /** Terminal for this attachment lifetime, not an instruction to stop the Master. */
     public fun closeLanAttachment() { }
     public fun refreshOriginalStatus()
@@ -136,6 +144,18 @@ public interface LocalSetupController {
     public fun authenticateAndStopLocalMaster(login: String, password: CharArray) { password.fill('\u0000') }
     /** Explicit current-authority same-original RESUME; transfers and clears the buffer. */
     public fun authenticateAndResumeLocalMaster(login: String, password: CharArray) { password.fill('\u0000') }
+    /** Lists encrypted Master full-state backups and verifies their authenticated chain. */
+    public fun refreshMasterBackups() { }
+    /** On-demand consistent encrypted backup of the OPERATIONAL Master. Grants no authority. */
+    public fun createMasterBackup() { }
+    /** Full authenticated decryption/digest verification of one retained archive. */
+    public fun verifyMasterBackup(backupId: DomainId) { }
+    /**
+     * Restore into the separate fresh/quarantined restore target only, while the Master is
+     * durably STOPPED by an authenticated current-authority STOP of the same installation.
+     * The result is a HELD candidate; live state is never overwritten and no writer is admitted.
+     */
+    public fun restoreMasterBackup(backupId: DomainId) { }
     public fun lockPresentation()
     public fun resumePresentation()
 }
@@ -208,6 +228,7 @@ public enum class LocalSetupWork {
     VERIFYING_APPROVED_PAIRING_MASTER,
     STARTING_LAN_HOST, CONNECTING_LAN_CLIENT, READING_LAN_ATTACHMENT, CLOSING_LAN_ATTACHMENT,
     AUTHENTICATING_LOCAL_MASTER_STOP, AUTHENTICATING_LOCAL_MASTER_RESUME,
+    READING_MASTER_BACKUPS, CREATING_MASTER_BACKUP, VERIFYING_MASTER_BACKUP, RESTORING_MASTER_BACKUP,
 }
 
 public enum class LocalSetupProblem {
@@ -361,6 +382,35 @@ public data class LocalSetupView(
     public val lan: LocalSetupLanView = LocalSetupLanView(),
     /** An interrupted retained lifecycle request blocks startup; this is no lifecycle authority. */
     public val lifecycleStopPending: Boolean = false,
+    /** Master backup presentation; null until read or when the platform has no backup custody. */
+    public val masterBackups: LocalSetupMasterBackupView? = null,
 ) {
     override fun toString(): String = "LocalSetupViewV1([REDACTED])"
 }
+
+/** One retained encrypted archive (authenticated manifest facts only). */
+public data class LocalSetupMasterBackupEntry(
+    public val backupId: DomainId,
+    public val sequence: Long,
+    public val createdAtEpochMillis: Long,
+    public val scheduled: Boolean,
+    public val schemaVersion: Int,
+    public val snapshotBytes: Long,
+)
+
+public enum class LocalSetupMasterBackupOutcome {
+    CREATED, NOT_DUE, CREATE_FAILED, VERIFIED, VERIFY_REFUSED, RESTORE_HELD, RESTORE_REFUSED, RESTORE_QUARANTINED,
+}
+
+/**
+ * Backup presentation only. [restoreHeldBackupId] names a HELD candidate in the separate restore
+ * target; it is not live state, readiness or writer admission.
+ */
+public data class LocalSetupMasterBackupView(
+    public val entries: List<LocalSetupMasterBackupEntry> = emptyList(),
+    public val chainIntact: Boolean? = null,
+    public val outcome: LocalSetupMasterBackupOutcome? = null,
+    public val outcomeBackupId: DomainId? = null,
+    /** Bounded failure/refusal code name, never secret material. */
+    public val reason: String? = null,
+)

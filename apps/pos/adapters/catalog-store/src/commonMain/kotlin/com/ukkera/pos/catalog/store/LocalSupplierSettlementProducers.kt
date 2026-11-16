@@ -83,8 +83,9 @@ internal fun requireSupplierSettlementProducer(original: RetainedCommandEvidence
             request.expectedUnappliedAdvance - request.amount, (request.invoice.expectedSettlementRevision ?: Revision(0)).next(),
             request.expectedAdvanceAllocationRevision.next()), LocalSupplierAdvanceAllocationResultV1.serializer())
     } else {
-        check(original.command == LocalSupplierCashProfile.COMMAND)
-        when (val request = LocalSupplierCashCodec.decode(original.normalized)) {
+        check(original.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND))
+        val supervised = original.command == LocalSupplierCashSupervisorCodec.COMMAND
+        when (val request = supplierCashApplicationRequest(original.command, original.normalized)) {
             is LocalSupplierCashRequest.StartCash -> {
                 val slot = LocalSupplierCashFacts.requireStart(original)
                 check(original.nativeOriginalProvenance == null)
@@ -120,7 +121,8 @@ internal fun requireSupplierSettlementProducer(original: RetainedCommandEvidence
                 val rawKey = if (phase == LocalSupplierCashPhase.ORIGINAL) LocalSupplierCashJournal.rawKey(original.operationId)
                     else LocalSupplierCashJournal.resolutionKey(original.operationId)
                 val raw = LocalSupplierCashFacts.decodeRaw(original.aggregateWrites.single { it.key == rawKey }.payload)
-                check(raw.scope == original.scope && raw.target == target && raw.originalActorId == original.originalActorId &&
+                check(raw.scope == original.scope && raw.target == target &&
+                    (phase == LocalSupplierCashPhase.RESOLUTION || raw.originalActorId == original.originalActorId) &&
                     raw.recordingActorId == original.originalActorId && raw.phase == phase && raw.recordedAt == original.recordedAt &&
                     raw.semanticDigest == original.semanticDigest && raw.body() == original.normalized)
                 if (phase == LocalSupplierCashPhase.RESOLUTION) check(original.nativeOriginalProvenance == null)
@@ -164,7 +166,9 @@ internal fun requireSupplierSettlementProducer(original: RetainedCommandEvidence
                 val appWrite = original.aggregateWrites.single { it.key == appKey }
                 val app = LocalSupplierCashFacts.decodeApplication(appWrite.payload)
                 check(appWrite.storageGeneration == Revision(2) && appWrite.schema == LocalSupplierCashProfile.schema(LocalSupplierCashProfile.APPLICATION) &&
-                    app.scope == original.scope && app.target == target && app.phase == phase && app.originalActorId == original.originalActorId &&
+                    app.scope == original.scope && app.target == target && app.phase == phase &&
+                    app.originalActorId == (if (supervised) event.cashSourcesBefore.single { it.kind == LocalSalesStoreProfile.CUSTODIAN_KIND }.id
+                        else original.originalActorId) &&
                     app.applicationOperationId == original.operationId && app.result == result && app.bodyDigest ==
                     (if (phase == LocalSupplierCashPhase.ORIGINAL) after.originalBodyDigest else after.resolutionBodyDigest))
                 val paid = result.action == LocalSupplierCashAction.CASH_PAID

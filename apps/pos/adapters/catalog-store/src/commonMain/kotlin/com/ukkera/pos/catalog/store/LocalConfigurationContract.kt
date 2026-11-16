@@ -232,6 +232,9 @@ public data class LocalPublishedSkuV1(
     /** Explicit selected combination, including an empty list for a new simple product. */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     public val variantValues: List<LocalVariantValueV1>? = null,
+    /** Optional receipt-linked refundable container deposit, signed inside this SKU publication. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    public val containerDeposit: LocalContainerDepositV1? = null,
 ) {
     init {
         // This identifier enters an ASCII protocol claim, unlike translated display names.
@@ -246,6 +249,9 @@ public data class LocalPublishedSkuV1(
         require(returnPromise == null || canSell && fulfillment == LocalFulfillmentV1.RETAIL &&
             tracking in setOf(LocalTrackingV1.QUANTITY, LocalTrackingV1.LOT, LocalTrackingV1.SERIAL))
         require(prices.all { it.minimumQuantity.unitId == baseUnitId && it.minimumQuantity.scale == quantityScale })
+        // Whole-count retail containers only: a deposit entitlement counts physical containers.
+        require(containerDeposit == null || canSell && fulfillment == LocalFulfillmentV1.RETAIL &&
+            tracking == LocalTrackingV1.QUANTITY && quantityScale == 0)
         require(!requiresExpiry || tracking == LocalTrackingV1.LOT)
         require(tracking != LocalTrackingV1.SERIAL || quantityScale == 0)
         require(tracking != LocalTrackingV1.NONE || fulfillment in setOf(LocalFulfillmentV1.SERVICE, LocalFulfillmentV1.VIRTUAL_KIT))
@@ -257,6 +263,15 @@ public data class LocalPublishedSkuV1(
         require(variantValues == null || variantValues.size <= LocalCatalogProductProfileV1.MAX_AXES)
     }
 }
+
+/** Deposit liability per container. The mappings are explicit identities, never derived defaults;
+ * the deposit is never revenue, a discount, stored value or a spendable customer balance. */
+@Serializable
+public data class LocalContainerDepositV1(
+    public val amountPerContainer: Money,
+    public val liabilityMappingId: DomainId,
+    public val taxCategoryId: DomainId,
+) { init { require(amountPerContainer.currency == Currency.EGP && amountPerContainer.minor > 0L) } }
 
 @Serializable
 public data class LocalSignedSkuV1(

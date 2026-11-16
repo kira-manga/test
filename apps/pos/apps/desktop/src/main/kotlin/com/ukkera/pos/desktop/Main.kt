@@ -11,6 +11,7 @@ import com.ukkera.pos.app.setup.LocalSetupConnectionPhase
 import com.ukkera.pos.app.setup.LocalSetupConnectionScreen
 import com.ukkera.pos.app.setup.LocalSetupScreen
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -23,6 +24,8 @@ import com.ukkera.pos.app.UkkeraApp
 import com.ukkera.pos.app.navigation.NavigationAction
 import com.ukkera.pos.app.ui.AppLanguage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /** Default remains explicitly unconfigured until trusted local composition supplies dependencies. */
 fun main(args: Array<String>) {
@@ -60,9 +63,32 @@ internal fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String>
     val host = remember { DesktopAppHost(dependencies) }
     val runtime = host.runtime
     val presentation by runtime.presentation.collectAsState()
-    val exit = { host.close(); exitApplication() }
+    val scope = rememberCoroutineScope()
     var route by remember { mutableStateOf(DesktopEntryRoute.CHOICE) }
-    DisposableEffect(host) { onDispose { host.close() } }
+    var closing by remember { mutableStateOf(false) }
+    val exit: () -> Unit = {
+        if (!closing) {
+            closing = true
+            scope.launch {
+                try {
+                    composition?.requestRetirement()?.await()
+                    host.close()
+                    exitApplication()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // The retained coordinator displays the unconfirmed cleanup; do not
+                    // dispose its window or replace its native owner after a failed close.
+                    route = if (composition != null) DesktopEntryRoute.SETUP else DesktopEntryRoute.CHOICE
+                } finally { closing = false }
+            }
+        }
+    }
+    LaunchedEffect(composition) { composition?.reopenRetainedClient() }
+    DisposableEffect(host, composition) { onDispose {
+        composition?.requestRetirement()
+        host.close()
+    } }
     Window(
         title = if (presentation.language == AppLanguage.ARABIC) "Ukkera POS · تحقق محلي" else "Ukkera POS · Local qualification",
         state = rememberWindowState(width = 1320.dp, height = 860.dp),

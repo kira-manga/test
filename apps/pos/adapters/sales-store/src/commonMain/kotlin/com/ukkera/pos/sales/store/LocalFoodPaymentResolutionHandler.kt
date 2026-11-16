@@ -3,6 +3,7 @@ package com.ukkera.pos.sales.store
 import com.ukkera.pos.database.*
 import com.ukkera.pos.inventory.store.LocalStockRepository
 import com.ukkera.pos.recovery.RecoveryResourceKind
+import com.ukkera.pos.security.AuthorizationRequirement
 import com.ukkera.pos.security.SecurityAction
 import com.ukkera.pos.security.sha256
 import com.ukkera.pos.types.*
@@ -51,13 +52,22 @@ internal suspend fun prepareFoodPaymentResolution(request: LocalFoodPaymentReque
  * current COLLECTION_RESOLVE with original-owner ANY_OWNER restrictions. No custody changes.
  */
 public class LocalFoodPaymentSupervisorHandler(private val stock: LocalStockRepository,
-    private val recipes: TransactionFoodStockSource) : MasterCommandHandler {
+    private val recipes: TransactionFoodStockSource,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterCommandHandler, LocalMasterRpcRetainedResultSourceAccessProvider {
     override val key: CommandKey get() = LocalFoodPaymentSupervisorCodec.COMMAND
     override val writableKinds: Set<String> = setOf(LocalFoodPaymentProfile.APPLICATION, LocalFoodPaymentProfile.EVENT,
         LocalFoodFinancialProfileV1.COLLECTION, LocalFoodFinancialProfileV1.FRAME, CashNonSaleStoreProfile.SESSION_KIND,
         LocalSalesStoreProfile.MOVEMENT_KIND, StockReadEvidenceV1.KIND)
     override val claimNamespaces: Set<String> = setOf(LocalSalesStoreProfile.UNIQUE_NAMESPACE, CashNonSaleStoreProfile.CASH_SOURCE_NAMESPACE)
     override fun normalize(input: StoredBytes): StoredBytes = LocalFoodPaymentSupervisorCodec.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+    override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if (!supportsRpcWorkflow(profile, normalized) || context.key != key) return null
+        return foodPaymentLanRetainedRequirements(normalized, FoodReadView(commerceLoan(view, stock)), context, recipes, originalSources)
+    }
+
     override suspend fun prepare(normalized: StoredBytes, borrowed: CommandReadView, context: CommandContext): PreparedMutation {
         check(context.key == key && context.scope == borrowed.scope &&
             semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)

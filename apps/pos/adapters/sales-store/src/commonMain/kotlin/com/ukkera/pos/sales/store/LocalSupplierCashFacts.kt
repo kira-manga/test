@@ -38,7 +38,8 @@ public object LocalSupplierCashFacts {
             val resolution = LocalSupplierCashCodec.decode(body) as? LocalSupplierCashRequest.RecordResolution ?: error("supplier.cash.resolution_required")
             check(resolution.target == slot.target && resolution.resolverActorId == actorId && resolution.outcome !is LocalSupplierCashOutcome.Unknown)
         }
-        check(actorId == slot.originalActorId && LocalSupplierCashCodec.normalize(body) == body)
+        check((phase == LocalSupplierCashPhase.RESOLUTION || actorId == slot.originalActorId) &&
+            LocalSupplierCashCodec.normalize(body) == body)
         return LocalSupplierCashRaw(1, slot.scope, slot.target, slot.originalActorId, actorId,
             body.copyBytes().decodeToString(throwOnInvalidSequence = true), sha256(body.copyBytes()),
             semanticDigest(slot.scope, actorId, LocalSupplierCashProfile.COMMAND, body), slotDigest, at, phase)
@@ -96,21 +97,40 @@ public object LocalSupplierCashFacts {
     public fun requireRaw(evidence: RetainedCommandEvidence, start: RetainedCommandEvidence,
         phase: LocalSupplierCashPhase): LocalSupplierCashRaw {
         val slot = requireStart(start)
-        check(evidence.committed && evidence.command == LocalSupplierCashProfile.COMMAND && evidence.originalActorId == slot.originalActorId &&
+        check(evidence.committed && evidence.command == LocalSupplierCashProfile.COMMAND &&
+            (phase == LocalSupplierCashPhase.RESOLUTION || evidence.originalActorId == slot.originalActorId) &&
             evidence.operationId == slot.target.factOperation(phase) && LocalSupplierCashCodec.normalize(evidence.normalized) == evidence.normalized &&
             evidence.claimChanges.isEmpty() && evidence.jobs.isEmpty())
         val key = if (phase == LocalSupplierCashPhase.ORIGINAL) LocalSupplierCashJournal.rawKey(evidence.operationId)
             else LocalSupplierCashJournal.resolutionKey(evidence.operationId)
         val raw = decodeRaw(evidence.aggregateWrites.single { it.key == key }.payload)
         check(raw.scope == evidence.scope && raw.target == slot.target && raw.phase == phase && raw.originalActorId == slot.originalActorId &&
-            raw.recordingActorId == slot.originalActorId && raw.body() == evidence.normalized && raw.semanticDigest == evidence.semanticDigest &&
+            raw.recordingActorId == evidence.originalActorId && raw.body() == evidence.normalized && raw.semanticDigest == evidence.semanticDigest &&
             raw.recordedAt == evidence.recordedAt && raw.slotDigest == sha256(LocalSupplierCashJournal.slotWrite(slot).payload.copyBytes()))
         if (phase == LocalSupplierCashPhase.ORIGINAL) {
             LocalSupplierCashJournalDomain.classifyOriginal(slot.requirement(), raw.body())
             evidence.nativeOriginalProvenance?.let { requireNativeOriginalEvidence(evidence, start, slot) }
-        } else check(evidence.nativeOriginalProvenance == null)
+        } else {
+            check(evidence.nativeOriginalProvenance == null)
+            val request = LocalSupplierCashCodec.decode(evidence.normalized) as? LocalSupplierCashRequest.RecordResolution
+                ?: error("supplier.cash.resolution_required")
+            check(request.target == slot.target && request.resolverActorId == evidence.originalActorId &&
+                request.outcome !is LocalSupplierCashOutcome.Unknown)
+        }
         requireWrites(evidence.aggregateWrites, listOf(rawWrite(raw), applicationWrite(initial(raw), null)))
         check(LocalSupplierCashCodec.result(evidence.result) == LocalSupplierCashResult.RawRetained(slot.target, phase))
+        return raw
+    }
+
+    /** Complete actual UNKNOWN parent and canonical resolver linkage; never a grant. */
+    public fun requireResolution(evidence: RetainedCommandEvidence, start: RetainedCommandEvidence,
+        originalUnknown: RetainedCommandEvidence): LocalSupplierCashRaw {
+        val slot = requireStart(start)
+        val parent = requireRaw(originalUnknown, start, LocalSupplierCashPhase.ORIGINAL)
+        val raw = requireRaw(evidence, start, LocalSupplierCashPhase.RESOLUTION)
+        check(parent.scope == raw.scope && parent.target == raw.target && originalUnknown.sequence < evidence.sequence &&
+            originalUnknown.assignmentId == evidence.assignmentId && originalUnknown.authorityEpoch == evidence.authorityEpoch)
+        LocalSupplierCashResolutionDescriptor.create(slot.requirement(), parent.body(), raw.recordingActorId, raw.body())
         return raw
     }
 
@@ -118,6 +138,12 @@ public object LocalSupplierCashFacts {
         slot(CurrentSupplierCashObservation(view), operationId)
     public suspend fun slot(command: RuntimeHistoricalCommand, operationId: OperationId): LocalSupplierCashStoredSlot? =
         slot(HistoricalSupplierCashObservation(command), operationId)
+    public suspend fun slot(sources: RuntimeHistoricalFinancialSources, view: CommandReadView,
+        operationId: OperationId): LocalSupplierCashStoredSlot? = slot(FinancialSupplierCashObservation(sources, view), operationId)
+    public suspend fun fact(sources: RuntimeHistoricalFinancialSources, view: CommandReadView,
+        operationId: OperationId, phase: LocalSupplierCashPhase): LocalSupplierCashStoredFact? =
+        fact(FinancialSupplierCashObservation(sources, view), operationId, phase)
+
     private suspend fun slot(observation: SupplierCashFactObservation, operationId: OperationId): LocalSupplierCashStoredSlot? {
         val row = observation.aggregate(LocalSupplierCashJournal.slotKey(operationId)) ?: run {
             check(observation.claim(ClaimKey(LocalSupplierCashProfile.OPERATION_CLAIM, operationId.value)) == null &&
@@ -172,7 +198,12 @@ public object LocalSupplierCashFacts {
         val value = decodeRaw(row.payload)
         val slot = slot(observation, value.target.recordingOperationId) ?: error("supplier.cash.slot_unavailable")
         val original = observation.retained(operationId) ?: error("supplier.cash.raw_original_unavailable")
-        check(requireRaw(original, slot.start, phase) == value); requireRetainedRow(original, row)
+        if (phase == LocalSupplierCashPhase.RESOLUTION) {
+            val parent = fact(observation, value.target.recordingOperationId, LocalSupplierCashPhase.ORIGINAL)
+                ?: error("supplier.cash.unknown_parent_unavailable")
+            check(requireResolution(original, slot.start, parent.original) == value)
+        } else check(requireRaw(original, slot.start, phase) == value)
+        requireRetainedRow(original, row)
         val appRow = observation.aggregate(LocalSupplierCashJournal.applicationKey(operationId)) ?: error("supplier.cash.application_unavailable")
         check(appRow.schema == LocalSupplierCashProfile.schema(LocalSupplierCashProfile.APPLICATION) && appRow.digest == sha256(appRow.payload.copyBytes()))
         val application = decodeApplication(appRow.payload)
@@ -183,8 +214,14 @@ public object LocalSupplierCashFacts {
         } else {
             check(appRow.revision == Revision(2))
             val producer = observation.retained(checkNotNull(application.applicationOperationId)) ?: error("supplier.cash.application_original_unavailable")
-            check(producer.committed && producer.command == LocalSupplierCashProfile.COMMAND && producer.originalActorId == value.originalActorId &&
-                LocalSupplierCashCodec.result(producer.result) == application.result)
+            check(producer.committed && producer.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND) &&
+                (producer.command == LocalSupplierCashSupervisorCodec.COMMAND || producer.originalActorId == value.originalActorId &&
+                    value.recordingActorId == value.originalActorId) && LocalSupplierCashCodec.result(producer.result) == application.result)
+            when (val selected = supplierCashApplicationRequest(producer.command, producer.normalized)) {
+                is LocalSupplierCashRequest.ApplyOriginal -> check(phase == LocalSupplierCashPhase.ORIGINAL && selected.recordingOperationId == operationId)
+                is LocalSupplierCashRequest.ApplyResolution -> check(phase == LocalSupplierCashPhase.RESOLUTION && selected.resolutionOperationId == operationId)
+                else -> error("supplier.cash.application_subtype_required")
+            }
             requireRetainedRow(producer, appRow)
         }
         return LocalSupplierCashStoredFact(slot, row, value, original, appRow, application)
@@ -282,5 +319,16 @@ private class HistoricalSupplierCashObservation(private val command: RuntimeHist
         is RetainedOriginalV2.Legacy -> original.evidence
         is RetainedOriginalV2.Streamed -> error("Unsupported supplier cash original")
         null -> null
+    }
+}
+
+private class FinancialSupplierCashObservation(private val sources: RuntimeHistoricalFinancialSources,
+    private val view: CommandReadView) : SupplierCashFactObservation {
+    override val scope: BranchScope get() = sources.evidence.scope
+    override suspend fun aggregate(key: AggregateKey): StoredAggregate? = sources.aggregateSource(key)?.row
+    override suspend fun claim(key: ClaimKey): DomainId? = sources.claim(key)
+    override suspend fun retained(operation: OperationId): RetainedCommandEvidence? = view.retainedCommand(operation)?.also {
+        check(view.scope == scope && it.scope == scope && it.operationId == operation && it.assignmentId == sources.evidence.assignmentId &&
+            it.authorityEpoch == sources.evidence.authorityEpoch && it.sequence < sources.evidence.sequence)
     }
 }

@@ -383,6 +383,40 @@ public interface DeviceProtectedLocalStorage {
     ): LocalOpenResult
 }
 
+/** Immutable, exact row selection; neither the envelope nor this value grants authority. */
+public class ProtectedLocalOpenSelection(
+    public val expected: ProtectedLocalBinding,
+    public val sealed: SealedLocalRecord,
+) {
+    override fun toString(): String = "ProtectedLocalOpenSelection([REDACTED])"
+}
+
+public sealed interface LocalBatchOpenResult {
+    /** Ordered, all-or-nothing output. The receiving adapter still validates every row. */
+    public class Opened(records: List<LocalOpenResult.Opened>) : LocalBatchOpenResult {
+        private val values = records.toList().also { require(it.size in 1..4) }
+        public val records: List<LocalOpenResult.Opened> get() = values.toList()
+        override fun toString(): String = "LocalBatchOpenResult.Opened([REDACTED])"
+    }
+
+    public data class Unavailable(public val reason: ProtectedKeyFailure) : LocalBatchOpenResult
+}
+
+/**
+ * Optional bounded native operation, not a retained authorization or plaintext cache.
+ * Open one to four exact rows using the same configured key and original native owner.
+ * Enforce open's binding, AAD, tag, format and per-table bounds independently for EVERY row.
+ * Fresh original native checks bracket the whole operation; no plaintext may escape until
+ * every row and the final native check succeed. Failure/cancellation discards all output.
+ * Callers without this capability continue using the individual protected operations.
+ */
+public interface BatchedDeviceProtectedLocalStorage : DeviceProtectedLocalStorage {
+    public suspend fun openBatch(
+        reference: ProtectedStorageKeyReference,
+        selections: List<ProtectedLocalOpenSelection>,
+    ): LocalBatchOpenResult
+}
+
 /** No in-memory/file-key or accepting production fallback. Actual AEAD providers remain gated. */
 public object UnavailableDeviceProtectedLocalStorage : DeviceProtectedLocalStorage {
     override val protectionStatus: KeyProtectionStatus = KeyProtectionStatus.UNSUPPORTED

@@ -203,7 +203,11 @@ internal class AndroidOwnedInstallationWork(
             requireActive()
             val task = prepare()
             return try { AndroidOwnedResult.Value(task.execute()) }
-            catch (failure: SelfOwnedFailureV1) { AndroidOwnedResult.Unavailable(failure.reason) }
+            catch (failure: SelfOwnedFailureV1) {
+                if (failure.reason == SelfOwnedInstallationFailureV1.STATE_UNCERTAIN ||
+                    failure.reason == SelfOwnedInstallationFailureV1.KEY_STATE_UNCERTAIN) logUnavailableNativeAction(failure)
+                AndroidOwnedResult.Unavailable(failure.reason)
+            }
             finally { task.clearInputs() }
         }
         val owned: Invocation<T>
@@ -350,11 +354,17 @@ internal class AndroidOwnedInstallationWork(
         return result
     }
 
+    /** Entry precondition, not acquisition of a Room/native operation. */
+    suspend fun requireUnborrowedRoomEntry() {
+        currentCoroutineContext().ensureActive()
+        check(currentCoroutineContext()[RoomElement] == null) { "Nested original Room loan" }
+        synchronized(gate) { requireActive() }
+    }
+
     /** Caller cancellation abandons delivery, never the actual Room Job. Completion of the
      * body Job, its real query/background work AND dispatch/restore tails precedes publication. */
     suspend fun <T> runRoom(block: suspend () -> T, discard: suspend (T) -> Unit): T {
-        currentCoroutineContext().ensureActive()
-        check(currentCoroutineContext()[RoomElement] == null) { "Nested original Room loan" }
+        requireUnborrowedRoomEntry()
         val call: RoomInvocation<T>
         synchronized(gate) {
             requireActive()

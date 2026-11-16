@@ -23,11 +23,16 @@ import com.ukkera.pos.app.setup.LocalSetupFreshDevicePairingStage
 import com.ukkera.pos.app.setup.LocalSetupFreshDevicePairingView
 import com.ukkera.pos.app.setup.LocalSetupFreshDeviceTargetInput
 import com.ukkera.pos.app.setup.LocalSetupLanEndpoint
+import com.ukkera.pos.app.setup.LocalSetupLanNetwork
+import com.ukkera.pos.app.setup.LocalSetupLanDiscoveredMaster
 import com.ukkera.pos.app.setup.LocalSetupLanInput
 import com.ukkera.pos.app.setup.LocalSetupLanRole
 import com.ukkera.pos.app.setup.LocalSetupLanStatus
 import com.ukkera.pos.app.setup.LocalSetupLanView
 import com.ukkera.pos.app.setup.LocalSetupLanWorkflow
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupEntry
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupOutcome
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupView
 import com.ukkera.pos.app.setup.LocalSetupNativeView
 import com.ukkera.pos.app.setup.LocalSetupPairingDocumentKind
 import com.ukkera.pos.app.setup.LocalSetupPairingDocumentOutcome
@@ -129,6 +134,8 @@ internal sealed class IpcMessage {
     /** Service -> UI: the exact composition profile of the service-owned coordinator. */
     @Serializable @SerialName("hello") data class Hello(val trainingSlot: String? = null, val master: Boolean) : IpcMessage()
     @Serializable @SerialName("view") data class View(val view: IpcView) : IpcMessage()
+    /** Sent only after an explicit v1 command opts this peer into the additive LAN extension. */
+    @Serializable @SerialName("lan-discovery-v2") data class LanDiscoveryV2(val lan: IpcLanDiscoveryV2) : IpcMessage()
     /** Service -> UI: the coordinator asks the UI owner to pick/write a pairing document. */
     @Serializable @SerialName("doc-import") data class DocumentImport(val id: Long, val kind: String) : IpcMessage()
     @Serializable @SerialName("doc-export") data class DocumentExport(val id: Long, val kind: String, val bytes: String) : IpcMessage()
@@ -169,9 +176,9 @@ internal sealed class IpcMessage {
 }
 @Serializable internal data class IpcLanInput(val allowedSubnets: List<String>, val interfaceName: String, val localAddress: String,
     val listenPort: Int, val credentialAction: String? = null, val workflow: String, val actorIntentAction: String? = null) {
-    fun value() = LocalSetupLanInput(allowedSubnets, interfaceName, localAddress, listenPort,
+    fun value(advertiseHost: Boolean = false) = LocalSetupLanInput(allowedSubnets, interfaceName, localAddress, listenPort,
         credentialAction?.let { LocalPairedDeviceCredentialJournalAction.valueOf(it) }, LocalSetupLanWorkflow.valueOf(workflow),
-        actorIntentAction?.let { LocalPairedDeviceCredentialJournalAction.valueOf(it) })
+        actorIntentAction?.let { LocalPairedDeviceCredentialJournalAction.valueOf(it) }, advertiseHost)
     companion object { fun of(i: LocalSetupLanInput) = IpcLanInput(i.allowedSubnets, i.interfaceName, i.localAddress, i.listenPort,
         i.credentialAction?.name, i.workflow.name, i.actorIntentAction?.name) }
 }
@@ -192,6 +199,7 @@ internal data class IpcView(
     val employeePolicies: IpcPolicies? = null, val employeePolicy: IpcPolicy? = null,
     val deviceAdmissions: IpcAdmissions? = null, val deviceAdmission: IpcAdmission? = null,
     val freshDevicePairing: IpcPairing? = null, val lan: IpcLan = IpcLan(), val lifecycleStopPending: Boolean = false,
+    val masterBackups: IpcMasterBackups? = null,
 ) {
     fun value(): LocalSetupView = LocalSetupView(
         LocalSetupPhase.valueOf(phase), work?.let { LocalSetupWork.valueOf(it) }, locked,
@@ -200,7 +208,8 @@ internal data class IpcView(
         nativeProblem?.let { LocalSetupProblem.valueOf(it) }, localClientConnected, localClientConnectionAvailable,
         firstClientEnrollmentAvailable, firstClientEnrollmentContinuationAvailable,
         employeeEnrollments?.value(), employeeEnrollment?.value(), employeePolicies?.value(), employeePolicy?.value(),
-        deviceAdmissions?.value(), deviceAdmission?.value(), freshDevicePairing?.value(), lan.value(), lifecycleStopPending)
+        deviceAdmissions?.value(), deviceAdmission?.value(), freshDevicePairing?.value(), lan.value(), lifecycleStopPending,
+        masterBackups?.value())
 
     companion object {
         fun of(v: LocalSetupView) = IpcView(v.phase.name, v.work?.name, v.locked, v.companyReview?.let(IpcCompanyReview::of),
@@ -211,7 +220,8 @@ internal data class IpcView(
             v.employeeEnrollments?.let(IpcEnrollments::of), v.employeeEnrollment?.let(IpcEnrollment::of),
             v.employeePolicies?.let(IpcPolicies::of), v.employeePolicy?.let(IpcPolicy::of),
             v.deviceAdmissions?.let(IpcAdmissions::of), v.deviceAdmission?.let(IpcAdmission::of),
-            v.freshDevicePairing?.let(IpcPairing::of), IpcLan.of(v.lan), v.lifecycleStopPending)
+            v.freshDevicePairing?.let(IpcPairing::of), IpcLan.of(v.lan), v.lifecycleStopPending,
+            v.masterBackups?.let(IpcMasterBackups::of))
     }
 }
 
@@ -427,4 +437,39 @@ private fun idList(values: Set<DomainId>) = values.map { it.value }.sorted()
         endpoint?.value(), hostAvailable, clientAvailable, authenticationAvailable)
     companion object { fun of(l: LocalSetupLanView) = IpcLan(l.role?.name, l.status.name,
         l.endpoint?.let { IpcEndpoint(it.address, it.port) }, l.hostAvailable, l.clientAvailable, l.authenticationAvailable) }
+}
+
+/** The existing v1 LAN encoding remains byte compatible; discovery has an opt-in message. */
+@Serializable internal data class IpcLanDiscoveryV2(val networks: List<IpcLanNetwork> = emptyList(),
+    val active: Boolean = false, val masters: List<IpcDiscoveredMaster> = emptyList()) {
+    fun applyTo(lan: LocalSetupLanView) = lan.copy(networks = networks.map { it.value() }, discoveryActive = active,
+        discoveredMasters = masters.map { it.value() })
+    companion object { fun of(lan: LocalSetupLanView) = IpcLanDiscoveryV2(lan.networks.map(IpcLanNetwork::of),
+        lan.discoveryActive, lan.discoveredMasters.map(IpcDiscoveredMaster::of)) }
+}
+@Serializable internal data class IpcLanNetwork(val name: String, val address: String, val subnet: String) {
+    fun value() = LocalSetupLanNetwork(name, address, subnet)
+    companion object { fun of(n: LocalSetupLanNetwork) = IpcLanNetwork(n.interfaceName, n.localAddress, n.subnet) }
+}
+@Serializable internal data class IpcDiscoveredMaster(val id: String, val name: String, val fingerprint: String,
+    val matchesOriginal: Boolean) {
+    fun value() = LocalSetupLanDiscoveredMaster(DomainId(id), name, fingerprint, matchesOriginal)
+    companion object { fun of(m: LocalSetupLanDiscoveredMaster) = IpcDiscoveredMaster(m.candidateId.value,
+        m.displayName, m.fingerprint, m.matchesOriginalMaster) }
+}
+
+@Serializable internal data class IpcMasterBackupEntry(val backupId: String, val sequence: Long, val createdAtEpochMillis: Long,
+    val scheduled: Boolean, val schemaVersion: Int, val snapshotBytes: Long) {
+    fun value() = LocalSetupMasterBackupEntry(DomainId(backupId), sequence, createdAtEpochMillis, scheduled, schemaVersion, snapshotBytes)
+    companion object { fun of(e: LocalSetupMasterBackupEntry) = IpcMasterBackupEntry(e.backupId.value, e.sequence,
+        e.createdAtEpochMillis, e.scheduled, e.schemaVersion, e.snapshotBytes) }
+}
+
+@Serializable internal data class IpcMasterBackups(val entries: List<IpcMasterBackupEntry> = emptyList(),
+    val chainIntact: Boolean? = null, val outcome: String? = null, val outcomeBackupId: String? = null, val reason: String? = null) {
+    fun value() = LocalSetupMasterBackupView(entries.map { it.value() }, chainIntact,
+        outcome?.let { LocalSetupMasterBackupOutcome.valueOf(it) }, outcomeBackupId?.let(::DomainId),
+        reason?.takeIf { it.length <= 64 && it.all { c -> c.isLetterOrDigit() || c == '_' } })
+    companion object { fun of(v: LocalSetupMasterBackupView) = IpcMasterBackups(v.entries.map(IpcMasterBackupEntry::of),
+        v.chainIntact, v.outcome?.name, v.outcomeBackupId?.value, v.reason) }
 }

@@ -40,8 +40,8 @@ internal fun foodPhysicalRequestAction(request: MutationRequest): LocalAction? {
 
 internal fun physicalIntent(owner: LocalClientIdentity, request: MutationRequest,
     label: LocalText, summary: List<LocalRecordValue>): StoredClientIntentV1 {
-    if (request.command == LocalSupplierCashProfile.COMMAND) return supplierPhysicalIntent(owner, request, label, summary)
-    if (request.command == LocalFoodRefundProfile.COMMAND) return foodRefundIntent(owner, request, label, summary)
+    if (request.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND)) return supplierPhysicalIntent(owner, request, label, summary)
+    if (request.command in setOf(LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND)) return foodRefundIntent(owner, request, label, summary)
     if (request.command !in setOf(LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND))
         return retailIntent(owner, request, label, summary)
     val action = foodPhysicalRequestAction(request) ?: invalid()

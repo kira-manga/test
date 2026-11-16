@@ -10,6 +10,8 @@ import com.ukkera.pos.types.*
 internal class SupplierSettlementSourceRead(private val stock: LocalStockRepository) : MasterReadHandler {
     override val key: ReadKey = LocalSupplierSettlementProfile.READ_SOURCE
     override fun normalize(input: StoredBytes): StoredBytes = LocalSupplierSettlementCodec.source(purchasingDecode(input, LocalSupplierSettlementSourceQueryV1.serializer()))
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         requirePurchasingReadContext(view, context, key, normalized)
         val query = purchasingDecode(normalized, LocalSupplierSettlementSourceQueryV1.serializer())
@@ -86,6 +88,8 @@ internal class SupplierAdvanceRead : MasterReadHandler {
 internal class SupplierCashRead : MasterReadHandler {
     override val key: ReadKey = LocalSupplierCashProfile.READ
     override fun normalize(input: StoredBytes): StoredBytes = LocalSupplierSettlementCodec.cash(purchasingDecode(input, LocalSupplierCashQueryV1.serializer()))
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         requirePurchasingReadContext(view, context, key, normalized)
         val query = purchasingDecode(normalized, LocalSupplierCashQueryV1.serializer())
@@ -110,6 +114,8 @@ internal class SupplierOwnCashRead : MasterReadHandler {
     override val key: ReadKey = LocalSupplierSettlementProfile.READ_OWN_CASH
     override fun normalize(input: StoredBytes): StoredBytes = LocalSupplierSettlementCodec.ownCash(
         purchasingDecode(input, LocalSupplierOwnCashQueryV1.serializer()))
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         requirePurchasingReadContext(view, context, key, normalized)
         val query = purchasingDecode(normalized, LocalSupplierOwnCashQueryV1.serializer())

@@ -38,7 +38,15 @@ public class LocalOriginalRpcClientOwner private constructor(
     override val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = retained.approvedMaster
 
     public suspend fun acquire(): RpcLocalIdentity { requireNetwork(); return retained.acquire() }
+    /** Advisory candidates from this original lifetime; a matching claim is not trust. */
+    public val discoveredMasters: StateFlow<List<LocalRpcDiscoveredMaster>> get() = retained.discoveredMasters
+    public suspend fun startDiscovery() { requireNetwork(); retained.startDiscovery() }
+    public suspend fun connectDiscovered(candidateId: DomainId) { requireNetwork(); retained.connectDiscovered(candidateId) }
+    /** Read-only actual SDK state. This cannot connect, authenticate or extend a session. */
+    public fun transportConnectedNow(): Boolean = retained.transportConnectedNow()
     public suspend fun connect(endpoint: RpcEndpoint) { requireNetwork(); retained.connect(endpoint) }
+    /** Retain native custody, confirm old-role close, then recover the same identity disconnected. */
+    public suspend fun recoverTransport(): RpcLocalIdentity { requireNetwork(); return retained.recoverTransport() }
     override suspend fun authenticationService(): LocalRpcRemoteAuthenticationService { requireNetwork(); return retained.authenticationService() }
     public suspend fun supplierClient(): LocalRpcRemoteSupplierClient { requireNetwork(); return retained.supplierClient() }
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient {
@@ -74,7 +82,18 @@ public class LocalOriginalRpcClientOwner private constructor(
         /** One existing target and explicit original action; shared code supplies selected-Master trust. */
         public fun retainExisting(applicationScope: CoroutineScope, target: LocalOriginalPairingTarget,
             originalPairingActionId: DomainId, lan: OrganizationLan, platform: () -> RpcPlatform,
-            requireNetwork: () -> Unit): LocalOriginalRpcClientOwner {
+            requireNetwork: () -> Unit): LocalOriginalRpcClientOwner =
+            retainSelected(applicationScope, target, originalPairingActionId, lan, platform, requireNetwork, false)
+
+        /** Explicit native production route supporting only confirmed whole-role generation handoff. */
+        public fun retainRecoverableExisting(applicationScope: CoroutineScope, target: LocalOriginalPairingTarget,
+            originalPairingActionId: DomainId, lan: OrganizationLan, platform: () -> RpcPlatform,
+            requireNetwork: () -> Unit): LocalOriginalRpcClientOwner =
+            retainSelected(applicationScope, target, originalPairingActionId, lan, platform, requireNetwork, true)
+
+        private fun retainSelected(applicationScope: CoroutineScope, target: LocalOriginalPairingTarget,
+            originalPairingActionId: DomainId, lan: OrganizationLan, platform: () -> RpcPlatform,
+            requireNetwork: () -> Unit, recoverableTransport: Boolean): LocalOriginalRpcClientOwner {
             requireNetwork()
             val lifetime = LocalRpcOriginalClientOwner.retentionLifetime(applicationScope)
             val source = OriginalTargetClientSource(target)
@@ -82,7 +101,7 @@ public class LocalOriginalRpcClientOwner private constructor(
             try {
                 val retained = LocalRpcOriginalClientOwner(applicationScope, lifetime,
                     source.selectedMasterSource(originalPairingActionId),
-                    { requireNetwork(); platform() }, lan, { OriginalTargetClientSlot.release(source) })
+                    { requireNetwork(); platform() }, lan, recoverableTransport, { OriginalTargetClientSlot.release(source) })
                 source.retainOwner(retained)
                 return LocalOriginalRpcClientOwner(requireNetwork, retained)
             } catch (failure: Throwable) {

@@ -2,15 +2,22 @@ package com.ukkera.pos.security
 
 /**
  * The additive Windows/macOS company workflow ledgers: the desktop (V2) at-rest custody of the same
- * four record ledgers the Android V1 company registry keeps beside its container (employee
- * enrollments, employee policy activations, device pairings, device admissions). Business
- * publication and serial custody have no desktop ledger yet and are not part of this closed set.
+ * record ledgers the Android V1 company registry keeps beside its container (employee
+ * enrollments, employee policy activations, device pairings, device admissions and business
+ * publications). Serial authority also requires its mandatory company-container custody marker.
  */
+internal sealed interface SelfOwnedCompanyLedgerDefinitionV2 {
+    val ledgerDomain: String
+    val aadDomain: String
+    val purpose: String
+}
+
+/** Original closed four-ledger profile; its names and domains remain stable. */
 internal enum class SelfOwnedCompanyLedgerKindV2(
-    val ledgerDomain: String,
-    val aadDomain: String,
-    val purpose: String,
-) {
+    override val ledgerDomain: String,
+    override val aadDomain: String,
+    override val purpose: String,
+) : SelfOwnedCompanyLedgerDefinitionV2 {
     EMPLOYEE_ENROLLMENTS("native-company-employee-enrollment-ledger/v2",
         "native-company-employee-enrollment-ledger-aad/v2", "ORIGINAL_NATIVE_COMPANY_EMPLOYEE_ENROLLMENTS_V2"),
     EMPLOYEE_POLICY_ACTIVATIONS("native-company-employee-policy-activation-ledger/v2",
@@ -19,6 +26,13 @@ internal enum class SelfOwnedCompanyLedgerKindV2(
         "native-company-device-pairing-ledger-aad/v2", "ORIGINAL_NATIVE_COMPANY_DEVICE_PAIRINGS_V2"),
     DEVICE_ADMISSIONS("native-company-device-admission-ledger/v2",
         "native-company-device-admission-ledger-aad/v2", "ORIGINAL_NATIVE_COMPANY_DEVICE_ADMISSIONS_V2"),
+}
+
+/** Additive publication capability, separate from the original closed four-ledger profile. */
+internal object SelfOwnedBusinessPublicationLedgerV2 : SelfOwnedCompanyLedgerDefinitionV2 {
+    override val ledgerDomain: String = "native-company-business-publication-ledger/v2"
+    override val aadDomain: String = "native-company-business-publication-ledger-aad/v2"
+    override val purpose: String = "ORIGINAL_NATIVE_COMPANY_BUSINESS_PUBLICATIONS_V2"
 }
 
 /**
@@ -43,6 +57,7 @@ internal object SelfOwnedNativeCompanyLedgerProfileV2 {
 
     /** Closed set of shared root-endorsement message domains (V1 legacy pairing and SDK-bound pairing). */
     val ROOT_ENDORSEMENT_DOMAINS: Set<String> = setOf(
+        "company-business-publication-root-endorsement/v1",
         "company-root-full-employee-approval/v1",
         "company-root-complete-employee-policy-approval/v1",
         "original-root-head-approved-one-device-pairing/v1",
@@ -54,7 +69,7 @@ internal object SelfOwnedNativeCompanyLedgerProfileV2 {
 
 internal object SelfOwnedNativeCompanyLedgerWireV2 {
     /** Ledger AAD: ledger domain, purpose and the complete company-registry AAD of [company]. */
-    fun aad(kind: SelfOwnedCompanyLedgerKindV2, company: LocalCompanyAuthorityBootstrapV2): ByteArray =
+    fun aad(kind: SelfOwnedCompanyLedgerDefinitionV2, company: LocalCompanyAuthorityBootstrapV2): ByteArray =
         frame(kind.aadDomain, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_AAD_BYTES) {
             string(kind.purpose)
             val registry = SelfOwnedNativeProvisionerWireV2.companyRegistryAad(company)
@@ -62,11 +77,11 @@ internal object SelfOwnedNativeCompanyLedgerWireV2 {
         }
 
     /** V2 frame around exactly the shared ledger record grammar bytes. */
-    fun encodeLedger(kind: SelfOwnedCompanyLedgerKindV2, records: ByteArray): ByteArray =
+    fun encodeLedger(kind: SelfOwnedCompanyLedgerDefinitionV2, records: ByteArray): ByteArray =
         frame(kind.ledgerDomain, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_PLAINTEXT_BYTES) { field(records) }
 
     /** The shared record grammar bytes of a canonical V2 ledger frame of exactly [kind]. */
-    fun decodeLedger(kind: SelfOwnedCompanyLedgerKindV2, bytes: ByteArray): SelfOwnedInstalledIdentityResultV2<ByteArray> =
+    fun decodeLedger(kind: SelfOwnedCompanyLedgerDefinitionV2, bytes: ByteArray): SelfOwnedInstalledIdentityResultV2<ByteArray> =
         selfOwnedIdentityGuarded {
             val records = read(bytes, kind.ledgerDomain, SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_PLAINTEXT_BYTES) {
                 field(SelfOwnedNativeCompanyLedgerProfileV2.MAXIMUM_LEDGER_PLAINTEXT_BYTES)

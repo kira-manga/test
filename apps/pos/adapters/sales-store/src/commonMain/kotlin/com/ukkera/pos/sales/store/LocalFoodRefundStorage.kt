@@ -123,7 +123,12 @@ internal fun foodRefundFinancialEnvelope(input: FoodFinancialInputV1, scope: Bra
     return (input.financial ?: foodFinancialEnvelope(input.bytes())).also { value ->
         check(value.scope == scope && value.kind == input.kind && value.id == input.id && value.revision == input.revision &&
             value.operationId == input.operationId)
-        if (input.schema == foodStockSchema(input.kind)) requireFoodStockFinancialLiteral(input.bytes(), value)
+        if (input.schema == foodStockSchema(input.kind) && input.kind == LocalFoodFinancialProfileV1.REFUND_INDEX) {
+            // The installed normalized stock writer keeps this index as a complete plain
+            // envelope. Only COLLECTION/SALE/ENTITLEMENT/REFUND use the chunked document.
+            check(!value.framed && value.originalBatches.isEmpty() && input.bytes() ==
+                localSalesEncode(value, FoodFinancialEnvelopeV1.serializer(), 65_536))
+        } else if (input.schema == foodStockSchema(input.kind)) requireFoodStockFinancialLiteral(input.bytes(), value)
         else if (value.framed) check(input.schema == foodFinancialSchemaV2(input.kind))
     }
 }

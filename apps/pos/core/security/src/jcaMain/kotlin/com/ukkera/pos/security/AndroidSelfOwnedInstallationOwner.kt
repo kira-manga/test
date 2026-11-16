@@ -142,10 +142,11 @@ internal class AndroidSelfOwnedInstallationLifetime(
     private var masterSdkConstructionEntered = false
     private var companyInstallation: AndroidLocalCompanyAuthority? = null
     private var desktopCompanyInstallation: SelfOwnedDesktopCompanyInstallationV2? = null
+    private var desktopCompanyPolicies: SelfOwnedDesktopCompanyPolicyPublicationV2? = null
     private var companyKeys: LocalProvisionerNativeKeys? = null
     private var desktopCompanyKeys: SelfOwnedCompanyNativeKeysV2? = null
     private val companyIssuance = AndroidLocalCompanyIssuanceGate()
-    private var businessPublicationsNative: AndroidLocalCompanyBusinessPublications? = null
+    private var businessPublicationsNative: LocalCompanyBusinessPublicationCore? = null
     private var businessPublications: LocalCompanyBusinessPublications? = null
     private var serialCustodyControl: OriginalLocalSerialCustodyControlV1? = null
     private val purchasingPolicyTrust = AtomicReference<NativePurchasingPolicyTrust?>(null)
@@ -721,7 +722,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
         val publications=close.businessPublicationSelection
         check(publications === storage.businessPublicationSelection)
         if (publications != null) requireNotNull(businessPublicationsNative).reobserveOriginalHistory(publications,close.original)
-        else requireOriginalOnlyIssuerNative(requireNotNull(provisionerCandidate))
+        else requireOriginalBusinessPublicationAbsenceNative(requireNotNull(provisionerCandidate), close.original)
         val admissions=close.deviceAdmissionSelection
         check(admissions === storage.deviceAdmissionSelection)
         if (admissions != null) requireNotNull(deviceAdmissionsNative).reobserveOriginalHistory(admissions,close.original)
@@ -790,6 +791,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
     internal fun newCeremoniesAllowedNoIo(): Boolean = !ceremoniesDenied.get() && !dataUseDeniedNoIo()
     internal fun requestHistoryLifetimeClose() { work.requestClose { closeNative() } }
 
+    override suspend fun requireUnborrowedRoomEntry(): Unit = work.requireUnborrowedRoomEntry()
+
     override suspend fun <T> runRoomWork(block: suspend () -> T, discard: suspend (T) -> Unit): T =
         work.runRoom(block, discard)
 
@@ -853,6 +856,23 @@ internal class AndroidSelfOwnedInstallationLifetime(
         historyPager = null; historyPagerClose = null
     }
     override suspend fun beginRoomFrame(): SelfOwnedNativeRoomFrame = beginRoomFrameForOperation(null)
+    /** Between frames only, under this native exclusion; the anchor must be unchanged across the copy. */
+    override suspend fun captureBackupSnapshot(destinationPath: String): SelfOwnedNativeBackupCapture {
+        work.roomCoroutines.drainBeforeNative()
+        val capture = historyOperation {
+            check(roomFrame == null && historyStorage == null && historyPager == null)
+            val anchor = requireNotNull(historyAnchor)
+            val original = anchor.snapshotOriginal()
+            check(original.record.pending == null && original.record.nativeDatabase != null)
+            val (version, identity) = requireNotNull(roomDriver).captureBackupInto(destinationPath)
+            val after = anchor.snapshotOriginal()
+            check(after.recordDigest == original.recordDigest && after.record.generation == original.record.generation &&
+                after.record.pending == null)
+            SelfOwnedNativeBackupCapture(original.record.generation, original.recordDigest, identity, version)
+        }
+        work.roomCoroutines.resumeQueriesAfterNative()
+        return capture
+    }
     override suspend fun beginApprovedCommandRoomFrame(operationId: com.ukkera.pos.types.DomainId): SelfOwnedNativeRoomFrame =
         beginRoomFrameForOperation(operationId)
     private suspend fun beginRoomFrameForOperation(approvedOperationId: com.ukkera.pos.types.DomainId?): SelfOwnedNativeRoomFrame {
@@ -938,7 +958,10 @@ internal class AndroidSelfOwnedInstallationLifetime(
                             // The requester origin must predate its native record; matching old
                             // native bytes without an origin can never be adopted by a new actor.
                             val proposal = requests.origin.originalProposal()
-                            try { sameBusinessPublicationsNative().requireFreshPrivateSerialOrigin(proposal) }
+                            try {
+                                val native = sameBusinessPublicationsNative()
+                                native.withVerifiedIssuerHistory(actual) { native.requireFreshPrivateSerialOrigin(proposal) }
+                            }
                             finally { proposal.discardUndeliveredNativeContent() }
                         } else {
                             val originalDecision = requireSerialPrivateDecision(record, requests.origin, originInputs)
@@ -1183,17 +1206,18 @@ internal class AndroidSelfOwnedInstallationLifetime(
     private fun selectOriginalBusinessPublicationHistoryNative(original: OriginalNativeHistorySnapshot): NativeBusinessPublicationHistorySelection? {
         val registry = sameOriginalIssuerRegistryNeutral()
         if (!registry.holdsCompanyContainer()) {
-            requireOriginalOnlyIssuerNative(registry)
-            check(original.record.businessPublicationObservations.isEmpty() && original.record.pending?.businessPublications == null)
+            requireOriginalBusinessPublicationAbsenceNative(registry, original)
             return null
         }
         requireNotNull(historyAnchor).requireSameOriginalCut(original)
-        if (registry is SelfOwnedProvisionerRegistryStoreV2) {
-            // Desktop has no business publication ledger or workflow: none can exist in its history.
-            check(original.record.businessPublicationObservations.isEmpty() && original.record.pending?.businessPublications == null)
-            return null
-        }
         return sameBusinessPublicationsNative().selectOriginalHistory(original)
+    }
+    /** Proven issuer-only history cannot contain a company business-publication observation. */
+    private fun requireOriginalBusinessPublicationAbsenceNative(registry: SelfOwnedOriginalRegistryStore,
+        original: OriginalNativeHistorySnapshot) {
+        check(original.record.businessPublicationObservations.isEmpty() && original.record.pending?.businessPublications == null)
+        requireNotNull(historyAnchor).requireSameOriginalCut(original)
+        requireOriginalOnlyIssuerNative(registry)
     }
     private fun selectOriginalDeviceAdmissionHistoryNative(original: OriginalNativeHistorySnapshot): NativeDeviceAdmissionHistorySelection? {
         val registry = sameOriginalIssuerRegistryNeutral()
@@ -1209,7 +1233,6 @@ internal class AndroidSelfOwnedInstallationLifetime(
             requireOriginalOnlyIssuerNative(registry)
             return null
         }
-        if (registry is SelfOwnedProvisionerRegistryStoreV2) return null // No desktop business publication ledger.
         return sameBusinessPublicationsNative().captureRoomObservation(frame)
     }
     private fun sameCompanyKeysNative(): LocalProvisionerNativeKeys {
@@ -1279,6 +1302,27 @@ internal class AndroidSelfOwnedInstallationLifetime(
             else -> selfOwnedFail(SelfOwnedInstallationFailureV1.UNSUPPORTED_PLATFORM)
         }
     }
+    /**
+     * Windows/macOS purchasing-policy issuer of the same original V2 company container, over the same
+     * worker, environment and issuance gate; null for the Android V1 registry, whose policy path is
+     * the unchanged [AndroidLocalCompanyAuthority]. Nothing is re-tried as another version.
+     */
+    private fun sameDesktopCompanyPoliciesNative(): SelfOwnedDesktopCompanyPolicyPublicationV2? {
+        desktopCompanyPolicies?.let { return it }
+        val actualEnvironment = requireNotNull(environment)
+        val registry = sameOriginalIssuerRegistryNeutral() as? SelfOwnedProvisionerRegistryStoreV2 ?: return null
+        val keys = desktopCompanyKeys ?: platform.provisionerKeys(actualEnvironment, registry, work).let {
+            SelfOwnedCompanyAuthorityV2.requireCompanyKeys(it)
+        }
+        val issuer = SelfOwnedDesktopCompanyPolicyPublicationV2(actualEnvironment, registry, keys, work, companyIssuance)
+        if (desktopCompanyKeys == null) {
+            // Join to the ORIGINAL target's authenticated source, not merely matching company labels/IDs.
+            val state = issuer.readStateOrNull() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+            requireOriginalIssuerRootNative(state.original.root)
+            desktopCompanyKeys = keys
+        }
+        return issuer.also { desktopCompanyPolicies = it }
+    }
     private fun sameCompanyInstallationNative(): AndroidLocalCompanyAuthority {
         companyInstallation?.let { return it }
         val keys = sameCompanyKeysNative()
@@ -1296,11 +1340,11 @@ internal class AndroidSelfOwnedInstallationLifetime(
             ownerToken, AndroidP256Primitives.newId()).also { historyAnchor = it }
     }
 
-    private fun sameBusinessPublicationsNative(): AndroidLocalCompanyBusinessPublications {
+    private fun sameBusinessPublicationsNative(): LocalCompanyBusinessPublicationCore {
         businessPublicationsNative?.let { return it }
-        val keys = sameCompanyKeysNative()
-        return AndroidLocalCompanyBusinessPublications(requireNotNull(environment), requireNotNull(provisionerCandidate).legacyCompanyRegistry(), keys, work,
-            companyIssuance, sameHistoryAnchorNative()).also { businessPublicationsNative = it }
+        val native = JcaBusinessPublicationCustody(requireNotNull(environment), work, companyIssuance, sameWorkflowCustodyNative())
+        val history = sameHistoryAnchorNative()
+        return LocalCompanyBusinessPublicationCore(native, history::snapshotOriginal).also { businessPublicationsNative = it }
     }
 
     private fun sameEmployeeEnrollmentsNative(): AndroidLocalCompanyEmployeeEnrollments {
@@ -1523,39 +1567,36 @@ internal class AndroidSelfOwnedInstallationLifetime(
     /** Existing authenticated issuer ledger only; never inside a borrowed Room frame. */
     private fun readPurchasingPolicyLedgerNative(): Pair<NativePurchasingPolicyTrust, List<LocalPurchasingPublicationReference>> = try {
         if (roomFrame != null) selfOwnedFail(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
-        val keys = sameCompanyKeysNative()
-        val registry = requireNotNull(provisionerCandidate).legacyCompanyRegistry()
-        val state = registry.readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
-        requireOriginalIssuerRootNative(state.original.root)
-        val scope = state.original.allocations.singleOrNull()?.body?.coordinates?.scope
-            ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
-        val fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody())
+        // Android V1 reads its unchanged company registry; Windows/macOS read the V2 container. Either
+        // authenticated read verified exact canonical originals, enrollment/delegation, the predecessor
+        // sequence and BOTH actual P-256 signatures of every retained policy before this point.
+        val desktop = sameDesktopCompanyPoliciesNative()
+        val scope: BranchScope?; val fingerprint: String; val policies: List<LocalCompanyPolicyRecordV1>
+        val continuity: () -> Unit
+        if (desktop != null) {
+            val state = desktop.readStateOrNull() ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+            requireOriginalIssuerRootNative(state.original.root)
+            scope = state.original.allocations.singleOrNull()?.body?.coordinates?.scope
+            fingerprint = desktop.rootFingerprint(); policies = state.policies
+            continuity = { requireNotNull(provisionerCandidate).assertContinuity() }
+        } else {
+            val keys = sameCompanyKeysNative()
+            val registry = requireNotNull(provisionerCandidate).legacyCompanyRegistry()
+            val state = registry.readCompanyState(keys) ?: localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
+            requireOriginalIssuerRootNative(state.original.root)
+            scope = state.original.allocations.singleOrNull()?.body?.coordinates?.scope
+            fingerprint = AndroidP256Primitives.rootFingerprint(keys.rootBody()); policies = state.policies
+            continuity = { registry.assertContinuity() }
+        }
+        if (scope == null) localCompanyRefuse(LocalCompanyAuthorityFailure.ORIGINAL_RESULT_REQUIRED)
         val candidate = purchasingPolicyTrust.get() ?: NativePurchasingPolicyTrust(scope, fingerprint).also {
             check(purchasingPolicyTrust.compareAndSet(null, it))
         }
         check(candidate.scope == scope && candidate.rootFingerprint == fingerprint)
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
-        val completed = state.policies.filter { it.phase == LocalCompanyPolicyPhaseV1.ISSUED }.map { record ->
-            // readCompanyState verified exact canonical originals, enrollment/delegation,
-            // the predecessor sequence and BOTH actual P-256 signatures before this point.
-            val envelope = checkNotNull(record.signedPolicy)
-            val bytes = envelope.copyBytes()
-            try { VerifiedNativePurchasingPolicy(record.policy().publicationId, sha256(bytes), envelope) }
-            finally { bytes.fill(0) }
-        }
-        val references = state.policies.map { record ->
-            val body = record.policyBody.copyBytes()
-            try {
-                val policy = record.policy()
-                LocalPurchasingPublicationReference(record.originalActionId, policy.policyId, policy.publicationId,
-                    policy.revision, sha256(body), when (record.phase) {
-                        LocalCompanyPolicyPhaseV1.PREPARED -> LocalPurchasingPublicationPhase.PREPARED
-                        LocalCompanyPolicyPhaseV1.SIGNING_INTENT -> LocalPurchasingPublicationPhase.SIGNING_INTENT
-                        LocalCompanyPolicyPhaseV1.ISSUED -> LocalPurchasingPublicationPhase.ISSUED
-                    })
-            } finally { body.fill(0) }
-        }
-        registry.assertContinuity()
+        val completed = LocalCompanyPolicyPublicationCore.verifiedIssued(policies)
+        val references = policies.map { LocalCompanyPolicyPublicationCore.ledgerReference(it) }
+        continuity()
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         candidate.retainVerified(completed)
         candidate to references
@@ -1591,13 +1632,19 @@ internal class AndroidSelfOwnedInstallationLifetime(
         }
 
     override suspend fun preparePurchasingPolicy(proposal: LocalCompanyPolicyProposal): LocalCompanyAuthorityResult<LocalCompanyPolicyAction> =
-        purchasingPolicyOperation(operational = true, newIssuance = true) { sameCompanyInstallationNative().preparePolicyPublication(proposal) }
+        purchasingPolicyOperation(operational = true, newIssuance = true) {
+            sameDesktopCompanyPoliciesNative()?.preparePolicyPublication(proposal)
+                ?: sameCompanyInstallationNative().preparePolicyPublication(proposal)
+        }
 
     override suspend fun approvePurchasingPolicy(action: LocalCompanyPolicyAction, login: String, secret: CharArray):
         LocalCompanyAuthorityResult<LocalCompanyPolicyPublication> {
         try {
             return purchasingPolicyOperation(operational = true, newIssuance = true, secret = secret) { owned ->
-                sameCompanyInstallationNative().approvePolicyPublication(action, login, requireNotNull(owned)).also {
+                val secretOwned = requireNotNull(owned)
+                val desktop = sameDesktopCompanyPoliciesNative()
+                (desktop?.approvePolicyPublication(action, login, secretOwned)
+                    ?: sameCompanyInstallationNative().approvePolicyPublication(action, login, secretOwned)).also {
                     readPurchasingPolicyLedgerNative()
                 }
             }
@@ -1606,7 +1653,8 @@ internal class AndroidSelfOwnedInstallationLifetime(
 
     override suspend fun recoverPurchasingPolicy(originalActionId: DomainId): LocalCompanyAuthorityResult<LocalCompanyPolicyPublication> =
         purchasingPolicyOperation(operational = true) {
-            sameCompanyInstallationNative().recoverPolicyPublication(originalActionId).also { readPurchasingPolicyLedgerNative() }
+            (sameDesktopCompanyPoliciesNative()?.recoverPolicyPublication(originalActionId)
+                ?: sameCompanyInstallationNative().recoverPolicyPublication(originalActionId)).also { readPurchasingPolicyLedgerNative() }
         }
 
     override suspend fun retainedPurchasingPolicies(): LocalCompanyAuthorityResult<List<LocalPurchasingPublicationReference>> =
@@ -1708,7 +1756,7 @@ internal class AndroidSelfOwnedInstallationLifetime(
                 serialPrivateRequire(native.statusPrivateSerialPublication(proposal) == result)
             }, discardOutput = {}) { native, proposal, _ -> native.statusPrivateSerialPublication(proposal) }
 
-    private fun requireSerialPrivateReturnedAction(native: AndroidLocalCompanyBusinessPublications,
+    private fun requireSerialPrivateReturnedAction(native: LocalCompanyBusinessPublicationCore,
         proposal: CompanyBusinessPublicationProposal, request: NativeSerialPrivatePublicationRequestV1, actionId: DomainId) {
         native.requirePrivateSerialPublication(actionId, proposal)
         request.originalActionId?.let { serialPrivateRequire(actionId == it) }
@@ -1722,9 +1770,9 @@ internal class AndroidSelfOwnedInstallationLifetime(
     private suspend fun <T> serialPrivateOperation(settled: OriginalNativeHistorySnapshot,
         access: NativeSerialPrivateRequestCapsuleV1, origin: NativeSerialPrivateRequestCapsuleV1,
         operations: Set<NativeSerialPrivatePublicationOperationV1>, newIssuance: Boolean,
-        validateOutput: (AndroidLocalCompanyBusinessPublications, CompanyBusinessPublicationProposal, NativeSerialPrivatePublicationRequestV1, T) -> Unit,
+        validateOutput: (LocalCompanyBusinessPublicationCore, CompanyBusinessPublicationProposal, NativeSerialPrivatePublicationRequestV1, T) -> Unit,
         discardOutput: (T) -> Unit,
-        body: (AndroidLocalCompanyBusinessPublications, CompanyBusinessPublicationProposal, NativeSerialPrivatePublicationRequestV1) -> T):
+        body: (LocalCompanyBusinessPublicationCore, CompanyBusinessPublicationProposal, NativeSerialPrivatePublicationRequestV1) -> T):
         LocalCompanyAuthorityResult<T> {
         if (synchronized(contextGate) { contextPhase != ContextPhase.TRANSFERRED || dataUseDeniedNoIo() })
             return LocalCompanyAuthorityResult.Unavailable(LocalCompanyAuthorityFailure.NATIVE_UNAVAILABLE,
@@ -1755,19 +1803,24 @@ internal class AndroidSelfOwnedInstallationLifetime(
                             selfOwnedFail(SelfOwnedInstallationFailureV1.ISSUANCE_WITHDRAWN)
                         val native = sameBusinessPublicationsNative()
                         val originalProposal = requests.origin.originalProposal(); proposal = originalProposal
-                        val result = try { body(native, originalProposal, requests.access) }
+                        val result = try {
+                            native.withVerifiedIssuerHistory(actual) { body(native, originalProposal, requests.access) }
+                        }
                         catch (refusal: LocalCompanyAuthorityRefusal) { return LocalCompanyAuthorityResult.Unavailable(refusal.reason) }
                         try {
                             // A revoked/expired delivery never exports the retained review or
                             // result. The native record remains available to a later valid access.
                             requireDataNative()
-                            val after = requireNotNull(historyAnchor).requireSameOriginalCut(actual).record
+                            val afterCut = requireNotNull(historyAnchor).requireSameOriginalCut(actual)
+                            val after = afterCut.record
                             val finalAccess = requireSerialPrivateDecision(after, requests.access, accessInputs)
                             val finalOriginal = requireSerialPrivateDecision(after, requests.origin, originInputs)
                             serialPrivateRequire(after.pending == null && finalAccess.child == after.parent &&
                                 finalAccess == accessDecision && finalOriginal == originalDecision &&
                                 finalAccess.declaration.actorId == finalOriginal.declaration.actorId)
-                            validateOutput(native, originalProposal, requests.access, result)
+                            native.withVerifiedIssuerHistory(afterCut) {
+                                validateOutput(native, originalProposal, requests.access, result)
+                            }
                             requireDataNative()
                             requireSerialPrivateAccessNow(finalAccess.declaration, finalAccess.observed)
                             return LocalCompanyAuthorityResult.Value(result)
@@ -2012,13 +2065,15 @@ internal class AndroidSelfOwnedInstallationLifetime(
             runtimeAdapters?.let { return it }
             val native = requireNotNull(nativeSecurity)
             val coordinates = materialAtOpen.coordinates
-            val protection = object : DeviceProtectedLocalStorage {
+            val protection = object : BatchedDeviceProtectedLocalStorage {
                 override val protectionStatus: KeyProtectionStatus get() =
                     if (dataUseDeniedNoIo()) KeyProtectionStatus.UNQUALIFIED_CONTEXT else KeyProtectionStatus.QUALIFIED_SUPERVISED_SERVICE_CONTEXT
                 override suspend fun seal(reference: ProtectedStorageKeyReference, binding: ProtectedLocalBinding, plaintext: ByteArray): LocalSealResult =
                     native.seal(reference, binding, plaintext)
                 override suspend fun open(reference: ProtectedStorageKeyReference, expected: ProtectedLocalBinding, sealed: SealedLocalRecord): LocalOpenResult =
                     native.open(reference, expected, sealed)
+                override suspend fun openBatch(reference: ProtectedStorageKeyReference,
+                    selections: List<ProtectedLocalOpenSelection>): LocalBatchOpenResult = native.openBatch(reference, selections)
             }
             val passwords = object : LocalPasswordHasher {
                 override suspend fun create(password: CharArray, binding: CredentialBinding, pepperReference: ProtectedPepperReference): PasswordHashingResult =
@@ -2063,13 +2118,18 @@ internal class AndroidSelfOwnedInstallationLifetime(
     private val dataObservationDiagnostics = java.util.concurrent.atomic.AtomicInteger()
 
     /** Only same-owner authored native tasks call this, before AND after actual data operations. */
-    fun requireDataNative(trace: Boolean = false) {
+    fun requireDataNative(trace: Boolean = false) { requireDataNativeState(trace) }
+
+    /** The exact freshly checked state from this native call, never retained as currentness.
+     * A caller that immediately needs its binding need not reopen the same journal again. */
+    internal fun requireDataNativeState(trace: Boolean = false): SelfOwnedOriginalJournalState {
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
         val diagnosticIndex = dataObservationDiagnostics.getAndUpdate { if (it < 257) it + 1 else it }
         val sample = trace || diagnosticIndex < 4 || diagnosticIndex == 16 || diagnosticIndex == 64 ||
             diagnosticIndex == 128 || diagnosticIndex == 256
-        readOriginalStateNative(sample)
+        val state = readOriginalStateNative(sample)
         if (dataUseDeniedNoIo()) selfOwnedFail(SelfOwnedInstallationFailureV1.NATIVE_RETIRED)
+        return state
     }
 
     private fun readOriginalStateNative(trace: Boolean = false): SelfOwnedOriginalJournalState {

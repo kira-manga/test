@@ -18,7 +18,7 @@ import com.ukkera.pos.types.*
 public class LocalCollectionStockHandler(private val stock: LocalStockRepository,
     private val authority: LocalStockAuthorityReader, private val quotes: TransactionSalesStockQuoteSource,
     private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1) :
-    MasterStreamingCommandHandler, LocalMasterRpcRetainedResultAccessProvider {
+    MasterStreamingCommandHandler, LocalMasterRpcRetainedResultAccessProvider, LocalMasterRpcRetainedOriginalAccessProvider {
     override val key: CommandKey = StockStreamingCommandsV2.COLLECTION
     override val writableKinds: Set<String> = StockRelationalKindsV2.all - StockRelationalKindsV2.ACTIVATION + setOf(
         LocalSalesStoreProfile.ORDER_KIND, LocalSalesStoreProfile.ORDER_CONTEXT_KIND, LocalSalesStoreProfile.PRICE_SOURCES_KIND,
@@ -28,13 +28,21 @@ public class LocalCollectionStockHandler(private val stock: LocalStockRepository
     override val claimNamespaces: Set<String> = LocalStockStoreProfile.inventoryClaimNamespaces + LocalSalesStoreProfile.UNIQUE_NAMESPACE
     override fun normalize(input: StoredBytes): StoredBytes = LocalCollectionStockCodecV2.normalize(input)
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile != LocalMasterRpcWorkflowProfile.RETAIL_ORDERS) return false
+        if (profile != LocalMasterRpcWorkflowProfile.RETAIL_ORDERS && profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS) return false
         val request = LocalCollectionStockCodecV2.decode(normalized)
-        return request.retailOrderRpcSelection() != null && LocalCollectionStockCodecV2.encode(request) == normalized
+        return LocalCollectionStockCodecV2.encode(request) == normalized &&
+            if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) request.retailOrderRpcSelection() == null && request.isLanBusinessCollectionRequest()
+            else request.retailOrderRpcSelection() != null
+    }
+    override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if ((profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS && profile != LocalMasterRpcWorkflowProfile.RETAIL_ORDERS) ||
+            !supportsRpcWorkflow(profile, normalized)) return null
+        return localCollectionStockRpcOriginalRequirements(stock, normalized, original, view, context)
     }
     override fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
         context: CommandContext): List<AuthorizationRequirement> {
-        check(profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS && context.key == key &&
+        check((profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && context.key == key &&
             normalize(normalized) == normalized &&
             semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)
         val selection = checkNotNull(LocalCollectionStockCodecV2.decode(normalized).retailOrderRpcSelection())
@@ -69,15 +77,17 @@ public class LocalCollectionStockHandler(private val stock: LocalStockRepository
             sink.requireContext(view.requireStockRelational(), context)
             val loan = CommerceLoan(view, stock, sink, tenderPolicies)
             val inventory = stock.streamRelational(loan, context, sink, authority, at)
-            when (request) {
-                is LocalCollectionStockRequestV2.CreateOrder -> create(request, loan, context, command, at, sink, inventory)
-                is LocalCollectionStockRequestV2.ReplaceUnlockedOrder -> replace(request, loan, context, command, at, sink, inventory)
-                is LocalCollectionStockRequestV2.OfferHandoff -> offer(request, loan, context, command, sink, inventory)
-                is LocalCollectionStockRequestV2.CancelHandoff -> cancel(request, loan, context, command, sink, inventory)
-                is LocalCollectionStockRequestV2.AcceptHandoff -> accept(request, loan, context, command, sink, inventory)
-                is LocalCollectionStockRequestV2.ReassignOrder -> reassign(request, loan, context, command, sink, inventory)
-                is LocalCollectionStockRequestV2.Begin -> begin(request, loan, context, command, at, sink, inventory)
-                is LocalCollectionStockRequestV2.Finalize -> finalize(request, loan, context, command, at, sink, inventory)
+            inventory.withCompletedProducerProof {
+                when (request) {
+                    is LocalCollectionStockRequestV2.CreateOrder -> create(request, loan, context, command, at, sink, inventory)
+                    is LocalCollectionStockRequestV2.ReplaceUnlockedOrder -> replace(request, loan, context, command, at, sink, inventory)
+                    is LocalCollectionStockRequestV2.OfferHandoff -> offer(request, loan, context, command, sink, inventory)
+                    is LocalCollectionStockRequestV2.CancelHandoff -> cancel(request, loan, context, command, sink, inventory)
+                    is LocalCollectionStockRequestV2.AcceptHandoff -> accept(request, loan, context, command, sink, inventory)
+                    is LocalCollectionStockRequestV2.ReassignOrder -> reassign(request, loan, context, command, sink, inventory)
+                    is LocalCollectionStockRequestV2.Begin -> begin(request, loan, context, command, at, sink, inventory)
+                    is LocalCollectionStockRequestV2.Finalize -> finalize(request, loan, context, command, at, sink, inventory)
+                }
             }
         }
     }

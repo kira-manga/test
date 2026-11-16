@@ -7,7 +7,11 @@ import com.ukkera.pos.types.DomainId
 public interface LocalMasterLaunchStorage {
     /** An interrupted write must fail, not silently restore an older RUN record. Caller owns bytes. */
     public fun read(): ByteArray?
-    /** Force contents and containing directory before returning. No native records may be changed. */
+    /**
+     * Refuse interrupted/foreign namespace state before any mutation; do not roll it back or
+     * overwrite it. Force contents and containing directory before returning. No native
+     * identity, history or business records may be changed.
+     */
     public fun replaceAndForce(bytes: ByteArray)
 }
 

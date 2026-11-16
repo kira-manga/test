@@ -427,3 +427,20 @@ internal fun purchasingDocumentMediaMatches(media: PurchasingEvidenceMediaV1, by
         bytes[it] == byteArrayOf(0x25, 0x50, 0x44, 0x46, 0x2d)[it]
     } && bytes[5] in byteArrayOf(0x31, 0x32) && bytes[6] == 0x2e.toByte() && bytes[7] in 0x30.toByte()..0x39.toByte()
 }
+
+internal class FinancialPurchasingDocumentReader(private val sources: RuntimeHistoricalFinancialSources,
+    private val view: CommandReadView) : PurchasingDocumentReader(sources.evidence.scope) {
+    override suspend fun selected(key: AggregateKey): Pair<StoredAggregate, RetainedCommandEvidence>? {
+        val source = sources.aggregateSource(key) ?: return null
+        val original = (source.original as? RetainedOriginalV2.Legacy)?.evidence ?: error("Unsupported financial document source")
+        return source.row to original
+    }
+    override suspend fun claim(key: ClaimKey): DomainId? = sources.claim(key)
+    override suspend fun supplierRow(id: DomainId): StoredAggregate? = qualifiedSupplierFinancialSource(sources, view, id)
+    override suspend fun original(operationId: OperationId): RetainedCommandEvidence? = view.retainedCommand(operationId)?.also {
+        check(view.scope == scope && it.scope == scope && it.operationId == operationId && it.assignmentId == sources.evidence.assignmentId &&
+            it.authorityEpoch == sources.evidence.authorityEpoch && it.sequence < sources.evidence.sequence)
+    }
+    override suspend fun referenceKeys(prefix: String): Pair<List<ClaimKey>, Boolean> =
+        error("Financial sources do not provide document membership")
+}

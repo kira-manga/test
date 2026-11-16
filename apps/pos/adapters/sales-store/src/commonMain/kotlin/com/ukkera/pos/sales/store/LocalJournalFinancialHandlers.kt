@@ -1,5 +1,9 @@
 package com.ukkera.pos.sales.store
 
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
+import com.ukkera.pos.database.LocalMasterRpcPhysicalRetainedResultAccessProvider
+import com.ukkera.pos.database.LocalMasterRpcRetainedOriginalAccessProvider
+import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.CommandContext
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.CommandReadView
@@ -40,7 +44,8 @@ public class LocalJournalCollectionHandler(
     private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
     private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = tenderSource as? HistoricalSalesTenderPolicySourceV1
         ?: UnavailableHistoricalSalesTenderPolicySourceV1,
-) : MasterCommandHandler {
+    private val originalSources: LocalFinancialOriginalSourceServices? = null,
+) : MasterCommandHandler, LocalMasterRpcRetainedOriginalAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
     override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer =
         LocalCollectionInteractiveAuthorization(stock, tenderSource, tenderPolicies)
     override val key: CommandKey get() = LocalFinancialJournalProfileV3.COLLECTION_COMMAND
@@ -51,6 +56,21 @@ public class LocalJournalCollectionHandler(
     override val physicalRecordingKinds: Set<String> get() = LocalFinancialJournalProfileV3.gatedKinds
     override val physicalRecordingClaimNamespaces: Set<String> get() = LocalFinancialJournalProfileV3.gatedClaimNamespaces
     override fun normalize(input: StoredBytes): StoredBytes = LocalCollectionCommandCodecV3.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalCollectionCommandCodecV3.decode(normalized) is LocalCollectionRequestV3.ApplyObservation
+    override fun supportsRpcPhysicalRetainedResult(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalCollectionCommandCodecV3.decode(normalized).let { it is LocalCollectionRequestV3.Start || it is LocalCollectionRequestV3.RecordResolution }
+    override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.key != key) return null
+        val loan = commerceLoan(view, stock, tenderPolicies)
+        return financialOriginalRead(loan, context, normalized, originalSources, stock, tenderPolicies = tenderPolicies) { owned ->
+            retailJournalRpcOriginalRequirements(normalized, original, owned, context, tenderPolicies)
+        }
+    }
+
     override fun physicalRecordingAction(normalized: StoredBytes): PhysicalRecordingAction? = when (LocalCollectionCommandCodecV3.decode(normalized)) {
         is LocalCollectionRequestV3.Start -> PhysicalRecordingAction.START_PAYMENT
         is LocalCollectionRequestV3.RecordOriginal -> PhysicalRecordingAction.RETAIN_ORIGINAL
@@ -82,7 +102,8 @@ public class LocalJournalReturnHandler(
     private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
     private val stock: LocalStockRepository? = null,
     private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
-) : MasterCommandHandler {
+    private val originalSources: LocalFinancialOriginalSourceServices? = null,
+) : MasterCommandHandler, LocalMasterRpcRetainedOriginalAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
     override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalReturnInteractiveAuthorization(stock, tenderPolicies)
     override val key: CommandKey get() = LocalFinancialJournalProfileV3.RETURN_COMMAND
     override val writableKinds: Set<String> = retailFinancialKinds + setOf(LocalSalesStoreProfile.RETURN_KIND,
@@ -91,6 +112,21 @@ public class LocalJournalReturnHandler(
     override val physicalRecordingKinds: Set<String> get() = LocalFinancialJournalProfileV3.gatedKinds
     override val physicalRecordingClaimNamespaces: Set<String> get() = LocalFinancialJournalProfileV3.gatedClaimNamespaces
     override fun normalize(input: StoredBytes): StoredBytes = LocalReturnCommandCodecV3.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalReturnCommandCodecV3.decode(normalized) is LocalReturnRequestV3.ApplyObservation
+    override fun supportsRpcPhysicalRetainedResult(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalReturnCommandCodecV3.decode(normalized).let { it is LocalReturnRequestV3.Start || it is LocalReturnRequestV3.RecordResolution }
+    override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.key != key) return null
+        val loan = stock?.let { commerceLoan(view, it, tenderPolicies) } ?: view
+        return financialOriginalRead(loan, context, normalized, originalSources, stock, tenderPolicies = tenderPolicies) { owned ->
+            retailJournalRpcOriginalRequirements(normalized, original, owned, context, tenderPolicies)
+        }
+    }
+
     override fun physicalRecordingAction(normalized: StoredBytes): PhysicalRecordingAction? = when (LocalReturnCommandCodecV3.decode(normalized)) {
         is LocalReturnRequestV3.Start -> PhysicalRecordingAction.START_REFUND
         is LocalReturnRequestV3.RecordOriginal -> PhysicalRecordingAction.RETAIN_ORIGINAL

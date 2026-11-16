@@ -68,7 +68,8 @@ internal suspend fun foodCashFinancialRetainedStockRequirements(normalized: Stor
  * their distinct actual native BEFORE cuts. Other refusals cannot substitute today's
  * application revision for a missing original observation. */
 internal suspend fun foodCashFinancialRetainedPaymentRequirements(normalized: StoredBytes, view: FoodReadView,
-    context: CommandContext, recipes: TransactionFoodStockSource): List<AuthorizationRequirement>? = foodCashFinancialRpcSources {
+    context: CommandContext, recipes: TransactionFoodStockSource,
+    services: LocalFinancialOriginalSourceServices? = null): List<AuthorizationRequirement>? = foodCashFinancialRpcSources {
     if (context.scope != view.scope || context.key != LocalFoodPaymentProfile.COMMAND ||
         LocalFoodPaymentCodec.normalize(normalized) != normalized ||
         semanticDigest(context.scope, context.originalActorId, context.key, normalized) != context.semanticDigest)
@@ -80,18 +81,28 @@ internal suspend fun foodCashFinancialRetainedPaymentRequirements(normalized: St
         retained.operationId != context.operationId || retained.command != context.key ||
         retained.originalActorId != context.originalActorId || retained.semanticDigest != context.semanticDigest ||
         retained.normalized != normalized) return@foodCashFinancialRpcSources null
+    val actualSources = services ?: LocalFinancialOriginalSourceServices(view.commerceStock, recipes, view.commerceTenderPolicies)
     if (!retained.committed) {
         if (retained.code == "food.payment.pending_reconciliation") {
             val sources = view.foodPaymentValueMismatchOriginalSources(context.operationId)
                 ?: return@foodCashFinancialRpcSources null
             requireSameFoodPaymentOriginal(sources.evidence, retained)
-            return@foodCashFinancialRpcSources foodPaymentValueMismatchRetainedRequirement(sources, view, recipes)
+            return@foodCashFinancialRpcSources actualSources.read(view, retained) { loan ->
+                foodPaymentValueMismatchRetainedRequirement(sources, FoodReadView(loan), recipes)?.also {
+                    for (source in sources.beforeClaimSources) financialOriginalProof(loan).requireOriginal(source.original)
+                }
+            }
         }
         if (retained.code != "food.payment.already_applied") return@foodCashFinancialRpcSources null
         val sources = view.foodPaymentAlreadyAppliedOriginalSources(context.operationId)
             ?: return@foodCashFinancialRpcSources null
         requireSameFoodPaymentOriginal(sources.evidence, retained)
-        return@foodCashFinancialRpcSources foodPaymentAlreadyAppliedRetainedRequirement(sources, view, recipes)
+        return@foodCashFinancialRpcSources actualSources.read(view, retained) { loan ->
+            foodPaymentAlreadyAppliedRetainedRequirement(sources, FoodReadView(loan), recipes)?.also {
+                financialOriginalProof(loan).requireOriginal(sources.beforeApplication.original)
+                for (source in sources.beforeClaimSources) financialOriginalProof(loan).requireOriginal(source.original)
+            }
+        }
     }
     val completed = view.foodProducer(context.operationId)
     requireSameFoodPaymentOriginal(completed, retained)
@@ -108,9 +119,17 @@ internal suspend fun foodCashFinancialRetainedPaymentRequirements(normalized: St
     LocalFoodPaymentProducer.requireStart(lineage.start).cut.portions.forEach {
         recipes.requireLegacyRecipe((it.body as FoodBodyV1.Portion).recipe, context.scope)
     }
-    salesAuthorizationRequirement(SecurityAction.COLLECTION_ATTEST, context.scope, applied.cut.collection.id,
+    val expected = salesAuthorizationRequirement(SecurityAction.COLLECTION_ATTEST, context.scope, applied.cut.collection.id,
         applied.cut.collection.revision, context.operationId, context.semanticDigest, "food.payment.apply",
         slot.originalActorId, slot.domain.amount)
+    actualSources.read(view, retained) { loan ->
+        val native = loan.financialOriginalSources(context.operationId) ?: return@read null
+        requireSameFinancialRpcOriginal(native.evidence, retained)
+        check(native.requirement == expected)
+        val frames = FoodFinancialBundleReaderV2(completed, foodPaymentStoredEvent(completed).framing, allowStockInputs = true)
+        requireFinancialRpcBeforeRows(native, foodPaymentInputs(completed, frames), checkNotNull(frames.cash()), loan)
+        expected
+    }
 }
 
 private class FoodCashFinancialRpcBefore(val row: LocalCommerceOriginalRow, val original: RetainedOriginalV2)

@@ -19,6 +19,9 @@ internal class WindowsClientTargetPlatform private constructor(
     private val boot: WindowsOriginalBootSession,
 ) : DesktopClientTargetPlatform {
 
+    override fun physicalJournalNative(action: LocalPairedDeviceCredentialJournalAction): DesktopPairedDevicePhysicalJournalNative =
+        WindowsPairedDevicePhysicalJournalNative(expected, parentDirectory().toAbsolutePath().normalize(), boot)
+
     override fun parentDirectory(): Path {
         val local = System.getenv("LOCALAPPDATA") ?: selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
         val parent = Paths.get(local, "Packages", expected.packageFamilyName, "LocalState")

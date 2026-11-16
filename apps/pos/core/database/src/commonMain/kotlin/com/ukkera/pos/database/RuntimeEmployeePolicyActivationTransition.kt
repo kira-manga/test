@@ -5,6 +5,32 @@ import com.ukkera.pos.types.Revision
 
 internal enum class RuntimeEmployeePolicyActivationTargetOwner { ORIGINAL, ENROLLED_EMPLOYEE }
 
+/** Memory-only projection of the dedicated native policy-activation image. Ordinary
+ * session authentication images deliberately exclude POLICY and retain their grammar.
+ * Complete original source, lineage and protected plaintext joins remain separate. */
+internal class RuntimePolicyActivationReplayImage private constructor(
+    val original: LocalEmployeePolicyActivationProtectedImage,
+    val table: RuntimeHistoryTableV2,
+    val mutation: RuntimeHistoryMutationKindV2,
+) {
+    companion object {
+        fun capture(value: LocalEmployeePolicyActivationProtectedImage): RuntimePolicyActivationReplayImage {
+            val table = when (value.table) {
+                ProtectedLocalTable.EFFECTIVE_POLICY -> RuntimeHistoryTableV2.POLICY
+                ProtectedLocalTable.ACCOUNT -> RuntimeHistoryTableV2.ACCOUNT
+                ProtectedLocalTable.AUTH_EVENT -> RuntimeHistoryTableV2.AUTH_EVENT
+                else -> throw RuntimeHistoryFormatRejectedV2(RuntimeHistoryFormatFailureV2.MALFORMED)
+            }
+            val mutation = if (table == RuntimeHistoryTableV2.AUTH_EVENT) RuntimeHistoryMutationKindV2.INSERT
+                else RuntimeHistoryMutationKindV2.UPDATE
+            historyShapeV2(if (mutation == RuntimeHistoryMutationKindV2.INSERT)
+                value.previousPlaintextDigest == null && value.revision == Revision(0)
+                else value.previousPlaintextDigest != null && value.revision.value > 0)
+            return RuntimePolicyActivationReplayImage(value, table, mutation)
+        }
+    }
+}
+
 /** Pure prediction from an already authentic original action at its actual ordered event.
  * It grants no authority. Current census is not an input; original native LINEAGE must still
  * independently join every physical BEFORE/AFTER and actual protected plaintext below. */
@@ -16,7 +42,7 @@ internal class RuntimeEmployeePolicyActivationTransition(
     val policy: ActivatedLocalPolicy = source.requested.nextPolicy
     val policyDigest: PayloadDigest
     val account: ProtectedLocalAccount
-    val images: List<RuntimeAuthenticationImageV1>
+    val images: List<RuntimePolicyActivationReplayImage>
 
     init {
         val requested = source.requested
@@ -49,15 +75,7 @@ internal class RuntimeEmployeePolicyActivationTransition(
                 LocalEmployeePolicyActivationProtectedImage(ProtectedLocalTable.AUTH_EVENT, request.requestId, Revision(0),
                     null, digest(LocalAuthenticationCodec.encodeEvent(event)))
             historyShapeV2(expected == evidence.images)
-            images = expected.map { value ->
-                val key = when (value.table) {
-                    ProtectedLocalTable.EFFECTIVE_POLICY -> ProtectedLocalRecordKey.EffectivePolicy(scope, actor)
-                    ProtectedLocalTable.ACCOUNT -> ProtectedLocalRecordKey.Account(scope, actor)
-                    ProtectedLocalTable.AUTH_EVENT -> ProtectedLocalRecordKey.AuthEvent(scope, request.requestId)
-                    else -> malformed()
-                }
-                RuntimeAuthenticationImageV1.capture(ProtectedLocalBinding(key, value.revision), value.plaintextDigest)
-            }
+            images = expected.map { RuntimePolicyActivationReplayImage.capture(it) }
         } finally { canonical.fill(0); semantic.fill(0) }
     }
     private fun digest(bytes: ByteArray): PayloadDigest = try { sha256(bytes) } finally { bytes.fill(0) }

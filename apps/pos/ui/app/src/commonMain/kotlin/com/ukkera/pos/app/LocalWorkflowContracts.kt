@@ -79,6 +79,7 @@ enum class LocalAction(val workflow: LocalWorkflow) {
     FOOD_RECORD_QUALITY_CLAIM(LocalWorkflow.FOOD),
     CASH_RECORD_COUNT(LocalWorkflow.CASH), CASH_DELIVER_COUNTED(LocalWorkflow.CASH), CASH_SUBMIT_COUNTED(LocalWorkflow.CASH),
     CASH_ADD_CLOSE_NOTE(LocalWorkflow.CASH), STOCK_INITIALIZE(LocalWorkflow.INVENTORY),
+    CASH_ISSUE_SAFE_FLOAT(LocalWorkflow.CASH), CASH_RECEIVE_SAFE_FLOAT(LocalWorkflow.CASH), CASH_RECALL_SAFE_FLOAT(LocalWorkflow.CASH),
     FOOD_STATION_CONFIGURE(LocalWorkflow.CATALOG), FOOD_ROUTE_CONFIGURE(LocalWorkflow.CATALOG),
     FOOD_PAYMENT_START(LocalWorkflow.FOOD), FOOD_PAYMENT_APPLY(LocalWorkflow.FOOD),
     FOOD_PAYMENT_RESOLUTION(LocalWorkflow.FOOD), FOOD_PAYMENT_RESOLUTION_APPLY(LocalWorkflow.FOOD),
@@ -101,6 +102,8 @@ enum class LocalAction(val workflow: LocalWorkflow) {
     PURCHASING_DOCUMENT_CAPTURE(LocalWorkflow.PURCHASING), PURCHASING_DOCUMENT_ATTACH(LocalWorkflow.PURCHASING),
     FOOD_ASSIGN_TABLE(LocalWorkflow.FOOD),
     RETURN_STOCK_POST(LocalWorkflow.RETURNS),
+    /** Restricted return-to-replacement offset: completes a normalized collection, never a cash movement. */
+    RETURN_EXCHANGE_APPLY(LocalWorkflow.RETURNS),
     /** Historical tender explanation only: never a fresh collection or cash movement. */
     PAYMENT_CLASSIFICATION_CORRECT(LocalWorkflow.CHECKOUT),
     /** Capture-only claim entry; the original invoice-record action keeps its old authority. */
@@ -115,7 +118,9 @@ enum class LocalAction(val workflow: LocalWorkflow) {
     SETUP_CATALOG_IMPORT_COMPLETE(LocalWorkflow.SETUP),
     SETUP_OPENING_STOCK_ROW(LocalWorkflow.SETUP),
     SETUP_OPENING_FLOAT_ROW(LocalWorkflow.SETUP),
-    SETUP_OPENING_COMPLETE(LocalWorkflow.SETUP);
+    SETUP_OPENING_COMPLETE(LocalWorkflow.SETUP),
+    FOOD_REFUND_SUPERVISOR_REVIEW(LocalWorkflow.FOOD), FOOD_REFUND_SUPERVISOR_APPLY(LocalWorkflow.FOOD),
+    SUPPLIER_CASH_SUPERVISOR_REVIEW(LocalWorkflow.PURCHASING), SUPPLIER_CASH_SUPERVISOR_APPLY(LocalWorkflow.PURCHASING);
     /** Closed shared presentation locations, never an authorization grant. */
     fun canAppearIn(target: LocalWorkflow): Boolean = if (target == LocalWorkflow.KITCHEN)
         this == FOOD_STATION_START || this == FOOD_STATION_READY
@@ -215,7 +220,7 @@ enum class LocalRecordKind {
     PURCHASE_INVOICE, SUPPLIER_PAYABLE, PURCHASE_LINE, PURCHASE_CHARGE, PURCHASE_MATCH,
     RETURN_CASE, RETURN_CASE_HISTORY, RETURN_CASE_EVENT, RETURN_RECEIPT_PORTION, RETURN_FINANCE, RETURN_OBLIGATION,
     FOOD_COLLECTION, FOOD_SALE, FOOD_REFUND, FOOD_QUALITY_CLAIM,
-    CASH_COUNT, CASH_CLOSE_NOTE, STOCK_VALUE_POOL, FOOD_RECIPE, FOOD_ROUTE,
+    CASH_COUNT, CASH_CLOSE_NOTE, SAFE_FLOAT, STOCK_VALUE_POOL, FOOD_RECIPE, FOOD_ROUTE,
     SUPPLIER_CREDIT, SUPPLIER_ADVANCE, SUPPLIER_SETTLEMENT_ALLOCATION, OPENING_SUPPLIER_OBLIGATION,
     RETURN_RIGHTS_CURRENT, RETURN_RIGHTS_PUBLICATION,
     CUSTOMER_RECEIPT, CUSTOMER_RECEIPT_PORTION, CUSTOMER_RECEIPT_EVENT, CUSTOMER_RECEIPT_BATCH,
@@ -541,6 +546,7 @@ enum class LocalServiceProblem {
     RETURN_CAPACITY_REQUIRED, RETURN_RESTART_REQUIRED,
     FOOD_TARGET_UNAVAILABLE, FOOD_CAPACITY_REQUIRED, FOOD_NOT_PRECOLLECTION, FOOD_PAYMENT_UNRESOLVED,
     CASH_RESTART_REQUIRED,
+    READ_RESTART_REQUIRED, READ_CAPACITY_REQUIRED,
 }
 sealed interface LocalReadResult {
     data class Available(val page: LocalWorkflowPage) : LocalReadResult

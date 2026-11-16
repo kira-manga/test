@@ -33,6 +33,9 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     // enrollment supply their own bucket; earlier admissions bind the actual enrollment seed.
     // Current rows or a retained admission list alone cannot create either lane.
     private val additionalAdmissions = linkedMapOf<DomainId, LocalDeviceAdmission>()
+    // Exact native CONSUMED sources selected by the chronological admission coordinator.
+    // A current admission row or enrollment device list cannot populate this census.
+    private val additionalCommandAdmissionOrigins = linkedMapOf<DomainId, NativeDeviceAdmissionHistorySource>()
     private data class EnrollmentDeviceAdmissionOrigin(val session: SelfOwnedNativeHistoryReadSession,
         val source: NativeDeviceAdmissionHistorySource, val admissionDigest: PayloadDigest,
         val throttleSeed: LocalEmployeeEnrollmentProtectedImage)
@@ -140,6 +143,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             it.recordId == actor && it.dimension == ProtectedLocalRecordKey.Throttle(key).dimensionKey }?.plaintextDigest ==
             digest(ProtectedLocalSecurityCodec.encodeThrottle(fresh)))
         additionalAdmissions[next.deviceId] = next
+        additionalCommandAdmissionOrigins[next.deviceId] = source
         throttles[key] = fresh
     }
 
@@ -166,6 +170,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             source.seedImages[3].plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(accountSeed)) &&
             seed.plaintextDigest == digest(ProtectedLocalSecurityCodec.encodeThrottle(deviceSeed)))
         additionalAdmissions[next.deviceId] = next
+        additionalCommandAdmissionOrigins[next.deviceId] = origin
         enrollmentDeviceAdmissionOrigins[next.deviceId] = EnrollmentDeviceAdmissionOrigin(session, origin, commitment, seed)
     }
 
@@ -252,7 +257,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             source.child.installationGenesisDigest == original.child.installationGenesisDigest)
         val transition = RuntimeEmployeePolicyActivationTransition(original, account, policy)
         policy = transition.policy; policyDigest = transition.policyDigest; account = transition.account
-        accountImages(transition.images)
+        accountPolicyActivationImages(transition.images)
     }
 
     fun throttle(value: RuntimeThrottleEvidenceV1) {
@@ -403,7 +408,8 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     /** Genuine original access and account/policy facts at THIS event cut. The returned
      * object must remain registered with this native-seeded reducer and bind the exact
      * native event/read. It is inert history DATA, not a restored session or accepting grant.
-     * Action approvals, changed security and a different device stay outside this profile. */
+     * Action approvals keep a separate profile; an additional device requires its concrete
+     * joined native admission source as well as these original interactive facts. */
     fun command(value: RuntimeCommandAuthorizationEvidenceV1, header: RuntimeHistoryEventHeaderV2,
         eventDigest: PayloadDigest): RuntimeEmployeeCommandHistoryAuthorization? {
         historyShapeV2(enabled)
@@ -411,11 +417,13 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         if (value.actionApprovalId != null || value.purposeTag != RuntimeWritePurposeV2.COMMAND_APPLY.tag) return null
         historyShapeV2(header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY)
         earlierReplayTarget?.requireTarget(source, header, eventDigest, value)
-        if (!originalInteractiveRequirement(value, header)) return null
+        if (!ordinaryInteractiveRequirement(value, header)) return null
         requireCommandCapacity(header.sequence, ordinary = true)
         val nextIssued = historyAddV2(issuedCommands, 1L, RuntimeHistoryProfileV2.MAX_EVENTS)
         val nextMutations = historyAddV2(issuedCommandMutations, value.capturedChanges.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
-        val proof = RuntimeEmployeeCommandHistoryAuthorization(this, source, header, eventDigest, value, policyDigest)
+        val device = authenticationAdmission(value.authorization.deviceId)
+        val proof = RuntimeEmployeeCommandHistoryAuthorization(this, source, header, eventDigest, value, policyDigest,
+            additionalCommandAdmissionOrigins[device.deviceId], digest(ProtectedLocalSecurityCodec.encodeAdmission(device)))
         commands[header.sequence] = proof
         issuedCommands = nextIssued
         issuedCommandMutations = nextMutations
@@ -433,7 +441,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         if (value.actionApprovalId != null || value.purposeTag != RuntimeWritePurposeV2.COMMAND_APPLY.tag) return false
         historyShapeV2(header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY)
         target.requirePrior(source, header, value)
-        if (!originalInteractiveRequirement(value, header)) return false
+        if (!ordinaryInteractiveRequirement(value, header)) return false
         requireCommandOrder(header.sequence)
         return true
     }
@@ -452,7 +460,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             header.scope == cutoffHeader.scope && header.assignmentId == cutoffHeader.assignmentId &&
             header.installationGenesisDigest == source.child.installationGenesisDigest &&
             header.installationGenesisDigest == cutoffHeader.installationGenesisDigest && header.commandEpoch == cutoffHeader.commandEpoch)
-        if (!originalInteractiveRequirement(value, header)) return false
+        if (!ordinaryInteractiveRequirement(value, header)) return false
         requireCommandOrder(header.sequence)
         return true
     }
@@ -465,9 +473,21 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         historyShapeV2(enabled)
         value.validate()
         val profile = RuntimeHistoricalSupervisorReviewProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
-        if (!profile.matches(header, value) || !originalInteractiveRequirement(value, header)) return null
+        if (!(profile.matches(header, value) || profile.matchesApplicationRefusal(header, value))) return null
+        if (value.authorization.deviceId == cohostDeviceId) {
+            if (!originalInteractiveRequirement(value, header)) return null
+        } else {
+            // Explicit four-profile set: future profile additions require a fresh decision.
+            when (profile) {
+                RuntimeHistoricalSupervisorReviewProfile.RETAIL, RuntimeHistoricalSupervisorReviewProfile.FOOD,
+                RuntimeHistoricalSupervisorReviewProfile.FOOD_REFUND, RuntimeHistoricalSupervisorReviewProfile.SUPPLIER_CASH -> Unit
+            }
+            if (!ordinaryInteractiveRequirement(value, header)) return null
+        }
         requireCommandCapacity(header.sequence)
-        val proof = RuntimeEmployeeSupervisorReviewHistoryAuthorization(this, source, header, eventDigest, profile, value, policyDigest)
+        val device = authenticationAdmission(value.authorization.deviceId)
+        val proof = RuntimeEmployeeSupervisorReviewHistoryAuthorization(this, source, header, eventDigest, profile, value, policyDigest,
+            additionalCommandAdmissionOrigins[device.deviceId], digest(ProtectedLocalSecurityCodec.encodeAdmission(device)))
         supervisorReviews[header.sequence] = proof
         return proof
     }
@@ -582,9 +602,14 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         historyShapeV2(enabled)
         value.validate()
         val profile = RuntimeHistoricalConfigurationRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
-        if (!profile.matches(header, value) || !originalInteractiveRequirement(value, header)) return null
+        if (!profile.matches(header, value)) return null
+        if (value.authorization.deviceId == cohostDeviceId) {
+            if (!originalInteractiveRequirement(value, header)) return null
+        } else if (!profile.matchesAdditionalDeviceNonSale(header, value) || !ordinaryInteractiveRequirement(value, header)) return null
         requireCommandCapacity(header.sequence)
-        val proof = RuntimeEmployeeConfigurationRejectionHistoryAuthorization(this, source, header, eventDigest, profile, value, policyDigest)
+        val device = authenticationAdmission(value.authorization.deviceId)
+        val proof = RuntimeEmployeeConfigurationRejectionHistoryAuthorization(this, source, header, eventDigest, profile, value, policyDigest,
+            additionalCommandAdmissionOrigins[device.deviceId], digest(ProtectedLocalSecurityCodec.encodeAdmission(device)))
         configurationRejections[header.sequence] = proof
         return proof
     }
@@ -719,26 +744,48 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     /** Shared comparison of the reducer's actual original interactive facts. Callers keep
      * their own closed purpose/profile gates; this primitive never registers a proof. */
     private fun originalInteractiveRequirement(value: RuntimeCommandAuthorizationEvidenceV1,
+        header: RuntimeHistoryEventHeaderV2): Boolean = value.authorization.deviceId == cohostDeviceId &&
+        interactiveRequirement(value, header, admission, admissionDigest)
+
+    /** Exact interactive facts over an actually joined additional-device origin.
+     * Callers retain their separate closed purpose/profile gates before using this check. */
+    private fun ordinaryInteractiveRequirement(value: RuntimeCommandAuthorizationEvidenceV1,
         header: RuntimeHistoryEventHeaderV2): Boolean {
+        val device = value.authorization.deviceId
+        if (device == cohostDeviceId) return originalInteractiveRequirement(value, header)
+        val origin = additionalCommandAdmissionOrigins[device] ?: return false
+        val observed = additionalAdmissions[device] ?: return false
+        if (!observed.admitted || observed.revision != Revision(0) ||
+            origin.requested.request.targetId != device || origin.child.historySequence >= header.sequence ||
+            origin.child.commandEpoch != header.commandEpoch ||
+            origin.child.installationGenesisDigest != header.installationGenesisDigest) return false
+        val commitment = digest(ProtectedLocalSecurityCodec.encodeAdmission(observed))
+        historyShapeV2(origin.evidence.images.first().plaintextDigest == commitment)
+        return interactiveRequirement(value, header, observed, commitment)
+    }
+
+    private fun interactiveRequirement(value: RuntimeCommandAuthorizationEvidenceV1,
+        header: RuntimeHistoryEventHeaderV2, device: LocalDeviceAdmission,
+        deviceDigest: PayloadDigest): Boolean {
         val supplied = value.authorization
-        if (supplied.scope != scope || supplied.actorId != actor || supplied.deviceId != cohostDeviceId ||
+        if (supplied.scope != scope || supplied.actorId != actor || supplied.deviceId != device.deviceId ||
             supplied.principalKind != PrincipalKind.LOCAL_EMPLOYEE || supplied.authenticationPurpose != AuthenticationPurpose.INTERACTIVE) return false
         val originalAccess = issuances[supplied.sessionId]?.access ?: return false
-        val identity = VerifiedLocalIdentity(actor, scope, cohostDeviceId, supplied.sessionId,
+        val identity = VerifiedLocalIdentity(actor, scope, device.deviceId, supplied.sessionId,
             supplied.generation, supplied.admissionRevision, AuthenticationPurpose.INTERACTIVE)
         historyShapeV2(header.changeCount == value.capturedChanges && header.sequence > source.child.historySequence &&
             header.commandEpoch == source.child.commandEpoch &&
             supplied.accountRevision == account.state.revision && supplied.credentialRevision == account.credentialRevision &&
-            supplied.policyRevision == policy.revision && supplied.admissionRevision == admission.revision &&
+            supplied.policyRevision == policy.revision && supplied.admissionRevision == device.revision &&
             supplied.dependencies == RuntimeCommandAuthorizationDependenciesV1(
-                digest(ProtectedLocalSecurityCodec.encodeAccount(account)), policyDigest, admissionDigest,
+                digest(ProtectedLocalSecurityCodec.encodeAccount(account)), policyDigest, deviceDigest,
                 digest(ProtectedLocalSecurityCodec.encodeIssuance(originalAccess))) &&
             supplied.access.issuerContextId == originalAccess.issuerContextId && supplied.access.issuedAt == originalAccess.issuedAt &&
             supplied.access.expiresAtElapsedMillis == originalAccess.expiresAtElapsedMillis &&
             supplied.access.credentialRevisionAtIssue == originalAccess.credentialRevisionAtIssue &&
             supplied.access.admissionRevisionAtIssue == originalAccess.admissionRevisionAtIssue)
         historyShapeV2(LocalAccessEligibility.matchesCurrentFacts(identity, originalAccess, account.state,
-            account.credentialRevision, account.credential != null, admission, supplied.access.issuerContextId, supplied.access.observedAt))
+            account.credentialRevision, account.credential != null, device, supplied.access.issuerContextId, supplied.access.observedAt))
         return AuthorizationEvaluator.permitsHistoricalInteractiveLocalRequirement(policy, actor, scope, value.requirement.value())
     }
 
@@ -1415,6 +1462,12 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     private fun event(value: RuntimeAuthenticationEvidenceV1, kind: LocalAuthEventKind, sessionId: DomainId): RuntimeAuthenticationImageV1 =
         image(ProtectedLocalRecordKey.AuthEvent(scope, value.eventId), Revision(0), LocalAuthenticationCodec.encodeEvent(
             LocalAuthEvent(scope, value.eventId, kind, actor, actor, sessionId, account.state.revision, value.at, null)))
+    private fun accountPolicyActivationImages(images: List<RuntimePolicyActivationReplayImage>) {
+        mutationCount = historyAddV2(mutationCount, images.size.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
+        for (image in images) if (image.mutation == RuntimeHistoryMutationKindV2.INSERT)
+            rows[image.table.ordinal] = historyAddV2(rows[image.table.ordinal], 1L, RuntimeHistoryProfileV2.MAX_MUTATIONS)
+    }
+
     private fun accountImages(images: List<RuntimeAuthenticationImageV1>) {
         mutationCount = historyAddV2(mutationCount, images.size.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
         for (image in images) if (image.mutation == RuntimeHistoryMutationKindV2.INSERT)
@@ -1459,7 +1512,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         foodPaymentRejections.values.forEach { it.clear() }; foodPaymentRejections.clear()
         returnCaseQualificationRejections.values.forEach { it.clear() }; returnCaseQualificationRejections.clear()
         returnStockDispositionRejections.values.forEach { it.clear() }; returnStockDispositionRejections.clear(); issuances.clear(); throttles.clear()
-        additionalAdmissions.clear(); enrollmentDeviceAdmissionOrigins.clear(); nativeOriginalPrefixMode = null }
+        additionalAdmissions.clear(); additionalCommandAdmissionOrigins.clear(); enrollmentDeviceAdmissionOrigins.clear(); nativeOriginalPrefixMode = null }
 
     companion object {
         /** Construction is confined to the actual seed-prepass join, after every retained

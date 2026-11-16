@@ -8,6 +8,7 @@ import com.ukkera.pos.app.LocalEnrollmentUiGateway
 import com.ukkera.pos.app.LocalServiceProblem
 import com.ukkera.pos.app.LocalText
 import com.ukkera.pos.catalog.store.LocalBranchCommerceRegistry
+import com.ukkera.pos.catalog.store.LocalCatalogReturnPolicySource
 import com.ukkera.pos.catalog.store.NativeCompanyPublicationSignatureVerifier
 import com.ukkera.pos.catalog.store.UnavailableCompanyPublicationSignatureVerifier
 import com.ukkera.pos.database.AndroidOriginalLocalClient
@@ -18,7 +19,6 @@ import com.ukkera.pos.sales.store.AndroidPhysicalCompositionNamespaceV1
 import com.ukkera.pos.sales.store.TransactionRetailJournalParticipantsSource
 import com.ukkera.pos.sales.store.UnavailableSalesPhysicalRecordingCapacityV2
 import com.ukkera.pos.sales.store.UnavailableSalesRecordingCapacity
-import com.ukkera.pos.sales.store.UnavailableSalesReturnPolicy
 import com.ukkera.pos.security.LocalCompanyAuthorityResult
 import com.ukkera.pos.security.LocalCompanyAuthorityFailure
 import com.ukkera.pos.security.LocalCompanyBusinessPublications
@@ -93,7 +93,7 @@ public class AndroidLocalBranchRuntime private constructor(
             val physical = AndroidOriginalPhysicalJournalExecutionGate.create(application, composition)
             val retailParticipants: TransactionRetailJournalParticipantsSource =
                 physical as TransactionRetailJournalParticipantsSource
-            val commerce = LocalBranchCommerceRegistry(signatures, UnavailableSalesReturnPolicy,
+            val commerce = LocalBranchCommerceRegistry(signatures, LocalCatalogReturnPolicySource(signatures),
                 UnavailableSalesRecordingCapacity, UnavailableSalesPhysicalRecordingCapacityV2,
                 retailParticipants = retailParticipants,
                 purchasingPolicyTrust = purchasingPolicyTrust,

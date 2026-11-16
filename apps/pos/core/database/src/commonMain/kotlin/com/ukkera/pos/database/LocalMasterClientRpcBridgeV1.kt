@@ -709,7 +709,7 @@ public object LocalMasterRpcLookupRequestSerializerV1 : KSerializer<LocalMasterR
     construct = { access, body -> LocalMasterRpcLookupRequestV1.decoded(access, body) },
 )
 
-private fun <T : LocalMasterRpcOwnedRequestV1, B : Any> ownedRpcRequestSerializer(
+internal fun <T : LocalMasterRpcOwnedRequestV1, B : Any> ownedRpcRequestSerializer(
     name: String,
     bodyName: String,
     bodySerializer: KSerializer<B>,
@@ -775,7 +775,7 @@ internal object LocalMasterRpcBearerSerializerV1 : KSerializer<ByteArray> {
     )
 }
 
-private object LocalMasterRpcStoredBytesSerializerV1 : KSerializer<StoredBytes> {
+internal object LocalMasterRpcStoredBytesSerializerV1 : KSerializer<StoredBytes> {
     override val descriptor: SerialDescriptor = ByteArraySerializer().descriptor
     override fun serialize(encoder: Encoder, value: StoredBytes) {
         val bytes = value.copyBytes()
@@ -917,7 +917,7 @@ private object LocalMasterRpcDeferredReasonSerializerV1 : KSerializer<DeferredRe
     "com.ukkera.pos.database.DeferredReason", DeferredReason.entries.toTypedArray(),
 )
 
-private fun <T : Enum<T>> rpcEnumSerializer(name: String, values: Array<T>): KSerializer<T> = object : KSerializer<T> {
+internal fun <T : Enum<T>> rpcEnumSerializer(name: String, values: Array<T>): KSerializer<T> = object : KSerializer<T> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor(name, PrimitiveKind.STRING)
     override fun serialize(encoder: Encoder, value: T): Unit = encoder.encodeString(value.name)
     override fun deserialize(decoder: Decoder): T {
@@ -978,6 +978,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> LocalMasterFoodTableAssignmentRpcProtocolV1.READ
         LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> LocalMasterInvoiceCaptureRpcProtocolV1.READ
         LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalMasterInvoiceMatchingRpcProtocolV1.READ
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> LocalMasterLanBusinessRpcProtocolV1.READ
     }
     private val executeProcedure = when (profile) {
         LocalMasterRpcWorkflowProfile.SUPPLIERS -> LocalMasterClientRpcProtocolV1.EXECUTE
@@ -993,6 +994,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> LocalMasterFoodTableAssignmentRpcProtocolV1.EXECUTE
         LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> LocalMasterInvoiceCaptureRpcProtocolV1.EXECUTE
         LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalMasterInvoiceMatchingRpcProtocolV1.EXECUTE
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> LocalMasterLanBusinessRpcProtocolV1.EXECUTE
     }
     private val lookupProcedure = when (profile) {
         LocalMasterRpcWorkflowProfile.SUPPLIERS -> LocalMasterClientRpcProtocolV1.LOOKUP
@@ -1008,6 +1010,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> LocalMasterFoodTableAssignmentRpcProtocolV1.LOOKUP
         LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> LocalMasterInvoiceCaptureRpcProtocolV1.LOOKUP
         LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalMasterInvoiceMatchingRpcProtocolV1.LOOKUP
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> LocalMasterLanBusinessRpcProtocolV1.LOOKUP
     }
 
     /** Native original identification only, not current authorization. */
@@ -1027,6 +1030,12 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
     }
 
     public fun deny(): Unit { denied.value = true }
+
+    /** Retains the same actual Client/original loan; no physical offer crosses this boundary. */
+    public fun physicalCompanion(): LocalMasterPhysicalRpcClientV1 {
+        check(profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && isCurrent()) { "Physical companion is unavailable" }
+        return LocalMasterPhysicalRpcClientV1.bind(this, client, original, approvedMaster, lifetime, connectionId)
+    }
 
     public suspend fun read(
         credentials: LocalGatewayCredentials,
@@ -1051,6 +1060,88 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
             }
             requireCurrentCaller()
             return result
+        } finally { owned.destroy() }
+    }
+
+    /** Snapshot acquisition is a protected read, never a command replay or trust refresh. */
+    public suspend fun snapshot(credentials: LocalGatewayCredentials, selection: ReadRequest,
+        expectedCut: LocalMasterChangeCursorV1?, requestingActorId: DomainId): LocalMasterChangesReplyV1 =
+        changes(credentials, selection, expectedCut, requestingActorId, pull = false)
+
+    public suspend fun pull(credentials: LocalGatewayCredentials, selection: ReadRequest,
+        cursor: LocalMasterChangeCursorV1, requestingActorId: DomainId): LocalMasterChangesReplyV1 =
+        changes(credentials, selection, cursor, requestingActorId, pull = true)
+
+    private suspend fun changes(credentials: LocalGatewayCredentials, selection: ReadRequest,
+        cursor: LocalMasterChangeCursorV1?, requestingActorId: DomainId, pull: Boolean): LocalMasterChangesReplyV1 {
+        requireConnection(credentials)
+        val owned = LocalMasterRpcChangesRequestV1.capture(credentials, selection, cursor)
+        val procedures = LocalMasterChangesRpcProtocolV1.procedures(profile)
+        try {
+            val result = invoke(if (pull) procedures.PULL else procedures.SNAPSHOT, owned, accept = { true }) { delivered ->
+                when (delivered) {
+                    is RpcReply.Success -> {
+                        requireResponseBinding(delivered.value.requestingActorId == requestingActorId)
+                        when (val value = delivered.value.value) {
+                            is LocalMasterRpcChangesValueV1.Snapshot -> {
+                                requireChangesCursor(value.cursor, requestingActorId)
+                                requireResponseBinding(value.cursor.branchRevision == value.branchRevision)
+                                if (!pull && cursor != null) requireResponseBinding(value.cursor.copy(
+                                    selectorDigest = cursor.selectorDigest, projectionDigest = cursor.projectionDigest) == cursor)
+                                LocalMasterProjectionCacheV1.rehydrate(value.payload, value.branchRevision, value.observedAt, value.cursor)
+                            }
+                            is LocalMasterRpcChangesValueV1.Unchanged -> {
+                                requireChangesCursor(value.cursor, requestingActorId)
+                                requireResponseBinding(pull && cursor != null && value.cursor == cursor)
+                                LocalMasterChangesReplyV1.Unchanged(value.cursor.copy(), value.observedAt)
+                            }
+                            is LocalMasterRpcChangesValueV1.Unavailable -> LocalMasterChangesReplyV1.Unavailable(value.reason)
+                        }
+                    }
+                    is RpcReply.ApplicationError -> LocalMasterChangesReplyV1.Unavailable(delivered.error)
+                }
+            }
+            requireCurrentCaller()
+            return result
+        } finally { owned.destroy() }
+    }
+
+    private fun requireChangesCursor(cursor: LocalMasterChangeCursorV1, requestingActorId: DomainId) {
+        requireResponseBinding(cursor.scope == scope && cursor.actorId == requestingActorId &&
+            cursor.deviceId == approvedMaster.targetDeviceId && cursor.profile == profile)
+    }
+
+    public suspend fun snapshotBatch(credentials: LocalGatewayCredentials, selections: List<ReadRequest>,
+        requestingActorId: DomainId): LocalMasterChangesBatchReplyV1 {
+        requireConnection(credentials)
+        require(profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) { "Changes batch profile differs" }
+        val owned = LocalMasterRpcChangesBatchRequestV1.capture(credentials, selections)
+        try {
+            return invoke(LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT, owned, accept = { true }) { delivered ->
+                when (delivered) {
+                    is RpcReply.Success -> {
+                        requireResponseBinding(delivered.value.requestingActorId == requestingActorId)
+                        when (val value = delivered.value.value) {
+                            is LocalMasterRpcChangesBatchValueV1.Snapshot -> {
+                                requireResponseBinding(value.snapshots.size == owned.selections.size)
+                                val snapshots = value.snapshots.map { snapshot ->
+                                    requireChangesCursor(snapshot.cursor, requestingActorId)
+                                    LocalMasterProjectionCacheV1.rehydrate(snapshot.payload, snapshot.branchRevision,
+                                        snapshot.observedAt, snapshot.cursor)
+                                }
+                                val first = snapshots.first()
+                                requireResponseBinding(snapshots.map { it.cursor.selectorDigest }.toSet().size == snapshots.size &&
+                                    snapshots.all { it.data.observedAt == first.data.observedAt &&
+                                        it.cursor.copy(selectorDigest = first.cursor.selectorDigest,
+                                            projectionDigest = first.cursor.projectionDigest) == first.cursor })
+                                LocalMasterChangesBatchReplyV1.Snapshot(snapshots)
+                            }
+                            is LocalMasterRpcChangesBatchValueV1.Unavailable -> LocalMasterChangesBatchReplyV1.Unavailable(value.reason)
+                        }
+                    }
+                    is RpcReply.ApplicationError -> LocalMasterChangesBatchReplyV1.Unavailable(delivered.error)
+                }
+            }.also { requireCurrentCaller() }
         } finally { owned.destroy() }
     }
 
@@ -1177,11 +1268,11 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         check(isCurrent()) { "Original Master Client loan is unavailable" }
     }
 
-    private suspend fun <Q : LocalMasterRpcOwnedRequestV1, R, T : Any> invoke(
-        procedure: RpcProcedure<Q, R, LocalMasterClientRpcErrorV1>,
+    private suspend fun <Q : LocalMasterRpcOwnedRequestV1, R, E, T : Any> invoke(
+        procedure: RpcProcedure<Q, R, E>,
         request: Q,
         accept: suspend (T) -> Boolean,
-        decode: (RpcReply<R, LocalMasterClientRpcErrorV1>) -> T,
+        decode: (RpcReply<R, E>) -> T,
     ): T {
         requireCurrentCaller()
         val observation = RpcCallObservation()

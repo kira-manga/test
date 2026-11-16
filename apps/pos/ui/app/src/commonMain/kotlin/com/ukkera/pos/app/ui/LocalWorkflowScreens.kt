@@ -182,6 +182,12 @@ internal fun localProblem(problem: LocalServiceProblem): String = when (problem)
     LocalServiceProblem.CASH_RESTART_REQUIRED -> LocalAppLanguage.current.text(LocalText(
         "The cash-session revision changed. Refresh from the first page before continuing; no count or revision was guessed or combined.",
         "تغيرت مراجعة الجلسة النقدية. حدّث القراءة من الصفحة الأولى قبل المتابعة؛ لم يُفترض أو يُدمج عد أو مراجعة."))
+    LocalServiceProblem.READ_RESTART_REQUIRED -> LocalAppLanguage.current.text(LocalText(
+        "The shared data changed. The view is restarting from its first page.",
+        "تغيرت البيانات المشتركة. يُعاد فتح العرض من صفحته الأولى."))
+    LocalServiceProblem.READ_CAPACITY_REQUIRED -> LocalAppLanguage.current.text(LocalText(
+        "The complete view exceeds the supported read capacity. Narrow the selection; no partial view was accepted.",
+        "يتجاوز العرض الكامل سعة القراءة المدعومة. حدد اختيارًا أضيق؛ لم يُقبل عرض جزئي."))
 }
 
 @Composable
@@ -837,6 +843,11 @@ internal fun LocalWorkflowScreen(runtime: UkkeraRuntime, route: AppRoute, model:
                         }
                     }
                 }
+            }
+            if (state.liveUpdatesDeferred) item {
+                Notice(language.text(LocalText(
+                    "Shared updates are ready. Your current form or operation will be kept until you finish it.",
+                    "التحديثات المشتركة جاهزة. سيُحتفظ بالنموذج أو العملية الحالية حتى تنتهي منها.")))
             }
             state.readProblem?.let { problem -> item {
                 val foodReason = state.foodUnavailable

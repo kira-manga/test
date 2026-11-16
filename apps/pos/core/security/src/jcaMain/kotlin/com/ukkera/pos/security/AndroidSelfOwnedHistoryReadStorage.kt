@@ -949,8 +949,17 @@ internal class AndroidSelfOwnedHistoryReadStorage(
         try {
             known(statement.value.step() && statement.value.getColumnType(0)==3 && statement.value.getColumnType(1)==1)
             val expected=if(cell.type==NativeHistorySqliteTypeV2.TEXT) "text" else "blob"
-            known(statement.value.getText(0)==expected && statement.value.getLong(1)==cell.byteCount && statement.value.getColumnType(2)==4)
-            val bytes=statement.value.getBlob(2); produced=bytes
+            known(statement.value.getText(0)==expected && statement.value.getLong(1)==cell.byteCount)
+            val bytes=if(statement.value.getColumnType(2)==4) {
+                // Preserve the existing BLOB path, including a genuine zero-byte BLOB.
+                statement.value.getBlob(2)
+            } else {
+                // SQLite substr(empty TEXT/BLOB cast as BLOB,1,0) yields SQL NULL. The
+                // actual original column above is still exactly TEXT/BLOB with zero bytes;
+                // retain that metadata, rather than misclassifying the column as NULL.
+                known(amount==0 && offset==0L && cell.byteCount==0L && statement.value.getColumnType(2)==5)
+                ByteArray(0)
+            }; produced=bytes
             known(bytes.size==amount && !statement.value.step())
             closeAttempted=true; statement.closeActual()
             produced=null; return bytes

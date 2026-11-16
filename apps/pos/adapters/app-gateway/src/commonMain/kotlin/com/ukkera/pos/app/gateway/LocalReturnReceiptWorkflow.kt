@@ -114,7 +114,7 @@ internal suspend fun returnCaseFinance(access: GatewayAccess, query: LocalWorkfl
             recordValue(text("Refund still due", "مبلغ الرد الذي ما زال مستحقًا"), moneyText(value.due)),
             recordValue(text("Requested disposition — not a stock posting", "التصرف المطلوب — ليس ترحيل مخزون"), literal(value.requestedDisposition)),
             recordValue(text("Original tender obligations / attempts", "التزامات وسائل الدفع الأصلية / المحاولات"),
-                literal("${value.obligations.size} / ${value.attempts.size}"))), selectable = false)) + page, emptyList(), text(
+                literal("${value.obligations.size} / ${value.attempts.size}"))), selectable = false)) + page, listOfNotNull(exchangeForm(access, value)), text(
             "Acceptance is not payment or stock release. Unknown/pending attempts retain their original identities; do not create another payout. This read does not initiate a physical refund. ${readCut(reply).english}",
             "القبول ليس دفعًا أو إتاحة مخزون. تحتفظ المحاولات المعلقة أو غير المحسومة بمعرفاتها الأصلية؛ لا تنشئ صرفًا آخر. هذه القراءة لا تبدأ ردًا فعليًا. ${readCut(reply).arabic}"),
         if (offset + page.size < total) returnPageCursor(prefix, value.revision, (offset + page.size).toString()) else null)

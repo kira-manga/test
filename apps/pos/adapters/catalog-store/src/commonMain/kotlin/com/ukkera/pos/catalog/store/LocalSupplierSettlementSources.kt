@@ -80,16 +80,30 @@ internal suspend fun PurchasingReader.supplierAttempt(id: DomainId): PurchasingR
             val paymentWrite = producer.aggregateWrites.single { it.key == purchasingKey(LocalSupplierSettlementProfile.PAYMENT, id) }
             val payment = (decodePurchasingRecord(paymentWrite.payload).body as PurchasingBody.SupplierPayment).value
             val rawProducer = originalCommand(value.target.factOperation(result.phase))
-            val raw = LocalSupplierCashFacts.requireRaw(rawProducer, start, result.phase)
+            val parentRaw = if (result.phase == LocalSupplierCashPhase.RESOLUTION) originalCommand(value.target.recordingOperationId) else rawProducer
+            val raw = if (result.phase == LocalSupplierCashPhase.RESOLUTION)
+                LocalSupplierCashFacts.requireResolution(rawProducer, start, parentRaw)
+            else LocalSupplierCashFacts.requireRaw(rawProducer, start, result.phase)
             val outcome = when (val request = LocalSupplierCashCodec.decode(raw.body())) {
                 is LocalSupplierCashRequest.RecordOriginal -> request.outcome
                 is LocalSupplierCashRequest.RecordResolution -> request.outcome
                 else -> error("Purchasing original payout unavailable")
             }
             check(payment.evidence == supplierEvidence(outcome) && payment.amount == value.amount)
-            val movement = SupplierCashSettlements.payoutMovement(value.commitment(), value.target.sessionId, slot.originalActorId,
+            val movement = if (producer.command == LocalSupplierCashSupervisorCodec.COMMAND)
+                SupplierCashSettlements.recordedPayoutMovement(value.commitment(), value.target.sessionId, slot.originalActorId,
+                    value.target.attemptId, applicationId, value.target.factOperation(result.phase), raw.recordingActorId,
+                    if (result.phase == LocalSupplierCashPhase.RESOLUTION) value.target.recordingOperationId else null,
+                    if (result.phase == LocalSupplierCashPhase.RESOLUTION) LocalSupplierCashFacts.requireRaw(parentRaw, start,
+                        LocalSupplierCashPhase.ORIGINAL).bodyDigest else null,
+                    payment.evidence.supplierDomain(raw.recordingActorId), slot.domain.reasonCode)
+            else SupplierCashSettlements.payoutMovement(value.commitment(), value.target.sessionId, slot.originalActorId,
                 value.target.attemptId, applicationId, payment.evidence.supplierDomain(slot.originalActorId), slot.domain.reasonCode)
-            LocalSupplierCashStorage.requirePayoutWrite(producer, movement)
+            if (producer.command == LocalSupplierCashSupervisorCodec.COMMAND)
+                LocalSupplierCashStorage.requireSupervisedPayoutWrite(producer, slot, raw,
+                    if (result.phase == LocalSupplierCashPhase.RESOLUTION) LocalSupplierCashFacts.requireRaw(parentRaw, start,
+                        LocalSupplierCashPhase.ORIGINAL) else null, movement)
+            else LocalSupplierCashStorage.requirePayoutWrite(producer, movement)
             val retainedPayment = row(LocalSupplierSettlementProfile.PAYMENT, id) ?: error("Purchasing payment unavailable")
             check(PurchasingSource.from(retainedPayment.row) == purchasingSource(paymentWrite))
             val retainedMovement = observedAggregate(LocalSupplierCashStorage.movementKey(value.target.attemptId))
@@ -117,6 +131,10 @@ internal suspend fun supplierCashFact(command: RuntimeHistoricalCommand, operati
     val fact = LocalSupplierCashFacts.fact(command, operationId, phase) ?: return null
     return validateSupplierCashFact(fact, reader)
 }
+internal suspend fun supplierCashFact(sources: RuntimeHistoricalFinancialSources, view: CommandReadView,
+    operationId: OperationId, phase: LocalSupplierCashPhase, reader: PurchasingReader): LocalSupplierCashStoredFact? =
+    LocalSupplierCashFacts.fact(sources, view, operationId, phase)?.let { validateSupplierCashFact(it, reader) }
+
 private suspend fun validateSupplierCashFact(fact: LocalSupplierCashStoredFact, reader: PurchasingReader): LocalSupplierCashStoredFact {
     val phase = fact.value.phase
     requirePurchasingProducer(fact.slot.start)
@@ -146,6 +164,8 @@ internal class SupplierSettlementWrites private constructor(
         context.originalActorId, context.key, context.semanticDigest, at, authorization.policyRevision)
     constructor(original: RuntimeHistoricalCommand) : this(original.scope, original.operationId, original.actorId,
         original.command, original.semanticDigest, original.recordedAt, original.policyRevision)
+    constructor(sources: RuntimeHistoricalFinancialSources) : this(sources.evidence.scope, sources.evidence.operationId,
+        sources.evidence.originalActorId, sources.evidence.command, sources.evidence.semanticDigest, sources.evidence.recordedAt, sources.evidence.policyRevision)
     fun change(kind: String, id: DomainId, before: PurchasingRow?, body: PurchasingBody): AggregateChange =
         AggregateChange(purchasingKey(kind, id), before?.row?.revision, LocalPurchasingProfile.schema(kind),
             purchasingEncode(PurchasingRecord(scope, kind, id, (before?.row?.revision ?: Revision(0)).next(),

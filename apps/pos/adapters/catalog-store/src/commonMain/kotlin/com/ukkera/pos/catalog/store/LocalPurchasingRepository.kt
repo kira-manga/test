@@ -40,11 +40,26 @@ private class HistoricalPurchasingObservation(private val command: RuntimeHistor
     }
 }
 
+/** Genuine immutable native BEFORE observation. Original lookups remain loan-bound and
+ * strictly earlier; current mutable aggregates/claims are never used as historical sources. */
+private class FinancialPurchasingObservation(private val sources: RuntimeHistoricalFinancialSources,
+    private val view: CommandReadView) : PurchasingReadObservation {
+    override val scope: BranchScope get() = sources.evidence.scope
+    override val documents: PurchasingDocumentReader = FinancialPurchasingDocumentReader(sources, view)
+    override suspend fun aggregate(key: AggregateKey): StoredAggregate? = sources.aggregateSource(key)?.row
+    override suspend fun claim(key: ClaimKey): DomainId? = sources.claim(key)
+    override suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence? = view.retainedCommand(operationId)?.also {
+        check(view.scope == scope && it.scope == scope && it.operationId == operationId && it.assignmentId == sources.evidence.assignmentId &&
+            it.authorityEpoch == sources.evidence.authorityEpoch && it.sequence < sources.evidence.sequence)
+    }
+}
+
 /** One actual observation source; existing complete hydration/account checks and budgets
  * are shared with native history, never by constructing a historical CommandReadView. */
 internal class PurchasingReader private constructor(private val source: PurchasingReadObservation) {
     constructor(view: CommandReadView) : this(CurrentPurchasingObservation(view))
     constructor(command: RuntimeHistoricalCommand) : this(HistoricalPurchasingObservation(command))
+    constructor(sources: RuntimeHistoricalFinancialSources, view: CommandReadView) : this(FinancialPurchasingObservation(sources, view))
     internal val scope: BranchScope get() = source.scope
     internal val documents: PurchasingDocumentReader get() = source.documents
     private val rows = mutableMapOf<AggregateKey, PurchasingRow?>()

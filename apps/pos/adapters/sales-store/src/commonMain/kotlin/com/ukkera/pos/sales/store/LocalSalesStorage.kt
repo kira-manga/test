@@ -270,7 +270,7 @@ internal fun salesApplied(
 }
 
 @Serializable
-private data class LocalCashMovementFact(
+internal data class LocalCashMovementFact(
     val scope: LocalSalesScope, val sourceId: DomainId, val operationId: OperationId, val originalActorId: DomainId,
     val sessionId: DomainId, val kind: String, val delta: Money, val cashReceived: Money, val changeGiven: Money,
     val evidence: LocalCashEvidenceV1, val reason: String?, val recordedAt: UtcInstant,
@@ -290,5 +290,97 @@ internal fun cashMovementLiteralWrite(scope: BranchScope, operationId: Operation
         movement.custodianId, movement.sessionId, movement.kind.name, movement.delta, movement.cashReceived,
         movement.changeGiven, LocalCashEvidenceV1(movement.evidence.evidenceId, UtcInstant(movement.evidence.occurredAt)),
         movement.reason, recordedAt)
+    return rootWrite(LocalSalesStoreProfile.MOVEMENT_KIND, movement.sourceId, fact, LocalCashMovementFact.serializer(), null)
+}
+
+/** Distinct source-bound supplier projection. Original cash custody and actual fact recorder
+ * remain separate from the current accounting actor. Pure serialization grants no authority. */
+internal fun supplierSupervisedMovementLiteralWrite(scope: BranchScope, operationId: com.ukkera.pos.types.OperationId,
+    accountingActorId: DomainId, digest: com.ukkera.pos.security.PayloadDigest, normalized: StoredBytes,
+    slot: LocalSupplierCashSlot, raw: LocalSupplierCashRaw, originalUnknown: LocalSupplierCashRaw?,
+    movement: CashMovement, recordedAt: UtcInstant): AggregateChange {
+    check(LocalSupplierCashSupervisorCodec.normalize(normalized) == normalized &&
+        com.ukkera.pos.database.semanticDigest(scope, accountingActorId, LocalSupplierCashSupervisorCodec.COMMAND, normalized) == digest)
+    val request = LocalSupplierCashSupervisorCodec.decode(normalized) as? LocalSupplierCashSupervisorRequest.Apply
+        ?: error("supplier.cash.supervised_apply_required")
+    check(slot.scope == scope && raw.scope == scope && slot.target == raw.target && raw.originalActorId == slot.originalActorId &&
+        request.phase == raw.phase && request.factOperationId == raw.target.factOperation(raw.phase) &&
+        operationId !in setOf(raw.target.intentOperationId, raw.target.recordingOperationId, raw.target.resolutionOperationId) &&
+        raw.slotDigest == com.ukkera.pos.security.sha256(LocalSupplierCashJournal.slotWrite(slot).payload.copyBytes()) &&
+        raw.bodyDigest == com.ukkera.pos.security.sha256(raw.body().copyBytes()) &&
+        raw.semanticDigest == com.ukkera.pos.database.semanticDigest(scope, raw.recordingActorId, LocalSupplierCashProfile.COMMAND, raw.body()))
+    val outcome = if (raw.phase == LocalSupplierCashPhase.ORIGINAL) {
+        check(originalUnknown == null && raw.recordingActorId == slot.originalActorId)
+        LocalSupplierCashJournalDomain.classifyOriginal(slot.requirement(), raw.body())
+        (LocalSupplierCashCodec.decode(raw.body()) as LocalSupplierCashRequest.RecordOriginal).outcome
+    } else {
+        val parent = checkNotNull(originalUnknown)
+        check(parent.phase == LocalSupplierCashPhase.ORIGINAL && parent.target == raw.target && parent.scope == scope &&
+            parent.originalActorId == slot.originalActorId && parent.recordingActorId == slot.originalActorId &&
+            parent.bodyDigest == com.ukkera.pos.security.sha256(parent.body().copyBytes()))
+        LocalSupplierCashResolutionDescriptor.create(slot.requirement(), parent.body(), raw.recordingActorId, raw.body())
+        (LocalSupplierCashCodec.decode(raw.body()) as LocalSupplierCashRequest.RecordResolution).outcome
+    }
+    val paid = outcome as? LocalSupplierCashOutcome.CashPaid ?: error("supplier.cash.paid_fact_required")
+    check(paid.supportedAmountOrNull() == slot.domain.amount && movement.operationId == operationId &&
+        movement.sourceId == slot.target.attemptId && movement.sessionId == slot.target.sessionId &&
+        movement.custodianId == slot.originalActorId && movement.evidence.actorId == raw.recordingActorId &&
+        movement.evidence.evidenceId == paid.evidence.evidenceId && movement.evidence.occurredAt == paid.evidence.occurredAt.value &&
+        movement.kind == com.ukkera.pos.sales.CashMovementKind.INVENTORY_SETTLEMENT && movement.delta == -slot.domain.amount &&
+        movement.cashReceived == Money(slot.domain.amount.currency, 0L) && movement.changeGiven == Money(slot.domain.amount.currency, 0L) && movement.reason == slot.domain.reasonCode)
+    val fact = LocalCashMovementFact(LocalSalesScope.from(scope), movement.sourceId, movement.operationId,
+        movement.custodianId, movement.sessionId, movement.kind.name, movement.delta, movement.cashReceived,
+        movement.changeGiven, LocalCashEvidenceV1(movement.evidence.evidenceId, UtcInstant(movement.evidence.occurredAt)), movement.reason, recordedAt)
+    return rootWrite(LocalSalesStoreProfile.MOVEMENT_KIND, movement.sourceId, fact, LocalCashMovementFact.serializer(), null)
+}
+
+/** Exact same-format FOOD supervisor projection. The complete native raw/slot/UNKNOWN
+ * lineage is proved by callers; this inert serializer preserves original cash custody,
+ * actual fact recorder and current accounting attribution without granting any action. */
+internal fun foodRefundSupervisedMovementLiteralWrite(scope: BranchScope, operationId: OperationId,
+    accountingActorId: DomainId, digest: com.ukkera.pos.security.PayloadDigest, normalized: StoredBytes,
+    slot: LocalFoodRefundSlot, originalRaw: LocalFoodRefundRaw, resolutionRaw: LocalFoodRefundResolutionRaw?,
+    movement: CashMovement, recordedAt: UtcInstant): AggregateChange {
+    check(LocalFoodRefundSupervisorCodec.normalize(normalized) == normalized &&
+        com.ukkera.pos.database.semanticDigest(scope, accountingActorId, LocalFoodRefundSupervisorCodec.COMMAND, normalized) == digest)
+    val request = LocalFoodRefundSupervisorCodec.decode(normalized) as? LocalFoodRefundSupervisorRequest.Apply
+        ?: error("food.refund.supervised_apply_required")
+    check(slot.scope == scope && originalRaw.scope == scope && originalRaw.target == slot.target &&
+        originalRaw.originalActorId == slot.originalActorId && originalRaw.recordingActorId == slot.originalActorId &&
+        originalRaw.slotDigest == com.ukkera.pos.security.sha256(foodRefundSlotWrite(slot).payload.copyBytes()) &&
+        originalRaw.bodyDigest == com.ukkera.pos.security.sha256(originalRaw.body().copyBytes()) &&
+        originalRaw.semanticDigest == com.ukkera.pos.database.semanticDigest(scope, originalRaw.recordingActorId,
+            LocalFoodRefundProfile.COMMAND, originalRaw.body()) &&
+        request.factOperationId == slot.target.factOperation(request.phase) &&
+        operationId !in setOf(slot.target.intentOperationId, slot.target.recordingOperationId, slot.target.resolutionOperationId))
+    LocalFoodRefundCashJournalDomain.classifyOriginal(slot.requirement(), originalRaw.body())
+    val outcome: LocalFoodRefundOutcome
+    val recordingActor: DomainId
+    if (request.phase == LocalFoodRefundFactPhase.ORIGINAL) {
+        check(resolutionRaw == null)
+        outcome = (LocalFoodRefundCodec.decode(originalRaw.body()) as LocalFoodRefundRequest.RecordOriginal).outcome
+        recordingActor = originalRaw.recordingActorId
+    } else {
+        val resolution = checkNotNull(resolutionRaw)
+        check(resolution.scope == scope && resolution.target == slot.target && resolution.originalActorId == slot.originalActorId &&
+            resolution.slotDigest == originalRaw.slotDigest && resolution.originalBodyDigest == originalRaw.bodyDigest &&
+            resolution.bodyDigest == com.ukkera.pos.security.sha256(resolution.body().copyBytes()) &&
+            resolution.semanticDigest == com.ukkera.pos.database.semanticDigest(scope, resolution.recordingActorId,
+                LocalFoodRefundProfile.COMMAND, resolution.body()))
+        LocalFoodRefundResolutionDescriptor.create(slot.requirement(), originalRaw.body(), resolution.recordingActorId, resolution.body())
+        outcome = (LocalFoodRefundCodec.decode(resolution.body()) as LocalFoodRefundRequest.RecordResolution).outcome
+        recordingActor = resolution.recordingActorId
+    }
+    val paid = outcome as? LocalFoodRefundOutcome.CashPaid ?: error("food.refund.paid_fact_required")
+    check(paid.amount == slot.domain.amount && movement.operationId == operationId && movement.sourceId == slot.target.attemptId &&
+        movement.sessionId == slot.target.sessionId && movement.custodianId == slot.originalActorId &&
+        movement.evidence.actorId == recordingActor && movement.evidence.evidenceId == paid.evidence.evidenceId &&
+        movement.evidence.occurredAt == paid.evidence.occurredAt.value &&
+        movement.kind == com.ukkera.pos.sales.CashMovementKind.CUSTOMER_REFUND && movement.delta == -slot.domain.amount &&
+        movement.cashReceived == Money(slot.domain.amount.currency, 0L) && movement.changeGiven == Money(slot.domain.amount.currency, 0L) &&
+        movement.reason == null)
+    val fact = LocalCashMovementFact(LocalSalesScope.from(scope), movement.sourceId, movement.operationId,
+        movement.custodianId, movement.sessionId, movement.kind.name, movement.delta, movement.cashReceived,
+        movement.changeGiven, LocalCashEvidenceV1(movement.evidence.evidenceId, UtcInstant(movement.evidence.occurredAt)), movement.reason, recordedAt)
     return rootWrite(LocalSalesStoreProfile.MOVEMENT_KIND, movement.sourceId, fact, LocalCashMovementFact.serializer(), null)
 }

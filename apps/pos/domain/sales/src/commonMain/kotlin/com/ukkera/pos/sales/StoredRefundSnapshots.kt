@@ -84,6 +84,7 @@ internal fun validateStoredRefund(refund: RefundRecord) {
             snapshotCheck(evidence != null && evidence.attestation == refund.attestation)
             validateExternal(refund.tender, checkNotNull(evidence))
         }
+        is Tender.ExchangeOffset -> snapshotCheck(refund.externalEvidence == null && refund.resolutionObservation == null)
     }
 }
 
@@ -95,9 +96,11 @@ internal fun validateStoredRefundAttempt(attempt: RefundAttempt) {
         AttemptStatus.AWAITING_ATTESTATION -> snapshotCheck(observation == null && refund == null)
         AttemptStatus.OUTCOME_UNKNOWN -> snapshotCheck(observation is RefundOutcome.Unknown && refund == null)
         AttemptStatus.NOT_PAID -> snapshotCheck(observation is RefundOutcome.NotPaid && refund == null)
-        AttemptStatus.ATTESTED_PAID -> snapshotCheck(refund != null &&
-            (observation is RefundOutcome.CashPaid || observation is RefundOutcome.ExternalAttested))
+        AttemptStatus.ATTESTED_PAID -> snapshotCheck(refund != null && if (attempt.tender is Tender.ExchangeOffset)
+            observation == null && attempt.resolutionObservation == null
+            else observation is RefundOutcome.CashPaid || observation is RefundOutcome.ExternalAttested)
     }
+    if (attempt.tender is Tender.ExchangeOffset) snapshotCheck(attempt.status == AttemptStatus.ATTESTED_PAID)
     val evidence = when (observation) {
         null -> null
         is RefundOutcome.Unknown -> observation.evidence

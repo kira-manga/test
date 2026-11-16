@@ -35,6 +35,25 @@ public class NativeOriginalIntakeInvocation internal constructor(
     public val invocationId: DomainId,
 ) {
     private val denial = MutableStateFlow(false)
+    // One read during the actual native acquisition only. Closure cannot be undone by a
+    // late/abandoned native worker, and a failed first attempt cannot become a generic query.
+    private val sourceWindow = MutableStateFlow(0) // AVAILABLE / CLAIMED / CLOSED
+    private val historicalSourceData = MutableStateFlow<NativeOriginalSourceData?>(null)
+    internal fun claimHistoricalSources(source: NativeOriginalIntakeSource): Boolean =
+        this.source === source && !denied && sourceWindow.compareAndSet(0, 1)
+    internal fun historicalSourcesPending(): Boolean = !denied && sourceWindow.value == 1
+    internal fun sealHistoricalSources() { sourceWindow.value = 2 }
+    internal fun retainHistoricalSources(data: NativeOriginalSourceData): Boolean =
+        data.belongsTo(this) && historicalSourcesPending() && historicalSourceData.compareAndSet(null, data) && historicalSourcesPending()
+    internal fun matchesHistoricalMasterRoot(originalInstallationId: DomainId, retained: NativeOriginalRetained): Boolean =
+        !denied && historicalSourceData.value?.matchesMasterRoot(this, originalInstallationId, retained) == true
+
+    /** Same registered source only, while this actual kernel acquisition owns its native cut.
+     * Returns exact existing source DATA or nothing; it has no employee/result/new-action API. */
+    public suspend fun historicalSources(source: NativeOriginalIntakeSource,
+        canonicalRequirement: StoredBytes, originalCertificate: StoredBytes): NativeOriginalSourceData? =
+        store.captureNativeOriginalSources(this, source, canonicalRequirement, originalCertificate)
+
     public val denied: Boolean get() = denial.value
     public fun deny() { denial.value = true }
     public fun belongsTo(source: NativeOriginalIntakeSource): Boolean = this.source === source

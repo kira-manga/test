@@ -37,6 +37,9 @@ public class DesktopMasterClientJournalCustody private constructor(
         desktopKnown(observed.matches(target) && os.principal() == principal)
     }
 
+    /** Internal native directory source of THIS actual service custody; never a caller path/key provider. */
+    internal fun physicalDirectoryFiles(): DesktopFiles { requireCurrent(); return os.files }
+
     public fun keyNames(prefix: String): List<String> {
         val journal = journalPrefix(prefix)
         desktopKnown(journal == prefix)

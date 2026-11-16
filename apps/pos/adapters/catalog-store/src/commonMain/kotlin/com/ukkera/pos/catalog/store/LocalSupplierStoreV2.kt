@@ -9,7 +9,7 @@ import com.ukkera.pos.types.Revision
 import com.ukkera.pos.types.UtcInstant
 
 /** Exact supplier-only V2 writer; current authority and durable effects remain kernel-owned. */
-public class LocalSupplierHandlerV2 : MasterCommandHandler {
+public class LocalSupplierHandlerV2 : MasterCommandHandler, LocalMasterRpcRetainedResultAccessProvider {
     override val key: CommandKey = LocalSupplierProfileV2.COMMAND
     override val writableKinds: Set<String> = setOf(LocalConfigurationProfile.SUPPLIER)
     override val claimNamespaces: Set<String> = emptySet()
@@ -18,6 +18,15 @@ public class LocalSupplierHandlerV2 : MasterCommandHandler {
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
         profile == LocalMasterRpcWorkflowProfile.SUPPLIERS && normalize(normalized) == normalized
+
+    override fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        context: CommandContext): List<AuthorizationRequirement> {
+        check(profile == LocalMasterRpcWorkflowProfile.SUPPLIERS && supportsRpcWorkflow(profile, normalized) &&
+            context.key == key && semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)
+        return listOf(AuthorizationRequirement(Permission(SecurityAction.SUPPLIER_ADMINISTRATION, PermissionVerb.ADMINISTER),
+            context.scope, ActionBinding(LocalSupplierCodecV2.decode(normalized).supplier.id, Revision(0), context.semanticDigest,
+                context.operationId, "local.configuration.original"), LimitUse.NotApplicable))
+    }
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
         check(context.scope == view.scope && context.key == key &&

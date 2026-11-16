@@ -456,6 +456,24 @@ public object FoodRefunds {
         return foodRefundAppliedValue(refund, session, attemptId, recordedObservationOperationId,
             command.operationId, actor, outcome)
     }
+
+    /** Current scoped REFUND_RESOLVE over immutable original payout custody. No payout is started. */
+    public fun applySupervisedObservation(command: SalesCommand, refund: FoodRefundObligation, session: CashSession,
+        attemptId: DomainId, recordedObservationOperationId: OperationId, recordingActorId: DomainId,
+        originalUnknownOperationId: OperationId?, originalUnknownBodyDigest: PayloadDigest?,
+        outcome: RefundOutcome): FoodRefundCashChange {
+        val attempt = refund.attempts.singleOrNull { it.id == attemptId } ?: throw SalesRuleViolation(SalesRule.INVALID_STATE)
+        requireSales(attempt.tender == Tender.Cash && outcome !is RefundOutcome.ExternalAttested, SalesRule.TENDER_MISMATCH)
+        requireSales(refund.scope == session.scope && attempt.originalCashSessionId == session.id, SalesRule.OWNER_REQUIRED)
+        requireSessionOwner(session, attempt.originalActorId)
+        val accountingActor = authorizeSupervisedRecordedOutcome(command, SecurityAction.REFUND_RESOLVE,
+            refund.scope, refund.id, refund.revision, attempt.originalActorId, attempt.amount)
+        val link = foodRefundRecordedResolutionLink(attempt, recordedObservationOperationId, recordingActorId,
+            command.operationId, accountingActor, originalUnknownOperationId, originalUnknownBodyDigest,
+            outcome is RefundOutcome.Unknown)
+        return foodRefundAppliedValue(refund, session, attemptId, recordedObservationOperationId,
+            command.operationId, attempt.originalActorId, outcome, recordingActorId, link)
+    }
 }
 
 /** Pure value shared by actual employee-authorized Start and literal retained comparison. */

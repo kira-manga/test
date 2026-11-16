@@ -32,6 +32,7 @@ import com.ukkera.pos.inventory.store.LocalStockRelationalServices
 import com.ukkera.pos.inventory.store.LocalUnpricedArrivalServices
 import com.ukkera.pos.inventory.store.LocalUnpricedArrivalServicesV2
 import com.ukkera.pos.inventory.store.LocalUnpricedArrivalHistoryProducerV2
+import com.ukkera.pos.sales.store.LocalFinancialOriginalSourceServices
 import com.ukkera.pos.sales.store.LocalFoodFinancialHandler
 import com.ukkera.pos.sales.store.LocalFoodFinancialReadHandler
 import com.ukkera.pos.sales.store.LocalFoodPaymentHandler
@@ -39,6 +40,7 @@ import com.ukkera.pos.sales.store.LocalFoodPaymentSupervisorHandler
 import com.ukkera.pos.sales.store.LocalFoodPaymentReadHandler
 import com.ukkera.pos.sales.store.LocalFoodPaymentHistoryProducer
 import com.ukkera.pos.sales.store.LocalFoodNativeOriginalImport
+import com.ukkera.pos.sales.store.LocalFoodRefundSupervisorHandler
 import com.ukkera.pos.sales.store.LocalFoodRefundHandler
 import com.ukkera.pos.sales.store.LocalFoodRefundReadHandler
 import com.ukkera.pos.sales.store.LocalFoodRefundHistoryProducer
@@ -152,9 +154,11 @@ public class LocalBranchCommerceRegistry(
     // readiness or native custody; the master kernel still derives current authority and
     // original binding. Every settled prerequisite additionally verifies the exact retained
     // catalog/stock/cash operation/result/effect identity, so unrelated rows are never used.
-    private val setupCheckpoints = LocalSetupCheckpointServices(signatures)
+    private val setupCheckpoints = LocalSetupCheckpointServices(signatures, stock)
     private val setupResults = LocalSetupAcknowledgementServices(setupCheckpoints.prerequisites)
-    private val supplierSettlement = LocalSupplierSettlementServices(stock, retailParticipants)
+    private val financialOriginalSources = LocalFinancialOriginalSourceServices(stock, foodSource, tenderPolicies,
+        LocalCatalogFinancialOriginalProof(stock))
+    private val supplierSettlement = LocalSupplierSettlementServices(stock, retailParticipants, financialOriginalSources)
     // Retains only actual native-issued policy envelopes. Activation does not qualify
     // documentary receipt/product selectors or supply the separate arrival authority.
     private val purchasingPolicies = LocalPurchasingPolicyServices(purchasingPolicyTrust)
@@ -162,10 +166,11 @@ public class LocalBranchCommerceRegistry(
     private val documentaryIntake = LocalPurchasingDocumentServices()
     private val openingSupplierObligations = LocalOpeningSupplierObligationServices(configuration)
     private val retailCustomerReceiptHistory = LocalRetailCustomerReceiptHistoryProducer()
+    private val normalizedPaymentHistory = LocalNormalizedPaymentHistoryProducer(tenderPolicies)
     private val historyProducers = listOf(LocalConfigurationHistoryProducer(signatures), LocalSupplierHistoryProducerV2(), LocalPricingHistoryProducer(), LocalFoodConfigurationHistoryProducer(signatures),
         LocalFoodFloorHistoryProducer(), LocalFoodTableAssignmentHistoryProducer(foodTableDirectory),
         LocalStockHistoryProducer(stock), LocalNonphysicalHistoryProducer(stock), LocalReturnStockHistoryProducer(stock),
-        LocalNormalizedPaymentHistoryProducer(tenderPolicies), LocalPaymentCorrectionHistoryProducer(tenderPolicies), LocalRetailRefundHistoryProducer(),
+        normalizedPaymentHistory, LocalPaymentCorrectionHistoryProducer(tenderPolicies), LocalRetailRefundHistoryProducer(),
         LocalReturnCaseHistoryProducer(returnCaseSource as? com.ukkera.pos.sales.store.HistoricalSalesReturnCaseSourceV1
             ?: com.ukkera.pos.sales.store.UnavailableHistoricalSalesReturnCaseSourceV1), retailCustomerReceiptHistory,
         LocalBranchReportExportHistoryProducer(),
@@ -174,7 +179,7 @@ public class LocalBranchCommerceRegistry(
         LocalPurchasingCapturedMatchHistoryProducerV2(stock),
         supplierSettlement.history, purchasingPolicies.history, catalogReleases.history, serialRegistrations.history, openingSupplierObligations.history, branchActivities.history,
         returnRightsPolicies.history, documentaryIntake.history, LocalSetupResultHistoryProducer(setupCheckpoints.prerequisites),
-        LocalSetupCheckpointHistoryProducer(signatures),
+        LocalSetupCheckpointHistoryProducer(signatures, stock),
         LocalUnpricedArrivalHistoryProducerV2(stock, LocalCatalogUnpricedArrivalOriginalSourcesV2(configuration, purchasingPolicyTrust, nativePublications)))
     private val supervisorReviewHistory = LocalSupervisorReviewHistoryProducer(tenderPolicies)
     /** The actual registry's signature-backed configuration and complete installed stock/
@@ -193,6 +198,12 @@ public class LocalBranchCommerceRegistry(
             // general rejection fallback. Non-Review keeps its original Apply producer.
             if (supervisorReviewHistory.isReviewRequest(command.command, command.normalized))
                 return supervisorReviewHistory.join(command)
+            if (command.command == com.ukkera.pos.sales.store.LocalRetailSupervisorCodecV1.COMMAND) {
+                val request = com.ukkera.pos.sales.store.LocalRetailSupervisorCodecV1.decode(command.normalized)
+                if (request is com.ukkera.pos.sales.store.LocalRetailSupervisorRequestV1.Apply &&
+                    request.kind == com.ukkera.pos.sales.store.SalesRecordingKind.PAYMENT_ATTESTATION)
+                    return normalizedPaymentHistory.joinSupervisedApplication(command)
+            }
             return byCommand[command.command]?.join(command) ?: false
         }
     }
@@ -210,12 +221,13 @@ public class LocalBranchCommerceRegistry(
             LocalFoodConfigurationHandler(signatures), LocalFoodFloorConfigurationHandler(), LocalFoodHandler(stock, foodSource),
             LocalFoodTableAssignmentHandler(stock, foodTableDirectory),
             LocalFoodFinancialHandler(stock, foodSource),
-            LocalFoodPaymentHandler(stock, foodSource, retailParticipants),
-            LocalFoodPaymentSupervisorHandler(stock, foodSource),
-            LocalFoodRefundHandler(stock, retailParticipants),
-            LocalJournalCollectionHandler(stock, configuration, retailParticipants, tenderPolicies),
-            LocalJournalReturnHandler(retailParticipants, stock, tenderPolicies),
-            LocalRetailSupervisorHandler(stock, tenderPolicies)) +
+            LocalFoodPaymentHandler(stock, foodSource, retailParticipants, financialOriginalSources),
+            LocalFoodPaymentSupervisorHandler(stock, foodSource, financialOriginalSources),
+            LocalFoodRefundHandler(stock, retailParticipants, financialOriginalSources),
+            LocalFoodRefundSupervisorHandler(stock, financialOriginalSources),
+            LocalJournalCollectionHandler(stock, configuration, retailParticipants, tenderPolicies, financialOriginalSources),
+            LocalJournalReturnHandler(retailParticipants, stock, tenderPolicies, financialOriginalSources),
+            LocalRetailSupervisorHandler(stock, tenderPolicies, financialOriginalSources)) +
             // LocalStockHandlers already includes the normalized administration command.
             // The separate relational services instance contributes its reads only below.
             stockHandlers.commands +
@@ -223,7 +235,7 @@ public class LocalBranchCommerceRegistry(
             purchasing.commands + documentaryIntake.commands + supplierSettlement.commands + purchasingPolicies.commands + catalogReleases.commands + serialRegistrations.commands + openingSupplierObligations.commands +
             branchActivities.commands + returnRightsPolicies.commands + arrivals.commands + arrivalsV2.commands +
             setupCheckpoints.commands + setupResults.commands + LocalSalesHandlers.commands(stock, quoteSource, configuration, returnPolicy,
-                recordingCapacity, physicalRecordingCapacity, returnCaseSource, tenderPolicies)
+                recordingCapacity, physicalRecordingCapacity, returnCaseSource, tenderPolicies, LocalCatalogDepositTermsSource(signatures))
     private val queryHandlers: List<MasterReadHandler> =
         listOf(configuration.readHandler(), LocalSupplierReadHandlerV2(), LocalPricingReadHandler(signatures), LocalCountSurplusApprovalReadHandler(stock),
             LocalFoodConfigurationReadHandler(signatures), LocalFoodFloorReadHandler(),

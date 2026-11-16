@@ -463,6 +463,10 @@ public class LocalFoodStockHandler(private val stock: LocalStockRepository, priv
     }
     override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
         view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if (profile == LocalMasterRpcWorkflowProfile.KITCHEN &&
+            context.scope == view.scope && context.key == key && normalize(normalized) == normalized &&
+            (LocalFoodStockCodecV2.decode(normalized) as? LocalFoodStockRequestV2.Preparation)?.request?.foodKitchenRpcStation() != null)
+            return rpcRetainedResultRequirements(LocalMasterRpcWorkflowProfile.KITCHEN, normalized, context)
         if ((profile != LocalMasterRpcWorkflowProfile.FOOD_CHECKS &&
                 profile != LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) || context.key != key ||
             context.scope != view.scope || !supportsRpcWorkflow(profile, normalized) ||
@@ -1234,28 +1238,32 @@ public class LocalFoodStockProducer(private val recipes: TransactionFoodStockSou
             check(observation.key.kind == LocalFoodFinancialProfileV1.COLLECTION &&
                 observation.schema == foodFinancialSchemaV2(observation.key.kind) && isFoodPaymentFinancialProducer(original.evidence))
             val bounded = foodReadView(view)
-            val actual = bounded.foodProducer(original.evidence.operationId)
-            requireSameFoodPaymentOriginal(actual, original.evidence)
-            bounded.requireFoodPredecessors(actual)
-            check(actual.aggregateWrites.single { it.key == observation.key }.let {
-                it.storageGeneration == observation.generation && it.schema == observation.schema &&
-                    it.payload == observation.payload && it.payloadDigest == observation.payloadHash
-            })
-            foodPaymentInputs(actual).filter { it.kind == LocalFoodProfileV1.PORTION }.forEach {
-                recipes.requireLegacyRecipe((foodPaymentFoodEnvelope(it, actual.scope).body as FoodBodyV1.Portion).recipe, actual.scope)
+            bounded.withFinancialStockOriginals {
+                val actual = bounded.foodProducer(original.evidence.operationId)
+                requireSameFoodPaymentOriginal(actual, original.evidence)
+                bounded.requireFoodPredecessors(actual)
+                check(actual.aggregateWrites.single { it.key == observation.key }.let {
+                    it.storageGeneration == observation.generation && it.schema == observation.schema &&
+                        it.payload == observation.payload && it.payloadDigest == observation.payloadHash
+                })
+                foodPaymentInputs(actual).filter { it.kind == LocalFoodProfileV1.PORTION }.forEach {
+                    recipes.requireLegacyRecipe((foodPaymentFoodEnvelope(it, actual.scope).body as FoodBodyV1.Portion).recipe, actual.scope)
+                }
             }
-        } else if (original is RetainedOriginalV2.Legacy && original.evidence.command == LocalFoodRefundProfile.COMMAND) {
+        } else if (original is RetainedOriginalV2.Legacy && original.evidence.command in foodRefundCommands) {
             // Complete genuine accepted-liability payout root; never raw/native money or stock restoration.
             check(observation.key.kind == LocalFoodFinancialProfileV1.REFUND &&
                 observation.schema == foodFinancialSchemaV2(observation.key.kind) && isFoodRefundFinancialProducer(original.evidence))
             val bounded = foodReadView(view)
-            val actual = bounded.foodProducer(original.evidence.operationId)
-            requireSameFoodRefundOriginal(actual, original.evidence)
-            bounded.requireFoodPredecessors(actual)
-            check(actual.aggregateWrites.single { it.key == observation.key }.let {
-                it.storageGeneration == observation.generation && it.schema == observation.schema &&
-                    it.payload == observation.payload && it.payloadDigest == observation.payloadHash
-            })
+            bounded.withFinancialStockOriginals {
+                val actual = bounded.foodProducer(original.evidence.operationId)
+                requireSameFoodRefundOriginal(actual, original.evidence)
+                bounded.requireFoodPredecessors(actual)
+                check(actual.aggregateWrites.single { it.key == observation.key }.let {
+                    it.storageGeneration == observation.generation && it.schema == observation.schema &&
+                        it.payload == observation.payload && it.payloadDigest == observation.payloadHash
+                })
+            }
         } else requireOriginalSource(original, observation)
     }
 }

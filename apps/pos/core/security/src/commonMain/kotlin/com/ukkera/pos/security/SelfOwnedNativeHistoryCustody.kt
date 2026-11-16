@@ -59,6 +59,11 @@ public class SelfOwnedNativeHistoryCustody internal constructor(
     public fun completeOriginalReadDelivery(afterClose: OriginalNativeHistorySnapshot): Unit =
         controller.completeOriginalReadDelivery(afterClose)
 
+    /** Rejects a caller inheriting an actual original Room invocation. This is a
+     * context precondition only: independent requests may enter while another
+     * loan is active, and all subsequent native/SQL work retains its own gates. */
+    public suspend fun requireUnborrowedRoomEntry(): Unit = controller.requireUnborrowedRoomEntry()
+
     /** Real downstream owner work, under this SAME P2 exclusion/watchdog. Not a fate callback. */
     public suspend fun <T> runRoomWork(block: suspend () -> T, discard: suspend (T) -> Unit): T =
         controller.runRoomWork(block, discard)
@@ -75,6 +80,14 @@ public class SelfOwnedNativeHistoryCustody internal constructor(
     public suspend fun prepareActualRoomClose(): Unit = controller.prepareActualRoomClose()
     public suspend fun recoverOriginalRollbackPager(): Unit = controller.recoverOriginalRollbackPager()
     public suspend fun beginRoomFrame(): SelfOwnedNativeRoomFrame = controller.beginRoomFrame()
+    /**
+     * Consistent full-state backup copy of the bound original database into the new private file
+     * [destinationPath], taken by the native owner itself between Room frames (only inside this
+     * custody's retained Room invocation, serialized with writers). Returns the native history
+     * anchor observed unchanged at that same cut. DATA only: never a writer, restore or admission.
+     */
+    public suspend fun captureBackupSnapshot(destinationPath: String): SelfOwnedNativeBackupCapture =
+        controller.captureBackupSnapshot(destinationPath)
     /** Reservation selection only, before native attach/BEGIN. It grants no approval and
      * cannot be added to an already submitted frame or used for another operation. */
     public suspend fun beginApprovedCommandRoomFrame(operationId: DomainId): SelfOwnedNativeRoomFrame =
@@ -308,11 +321,14 @@ internal interface SelfOwnedNativeHistoryController {
         throw NativeHistoryUnavailable(SelfOwnedInstallationFailureV1.UNAVAILABLE)
     suspend fun reobserveAfterActualClose(close: SelfOwnedNativeHistoryReadClosed): OriginalNativeHistorySnapshot
     fun completeOriginalReadDelivery(afterClose: OriginalNativeHistorySnapshot)
+    suspend fun requireUnborrowedRoomEntry()
     suspend fun <T> runRoomWork(block: suspend () -> T, discard: suspend (T) -> Unit): T
     fun retainOriginalRoomClose(databaseIdentity: Any, closeActualRoom: () -> Unit)
     suspend fun prepareActualRoomClose()
     suspend fun recoverOriginalRollbackPager()
     suspend fun beginRoomFrame(): SelfOwnedNativeRoomFrame
+    suspend fun captureBackupSnapshot(destinationPath: String): SelfOwnedNativeBackupCapture =
+        throw NativeHistoryUnavailable(SelfOwnedInstallationFailureV1.UNAVAILABLE)
     suspend fun beginApprovedCommandRoomFrame(operationId: DomainId): SelfOwnedNativeRoomFrame =
         throw NativeHistoryUnavailable(SelfOwnedInstallationFailureV1.AUTHORITY_UNAVAILABLE)
     suspend fun prepareRoomChild(frame: SelfOwnedNativeRoomFrame, child: NativeHistoryRecordedHeadV2,
@@ -436,4 +452,14 @@ public class SelfOwnedNativeRoomCoroutineBinding internal constructor(
 internal interface SelfOwnedNativeRoomCoroutineController {
     fun queryContext(): CoroutineContext
     fun afterActualBuilder()
+}
+
+/** Native capture-cut facts of one backup copy: anchor generation/digest and Room identity. */
+public class SelfOwnedNativeBackupCapture internal constructor(
+    public val historyGeneration: Long,
+    public val historyRecordDigest: PayloadDigest,
+    public val roomIdentityHash: String,
+    public val schemaVersion: Int,
+) {
+    override fun toString(): String = "SelfOwnedNativeBackupCapture([REDACTED])"
 }

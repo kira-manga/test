@@ -613,7 +613,9 @@ private fun acquirePhysicalCatalogue(owner: LocalPhysicalCatalogueBinding, files
             LocalPhysicalCatalogueOpen.Opened(value)
         }
         transferred = result is LocalPhysicalCatalogueOpen.Opened
-    } catch (_: Exception) {
+    } catch (failure: Exception) {
+        com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+            com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_CATALOGUE_ACQUIRE, failure)
         result = LocalPhysicalCatalogueOpen.Held
     } finally {
         if (!transferred) {

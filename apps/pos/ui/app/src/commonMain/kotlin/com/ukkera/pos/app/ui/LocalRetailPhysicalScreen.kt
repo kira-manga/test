@@ -165,6 +165,7 @@ internal fun LocalRetailPhysicalScreen(controller: LocalRetailPhysicalController
                 }
                 if (foodRefundLane) {
                     FoodRefundPhysicalReadPanel(state, controller, token, ready)
+                    FoodRefundSupervisorPanel(state, controller, token, ready)
                 } else {
                 SectionHeading(retailText("Current authorized read controls", "عناصر القراءة المصرح بها حاليًا"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -248,6 +249,10 @@ internal fun LocalRetailPhysicalScreen(controller: LocalRetailPhysicalController
                             retailText("Prepare audited FOOD supervisor review", "إعداد مراجعة مشرف للطعام مدققة")
                         else retailText("Prepare audited supervisor review", "إعداد مراجعة المشرف المدققة"))
                     }
+                    if (parent.workflow == LocalWorkflow.FOOD) OutlinedButton(onClick = { controller.reviewFoodRefundOriginal(token) }, enabled = ready,
+                        modifier = Modifier.touchTarget()) {
+                        Text(retailText("Prepare audited FOOD REFUND supervisor Review", "إعداد مراجعة مشرف مدققة لرد الطعام"))
+                    }
                     if (state.reviewedOriginalId != null && state.reviewedSubject != null) OutlinedButton(onClick = { controller.reviewOriginal(token, true) }, enabled = ready,
                         modifier = Modifier.touchTarget()) {
                         Text(if (state.reviewedSubject == LocalPaymentSubject.FOOD)
@@ -287,6 +292,47 @@ internal fun LocalRetailPhysicalScreen(controller: LocalRetailPhysicalController
     }
 }
 
+/** Existing refund evidence only. Current Resolve authority is checked by the Master for each action. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FoodRefundSupervisorPanel(state: LocalRetailWorkspace, controller: LocalRetailPhysicalController,
+    token: NavigationToken, enabled: Boolean) {
+    SectionHeading(retailText("Separately audited FOOD refund recovery", "استرداد رد الطعام المدقق منفصلًا"))
+    RetailInput(state.recoveryId, retailText("Original FOOD refund observation ID", "معرف إفادة رد الطعام الأصلية"), enabled) {
+        controller.changeInput(LocalRetailInput.RECOVERY_ID, it, token)
+    }
+    OutlinedButton(onClick = { controller.reviewFoodRefundOriginal(token) }, enabled = enabled, modifier = Modifier.touchTarget()) {
+        Text(retailText("Review refund evidence", "مراجعة أدلة رد المبلغ"))
+    }
+    val review = state.review?.takeIf { it.subject == LocalPaymentSubject.FOOD && it.financialKind == LocalRetailFinancialKind.REFUND &&
+        it.state == LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED } ?: return
+    Text(retailText("Historical audited evidence — no new payout", "دليل تاريخي مدقق — دون صرف جديد"), style = MaterialTheme.typography.titleMedium)
+    review.reviewDisplay?.let { RetailInstructionDetails(it) }
+    review.originalActorId?.let { IdentifierText(retailText("Original cash custodian", "موظف العهدة النقدية الأصلي"), it.value) }
+    review.recordingActorId?.let { IdentifierText(retailText("Actual observation recorder", "مسجل الإفادة الفعلي"), it.value) }
+    RetailValues(review.reviewValues)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { controller.reviewFoodRefundOriginal(token, fresh = true) }, enabled = enabled, modifier = Modifier.touchTarget()) {
+            Text(retailText("Review again", "المراجعة مجددًا"))
+        }
+        if (!review.originalApplied) OutlinedButton(onClick = { controller.supervisorApply(LocalRetailObservationPhase.ORIGINAL, token) }, enabled = enabled,
+            modifier = Modifier.touchTarget()) { Text(retailText("Apply original outcome", "تطبيق النتيجة الأصلية")) }
+        if (review.originalApplied && review.resolutionRecorded) OutlinedButton(onClick = { controller.supervisorApply(LocalRetailObservationPhase.RESOLUTION, token) },
+            enabled = enabled, modifier = Modifier.touchTarget()) { Text(retailText("Apply resolved outcome", "تطبيق نتيجة التسوية")) }
+    }
+    val display = review.reviewDisplay
+    if (review.originalUnknown && review.originalApplied && !review.resolutionRecorded && display != null) {
+        Notice(retailText("Use genuine evidence about the old payout and its fixed resolution ID. Do not pay again. Request a fresh audited review after retention before applying.",
+            "استخدم دليل الصرف السابق الحقيقي ومعرف تسويته الثابت. لا تدفع مجددًا. اطلب مراجعة مدققة جديدة بعد الحفظ وقبل التطبيق."), caution = true)
+        RetailObservationEditor(display, state.observation, enabled, resolution = true,
+            choose = { controller.chooseObservation(it, token) }, change = { field, value -> controller.changeInput(field, value, token) },
+            confirm = { controller.confirmObservation(it, token) })
+        Button(onClick = { controller.resolve(token) }, enabled = enabled && state.observation.confirmed, modifier = Modifier.touchTarget()) {
+            Text(retailText("Record resolution evidence", "تسجيل أدلة التسوية"))
+        }
+    }
+}
+
 @Composable
 internal fun RetailApplicationAction(value: LocalRetailPhysicalProgress, controller: LocalRetailPhysicalController,
     token: NavigationToken, enabled: Boolean) {
@@ -295,7 +341,6 @@ internal fun RetailApplicationAction(value: LocalRetailPhysicalProgress, control
     if (value.state !in setOf(LocalRetailDurableState.SQL_ORIGINAL_PENDING, LocalRetailDurableState.SQL_RESOLUTION_PENDING)) return
     if (value.recordingOperationId == null || value.phase == null) return
     val own = controller.canPrepareOwnApplication(value)
-    if (value.subject == LocalPaymentSubject.FOOD && value.financialKind == LocalRetailFinancialKind.REFUND && !own) return
     if (!own && value.originalRecordingOperationId == null) return
     OutlinedButton(onClick = { controller.prepareApply(value, token) }, enabled = enabled, modifier = Modifier.touchTarget()) {
         Text(if (own) retailText("Prepare own recorded-observation application — SQL only", "إعداد تطبيق الإفادة الخاصة المسجلة — قاعدة البيانات فقط")

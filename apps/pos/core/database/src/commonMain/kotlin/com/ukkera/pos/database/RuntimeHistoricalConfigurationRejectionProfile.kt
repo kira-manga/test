@@ -60,6 +60,15 @@ internal enum class RuntimeHistoricalConfigurationRejectionProfile(val command: 
                 PAYMENT_CORRECTION -> matchesPaymentCorrectionRequirement(value.requirement)
             }
 
+    /** Additional-device candidate only for the ordinary counted NonSale command.
+     * A matching shape supplies no admission or authorization: its registered employee
+     * proof must bind the actual earlier native admission and original interactive cut. */
+    fun matchesAdditionalDeviceNonSale(header: RuntimeHistoryEventHeaderV2,
+        value: RuntimeCommandAuthorizationEvidenceV1): Boolean =
+        this == CASH_CLOSING && value.requirement.action == SecurityAction.CASH_MOVE &&
+            value.requirement.reasonCode in setOf("cash.non_sale.pay_in", "cash.operating_expense", "cash.inventory_settlement") &&
+            matches(header, value)
+
     /** Refusal codes remain bound to the exact original action/reason/limit shape.
      * Basis failure cannot accompany a successfully captured proportional requirement;
      * capacity comes after a valid basis. The producer separately proves that precedence. */
@@ -98,14 +107,19 @@ internal enum class RuntimeHistoricalConfigurationRejectionProfile(val command: 
         value.action == SecurityAction.ORDER_EDIT && value.verb == PermissionVerb.PERFORM &&
             value.ownerId != null && value.reasonCode == "food.table.assignment" && hasNoLimit(value)
 
-    /** Only counted-closing subtypes and retained combined-close compatibility are
-     * candidates. The installed cash producer must
+    /** Counted-closing/retained combined-close and exact NonSale reason carriers only.
+     * These are candidates. The installed cash producer must
      * still prove the exact normalized subtype, actual custodian/amount/revision and first
      * refusal from the original native cut. Owner-private close/transfer requirements are
      * not interchangeable with unrestricted review or any configuration requirement. */
     private fun matchesCashClosingRequirement(value: RuntimeCommandRequirementV1): Boolean {
         if (value.verb != PermissionVerb.PERFORM) return false
         return when (value.reasonCode) {
+            // Closed NonSale candidates share the existing command's five nonbusiness
+            // mutations only. The producer still proves canonical subtype and first refusal.
+            "cash.non_sale.pay_in", "cash.operating_expense", "cash.inventory_settlement" ->
+                value.action == SecurityAction.CASH_MOVE && value.ownerId != null &&
+                    hasMonetaryLimit(value) && value.amount?.minor?.let { it > 0 } == true
             "cash.close.begin", "cash.close.cancel" -> value.action == SecurityAction.CASH_CLOSE &&
                 value.ownerId != null && hasNoLimit(value)
             "cash.close.count", "cash.close.submit-counted", "cash.close.submit" ->

@@ -3,6 +3,8 @@ package com.ukkera.pos.sales.store
 import com.ukkera.pos.database.*
 import com.ukkera.pos.sales.CashSession
 import com.ukkera.pos.sales.CashSessionStatus
+import com.ukkera.pos.sales.salesAuthorizationRequirement
+import com.ukkera.pos.security.AuthorizationRequirement
 import com.ukkera.pos.security.SecurityAction
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.OperationId
@@ -136,11 +138,24 @@ private suspend fun head(view: CommandReadView, session: CashSession): LocalSale
 }
 
 /** Current review authority is rechecked by the kernel; this handler never writes a cash/session row. */
-public class LocalCashCloseNoteHandler : MasterCommandHandler {
+public class LocalCashCloseNoteHandler : MasterCommandHandler, LocalMasterRpcRetainedResultAccessProvider {
     override public val key: CommandKey get() = LocalCashCloseNoteCodec.COMMAND
     override public val writableKinds: Set<String> = setOf(NOTE_KIND, HEAD_KIND)
     override public val claimNamespaces: Set<String> = setOf(LocalSalesStoreProfile.UNIQUE_NAMESPACE)
     override public fun normalize(input: StoredBytes): StoredBytes = LocalCashCloseNoteCodec.normalize(input)
+
+    override public fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+
+    override public fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        context: CommandContext): List<AuthorizationRequirement> {
+        check(supportsRpcWorkflow(profile, normalized) && context.key == key &&
+            semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)
+        val request = LocalCashCloseNoteCodec.decode(normalized)
+        return listOf(salesAuthorizationRequirement(SecurityAction.CASH_REVIEW, context.scope, request.sessionId,
+            request.expectedSessionRevision, context.operationId, context.semanticDigest, "cash.close.note.original",
+            context.originalActorId))
+    }
 
     override public suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
         check(view.scope == context.scope && context.key == key &&
@@ -239,6 +254,9 @@ public class LocalCashCloseNotesReadHandler : MasterReadHandler {
     override public val key: ReadKey get() = LocalCashCloseNoteCodec.QUERY
     override public fun normalize(input: StoredBytes): StoredBytes = LocalCashCloseNoteCodec.request(
         localSalesDecode(input, LocalCashCloseNoteQueryV1.serializer(), 2_048)).payload
+
+    override public fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
 
     override public suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(view.scope == context.scope && context.key == key)

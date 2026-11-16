@@ -313,6 +313,7 @@ private fun reportClassificationLabel(kind: String): LocalText = when (kind) {
     "CARD" -> text("Card", "بطاقة")
     "EXTERNAL_WALLET" -> text("External wallet", "محفظة خارجية")
     "OTHER" -> text("Other configured external tender", "وسيلة دفع خارجية أخرى مُعدّة")
+    "EXCHANGE_OFFSET" -> text("Exchange offset · returned goods, no cash", "مقاصة استبدال · بضاعة مرتجعة، دون نقدية")
     else -> unavailable()
 }
 

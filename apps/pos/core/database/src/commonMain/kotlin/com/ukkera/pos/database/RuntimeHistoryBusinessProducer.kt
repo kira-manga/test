@@ -614,6 +614,14 @@ public class RuntimeHistoricalCommand internal constructor(
         resources: Set<RecoveryResourceKey>): Unit = requireConfigurationProfileRejection(expected, resources,
             RuntimeHistoricalConfigurationRejectionProfile.CASH_CLOSING)
 
+    /** CLOSED canonical ordinary NonSale refusal only. The installed producer first
+     * proves actual custodian/source/body and derives the first refusal from authenticated
+     * native BEFORE originals. This reuses the command's existing exact five nonbusiness
+     * mutation close; no cash effect, substitute history, approval or new wire shape fits. */
+    public suspend fun requireCashNonSaleRejection(expected: ProposedOutcome.Reject,
+        resources: Set<RecoveryResourceKey>): Unit = requireConfigurationProfileRejection(expected, resources,
+            RuntimeHistoricalConfigurationRejectionProfile.CASH_CLOSING)
+
     /** CLOSED typed table-assignment refusal only. The installed producer compares the
      * complete original owner-bound requirement and derives the exact refusal/result and
      * resources from genuine BEFORE order, binding and destination originals. Core retains
@@ -630,6 +638,30 @@ public class RuntimeHistoricalCommand internal constructor(
     public suspend fun requirePaymentCorrectionRejection(expected: ProposedOutcome.Reject,
         resources: Set<RecoveryResourceKey>): Unit = requireConfigurationProfileRejection(expected, resources,
             RuntimeHistoricalConfigurationRejectionProfile.PAYMENT_CORRECTION)
+
+    /** Separate exact SQL-only refusal for the two new financial supervisor keys. The
+     * installed typed producer proves whole canonical native BEFORE first-refusal facts;
+     * Review, positive Apply, Start, raw/native intake and generic rejections cannot finish. */
+    public suspend fun requireFinancialSupervisorApplicationRejection(expected: ProposedOutcome.Reject,
+        resources: Set<RecoveryResourceKey>) {
+        owner.requireSupervisorReviewOriginal(this)
+        val profile = capture.supervisorReview ?: unavailable()
+        val evidence = capture.employee ?: unavailable()
+        val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: unavailable()
+        historyShapeV2(requirementChecked && !effectsChecked && capture.nativeOriginal == null &&
+            capture.employeeHistory == null && capture.nativeEmployeeStart == null && capture.approvalHistory == null &&
+            profile.matchesApplicationRefusal(capture.header, evidence) &&
+            profile.acceptsApplicationRefusal(evidence, expected.code) &&
+            !retained.committed && retained.nativeOriginalProvenance == null && retained.command == profile.command &&
+            retained.code == expected.code && retained.result == expected.result && retained.aggregateWrites.isEmpty() &&
+            retained.claimChanges.isEmpty() && retained.jobs.isEmpty() && capture.resources == resources &&
+            capture.mutations.size == RuntimeHistoricalSupervisorReviewProfile.CAPTURED_CHANGES &&
+            capture.mutations.map { it.table }.toSet() == setOf(RuntimeHistoryTableV2.OPERATION, RuntimeHistoryTableV2.JOURNAL,
+                RuntimeHistoryTableV2.AUDIT, RuntimeHistoryTableV2.OUTBOX, RuntimeHistoryTableV2.BRANCH))
+        if (!finalDeadlineChecked) requireFinalDeadlineDecision(null)
+        historyShapeV2(checkedDeadline == null)
+        effectsChecked = true
+    }
 
     private suspend fun requireConfigurationProfileRejection(expected: ProposedOutcome.Reject,
         resources: Set<RecoveryResourceKey>, expectedProfile: RuntimeHistoricalConfigurationRejectionProfile) {
@@ -875,13 +907,20 @@ public class RuntimeHistoricalCommand internal constructor(
     }
 
     private suspend fun requireEffects(retained: RetainedCommandEvidence, expected: ProposedOutcome.Apply) {
-        for ((actual, wanted) in retained.aggregateWrites.zip(expected.changes)) {
+        // The legacy writer/codec retains writes and claims in canonical key order.
+        // Domain producers construct the same proposal they would submit to that writer;
+        // its insertion order is not the retained journal order.
+        val writes = expected.changes.sortedWith(compareBy({ it.key.kind }, { it.key.id.value }))
+        for ((actual, wanted) in retained.aggregateWrites.zip(writes)) {
             val before = owner.aggregateBefore(capture, wanted.key)
-            historyShapeV2(actual.key == wanted.key && wanted.expectedRevision == before?.revision &&
-                actual.storageGeneration == (before?.revision?.next() ?: Revision(1)) && actual.schema == wanted.schema &&
-                actual.payload == wanted.payload)
+            historyShapeV2(actual.key == wanted.key)
+            historyShapeV2(wanted.expectedRevision == before?.revision)
+            historyShapeV2(actual.storageGeneration == (before?.revision?.next() ?: Revision(1)))
+            historyShapeV2(actual.schema == wanted.schema)
+            historyShapeV2(actual.payload == wanted.payload)
         }
-        for ((actual, wanted) in retained.claimChanges.zip(expected.claims)) historyShapeV2(
+        val claims = expected.claims.sortedWith(compareBy({ it.key.namespace }, { it.key.key }))
+        for ((actual, wanted) in retained.claimChanges.zip(claims)) historyShapeV2(
             actual.key == wanted.key && actual.ownerId == wanted.ownerId && actual.action == when (wanted) {
                 is ClaimChange.Acquire -> RetainedClaimAction.ACQUIRE
                 is ClaimChange.Release -> RetainedClaimAction.RELEASE

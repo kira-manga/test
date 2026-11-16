@@ -34,16 +34,11 @@ import com.ukkera.pos.app.*
 import com.ukkera.pos.app.navigation.NavigationToken
 import kotlinx.coroutines.delay
 
-/** Purchasing-only payout lane. No customer tender, collection due or supervisor aliases. */
+/** Purchasing-only payout and explicitly audited recovery of existing supplier evidence. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, parent: LocalWorkspaceState, token: NavigationToken) {
     if (parent.workflow != LocalWorkflow.PURCHASING) return
-    if (!parent.purchasingQuery.includeCosts) {
-        Notice(retailText("Supplier payout and advance amounts require an explicit current cost read. Enable Include costs; no hidden amount or cash balance is inferred as zero.",
-            "تتطلب مبالغ دفع المورد والدفعات المقدمة قراءة تكلفة صريحة وسارية. فعّل عرض التكلفة؛ لا يُفترض مبلغ مخفي أو رصيد نقدي صفرًا."))
-        return
-    }
     val state by controller.state.collectAsState()
     if (state.reference != parent.reference || state.purchasingQuery != parent.purchasingQuery || !controller.displayCurrent(token)) return
     val language = LocalAppLanguage.current
@@ -57,7 +52,7 @@ internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, par
     }
     Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Outline)) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionHeading(retailText("Supplier CASH payout, paid advances and own evidence recovery", "دفع نقدية المورد والدفعات المقدمة واسترداد الدليل الخاص"))
+            SectionHeading(retailText("Supplier CASH payout, paid advances and audited recovery", "دفع نقدية المورد والدفعات المقدمة والاسترداد المدقق"))
             Notice(retailText("Gross PAYABLE recognition stays unchanged. Credits, earlier paid advances and today's actual payout are separate sources. Allocating an earlier advance is a separate nonphysical command under Advances, never another payout.",
                 "يبقى الاعتراف الإجمالي بالمستحق دون تغيير. الخصومات والدفعات المقدمة السابقة وصرف اليوم الفعلي مصادر منفصلة. تخصيص دفعة سابقة أمر منفصل غير فعلي في الدفعات المقدمة، وليس صرفًا جديدًا."))
             Notice(retailText("Prepared input, live instruction, in-memory capture, durable native retention and SQL financial application are distinct. Recovery never authorizes another physical payout. Each action needs current explicit rights and the actual original cash custody.",
@@ -68,6 +63,9 @@ internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, par
                     "بانتظار طلب المورد الأصلي. يظل القفل أو الإنهاء متاحًا؛ ولا تُمحى الأدلة الدائمة."), modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
             }
             state.problem?.let { Notice(localProblem(it), caution = true) }
+            if (!parent.purchasingQuery.includeCosts) Notice(retailText(
+                "Enable Include costs to prepare a new payout. Existing evidence can be reviewed separately under current scoped supervisor authority.",
+                "فعّل عرض التكلفة لإعداد صرف جديد. يمكن مراجعة الدليل الموجود منفصلًا بصلاحية مشرف سارية ومحددة النطاق."))
             if (state.inputProblem) Notice(retailText("Complete the exact selector/reason or choose and confirm the actual observation. Actual amount and currency have no default; signed/foreign/unsupported-precision evidence is retained literally, not rounded or posted as supported money.",
                 "أكمل المحدد والسبب الدقيقين أو اختر وأكد الإفادة الفعلية. لا قيمة افتراضية للمبلغ أو العملة الفعليين؛ يُحفظ الدليل السالب أو الأجنبي أو غير المدعوم الدقة حرفيًا دون تقريب أو ترحيل كمال مدعوم."), caution = true)
             state.notice?.let { Notice(language.text(it), caution = true) }
@@ -123,11 +121,25 @@ internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, par
                     recover = { controller.recover(value.operationId, token) }) }
                 state.progress?.let { value ->
                     SupplierProgressActions(value, controller, token, ready)
+                    if (value.state == LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED) {
+                        value.originalActorId?.let { IdentifierText(retailText("Original paying custodian", "موظف العهدة الدافع الأصلي"), it.value) }
+                        value.recordingActorId?.let { IdentifierText(retailText("Actual observation recorder", "مسجل الإفادة الفعلي"), it.value) }
+                        for (phase in LocalRetailObservationPhase.entries) if (controller.canPrepareSupervisedApplication(phase)) {
+                            OutlinedButton(onClick = { controller.supervisorApply(phase, token) }, enabled = ready, modifier = Modifier.touchTarget()) {
+                                Text(if (phase == LocalRetailObservationPhase.ORIGINAL)
+                                    retailText("Apply original outcome", "تطبيق النتيجة الأصلية")
+                                else retailText("Apply resolved outcome", "تطبيق نتيجة التسوية"))
+                            }
+                        }
+                        OutlinedButton(onClick = { controller.reviewOriginal(token, fresh = true) }, enabled = ready, modifier = Modifier.touchTarget()) {
+                            Text(retailText("Review again", "المراجعة مجددًا"))
+                        }
+                    }
                     if (controller.canResolve(value)) {
-                        SectionHeading(retailText("Own applied UNKNOWN — fixed resolution, OLD payout only", "نتيجة مجهولة مطبقة خاصة — تسوية ثابتة للصرف السابق فقط"))
+                        SectionHeading(retailText("Applied UNKNOWN — fixed resolution, OLD payout only", "نتيجة مجهولة مطبقة — تسوية ثابتة للصرف السابق فقط"))
                         value.reviewDisplay?.let { SupplierInstructionDetails(it, live = false) }
-                        Notice(retailText("This authenticated historical DATA is not a live instruction, supervisor approval or custody takeover. Keep the original fixed resolution ID and record genuine old-action evidence under the original paying owner. Never pay again. Known contradictory/foreign originals stay held; they are not overwritten by this UNKNOWN-only lane.",
-                            "هذه بيانات تاريخية موثوقة وليست تعليمات سارية أو موافقة مشرف أو استحواذًا على العهدة. احتفظ بمعرف التسوية الأصلي الثابت وسجل دليل الحركة السابقة الحقيقي تحت المالك الدافع الأصلي. لا تدفع مجددًا. تبقى الأصول المتناقضة أو الأجنبية معلقة ولا تُستبدل عبر هذا المسار للنتيجة المجهولة فقط."), caution = true)
+                        Notice(retailText("This historical review is not a payout instruction or custody transfer. Record genuine evidence of the old action using its fixed resolution ID. The original paying cash session stays unchanged; the current resolver is recorded separately. Never pay again.",
+                            "هذه المراجعة التاريخية ليست تعليمات صرف أو نقل عهدة. سجل دليل الحركة السابقة الحقيقي باستخدام معرف تسويتها الثابت. تبقى جلسة النقدية الدافعة الأصلية دون تغيير ويُسجل المسوي الحالي منفصلًا. لا تدفع مجددًا."), caution = true)
                         SupplierObservationEditor(state.observation, ready, resolution = true,
                             choose = { controller.chooseObservation(it, token) },
                             change = { field, amount -> controller.changeInput(field, amount, token) },
@@ -157,7 +169,7 @@ internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, par
                         Text(retailText("Read authentic sources and prepare — NO payout yet", "قراءة المصادر الموثوقة والإعداد — دون صرف بعد"))
                     }
                 }
-                if (!state.freshPayoutAllowed) Notice(retailText(
+                if (!state.freshPayoutAllowed && parent.purchasingQuery.includeCosts) Notice(retailText(
                     "This invoice is capture-only or its original format has not been read. No new supplier payout is available here. Existing original evidence and recovery remain accessible below.",
                     "هذه الفاتورة للحفظ فقط أو لم تُقرأ صيغتها الأصلية. لا يتاح صرف جديد للمورد هنا. تظل الأدلة الأصلية السابقة واستردادها متاحة أدناه."))
                 SectionHeading(retailText("Own supplier pending and same-ID SQL recovery", "معلقات المورد الخاصة واسترداد قاعدة البيانات بنفس المعرف"))
@@ -176,12 +188,29 @@ internal fun LocalSupplierCashPanel(controller: LocalSupplierCashController, par
                 } }
                 state.facts.forEach { value -> key(value.originalRecordingOperationId?.value ?: value.operationId.value) {
                     SupplierProgressActions(value, controller, token, ready)
+                    if (value.state == LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED) {
+                        value.originalActorId?.let { IdentifierText(retailText("Original paying custodian", "موظف العهدة الدافع الأصلي"), it.value) }
+                        value.recordingActorId?.let { IdentifierText(retailText("Actual observation recorder", "مسجل الإفادة الفعلي"), it.value) }
+                        for (phase in LocalRetailObservationPhase.entries) if (controller.canPrepareSupervisedApplication(phase)) {
+                            OutlinedButton(onClick = { controller.supervisorApply(phase, token) }, enabled = ready, modifier = Modifier.touchTarget()) {
+                                Text(if (phase == LocalRetailObservationPhase.ORIGINAL)
+                                    retailText("Apply original outcome", "تطبيق النتيجة الأصلية")
+                                else retailText("Apply resolved outcome", "تطبيق نتيجة التسوية"))
+                            }
+                        }
+                        OutlinedButton(onClick = { controller.reviewOriginal(token, fresh = true) }, enabled = ready, modifier = Modifier.touchTarget()) {
+                            Text(retailText("Review again", "المراجعة مجددًا"))
+                        }
+                    }
                 } }
                 RetailInput(state.recoveryId, retailText("Existing supplier original recording ID or saved operation ID", "معرف إفادة مورد أصلية موجودة أو عملية محفوظة"), ready) {
                     controller.changeInput(LocalSupplierInput.RECOVERY_ID, it, token)
                 }
                 OutlinedButton(onClick = { controller.recoverInput(token) }, enabled = ready, modifier = Modifier.touchTarget()) {
                     Text(retailText("Read exact SQL state only — never rearm", "قراءة حالة قاعدة البيانات الدقيقة فقط — دون إعادة تسليح"))
+                }
+                OutlinedButton(onClick = { controller.reviewOriginal(token) }, enabled = ready, modifier = Modifier.touchTarget()) {
+                    Text(retailText("Review payout evidence", "مراجعة أدلة الصرف"))
                 }
             }
         }
@@ -208,7 +237,7 @@ private fun SupplierSavedCard(value: LocalRetailSavedOperation, enabled: Boolean
             modifier = Modifier.touchTarget()) { Text(retailText("Start ONCE; await live supplier instruction", "ابدأ مرة واحدة وانتظر تعليمات المورد السارية")) }
         if (!value.isPhysicalStart && !value.recorded) Button(onClick = sql, enabled = enabled, modifier = Modifier.touchTarget()) {
             Text(if (value.requiresNativeRetention) retailText("Retain saved old-payout resolution", "حفظ تسوية الصرف السابق المحفوظة")
-                else retailText("Submit saved supplier SQL-only Apply", "إرسال تطبيق المورد المحفوظ لقاعدة البيانات فقط"))
+                else retailText("Submit saved request", "إرسال الطلب المحفوظ"))
         }
     }
     if (confirmation) AlertDialog(onDismissRequest = { confirmation = false },
@@ -240,7 +269,7 @@ private fun SupplierProgressActions(value: LocalRetailPhysicalProgress, controll
             modifier = Modifier.touchTarget()) { Text(if (value.phase == LocalRetailObservationPhase.RESOLUTION)
                 retailText("Prepare Apply of actual fixed resolution — SQL only", "إعداد تطبيق التسوية الثابتة الفعلية — قاعدة البيانات فقط")
             else retailText("Prepare Apply of actual original — SQL only", "إعداد تطبيق الأصل الفعلي — قاعدة البيانات فقط")) }
-        if (value.originalRecordingOperationId != null) OutlinedButton(onClick = { controller.readOriginal(value, token) }, enabled = enabled,
+        if (value.originalRecordingOperationId != null && value.state != LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED) OutlinedButton(onClick = { controller.readOriginal(value, token) }, enabled = enabled,
             modifier = Modifier.touchTarget()) { Text(retailText("Read its exact own ORIGINAL source — no supervisor", "قراءة مصدره الأصلي الخاص الدقيق — دون مشرف")) }
     }
 }

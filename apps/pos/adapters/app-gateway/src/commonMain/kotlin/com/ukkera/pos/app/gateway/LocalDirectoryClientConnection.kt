@@ -43,6 +43,7 @@ public class LocalDirectoryClientConnection(
 
     init {
         require(labels.scope == identity.scope)
+        require(profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS) { "LAN business requires its authenticated journal composition" }
         require(!supplierReferences || profile == LocalMasterRpcWorkflowProfile.SUPPLIERS)
     }
 

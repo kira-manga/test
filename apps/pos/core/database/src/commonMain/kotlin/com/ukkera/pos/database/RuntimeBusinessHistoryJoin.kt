@@ -224,7 +224,8 @@ internal class RuntimeBusinessHistoryJoin(
                 (nativeEmployeeStart == null || nativeOriginal != null && nativeEmployeeStart.employeeHistory != null &&
                     nativeEmployeeStart.nativeOriginal == null) && (employeeHistory == null || nativeEmployeeStart == null) &&
                 (supervisorReview == null || employee != null && nativeOriginal == null && employeeHistory == null &&
-                    nativeEmployeeStart == null && supervisorReview.matches(header, employee)) &&
+                    nativeEmployeeStart == null && (supervisorReview.matches(header, employee) ||
+                        supervisorReview.matchesApplicationRefusal(header, employee))) &&
                 (employeeSupervisorReview == null || supervisorReview != null && employee != null &&
                     employeeSupervisorReview.profile == supervisorReview && employeeSupervisorReview.evidence === employee) &&
                 (purchasingPolicyRejection == null || employee != null && nativeOriginal == null && employeeHistory == null &&
@@ -531,9 +532,11 @@ internal class RuntimeBusinessHistoryJoin(
             CommandKey(evidence.commandName, evidence.commandVersion) !in supportedCommands ||
             mutations.size != header.changeCount || mutations.any { RuntimeHistoryTableV2.fromTag(it.tableTag) !in TABLES }) return false
         historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
-            evidence.authorization.actorId != coordinates.firstActorId && evidence.authorization.deviceId == coordinates.deviceId &&
+            evidence.authorization.actorId != coordinates.firstActorId &&
             header.sequence !in captures && evidence.operationId !in byOperation)
         evidence.validate()
+        // bind proves the actual original cohost OR selected native additional-device
+        // admission, exact issuance and historical current facts for this ordinary command.
         proof.bind(session, header, eventDigest)
         return captureBound(header, eventDigest, evidence, null, StreamedProducerIdentityV2(evidence.operationId,
             CommandKey(evidence.commandName, evidence.commandVersion), evidence.authorization.actorId, evidence.semanticDigest),
@@ -547,7 +550,8 @@ internal class RuntimeBusinessHistoryJoin(
         evidence: RuntimeCommandAuthorizationEvidenceV1, intent: NativeHistoryOriginalIntentV2,
         dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
         val profile = RuntimeHistoricalSupervisorReviewProfile.fromCommand(CommandKey(evidence.commandName, evidence.commandVersion)) ?: return false
-        if (!enabled || !profile.matches(header, evidence) || profile.command !in supportedCommands ||
+        if (!enabled || !(profile.matches(header, evidence) || profile.matchesApplicationRefusal(header, evidence)) ||
+            profile.command !in supportedCommands ||
             mutations.size != RuntimeHistoricalSupervisorReviewProfile.CAPTURED_CHANGES ||
             mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
         historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
@@ -565,11 +569,12 @@ internal class RuntimeBusinessHistoryJoin(
         proof: RuntimeEmployeeSupervisorReviewHistoryAuthorization, intent: NativeHistoryOriginalIntentV2,
         dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
         val evidence = proof.evidence; val profile = proof.profile
-        if (!enabled || !profile.matches(header, evidence) || profile.command !in supportedCommands ||
+        if (!enabled || !(profile.matches(header, evidence) || profile.matchesApplicationRefusal(header, evidence)) ||
+            profile.command !in supportedCommands ||
             mutations.size != RuntimeHistoricalSupervisorReviewProfile.CAPTURED_CHANGES ||
             mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
         historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
-            evidence.authorization.actorId != coordinates.firstActorId && evidence.authorization.deviceId == coordinates.deviceId &&
+            evidence.authorization.actorId != coordinates.firstActorId &&
             header.sequence !in captures && evidence.operationId !in byOperation)
         evidence.validate()
         proof.bind(session, header, eventDigest)
@@ -883,7 +888,7 @@ internal class RuntimeBusinessHistoryJoin(
             mutations.size != RuntimeHistoricalConfigurationRejectionProfile.CAPTURED_CHANGES ||
             mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
         historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
-            evidence.authorization.actorId != coordinates.firstActorId && evidence.authorization.deviceId == coordinates.deviceId &&
+            evidence.authorization.actorId != coordinates.firstActorId &&
             header.sequence !in captures && evidence.operationId !in byOperation)
         evidence.validate()
         proof.bind(session, header, eventDigest)
@@ -1916,6 +1921,24 @@ internal class RuntimeBusinessHistoryJoin(
         captured.employeeFloorConfigurationRejection?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
     }
 
+    /** Exact active supervisor original ownership. An enrolled actor requires its actual
+     * registered native-source proof from this same read/header; founding capture keeps
+     * its original cohost device pin. This observes history, never current authority. */
+    internal suspend fun requireSupervisorReviewOriginal(command: RuntimeHistoricalCommand) {
+        requireActive(command)
+        val captured = command.capture
+        val profile = captured.supervisorReview ?: malformed()
+        val evidence = captured.employee ?: malformed()
+        historyShapeV2(!captured.joined && captures[captured.header.sequence] === captured &&
+            byOperation[captured.producer.operationId] === captured && originals[captured.producer.operationId] === command.original &&
+            captured.scope == scope && captured.header.scope == scope.storageKey() && captured.header.commandEpoch == epoch.value &&
+            captured.header.assignmentId == coordinates.assignmentId && captured.nativeOriginal == null &&
+            (profile.matches(captured.header, evidence) || profile.matchesApplicationRefusal(captured.header, evidence)) &&
+            (captured.employeeSupervisorReview != null) == (evidence.authorization.actorId != coordinates.firstActorId) &&
+            (captured.employeeSupervisorReview != null || evidence.authorization.deviceId == coordinates.deviceId))
+        captured.employeeSupervisorReview?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
+    }
+
     /** Exact active original ownership for the closed configuration/pricing refusal ports. A
      * retained DTO, earlier command or proof from another native read cannot complete it.
      * The registered enrolled proof is mandatory exactly when the actor is not founding. */
@@ -1928,7 +1951,8 @@ internal class RuntimeBusinessHistoryJoin(
             byOperation[captured.producer.operationId] === captured && originals[captured.producer.operationId] === command.original &&
             captured.scope == scope && captured.header.scope == scope.storageKey() && captured.header.commandEpoch == epoch.value &&
             captured.header.assignmentId == coordinates.assignmentId &&
-            captured.nativeOriginal == null && evidence.authorization.deviceId == coordinates.deviceId &&
+            captured.nativeOriginal == null &&
+            (evidence.authorization.deviceId == coordinates.deviceId || captured.employeeConfigurationRejection != null) &&
             profile.matches(captured.header, evidence) &&
             (captured.employeeConfigurationRejection != null) == (evidence.authorization.actorId != coordinates.firstActorId))
         captured.employeeConfigurationRejection?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
@@ -2460,7 +2484,8 @@ internal class RuntimeBusinessHistoryJoin(
             ?: captured.foodPaymentRejection?.let { it.acceptsRejection(operation.outcome) }
             ?: captured.returnCaseQualificationRejection?.let { operation.outcome == it.rejectionCode }
             ?: captured.returnStockDispositionRejection?.let { operation.outcome == it.rejectionCode }
-            ?: (operation.outcome == (captured.supervisorReview?.rejectionCode ?: "committed"))
+            ?: captured.supervisorReview?.let { it.acceptsCapturedRejection(captured.header,
+                checkNotNull(captured.employee), operation.outcome) } ?: (operation.outcome == "committed")
         historyShapeV2(operation.scope == scope.storageKey() && journal.scope == operation.scope && operation.operationId == value.operationId.value &&
             journal.operationId == operation.operationId && operation.actorId == value.originalActorId.value &&
             operation.authenticationId == captured.authenticationId.value && operation.policyRevision == captured.policyRevision.value &&
@@ -2509,7 +2534,11 @@ internal class RuntimeBusinessHistoryJoin(
         } ?: captured.foodPaymentRejection?.rejectionCode ?: captured.retailCustomerReceiptRejection?.rejectionCode
             ?: captured.returnCaseQualificationRejection?.rejectionCode
             ?: captured.returnStockDispositionRejection?.rejectionCode
-            ?: (captured.supervisorReview?.rejectionCode ?: "committed")
+            ?: captured.supervisorReview?.let { profile ->
+                val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: malformed()
+                historyShapeV2(profile.acceptsCapturedRejection(captured.header, checkNotNull(captured.employee), retained.code))
+                retained.code
+            } ?: "committed"
         val closed = mutableSetOf<Int>()
         fun mark(value: Mutation) { historyShapeV2(closed.add(value.descriptor.ordinal)) }
         fun inserted(value: Mutation) {
@@ -2598,7 +2627,8 @@ internal class RuntimeBusinessHistoryJoin(
                     retained.aggregateWrites.isEmpty() && retained.claimChanges.isEmpty() && retained.jobs.isEmpty() &&
                     captured.nativeOriginal == null && captured.mutations.size == REJECTION_TABLES.size)
                 else if (captured.supervisorReview != null) historyShapeV2(!retained.committed &&
-                    retained.code == captured.supervisorReview.rejectionCode && retained.command == captured.supervisorReview.command &&
+                    captured.supervisorReview.acceptsCapturedRejection(captured.header, checkNotNull(captured.employee), retained.code) &&
+                    retained.command == captured.supervisorReview.command &&
                     captured.nativeOriginal == null && retained.nativeOriginalProvenance == null && retained.aggregateWrites.isEmpty() &&
                     retained.claimChanges.isEmpty() && retained.jobs.isEmpty() &&
                     captured.mutations.size == RuntimeHistoricalSupervisorReviewProfile.CAPTURED_CHANGES)

@@ -131,7 +131,7 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
             source.requested.request.targetId != actor) return false
         val transition = RuntimeEmployeePolicyActivationTransition(source, account, policy)
         policy = transition.policy; verifiedPolicyDigest = transition.policyDigest; account = transition.account
-        accountImages(transition.images)
+        accountPolicyActivationImages(transition.images)
         return true
     }
 
@@ -778,6 +778,12 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
     private fun event(value: RuntimeAuthenticationEvidenceV1, kind: LocalAuthEventKind, sessionId: DomainId): RuntimeAuthenticationImageV1 =
         image(ProtectedLocalRecordKey.AuthEvent(scope, value.eventId), Revision(0), LocalAuthenticationCodec.encodeEvent(
             LocalAuthEvent(scope, value.eventId, kind, actor, actor, sessionId, account.state.revision, value.at, null)))
+    private fun accountPolicyActivationImages(images: List<RuntimePolicyActivationReplayImage>) {
+        mutationCount = historyAddV2(mutationCount, images.size.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
+        for (image in images) if (image.mutation == RuntimeHistoryMutationKindV2.INSERT)
+            rows[image.table.ordinal] = historyAddV2(rows[image.table.ordinal], 1L, RuntimeHistoryProfileV2.MAX_MUTATIONS)
+    }
+
     private fun accountImages(images: List<RuntimeAuthenticationImageV1>) {
         mutationCount = historyAddV2(mutationCount, images.size.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
         for (image in images) if (image.mutation == RuntimeHistoryMutationKindV2.INSERT)

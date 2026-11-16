@@ -39,14 +39,48 @@ public object LocalSupplierCashStorage {
     public suspend fun historical(command: RuntimeHistoricalCommand, id: DomainId): LocalSupplierCashCut =
         LocalSupplierCashCut(LocalCashHistoryRead(command).cash(id))
 
+    public suspend fun historical(sources: RuntimeHistoricalFinancialSources, id: DomainId,
+        view: CommandReadView): LocalSupplierCashCut = LocalSupplierCashCut(LocalCashHistoryRead(sources, view).cash(id))
+
+    /** Exact installed cash-read order over genuine native BEFORE sources, including
+     * the same typed SALES source refusals. Native/provenance/IO exceptions never fit. */
+    public suspend fun historicalApplication(command: RuntimeHistoricalCommand, id: DomainId): LocalSupplierCashCut = try {
+        LocalSupplierCashCut(LocalFinancialCashBeforeRead(command).cash(id))
+    } catch (_: LocalSalesSourceUnavailable) { throw LocalSupplierCashSourceUnavailable() }
+    public suspend fun historicalApplication(sources: RuntimeHistoricalFinancialSources, id: DomainId,
+        view: CommandReadView): LocalSupplierCashCut = try {
+        LocalSupplierCashCut(LocalFinancialCashBeforeRead(sources, view).cash(id))
+    } catch (_: LocalSalesSourceUnavailable) { throw LocalSupplierCashSourceUnavailable() }
+
     public fun sessionWrite(cut: LocalSupplierCashCut, after: CashSession): AggregateChange {
         check(after.id == cut.session.id && after.scope == cut.session.scope && after.revision == cut.session.revision.next())
         return cashWrite(after, cut.sessionRow)
     }
     public fun movementWrite(context: CommandContext, movement: CashMovement, at: UtcInstant): AggregateChange =
         cashMovementLiteralWrite(context.scope, context.operationId, context.originalActorId, movement, at)
+    public fun retainedMovementWrite(original: RetainedCommandEvidence, movement: CashMovement): AggregateChange =
+        cashMovementLiteralWrite(original.scope, original.operationId, original.originalActorId, movement, original.recordedAt)
     public fun historicalMovementWrite(command: RuntimeHistoricalCommand, movement: CashMovement): AggregateChange =
         cashMovementLiteralWrite(command.scope, command.operationId, command.actorId, movement, command.recordedAt)
+    public fun supervisedMovementWrite(context: CommandContext, slot: LocalSupplierCashSlot, raw: LocalSupplierCashRaw,
+        originalUnknown: LocalSupplierCashRaw?, movement: CashMovement, at: UtcInstant): AggregateChange {
+        check(context.key == LocalSupplierCashSupervisorCodec.COMMAND)
+        return supplierSupervisedMovementLiteralWrite(context.scope, context.operationId, context.originalActorId,
+            context.semanticDigest, LocalSupplierCashSupervisorCodec.encode(LocalSupplierCashSupervisorRequest.Apply(
+                raw.target.factOperation(raw.phase), raw.phase)), slot, raw, originalUnknown, movement, at)
+    }
+    public fun retainedSupervisedMovementWrite(original: RetainedCommandEvidence, slot: LocalSupplierCashSlot,
+        raw: LocalSupplierCashRaw, originalUnknown: LocalSupplierCashRaw?, movement: CashMovement): AggregateChange {
+        check(original.command == LocalSupplierCashSupervisorCodec.COMMAND)
+        return supplierSupervisedMovementLiteralWrite(original.scope, original.operationId, original.originalActorId,
+            original.semanticDigest, original.normalized, slot, raw, originalUnknown, movement, original.recordedAt)
+    }
+    public fun historicalSupervisedMovementWrite(command: RuntimeHistoricalCommand, slot: LocalSupplierCashSlot,
+        raw: LocalSupplierCashRaw, originalUnknown: LocalSupplierCashRaw?, movement: CashMovement): AggregateChange {
+        check(command.command == LocalSupplierCashSupervisorCodec.COMMAND)
+        return supplierSupervisedMovementLiteralWrite(command.scope, command.operationId, command.actorId,
+            command.semanticDigest, command.normalized, slot, raw, originalUnknown, movement, command.recordedAt)
+    }
     public fun movementKey(attemptId: DomainId): AggregateKey = LocalSalesStoreProfile.key(LocalSalesStoreProfile.MOVEMENT_KIND, attemptId)
     public fun sourceClaim(attemptId: DomainId): ClaimKey = CashNonSaleStoreProfile.cashSourceClaim(attemptId)
     public fun sessionKey(id: DomainId): AggregateKey = CashNonSaleStoreProfile.sessionKey(id)
@@ -71,6 +105,15 @@ public object LocalSupplierCashStorage {
         check(command.aggregateSource(movementKey(id)) == null && command.claim(sourceClaim(id)) == null &&
             command.claim(LocalSalesStoreProfile.unique("payment_attempt", id)) == null &&
             command.claim(LocalSalesStoreProfile.unique("refund_attempt", id)) == null)
+    }
+
+    /** Exact new-key readback uses the same complete source-bound projection as its proposal. */
+    public fun requireSupervisedPayoutWrite(evidence: RetainedCommandEvidence, slot: LocalSupplierCashSlot,
+        raw: LocalSupplierCashRaw, originalUnknown: LocalSupplierCashRaw?, movement: CashMovement): Unit {
+        val actual = evidence.aggregateWrites.single { it.key == movementKey(movement.sourceId) }
+        val expected = retainedSupervisedMovementWrite(evidence, slot, raw, originalUnknown, movement)
+        check(actual.storageGeneration == Revision(1) && actual.schema == expected.schema && actual.payload == expected.payload &&
+            actual.payloadDigest == sha256(expected.payload.copyBytes()))
     }
 
     /** Domain-owned immutable movement comparison, not another cash-source schema. */

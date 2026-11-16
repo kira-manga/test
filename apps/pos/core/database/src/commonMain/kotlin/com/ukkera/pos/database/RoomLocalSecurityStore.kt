@@ -5,6 +5,7 @@ import com.ukkera.pos.security.AuthorizedAction
 import com.ukkera.pos.security.ActivatedLocalPolicy
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.BranchScope
+import com.ukkera.pos.security.BatchedDeviceProtectedLocalStorage
 import com.ukkera.pos.security.DeviceProtectedLocalStorage
 import com.ukkera.pos.security.KeyProtectionStatus
 import com.ukkera.pos.security.LocalAccessIssuance
@@ -12,6 +13,7 @@ import com.ukkera.pos.security.LocalAccountSessionState
 import com.ukkera.pos.security.LocalDeviceAdmission
 import com.ukkera.pos.security.LocalEmployeePrincipal
 import com.ukkera.pos.security.LocalOpenResult
+import com.ukkera.pos.security.LocalBatchOpenResult
 import com.ukkera.pos.security.LocalSealResult
 import com.ukkera.pos.security.LocalSessionTransaction
 import com.ukkera.pos.security.LocalAuthConfiguration
@@ -34,6 +36,7 @@ import com.ukkera.pos.security.PersistentThrottleState
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.ProtectedLocalAccount
 import com.ukkera.pos.security.ProtectedLocalBinding
+import com.ukkera.pos.security.ProtectedLocalOpenSelection
 import com.ukkera.pos.security.ProtectedLocalRecordKey
 import com.ukkera.pos.security.ProtectedLocalStorageFormat
 import com.ukkera.pos.security.ProtectedStorageKeyReference
@@ -1064,6 +1067,20 @@ internal class RoomLocalSecurityTransaction internal constructor(
 
     /** Four authenticated snapshots, with no credential/verifier object in the projection. */
     internal suspend fun readAuthorizationFacts(principal: LocalEmployeePrincipal): RoomLocalAuthorizationFacts? {
+        if (protection is BatchedDeviceProtectedLocalStorage) {
+            val records = prepareReads(listOf(
+                ProtectedLocalRecordKey.Account(principal.scope, principal.actorId),
+                ProtectedLocalRecordKey.EffectivePolicy(principal.scope, principal.actorId),
+                ProtectedLocalRecordKey.Admission(principal.scope, principal.deviceId),
+                ProtectedLocalRecordKey.SessionIssuance(principal.scope, principal.sessionId),
+            )) ?: return null
+            val opened = openBatch(records, protection)
+            val account = decodeObserved(records[0], opened[0], ProtectedLocalSecurityCodec::decodeAccount)
+            val policy = decodeObserved(records[1], opened[1], LocalEffectivePolicyCodec::decodePolicy)
+            val admission = decodeObserved(records[2], opened[2], ProtectedLocalSecurityCodec::decodeAdmission)
+            val issuance = decodeObserved(records[3], opened[3], ProtectedLocalSecurityCodec::decodeIssuance)
+            return authorizationFacts(account, policy, admission, issuance)
+        }
         val account = observedRead(ProtectedLocalRecordKey.Account(principal.scope, principal.actorId),
             ProtectedLocalSecurityCodec::decodeAccount) ?: return null
         val policy = observedRead(ProtectedLocalRecordKey.EffectivePolicy(principal.scope, principal.actorId),
@@ -1072,11 +1089,7 @@ internal class RoomLocalSecurityTransaction internal constructor(
             ProtectedLocalSecurityCodec::decodeAdmission) ?: return null
         val issuance = observedRead(ProtectedLocalRecordKey.SessionIssuance(principal.scope, principal.sessionId),
             ProtectedLocalSecurityCodec::decodeIssuance) ?: return null
-        return validated {
-            RoomLocalAuthorizationFacts(account.value.state, account.value.credentialRevision,
-                account.value.credential != null, policy.value, admission.value, issuance.value,
-                listOf(account.fingerprint, policy.fingerprint, admission.fingerprint, issuance.fingerprint))
-        }
+        return authorizationFacts(account, policy, admission, issuance)
     }
 
     internal suspend fun readApprovalApprover(scope: BranchScope, actorId: DomainId, deviceId: DomainId): RoomApprovalApproverFacts? {
@@ -1097,17 +1110,35 @@ internal class RoomLocalSecurityTransaction internal constructor(
         val issuance = observedRead(ProtectedLocalRecordKey.SessionIssuance(scope, sessionId),
             ProtectedLocalSecurityCodec::decodeIssuance) ?: return null
         val actorId = issuance.value.actorId
+        if (protection is BatchedDeviceProtectedLocalStorage) {
+            // The authenticated issuance still chooses actor/device; untrusted SQL metadata
+            // cannot supply those lookups. This batch belongs only to this current transaction.
+            val records = prepareReads(listOf(
+                ProtectedLocalRecordKey.Account(scope, actorId),
+                ProtectedLocalRecordKey.EffectivePolicy(scope, actorId),
+                ProtectedLocalRecordKey.Admission(scope, issuance.value.deviceId),
+            )) ?: return null
+            val opened = openBatch(records, protection)
+            return authorizationFacts(
+                decodeObserved(records[0], opened[0], ProtectedLocalSecurityCodec::decodeAccount),
+                decodeObserved(records[1], opened[1], LocalEffectivePolicyCodec::decodePolicy),
+                decodeObserved(records[2], opened[2], ProtectedLocalSecurityCodec::decodeAdmission), issuance)
+        }
         val account = observedRead(ProtectedLocalRecordKey.Account(scope, actorId),
             ProtectedLocalSecurityCodec::decodeAccount) ?: return null
         val policy = observedRead(ProtectedLocalRecordKey.EffectivePolicy(scope, actorId),
             LocalEffectivePolicyCodec::decodePolicy) ?: return null
         val admission = observedRead(ProtectedLocalRecordKey.Admission(scope, issuance.value.deviceId),
             ProtectedLocalSecurityCodec::decodeAdmission) ?: return null
-        return validated {
-            RoomLocalAuthorizationFacts(account.value.state, account.value.credentialRevision,
-                account.value.credential != null, policy.value, admission.value, issuance.value,
-                listOf(account.fingerprint, policy.fingerprint, admission.fingerprint, issuance.fingerprint))
-        }
+        return authorizationFacts(account, policy, admission, issuance)
+    }
+
+    private fun authorizationFacts(account: ObservedLocalRecord<ProtectedLocalAccount>,
+        policy: ObservedLocalRecord<ActivatedLocalPolicy>, admission: ObservedLocalRecord<LocalDeviceAdmission>,
+        issuance: ObservedLocalRecord<LocalAccessIssuance>): RoomLocalAuthorizationFacts = validated {
+        RoomLocalAuthorizationFacts(account.value.state, account.value.credentialRevision,
+            account.value.credential != null, policy.value, admission.value, issuance.value,
+            listOf(account.fingerprint, policy.fingerprint, admission.fingerprint, issuance.fingerprint))
     }
 
     internal suspend fun ensureAuthorizationHealthy() {
@@ -1175,6 +1206,20 @@ internal class RoomLocalSecurityTransaction internal constructor(
         key: ProtectedLocalRecordKey,
         decode: (ProtectedLocalBinding, ByteArray) -> T,
     ): T? {
+        val record = prepareRead(key) ?: return null
+        val opened = when (val result = protectedOperation {
+            protection.open(keyReference, record.expected, record.sealed)
+        }) {
+            is LocalOpenResult.Opened -> result
+            is LocalOpenResult.Unavailable -> refuse()
+        }
+        return decodeRead(record, opened, decode)
+    }
+
+    private class PreparedLocalRead(val expected: ProtectedLocalBinding, val sealed: SealedLocalRecord,
+        val ciphertextByteCount: Long, val loginKey: String?)
+
+    private suspend fun prepareRead(key: ProtectedLocalRecordKey): PreparedLocalRead? {
         val metadata = operation { metadata(key) } ?: return null
         val maximumCiphertext = key.table.maximumPlaintextBytes.toLong() + ProtectedLocalStorageFormat.TAG_BYTES
         if (!metadata.storageValid || metadata.revision < 0 ||
@@ -1185,25 +1230,50 @@ internal class RoomLocalSecurityTransaction internal constructor(
         val expected = validated { ProtectedLocalBinding(key, Revision(metadata.revision)) }
         val envelope = operation { envelope(key) } ?: refuse()
         val sealed = validated { envelope.checked(expected, metadata, keyReference) }
-        val opened = when (val result = protectedOperation { protection.open(keyReference, expected, sealed) }) {
-            is LocalOpenResult.Opened -> result
-            is LocalOpenResult.Unavailable -> refuse()
+        return PreparedLocalRead(expected, sealed, metadata.ciphertextByteCount, envelope.loginKey)
+    }
+
+    private suspend fun prepareReads(keys: List<ProtectedLocalRecordKey>): List<PreparedLocalRead>? {
+        val records = mutableListOf<PreparedLocalRead>()
+        for (key in keys) records += prepareRead(key) ?: return null
+        return records
+    }
+
+    private suspend fun openBatch(records: List<PreparedLocalRead>,
+        provider: BatchedDeviceProtectedLocalStorage): List<LocalOpenResult.Opened> {
+        val opened = when (val result = protectedOperation {
+            provider.openBatch(keyReference, records.map { ProtectedLocalOpenSelection(it.expected, it.sealed) })
+        }) {
+            is LocalBatchOpenResult.Opened -> result.records
+            is LocalBatchOpenResult.Unavailable -> refuse()
         }
+        validated { check(opened.size == records.size) }
+        return opened
+    }
+
+    private fun <T> decodeRead(record: PreparedLocalRead, opened: LocalOpenResult.Opened,
+        decode: (ProtectedLocalBinding, ByteArray) -> T): T {
+        val expected = record.expected
         val plaintext = validated {
             expected.requirePlaintextSize(opened.size)
-            check(opened.size.toLong() + ProtectedLocalStorageFormat.TAG_BYTES == metadata.ciphertextByteCount)
+            check(opened.size.toLong() + ProtectedLocalStorageFormat.TAG_BYTES == record.ciphertextByteCount)
             opened.copyPlaintext()
         }
         return try {
             validated {
                 decode(expected, plaintext).also { value ->
-                    if (value is LocalAuthConfiguration && value.loginKey != envelope.loginKey) refuse()
+                    if (value is LocalAuthConfiguration && value.loginKey != record.loginKey) refuse()
                 }
             }
         } finally {
             // Best effort for this owned buffer; no assertion of complete runtime erasure.
             plaintext.fill(0)
         }
+    }
+
+    private fun <T> decodeObserved(record: PreparedLocalRead, opened: LocalOpenResult.Opened,
+        decode: (ProtectedLocalBinding, ByteArray) -> T): ObservedLocalRecord<T> = decodeRead(record, opened) { binding, plaintext ->
+        ObservedLocalRecord(decode(binding, plaintext), sha256(plaintext))
     }
 
     private suspend fun <T> observedRead(

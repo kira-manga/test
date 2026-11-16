@@ -267,7 +267,8 @@ public object Returns {
         }
         val obligations = tenderDue.filterValues { it.minor > 0L }.map { (paymentId, due) ->
             val originalPayment = entitlement.sale.payments.single { it.attemptId == paymentId }
-            ReturnTenderObligation(paymentId, originalPayment.tender, due)
+            // A replacement paid by an exchange offset is refunded by the offset's actual source tender.
+            ReturnTenderObligation(paymentId, originalPayment.tender.refundTender(), due)
         }.sortedBy { it.originalPaymentId.value }
         requireSales(obligations.fold(slice.payable.zero()) { sum, item -> sum + item.amount } == slice.payable, SalesRule.RETURN_ENTITLEMENT_EXHAUSTED)
         val accepted = AcceptedReturn(returnId, entitlement.scope, entitlement.saleId, claim.id, claim.portionId,

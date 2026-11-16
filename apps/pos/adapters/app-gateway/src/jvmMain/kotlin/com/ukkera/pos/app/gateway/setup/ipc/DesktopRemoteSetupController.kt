@@ -45,11 +45,14 @@ public class DesktopRemoteSetupController private constructor(
     private val view = MutableStateFlow(LocalSetupView(locked = true))
     private val live = MutableStateFlow(true)
     private val outgoing = Channel<DesktopSetupIpcWire.Frame>(Channel.UNLIMITED)
+    private var lanDiscovery = IpcLanDiscoveryV2()
     override val state: StateFlow<LocalSetupView> = view.asStateFlow()
     /** False once the service connection ended; the screen should offer reconnecting. */
     public val connected: StateFlow<Boolean> = live.asStateFlow()
 
     private fun start() {
+        // Old services safely ignore this v1 command; old clients receive no new message.
+        outgoing.trySend(DesktopSetupIpcWire.Frame(IpcMessage.Command("observeLanDiscoveryV2")))
         scope.launch(Dispatchers.IO) {
             for (frame in outgoing) {
                 try { if (live.value) DesktopSetupIpcWire.write(output, frame) } catch (_: Throwable) { disconnect() } finally { frame.clear() }
@@ -61,7 +64,15 @@ public class DesktopRemoteSetupController private constructor(
                     val frame = runInterruptible { DesktopSetupIpcWire.read(input) }
                     frame.clear() // The service never sends secrets.
                     when (val message = frame.message) {
-                        is IpcMessage.View -> view.value = message.view.value()
+                        is IpcMessage.View -> {
+                            val actual = message.view.value()
+                            if (actual.locked) lanDiscovery = IpcLanDiscoveryV2()
+                            view.value = actual.copy(lan = lanDiscovery.applyTo(actual.lan))
+                        }
+                        is IpcMessage.LanDiscoveryV2 -> {
+                            lanDiscovery = if (view.value.locked) IpcLanDiscoveryV2() else message.lan
+                            view.value = view.value.copy(lan = lanDiscovery.applyTo(view.value.lan))
+                        }
                         is IpcMessage.DocumentImport -> scope.launch { importDocument(message) }
                         is IpcMessage.DocumentExport -> scope.launch { exportDocument(message) }
                         else -> Unit
@@ -186,10 +197,17 @@ public class DesktopRemoteSetupController private constructor(
     override fun recoverFreshDevicePairing(reviewId: DomainId): Unit = call("recoverFreshDevicePairing", reviewId)
     override fun handoffFreshDeviceAdmission(reviewId: DomainId): Unit = call("handoffFreshDeviceAdmission", reviewId)
     override fun closeFreshDevicePairing(): Unit = call("closeFreshDevicePairing")
-    override fun startLanHost(input: LocalSetupLanInput): Unit = send(IpcMessage.Command("startLanHost", lan = IpcLanInput.of(input)))
+    override fun startLanHost(input: LocalSetupLanInput): Unit = send(IpcMessage.Command(
+        if (input.advertiseHost) "startLanHostV2" else "startLanHost", lan = IpcLanInput.of(input),
+        number = if (input.advertiseHost) 1L else null))
+    override fun refreshLanNetworks(): Unit = call("refreshLanNetworks")
     override fun refreshLanAttachment(): Unit = call("refreshLanAttachment")
     override fun closeLanAttachment(): Unit = call("closeLanAttachment")
     override fun refreshOriginalStatus(): Unit = call("refreshOriginalStatus")
+    override fun refreshMasterBackups(): Unit = call("refreshMasterBackups")
+    override fun createMasterBackup(): Unit = call("createMasterBackup")
+    override fun verifyMasterBackup(backupId: DomainId): Unit = call("verifyMasterBackup", backupId)
+    override fun restoreMasterBackup(backupId: DomainId): Unit = call("restoreMasterBackup", backupId)
     override fun authenticateAndStopLocalMaster(login: String, password: CharArray): Unit =
         send(IpcMessage.Command("authenticateAndStopLocalMaster", text = login), password)
     override fun authenticateAndResumeLocalMaster(login: String, password: CharArray): Unit =

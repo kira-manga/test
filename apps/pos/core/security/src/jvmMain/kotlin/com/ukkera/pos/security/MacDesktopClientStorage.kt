@@ -326,6 +326,9 @@ internal class MacClientTargetPlatform private constructor(
         try { JvmP256Primitives.hashHex(bytes) } finally { bytes.fill(0) }
     }
 
+    override fun physicalJournalNative(action: LocalPairedDeviceCredentialJournalAction): DesktopPairedDevicePhysicalJournalNative =
+        MacPairedDevicePhysicalJournalNative(installed, parentDirectory().toAbsolutePath().normalize(), boot)
+
     override fun parentDirectory(): Path = MacDesktopFiles.applicationSupport()
 
     override fun origin(directory: Path): TargetOrigin.Desktop {

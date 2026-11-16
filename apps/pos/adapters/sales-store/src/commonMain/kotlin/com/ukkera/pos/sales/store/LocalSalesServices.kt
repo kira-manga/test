@@ -82,21 +82,22 @@ public object LocalSalesHandlers {
         recordingCapacity: TransactionSalesRecordingCapacity,
         physicalRecordingCapacity: TransactionSalesPhysicalRecordingCapacityV2 = UnavailableSalesPhysicalRecordingCapacityV2,
         returnCaseSource: TransactionSalesReturnCaseSourceV1 = UnavailableSalesReturnCaseSourceV1,
-        tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1): List<MasterCommandHandler> = listOf(
-        LocalCashHandler(), LocalCashCloseNoteHandler(), LocalOrderHandler(quoteSource), LocalCollectionHandler(stock, tenderSource, recordingCapacity),
+        tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+        depositTerms: TransactionDepositTermsSource = UnavailableDepositTermsSource): List<MasterCommandHandler> = listOf(
+        LocalCashHandler(), LocalCashCloseNoteHandler(), LocalSafeFloatHandler(), LocalOrderHandler(quoteSource), LocalCollectionHandler(stock, tenderSource, recordingCapacity),
         CommerceCommandHandler(LocalReturnHandler(returnPolicy, recordingCapacity), stock, tenderPolicies),
         LocalHistoricalCollectionHandler(stock, tenderSource, physicalRecordingCapacity),
         CommerceCommandHandler(LocalHistoricalReturnHandler(returnPolicy, physicalRecordingCapacity), stock, tenderPolicies),
         CommerceCommandHandler(LocalReturnCaseHandler(returnCaseSource), stock, tenderPolicies),
         CommerceCommandHandler(LocalRetailCustomerReceiptHandler(), stock, tenderPolicies), LocalBranchReportExportHandler(),
-        LocalPaymentCorrectionHandler(stock, tenderSource, tenderPolicies))
+        LocalPaymentCorrectionHandler(stock, tenderSource, tenderPolicies), LocalExchangeHandler(stock, tenderPolicies), CommerceCommandHandler(LocalDepositHandler(depositTerms), stock, tenderPolicies))
 
     public fun reads(stock: LocalStockRepository, foodRecipes: TransactionFoodRecipeSourceV1? = null,
         tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1): List<MasterReadHandler> =
-        listOf(LocalCashReadHandler(), LocalCashCloseReadHandler(), LocalCashCountReadHandler(), LocalCashCloseNotesReadHandler(), LocalOrderReadHandler(), LocalOrderReadHandler.withStockProfile(), LocalManagerOrderReviewReadHandler(), LocalManagerOriginalQuoteReadHandler(), LocalManagerReassignmentReadHandler(), LocalCollectionReadHandler(stock), LocalReturnReadHandler(),
+        listOf(LocalCashReadHandler(), LocalCashCloseReadHandler(), LocalCashCountReadHandler(), LocalCashCloseNotesReadHandler(), LocalSafeFloatReadHandler(), LocalOrderReadHandler(), LocalOrderReadHandler.withStockProfile(), LocalManagerOrderReviewReadHandler(), LocalManagerOriginalQuoteReadHandler(), LocalManagerReassignmentReadHandler(), LocalCollectionReadHandler(stock), LocalReturnReadHandler(),
             LocalHistoricalFinancialReadHandler(), LocalCollectionStockReadHandler(stock), LocalReturnStockReadHandler(stock), LocalReturnCaseReadHandler(),
             LocalRetailCustomerReceiptReadHandler(), LocalBranchReportReadHandler(stock, foodRecipes), LocalBranchReportExportReadHandler(),
-            LocalPaymentCorrectionReadHandler(stock, tenderPolicies))
+            LocalPaymentCorrectionReadHandler(stock, tenderPolicies), LocalDepositReadHandler())
             .map { CommerceReadHandler(it, stock, tenderPolicies) }
 }
 
@@ -111,18 +112,18 @@ public class LocalSalesService(private val endpoint: LocalMasterEndpoint) {
             LocalSalesStoreProfile.COLLECTION_COMMAND, LocalSalesStoreProfile.RETURN_COMMAND,
             LocalSalesStoreProfile.COLLECTION_COMMAND_V2, LocalSalesStoreProfile.RETURN_COMMAND_V2,
             LocalReturnCaseProfileV1.COMMAND, LocalRetailCustomerReceiptCodec.COMMAND,
-            LocalBranchReportExportCodecV1.COMMAND, LocalCashCloseNoteCodec.COMMAND, StockStreamingCommandsV2.COLLECTION,
-            StockStreamingCommandsV2.RETURN, LocalPaymentCorrectionCodec.COMMAND)) { "sales.command.unsupported" }
+            LocalBranchReportExportCodecV1.COMMAND, LocalCashCloseNoteCodec.COMMAND, LocalSafeFloatCodec.COMMAND, StockStreamingCommandsV2.COLLECTION,
+            StockStreamingCommandsV2.RETURN, LocalPaymentCorrectionCodec.COMMAND, LocalExchangeCodec.COMMAND, LocalDepositCodec.COMMAND)) { "sales.command.unsupported" }
         return endpoint.execute(credentials, request)
     }
     public suspend fun lookup(credentials: LocalGatewayCredentials, originalIdentity: OperationIdentity): LookupReply =
         endpoint.lookup(credentials, originalIdentity)
     public suspend fun read(credentials: LocalGatewayCredentials, request: ReadRequest): ReadReply {
-        require(request.query in setOf(LocalCashReadCodec.QUERY, LocalCashCloseReadCodec.QUERY, LocalCashCountReadCodec.QUERY, LocalCashCloseNoteCodec.QUERY, LocalOrderReadCodec.QUERY, LocalOrderReadCodecV2.QUERY, LocalManagerOrderReviewCodec.QUERY, LocalManagerOriginalQuoteCodec.QUERY, LocalManagerReassignmentCodec.QUERY,
+        require(request.query in setOf(LocalCashReadCodec.QUERY, LocalCashCloseReadCodec.QUERY, LocalCashCountReadCodec.QUERY, LocalCashCloseNoteCodec.QUERY, LocalSafeFloatCodec.QUERY, LocalOrderReadCodec.QUERY, LocalOrderReadCodecV2.QUERY, LocalManagerOrderReviewCodec.QUERY, LocalManagerOriginalQuoteCodec.QUERY, LocalManagerReassignmentCodec.QUERY,
             LocalCollectionReadCodec.QUERY, LocalReturnReadCodec.QUERY, LocalFinancialReadCodecV2.QUERY,
             LocalCollectionStockReadCodecV2.QUERY, LocalReturnStockProfileV1.QUERY, LocalReturnCaseReadCodecV1.QUERY, LocalRetailCustomerReceiptReadCodec.QUERY,
             LocalBranchReportReadCodec.QUERY, LocalBranchReportExportCodecV1.QUERY,
-            LocalPaymentCorrectionCodec.QUERY)) { "sales.query.unsupported" }
+            LocalPaymentCorrectionCodec.QUERY, LocalDepositCodec.QUERY)) { "sales.query.unsupported" }
         return endpoint.read(credentials, request)
     }
 }

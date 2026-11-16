@@ -22,6 +22,10 @@ kotlin {
     iosArm64()
     iosSimulatorArm64()
     sourceSets {
+        // Shared JVM desktop + Android original physical recording (no platform file/key API).
+        val jcaMain = create("jcaMain") { dependsOn(commonMain.get()) }
+        jvmMain.get().dependsOn(jcaMain)
+        androidMain.get().dependsOn(jcaMain)
         commonMain.dependencies {
             api(project(":domain:sales"))
             api(project(":core:database"))

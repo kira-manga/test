@@ -70,6 +70,12 @@ public suspend fun LocalStockRepository.purchaseReceiptFacts(
     command: RuntimeHistoricalCommand, receiptId: DomainId, lineId: DomainId,
 ): LocalPurchaseReceiptFacts? = purchaseReceiptFacts(HistoricalPurchasingStockObservation(command), receiptId, lineId)
 
+/** Exact native-observed financial BEFORE source. Current mutable receipt/allowance rows
+ * are never used; each immutable producer is fully qualified on the same actual loan. */
+public suspend fun LocalStockRepository.purchaseReceiptFacts(sources: RuntimeHistoricalFinancialSources,
+    view: CommandReadView, receiptId: DomainId, lineId: DomainId): LocalPurchaseReceiptFacts? =
+    purchaseReceiptFacts(FinancialPurchasingStockObservation(this, sources, view), receiptId, lineId)
+
 private suspend fun purchaseReceiptFacts(
     observation: PurchasingStockObservation, receiptId: DomainId, lineId: DomainId,
 ): LocalPurchaseReceiptFacts? {
@@ -193,6 +199,49 @@ private class HistoricalPurchasingStockObservation(private val command: RuntimeH
     override suspend fun receiptOriginal(operationId: OperationId): Pair<StreamedProducerIdentityV2, LocalGoodsReceiptRequest> {
         val original = command.earlierOriginal(operationId) ?: unavailableProducer()
         return purchasingStockProducer(original) to purchasingReceiptRequest(original, scope)
+    }
+}
+
+private class FinancialPurchasingStockObservation(private val repository: LocalStockRepository,
+    private val sources: RuntimeHistoricalFinancialSources, private val view: CommandReadView) : PurchasingStockObservation {
+    override val scope: BranchScope get() = sources.evidence.scope
+    override suspend fun <T> document(key: AggregateKey, serializer: KSerializer<T>): LocalStockRecord<T>? {
+        check(view.scope == scope)
+        val source = sources.aggregateSource(key)
+        val owner = claim(purchasingStockClaim(key))
+        localStockCheck(if (source == null) owner == null else owner == key.id, LocalStockFailure.STORAGE_INCONSISTENT)
+        if (source == null) return null
+        requireOriginal(source.original)
+        val record = receiptDocument(source.row, scope, serializer)
+        val producer = record.envelope.producer
+        localStockCheck(purchasingStockProducer(source.original) == StreamedProducerIdentityV2(producer.operationId,
+            producer.commandKey(), producer.actorId, com.ukkera.pos.security.PayloadDigest(producer.digest)), LocalStockFailure.STORAGE_INCONSISTENT)
+        return record
+    }
+    override suspend fun claim(key: ClaimKey): DomainId? = sources.claim(key)
+    override suspend fun receiptOriginal(operationId: OperationId): Pair<StreamedProducerIdentityV2, LocalGoodsReceiptRequest> {
+        val original = view.requireStockRelational().originals.read(operationId) ?: unavailableProducer()
+        localStockCheck(purchasingStockProducer(original).operationId == operationId, LocalStockFailure.STORAGE_INCONSISTENT)
+        requireOriginal(original)
+        return purchasingStockProducer(original) to purchasingReceiptRequest(original, scope)
+    }
+    private suspend fun requireOriginal(original: RetainedOriginalV2) {
+        when (original) {
+            is RetainedOriginalV2.Legacy -> {
+                val value = original.evidence
+                localStockCheck(value.scope == scope && value.assignmentId == sources.evidence.assignmentId &&
+                    value.authorityEpoch == sources.evidence.authorityEpoch && value.sequence < sources.evidence.sequence,
+                    LocalStockFailure.STORAGE_INCONSISTENT)
+                repository.requireProducer(view, value)
+            }
+            is RetainedOriginalV2.Streamed -> {
+                val value = original.evidence
+                localStockCheck(value.identity.scope == scope && value.identity.assignmentId == sources.evidence.assignmentId &&
+                    value.identity.authorityEpoch == sources.evidence.authorityEpoch && value.identity.sequence < sources.evidence.sequence,
+                    LocalStockFailure.STORAGE_INCONSISTENT)
+                repository.requireRelationalProducer(view, value)
+            }
+        }
     }
 }
 

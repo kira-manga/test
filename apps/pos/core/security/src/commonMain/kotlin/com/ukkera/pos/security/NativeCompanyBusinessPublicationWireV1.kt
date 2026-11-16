@@ -121,6 +121,9 @@ internal object NativeCompanyBusinessPublicationWireV1 {
 
     /** Exact identity/content review to which the independent head authentication is bound. */
     fun actionMessage(value: NativeCompanyBusinessPublicationRecordV1, original: LocalCompanyAuthorityBootstrapV1): ByteArray =
+        actionMessage(value, SelfOwnedCompanyBootstrapView.of(original))
+
+    fun actionMessage(value: NativeCompanyBusinessPublicationRecordV1, original: SelfOwnedCompanyBootstrapView): ByteArray =
         selfOwnedEncode("company-business-publication-head-action/v1") {
             string(CompanyBusinessPublicationProfileV1.PURPOSE)
             originalAndContent(value, original)
@@ -128,6 +131,9 @@ internal object NativeCompanyBusinessPublicationWireV1 {
 
     /** P-256 signs THIS endorsement; Ed25519 separately signs the unchanged canonical catalog bytes. */
     fun endorsementMessage(value: NativeCompanyBusinessPublicationRecordV1, original: LocalCompanyAuthorityBootstrapV1): ByteArray =
+        endorsementMessage(value, SelfOwnedCompanyBootstrapView.of(original))
+
+    fun endorsementMessage(value: NativeCompanyBusinessPublicationRecordV1, original: SelfOwnedCompanyBootstrapView): ByteArray =
         selfOwnedEncode("company-business-publication-root-endorsement/v1") {
             require(value.phase != CompanyBusinessPublicationPhase.PREPARED)
             string(CompanyBusinessPublicationProfileV1.PURPOSE)
@@ -140,7 +146,7 @@ internal object NativeCompanyBusinessPublicationWireV1 {
         }
 
     private fun SelfOwnedWireWriterV1.originalAndContent(value: NativeCompanyBusinessPublicationRecordV1,
-        original: LocalCompanyAuthorityBootstrapV1) {
+        original: SelfOwnedCompanyBootstrapView) {
         id(original.original.rootId); id(original.original.key(SelfOwnedNativeKeyRoleV1.ROOT).keyId)
         id(original.original.actionId); id(original.headAuthorityId); id(original.headEnrollmentId)
         id(value.company.organizationId); id(value.company.companyId)

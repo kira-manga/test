@@ -54,6 +54,7 @@ import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -70,13 +71,15 @@ import kotlinx.coroutines.withTimeoutOrNull
  * activation -> employee password sign-in through the published client gateway -> a permission the
  * employee lacks is refused by the Master. Journals use the service's own custody from the SAME
  * [LinuxTestOs] the Master uses (POSIX and software-key stand-ins), never the UI-process stores.
- * Synthetic data only. Expectations were fixed before execution. This proves no Windows/macOS
- * native custody and no physical/retail recording (explicitly unavailable on desktop).
+ * The original Client also enrolls its retail physical journals on that custody. Synthetic data
+ * only. Self-authored, NOT independent. This proves no Windows/macOS native custody.
  */
 class DesktopMasterCohostCeremoniesV2EndToEndTest {
     private val ownerOnly = PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))
-    private val base: Path = Files.createTempDirectory("desktop-master-cohost", ownerOnly)
-    private val os = LinuxTestOs(base, N.binding(N.macIdentity))
+    // The real physical adapter refuses shared writable ancestors such as the system temp root.
+    private val base: Path = Files.createTempDirectory(Path.of(System.getProperty("user.home")),
+        ".desktop-master-cohost-", ownerOnly)
+    private val os = LinuxTestOs(base, N.binding(N.macIdentity)) { System.err.println("Desktop cohost fixture $it") }
     private val slot = LocalTrainingCompositionSlot.TRAINING_1
     private val profile = SelfOwnedNativeProfileV1.training(slot)
     private val installerSecret = "synthetic-installer-pass"
@@ -84,6 +87,8 @@ class DesktopMasterCohostCeremoniesV2EndToEndTest {
     private val ownerPassword = "synthetic-owner-pass-2026"
     private val employeeLogin = "employee.two"
     private val employeePassword = "synthetic-employee-pass-2026"
+
+    private var custody: DesktopMasterClientJournalCustody? = null
 
     @AfterTest fun clean() { base.toFile().deleteRecursively() }
 
@@ -96,7 +101,7 @@ class DesktopMasterCohostCeremoniesV2EndToEndTest {
             },
             factory = factory,
             identityStore = { error("The LAN host is not exercised by this check") },
-            clientJournals = { DesktopClientJournalStorages.masterService(DesktopMasterClientJournalCustody.of(os, profile)) },
+            clientJournals = { DesktopClientJournalStorages.masterService(DesktopMasterClientJournalCustody.of(os, profile).also { custody = it }) },
         ), slot)
         val storages = DesktopSetupStorages(Files.createDirectory(base.resolve("setup"), ownerOnly))
         return LocalSetupCoordinator(
@@ -184,6 +189,12 @@ class DesktopMasterCohostCeremoniesV2EndToEndTest {
             val connected = setup.settle(LocalSetupPhase.INSTALLATION_RETAINED, "enroll original local client")
             assertTrue(connected.localClientConnected, "client: problem=${connected.problem} native=${connected.nativeProblem}")
             assertTrue(services.localClient.configured, "the connected client gateway is published")
+            // Retail/FOOD physical recording enrolled its original catalogue on the service's own custody,
+            // in this training slot's own namespace (never the live one).
+            val parent = assertNotNull(custody).parentDirectory
+            assertFalse(Files.exists(parent.resolve("ukkera-desktop-master-physical-journals-v1")), "no live physical namespace in training")
+            val physicalRoot = parent.resolve("ukkera-desktop-master-physical-journals-training-v1")
+            assertTrue(Files.isDirectory(physicalRoot, java.nio.file.LinkOption.NOFOLLOW_LINKS), "original physical journals enrolled")
 
             // 2. Employee enrollment ceremony for a second synthetic employee.
             setup.openEmployeeEnrollment()
@@ -249,7 +260,8 @@ class DesktopMasterCohostCeremoniesV2EndToEndTest {
             // A wrong password is never accepted.
             assertIs<SignInResult.Rejected>(services.localClient.signIn(employeeLogin, "wrong-synthetic-pass".toCharArray()))
         } finally {
-            withTimeoutOrNull(60_000L) { runCatching { setup.requestRetirement().await() } }
+            assertNotNull(withTimeoutOrNull(60_000L) { setup.requestRetirement().await(); true },
+                "The original native service must confirm retirement")
         }
     }
 }

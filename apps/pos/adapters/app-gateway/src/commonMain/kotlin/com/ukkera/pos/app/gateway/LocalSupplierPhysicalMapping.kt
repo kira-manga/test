@@ -10,10 +10,16 @@ import com.ukkera.pos.types.*
 
 /** Distinct supplier economics, sharing only the genuine one-shot native lifetime. */
 internal val supplierPhysicalActions: Set<LocalAction> = setOf(LocalAction.SUPPLIER_CASH_START,
-    LocalAction.SUPPLIER_CASH_APPLY, LocalAction.SUPPLIER_CASH_RESOLUTION, LocalAction.SUPPLIER_CASH_RESOLUTION_APPLY)
+    LocalAction.SUPPLIER_CASH_APPLY, LocalAction.SUPPLIER_CASH_RESOLUTION, LocalAction.SUPPLIER_CASH_RESOLUTION_APPLY,
+    LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW, LocalAction.SUPPLIER_CASH_SUPERVISOR_APPLY)
 
 internal fun supplierPhysicalRequestAction(request: MutationRequest): LocalAction? {
-    if (request.command != LocalSupplierCashProfile.COMMAND || request.actionApprovalId != null) return null
+    if (request.actionApprovalId != null) return null
+    if (request.command == LocalSupplierCashSupervisorCodec.COMMAND) return when (LocalSupplierCashSupervisorCodec.decode(request.payload)) {
+        is LocalSupplierCashSupervisorRequest.Review -> LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW
+        is LocalSupplierCashSupervisorRequest.Apply -> LocalAction.SUPPLIER_CASH_SUPERVISOR_APPLY
+    }
+    if (request.command != LocalSupplierCashProfile.COMMAND) return null
     return when (LocalSupplierCashCodec.decode(request.payload)) {
         is LocalSupplierCashRequest.StartCash -> LocalAction.SUPPLIER_CASH_START
         is LocalSupplierCashRequest.ApplyOriginal -> LocalAction.SUPPLIER_CASH_APPLY
@@ -26,7 +32,7 @@ internal fun supplierPhysicalRequestAction(request: MutationRequest): LocalActio
 internal fun supplierPhysicalIntent(owner: LocalClientIdentity, request: MutationRequest,
     label: LocalText, summary: List<LocalRecordValue>): StoredClientIntentV1 {
     val action = supplierPhysicalRequestAction(request) ?: invalid()
-    require(LocalSupplierCashCodec.normalize(request.payload) == request.payload)
+    require(normalizeLocalRequest(request.command, request.payload) == request.payload)
     val digest = semanticDigest(owner.scope, owner.actorId, request.command, request.payload)
     return StoredClientIntentV1.staged(owner, physicalUiIntent(request.operationId, action, digest), request, label, summary)
 }
@@ -36,6 +42,13 @@ internal fun requireSupplierEntry(entry: StoredClientIntentV1) {
     require(entry.localAction in supplierPhysicalActions && entry.formVersion == 2 &&
         supplierPhysicalRequestAction(entry.request()) == entry.localAction &&
         entry.inputDigest == inputDigest(physicalUiIntent(entry.operationId, entry.localAction, entry.semanticSha256)))
+    if (entry.request().command == LocalSupplierCashSupervisorCodec.COMMAND) {
+        when (val body = LocalSupplierCashSupervisorCodec.decode(entry.request().payload)) {
+            is LocalSupplierCashSupervisorRequest.Review -> require(entry.operationId != body.originalRecordingOperationId)
+            is LocalSupplierCashSupervisorRequest.Apply -> require(entry.operationId != body.factOperationId)
+        }
+        return
+    }
     when (val body = LocalSupplierCashCodec.decode(entry.request().payload)) {
         is LocalSupplierCashRequest.StartCash -> require(entry.operationId !in setOf(body.recordingOperationId, body.resolutionOperationId))
         is LocalSupplierCashRequest.ApplyOriginal -> require(entry.operationId != body.recordingOperationId)
@@ -229,7 +242,7 @@ private fun requireSupplierApplicationValues(value: LocalSupplierCashResult.Appl
 
 private fun requireSupplierRecorded(entry: StoredClientIntentV1, value: LocalSupplierCashResult, committed: Boolean, code: String) {
     requireSupplierEntry(entry)
-    val request = LocalSupplierCashCodec.decode(entry.request().payload)
+    val request = supplierCashApplicationRequest(entry.request().command, entry.request().payload)
     fun target(value: LocalSupplierCashTarget, phase: LocalSupplierCashPhase) {
         require(phase == when (request) {
             is LocalSupplierCashRequest.ApplyOriginal -> LocalSupplierCashPhase.ORIGINAL
@@ -277,6 +290,7 @@ private fun requireSupplierRecorded(entry: StoredClientIntentV1, value: LocalSup
 
 internal fun supplierRecordedProgress(entry: StoredClientIntentV1, reply: MutationReply.Recorded): LocalRetailPhysicalProgress {
     require(reply.operationId == entry.operationId && reply.originalActorId == entry.owner.actorId)
+    if (entry.localAction == LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW) return financialSupervisorReviewProgress(entry, reply)
     val value = LocalSupplierCashCodec.result(reply.result)
     requireSupplierRecorded(entry, value, reply.committed, reply.code)
     val target = when (value) {
@@ -322,6 +336,7 @@ internal fun supplierRecordedProgress(entry: StoredClientIntentV1, reply: Mutati
 
 internal fun supplierRecordedDecision(entry: StoredClientIntentV1, result: StoredKernelResultV1): LocalRecordedDecision {
     require(result.operationId == entry.operationId && result.originalActorId == entry.owner.actorId)
+    if (entry.localAction == LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW) return financialSupervisorReviewDecision(entry, result)
     val value = LocalSupplierCashCodec.result(decodeHex(result.payloadHex, 65_536).useWiped { StoredBytes(it) })
     requireSupplierRecorded(entry, value, result.committed, result.code)
     return when (value) {

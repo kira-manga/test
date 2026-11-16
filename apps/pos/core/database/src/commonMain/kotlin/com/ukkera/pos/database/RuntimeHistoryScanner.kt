@@ -81,6 +81,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
     private var immutableReceiptEvents = 0L
     private var receiptMembershipFinished = false
     private val holds = linkedSetOf<RuntimeHistoryReadHold>()
+    private var commandCaptureRefusalReported = false
     private val census = LongArray(RuntimeHistoryTableV2.entries.size)
     private val liveTips = LongArray(census.size)
     private val expectedRoots = buildList {
@@ -600,6 +601,11 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
         }
     }
     private fun holdUnjoinedAuthorization() {
+        if (RuntimeHistoryReadHold.NON_INSTALLATION_CAPTURED_AUTHORIZATION_FACTS_UNJOINED !in holds &&
+            localMasterRpcReadTraceEnabled()) {
+            try { reportRuntimeHistoryLoanFailure(IllegalStateException()) }
+            catch (_: Throwable) { /* Static first-hold location cannot change the original denial. */ }
+        }
         authenticationReplay?.clear(); authenticationReplay = null
         business?.abandon(); employees.abandon(); policies.abandon(); deviceAdmissions.abandon()
         holds += RuntimeHistoryReadHold.NON_INSTALLATION_CAPTURED_AUTHORIZATION_FACTS_UNJOINED
@@ -1468,7 +1474,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         val returnCaseQualification = RuntimeHistoricalReturnCaseQualificationRejectionProfile.fromCommand(key)
                         val returnStockDisposition = RuntimeHistoricalReturnStockDispositionRejectionProfile.fromCommand(key)
                         when {
-                            review?.matches(header, command) == true -> {
+                            review?.matches(header, command) == true || review?.matchesApplicationRefusal(header, command) == true -> {
                                 if (command.authorization.actorId == coordinates.firstActorId)
                                     (replay != null && replay.command(command) && join.captureSupervisorReview(header, commitment.digest,
                                         command, decoded, capsule.dependencies, businessMutations)).also { originalSupervisorReview = it }
@@ -1812,7 +1818,31 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                             }
                         }
                         if (cold != null && !observePrior) joinColdCommand(header, command, nativeOriginal)
-                    } else holdUnjoinedAuthorization()
+                    } else {
+                        if (!commandCaptureRefusalReported && runtimeHistoryCaptureDiagnosticsEnabled()) {
+                            commandCaptureRefusalReported = true
+                            try {
+                                val key = command?.let { CommandKey(it.commandName, it.commandVersion) }
+                                    ?: nativeOriginal?.producer?.command
+                                val branch = when {
+                                    join == null || !join.enabled -> RuntimeHistoryCommandCaptureBranch.NO_ACTIVE_JOIN
+                                    observePrior && nativeOriginal != null -> RuntimeHistoryCommandCaptureBranch.EARLIER_NATIVE
+                                    observePrior -> RuntimeHistoryCommandCaptureBranch.EARLIER_ORDINARY
+                                    nativeOriginal != null -> RuntimeHistoryCommandCaptureBranch.NATIVE_ORIGINAL
+                                    command == null -> RuntimeHistoryCommandCaptureBranch.UNKNOWN_EVIDENCE
+                                    header.purpose == RuntimeWritePurposeV2.COMMAND_REJECT -> RuntimeHistoryCommandCaptureBranch.REJECTION_PROFILE
+                                    command.authorization.actorId == coordinates.firstActorId -> RuntimeHistoryCommandCaptureBranch.FOUNDING_ORDINARY
+                                    else -> RuntimeHistoryCommandCaptureBranch.EMPLOYEE_ORDINARY
+                                }
+                                reportRuntimeHistoryCommandCaptureRefusal(key?.takeIf { it in producer?.commands.orEmpty() },
+                                    header.purpose, branch,
+                                    (command?.authorization?.actorId ?: nativeOriginal?.producer?.originalActorId) == coordinates.firstActorId,
+                                    command?.authorization?.deviceId?.let { it == coordinates.deviceId },
+                                    employeeCommand != null, employeeSupervisorReview != null)
+                            } catch (_: Throwable) { /* Fixed observations cannot skip mandatory denial. */ }
+                        }
+                        holdUnjoinedAuthorization()
+                    }
                 }
                 if (header.purpose in setOf(RuntimeWritePurposeV2.COMMAND_APPLY, RuntimeWritePurposeV2.COMMAND_REJECT))
                     historyShapeV2(decoded.originalOperationId != null && decoded.originalActorId != null)

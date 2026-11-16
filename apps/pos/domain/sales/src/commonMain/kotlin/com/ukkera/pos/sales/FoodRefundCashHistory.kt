@@ -4,6 +4,7 @@ import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Money
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
+import com.ukkera.pos.security.PayloadDigest
 
 /** Shared pure value of the real authorized FOOD refund Start. No grant, source or cash permit. */
 internal fun foodRefundStartedValue(refund: FoodRefundObligation, session: CashSession,
@@ -28,7 +29,8 @@ internal fun foodRefundStartedValue(refund: FoodRefundObligation, session: CashS
 /** Same exact immutable-observation accounting value as FoodRefunds; never physical replay. */
 internal fun foodRefundAppliedValue(refund: FoodRefundObligation, session: CashSession, attemptId: DomainId,
     observationOperationId: OperationId, applicationOperationId: OperationId, actor: DomainId,
-    outcome: RefundOutcome): FoodRefundCashChange {
+    outcome: RefundOutcome, recordingActorId: DomainId = actor,
+    resolutionLink: RetailResolutionObservationLink? = null): FoodRefundCashChange {
     requireSales(observationOperationId != applicationOperationId, SalesRule.INVALID_EVIDENCE)
     val attempt = refund.attempts.singleOrNull { it.id == attemptId }
         ?: throw SalesRuleViolation(SalesRule.INVALID_STATE)
@@ -52,15 +54,15 @@ internal fun foodRefundAppliedValue(refund: FoodRefundObligation, session: CashS
             validateExternal(attempt.tender, outcome.evidence); AttemptStatus.ATTESTED_PAID
         }
     }
-    evidence.requireActor(actor)
+    evidence.requireActor(recordingActorId)
     val record = if (status != AttemptStatus.ATTESTED_PAID) null else RefundRecord(attempt.id, refund.id,
         attempt.originalPaymentId, attempt.originalOperationId, observationOperationId, actor, session.id,
-        attempt.tender, attempt.amount, evidence, external)
+        attempt.tender, attempt.amount, evidence, external, resolutionLink)
     val movement = if (record != null && attempt.tender == Tender.Cash) CashMovement(attempt.id,
         applicationOperationId, session.id, actor, CashMovementKind.CUSTOMER_REFUND, -attempt.amount,
         attempt.amount.zero(), attempt.amount.zero(), evidence, null) else null
     val updated = RefundAttempt(attempt.id, attempt.originalOperationId, actor, session.id,
-        attempt.originalPaymentId, attempt.tender, attempt.amount, status, outcome, record)
+        attempt.originalPaymentId, attempt.tender, attempt.amount, status, outcome, record, resolutionLink)
     val after = refund.next(refund.attempts.map { if (it.id == attempt.id) updated else it })
     val cash = if (status == AttemptStatus.OUTCOME_UNKNOWN) session else session.finishRecordedAttempt(
         applicationOperationId, attempt.id, if (attempt.tender == Tender.Cash) attempt.amount else attempt.amount.zero(),
@@ -104,8 +106,74 @@ public object FoodRefundCashHistory {
         return expected.movement
     }
 
+    /** Literal supervisor accounting images only. Full original UNKNOWN and native sources
+     * are proved by the FOOD adapter; no authorization or current source is made here. */
+    public fun requireSupervisedApplied(before: FoodRefundObligation, after: FoodRefundObligation,
+        cashBefore: CashSession, cashAfter: CashSession, attemptId: DomainId,
+        observationOperationId: OperationId, applicationOperationId: OperationId, originalActorId: DomainId,
+        recordingActorId: DomainId, accountingActorId: DomainId, originalUnknownOperationId: OperationId?,
+        originalUnknownBodyDigest: PayloadDigest?, outcome: RefundOutcome): CashMovement? {
+        val attempt = before.attempts.singleOrNull { it.id == attemptId }
+            ?: throw SalesRuleViolation(SalesRule.INVALID_EVIDENCE)
+        requireSales(attempt.originalActorId == originalActorId && attempt.tender == Tender.Cash &&
+            outcome !is RefundOutcome.ExternalAttested && attempt.refund == null && attempt.resolutionObservation == null,
+            SalesRule.INVALID_EVIDENCE)
+        val link = foodRefundRecordedResolutionLink(attempt, observationOperationId, recordingActorId,
+            applicationOperationId, accountingActorId, originalUnknownOperationId, originalUnknownBodyDigest,
+            outcome is RefundOutcome.Unknown)
+        val expected = foodRefundAppliedValue(before, cashBefore, attemptId, observationOperationId,
+            applicationOperationId, originalActorId, outcome, recordingActorId, link)
+        requireRefund(after, expected.refund)
+        requireCashHistoryImage(cashAfter, expected.session)
+        return expected.movement
+    }
+
+    /** Pure installed owner-only accounting image; no authorization or cash permit. */
+    public fun ordinaryImage(before: FoodRefundObligation, cashBefore: CashSession, attemptId: DomainId,
+        observationOperationId: OperationId, applicationOperationId: OperationId, originalActorId: DomainId,
+        outcome: RefundOutcome): FoodRefundCashChange = foodRefundAppliedValue(before, cashBefore, attemptId,
+        observationOperationId, applicationOperationId, originalActorId, outcome)
+
+    /** Pure literal accounting image for deterministic original first-refusal/output
+     * comparison only. No employee/native authorization or payout is created here. */
+    public fun supervisedImage(before: FoodRefundObligation, cashBefore: CashSession, attemptId: DomainId,
+        observationOperationId: OperationId, applicationOperationId: OperationId, originalActorId: DomainId,
+        recordingActorId: DomainId, accountingActorId: DomainId, originalUnknownOperationId: OperationId?,
+        originalUnknownBodyDigest: PayloadDigest?, outcome: RefundOutcome): FoodRefundCashChange {
+        val attempt = before.attempts.singleOrNull { it.id == attemptId }
+            ?: throw SalesRuleViolation(SalesRule.INVALID_EVIDENCE)
+        requireSales(attempt.originalActorId == originalActorId && attempt.tender == Tender.Cash &&
+            outcome !is RefundOutcome.ExternalAttested && attempt.refund == null && attempt.resolutionObservation == null,
+            SalesRule.INVALID_EVIDENCE)
+        val link = foodRefundRecordedResolutionLink(attempt, observationOperationId, recordingActorId,
+            applicationOperationId, accountingActorId, originalUnknownOperationId, originalUnknownBodyDigest,
+            outcome is RefundOutcome.Unknown)
+        return foodRefundAppliedValue(before, cashBefore, attemptId, observationOperationId,
+            applicationOperationId, originalActorId, outcome, recordingActorId, link)
+    }
+
     private fun requireRefund(actual: FoodRefundObligation, expected: FoodRefundObligation) {
         requireSales(FoodFinancialFramesV2.encodeRefund(actual) == FoodFinancialFramesV2.encodeRefund(expected),
             SalesRule.INVALID_EVIDENCE)
     }
+}
+
+internal fun foodRefundRecordedResolutionLink(attempt: RefundAttempt, observationOperationId: OperationId,
+    recordingActorId: DomainId, applicationOperationId: OperationId, accountingActorId: DomainId,
+    originalUnknownOperationId: OperationId?, originalUnknownBodyDigest: PayloadDigest?,
+    unknown: Boolean): RetailResolutionObservationLink? {
+    requireSales(observationOperationId != attempt.originalOperationId &&
+        observationOperationId != applicationOperationId, SalesRule.INVALID_EVIDENCE)
+    if (attempt.status == AttemptStatus.AWAITING_ATTESTATION) {
+        requireSales(recordingActorId == attempt.originalActorId && attempt.latestObservation == null &&
+            originalUnknownOperationId == null && originalUnknownBodyDigest == null, SalesRule.INVALID_EVIDENCE)
+        return null
+    }
+    val original = originalUnknownOperationId ?: throw SalesRuleViolation(SalesRule.INVALID_EVIDENCE)
+    requireSales(attempt.status == AttemptStatus.OUTCOME_UNKNOWN && attempt.latestObservation is RefundOutcome.Unknown &&
+        !unknown && originalUnknownBodyDigest != null &&
+        setOf(attempt.originalOperationId, original, observationOperationId, applicationOperationId).size == 4,
+        SalesRule.INVALID_EVIDENCE)
+    return RetailResolutionObservationLink(original, checkNotNull(originalUnknownBodyDigest), observationOperationId,
+        recordingActorId, applicationOperationId, accountingActorId)
 }

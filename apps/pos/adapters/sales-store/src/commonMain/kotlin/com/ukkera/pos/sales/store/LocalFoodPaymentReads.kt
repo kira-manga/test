@@ -98,10 +98,11 @@ public class LocalFoodPaymentReadHandler(private val stock: LocalStockRepository
     override fun normalize(input: StoredBytes): StoredBytes = LocalFoodPaymentReadCodec.encode(
         localSalesDecode(input, LocalFoodPaymentQuery.serializer(), 2_048))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile != LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL || normalize(normalized) != normalized) return false
+        if ((profile != LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL && profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS) ||
+            normalize(normalized) != normalized) return false
         return when (localSalesDecode(normalized, LocalFoodPaymentQuery.serializer(), 2_048)) {
             is LocalFoodPaymentQuery.AttemptRecording, is LocalFoodPaymentQuery.Original, is LocalFoodPaymentQuery.OwnPending -> true
-            else -> false
+            else -> profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS
         }
     }
 

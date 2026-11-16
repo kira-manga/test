@@ -10,7 +10,8 @@ internal class PurchasingReadHandler(private val stock: LocalStockRepository) : 
     override val key: ReadKey = LocalPurchasingProfile.READ
     override fun normalize(input: StoredBytes): StoredBytes = LocalPurchasingCodec.query(purchasingDecode(input, LocalPurchasingQueryV1.serializer()))
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean {
-        if (profile !in setOf(LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING)) return false
+        if (profile !in setOf(LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+                LocalMasterRpcWorkflowProfile.LAN_BUSINESS)) return false
         val query = LocalPurchasingCodec.decodeQuery(normalized)
         return query.section == LocalPurchasingSectionV1.ORDER && !query.export && normalize(normalized) == normalized
     }

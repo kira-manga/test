@@ -104,7 +104,8 @@ public object DesktopClientJournalStorages {
     /** Desktop Master SERVICE same-device cohost journals: the service's own owner-only directory and
      * key custody, from the SAME OS custody as its Master (never the UI-process stores). */
     public fun masterService(custody: DesktopMasterClientJournalCustody): DesktopClientJournalStorage =
-        DesktopClientJournalStorage(custody.parentDirectory, MasterServiceJournalKeys(custody), MasterServiceJournalPlatformFacts(custody))
+        DesktopClientJournalStorage(custody.parentDirectory, MasterServiceJournalKeys(custody), MasterServiceJournalPlatformFacts(custody),
+            custody)
 
     /** Windows packaged app: the package's own LocalState folder, CNG keys, packaged identity facts. */
     public fun windows(expected: SelfOwnedWindowsPackagedAppIdentityV2): DesktopClientJournalStorage {

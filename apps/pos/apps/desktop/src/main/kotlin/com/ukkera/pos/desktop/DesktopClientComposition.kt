@@ -11,6 +11,7 @@ import com.ukkera.pos.app.gateway.setup.LocalDeviceAdmissionIntents
 import com.ukkera.pos.app.gateway.setup.LocalEmployeeSetupIntents
 import com.ukkera.pos.app.gateway.setup.LocalFreshDevicePairingIntents
 import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchRecord
+import com.ukkera.pos.app.gateway.setup.LocalLanLaunchRecord
 import com.ukkera.pos.app.gateway.setup.LocalMasterLifecycleIntentStore
 import com.ukkera.pos.app.gateway.setup.LocalSetupCoordinator
 import com.ukkera.pos.security.DesktopClientTargetHandle
@@ -23,6 +24,7 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
+import kotlinx.coroutines.Deferred
 
 /**
  * Desktop UI-process (Client role) composition. Only a signed/packaged app with an OS-observed
@@ -33,12 +35,19 @@ internal class DesktopClientComposition private constructor(private val platform
     val pairingDocuments = DesktopSetupPairingDocuments()
     private var coordinator: LocalSetupCoordinator? = null
 
+    /** Existing-only Client startup; this process never starts the Master service. */
+    fun reopenRetainedClient(): Unit = setup().reopenRetainedLanClient()
+
+    /** Keep the exact coordinator until its actual native cleanup has settled. */
+    @Synchronized fun requestRetirement(): Deferred<Unit>? = coordinator?.requestRetirement()
+
     @Synchronized fun setup(): LocalSetupCoordinator = coordinator ?: run {
         val storages = DesktopSetupStorages(root)
         LocalSetupCoordinator(
             services = DesktopLocalSetupNativeServices(platform, localClient),
             employeeSetupIntents = LocalEmployeeSetupIntents(storages.employee),
             launchRecord = LocalMasterLaunchRecord(storages.launch),
+            lanLaunchRecord = LocalLanLaunchRecord(storages.lanLaunch),
             execution = DesktopLocalSetupExecution(),
             beforeRetirement = { _, _ -> },
             beforeClientHosting = {},

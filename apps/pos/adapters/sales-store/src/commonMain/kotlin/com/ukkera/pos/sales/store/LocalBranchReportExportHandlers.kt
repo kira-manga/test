@@ -8,7 +8,7 @@ import com.ukkera.pos.types.Revision
 import com.ukkera.pos.types.UtcInstant
 
 /** Real durable audit mutation; no data export, file IO, publication permission or money effects. */
-public class LocalBranchReportExportHandler : MasterCommandHandler {
+public class LocalBranchReportExportHandler : MasterCommandHandler, LocalMasterRpcRetainedResultAccessProvider {
     override val key: CommandKey = LocalBranchReportExportCodecV1.COMMAND
     override val writableKinds: Set<String> = setOf(LocalBranchReportExportProfileV1.KIND)
     override val claimNamespaces: Set<String> = setOf(LocalBranchReportExportProfileV1.OWNER_NAMESPACE)
@@ -17,7 +17,15 @@ public class LocalBranchReportExportHandler : MasterCommandHandler {
 
     // This opts in the exact audit key, not file publication or another business command.
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.REPORTS
+        profile == LocalMasterRpcWorkflowProfile.REPORTS &&
+            normalize(normalized) == normalized
+
+    override fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        context: CommandContext): List<AuthorizationRequirement> {
+        check(profile == LocalMasterRpcWorkflowProfile.REPORTS && supportsRpcWorkflow(profile, normalized) &&
+            context.key == key && semanticDigest(context.scope, context.originalActorId, key, normalized) == context.semanticDigest)
+        return listOf(exportAuditRequirement(context.scope, context.semanticDigest, context.operationId, Revision(0)))
+    }
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
         check(context.scope == view.scope && context.key == key &&
@@ -49,7 +57,8 @@ public class LocalBranchReportExportReadHandler : MasterReadHandler {
 
     // Metadata still requires the current EXPORT grant and is projected only for its owner.
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.REPORTS
+        profile == LocalMasterRpcWorkflowProfile.REPORTS &&
+            normalize(normalized) == normalized
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(context.scope == view.scope && context.key == key)

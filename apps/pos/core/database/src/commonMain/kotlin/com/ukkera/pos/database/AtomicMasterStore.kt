@@ -186,10 +186,28 @@ public class AtomicMasterStore internal constructor(
         nativeOriginalCalls.value.forEach { it.invocation.deny() }
     }
 
+    /** Pure installed typed classification; no principal, native custody or mutation. */
+    internal fun remotePhysicalAction(request: MutationRequest): PhysicalRecordingAction? {
+        if (request.actionApprovalId != null || !LocalMasterLanBusinessRpcKeysV1.accepts(request.command)) return null
+        val handler = handlers[request.command] ?: return null
+        return try {
+            if (handler.normalize(request.payload) != request.payload) null
+            else handler.physicalRecordingAction(request.payload)?.takeIf {
+                it.isStart() || it == PhysicalRecordingAction.RETAIN_RESOLUTION
+            }
+        } catch (_: Exception) { null }
+    }
+
     internal fun physicalActionsFor(endpoint: LocalMasterEndpoint): LocalMasterPhysicalActions? =
         if (physicalEndpoint.value === endpoint && physicalInstructionRegistry != null && physicalAuthorizers.isNotEmpty() &&
             physicalRecordingGate is PhysicalRecordingInteractiveGate && physicalService.current()) LocalMasterPhysicalActions(endpoint, this)
         else null
+
+    /** SAME configured gate, never supplied by a transport/client or reconstructed from DATA. */
+    internal fun physicalRemoteGateFor(endpoint: LocalMasterEndpoint): PhysicalRecordingRemoteGate? =
+        (physicalRecordingGate as? PhysicalRecordingRemoteGate)?.takeIf {
+            physicalEndpoint.value === endpoint && physicalInstructionRegistry != null && physicalService.current()
+        }
 
     /** Reference-only native affinity check. The Android service lifetime and this kernel's
      * physical lifetime are distinct; neither caller IDs nor equality between them prove ownership. */
@@ -276,7 +294,8 @@ public class AtomicMasterStore internal constructor(
         var result = NativeOriginalWorkerResult.HELD
         var cleanupUncertain = false
         try {
-            val acquired = source.acquireOriginal(invocation)
+            val acquired = try { source.acquireOriginal(invocation) }
+                finally { invocation.sealHistoricalSources() }
             if (acquired is NativeOriginalAcquire.Retained) {
                 // Take custody BEFORE any cancellation point after delivery. A wrong object is
                 // uncertainty, not permission to release somebody else's native acquisition.
@@ -291,14 +310,16 @@ public class AtomicMasterStore internal constructor(
             }
             currentCoroutineContext().ensureActive()
             when (acquired) {
-                NativeOriginalAcquire.Held -> Unit
+                NativeOriginalAcquire.Held -> reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_ACQUIRE_HELD)
                 NativeOriginalAcquire.StorageUncertain -> result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
                 is NativeOriginalAcquire.Retained -> {
+                    reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_ACQUIRE_RETAINED)
                     if (!physicalWorkerCurrent(ingress, currentCoroutineContext())) {
                         result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
                     } else when (source.recheckOriginal(acquired.lease)) {
                         PhysicalRecordingNativeCheck.STORAGE_UNCERTAIN -> result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
                         PhysicalRecordingNativeCheck.HELD -> {
+                            reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_RECHECK_HELD)
                             // This exact worker has NOT entered any Room/history-owner call.
                             disposition = NativeOriginalIntakeDisposition(invocation, NativeOriginalIntakeDisposition.State.DISPOSED)
                         }
@@ -313,13 +334,19 @@ public class AtomicMasterStore internal constructor(
                                 // Fixed real-owner entry. It owns one original parent, complete
                                 // all-writer capture, finalization, actual outer COMMIT/cleanup and
                                 // native settlement. Never replace this with MasterRuntimeVerifier.
+                                reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_OWNER_ENTERED)
                                 val outer = owner.importNativeOriginal(this, intake, invocation, acquired.lease)
                                 check(outer.invocation === invocation) { "Native original disposition owner mismatch" }
                                 disposition = outer
                                 when (outer.state) {
-                                    NativeOriginalIntakeDisposition.State.UNCERTAIN -> result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
-                                    NativeOriginalIntakeDisposition.State.DISPOSED -> Unit
+                                    NativeOriginalIntakeDisposition.State.UNCERTAIN -> {
+                                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_OWNER_UNCERTAIN)
+                                        result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
+                                    }
+                                    NativeOriginalIntakeDisposition.State.DISPOSED -> reportRuntimeHistoryStage(
+                                        RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_OWNER_DISPOSED)
                                     NativeOriginalIntakeDisposition.State.SETTLED -> {
+                                        reportRuntimeHistoryStage(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_OWNER_SETTLED)
                                         // Actual native recheck AFTER the real Room/native-history
                                         // owner returned, not an in-transaction provider callback.
                                         disposition = null // reacquire the release candidate only after real native recheck
@@ -343,7 +370,8 @@ public class AtomicMasterStore internal constructor(
             // storage or the outer COMMIT completed before the cancelled continuation resumed.
             denyPhysicalRecording()
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            reportPhysicalRecordingFailure(failure)
             result = NativeOriginalWorkerResult.STORAGE_UNCERTAIN
         } finally {
             invocation.deny()
@@ -381,33 +409,42 @@ public class AtomicMasterStore internal constructor(
             nativeOriginalCalls.value.singleOrNull { it.invocation === invocation }?.lease === lease)
         val view = TransactionView.forNativeOriginal(scope, dao, frame, this, invocation, lease)
         stockProjection?.let { view.bindNativeStock(this, frame, it) }
+        fun held(stage: RuntimeHistoryDiagnosticStage): NativeOriginalHistoryBodyResult {
+            reportRuntimeHistoryStage(stage)
+            return NativeOriginalHistoryBodyResult.HELD
+        }
         try {
             val result = run originalBody@ {
-                if (invocation.denied) return@originalBody NativeOriginalHistoryBodyResult.HELD
+                if (invocation.denied) return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_BODY_DENIED)
                 val native = lease.retained
                 val domain = NativeOriginalDomain.entries.singleOrNull {
                     it.command == native.command && it.domainProfile == native.domainProfile
-                } ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
-                val interpreter = nativeOriginalImports[domain] ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
+                } ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_DOMAIN_UNAVAILABLE)
+                val interpreter = nativeOriginalImports[domain] ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_DOMAIN_UNAVAILABLE)
                 val projection = interpreter.project(native)
                 if (projection.domain != domain || projection.scope != scope ||
                     projection.clientSource.allocationId != invocation.locator.clientAllocationId ||
-                    projection.masterSource.installationId != frame.originalInstallationId ||
+                    // Cohost catalogues share the POS installation ID. Distributed catalogues
+                    // have their own persisted namespace. That path must instead match the
+                    // exact source snapshot restored by THIS invocation from THIS actual POS
+                    // original owner; caller-supplied catalogue/retained DATA cannot attach it.
+                    (projection.masterSource.installationId != frame.originalInstallationId &&
+                        !invocation.matchesHistoricalMasterRoot(frame.originalInstallationId, native)) ||
                     projection.masterSource.deviceId != frame.originalAuthority.deviceId || frame.originalAuthority != authority)
-                    return@originalBody NativeOriginalHistoryBodyResult.HELD
-                val handler = handlers[domain.command] ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_PROJECTION_MISMATCH)
+                val handler = handlers[domain.command] ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_HANDLER_MISMATCH)
                 if (handler.normalize(native.originalBody) != native.originalBody ||
                     handler.physicalRecordingAction(native.originalBody) != PhysicalRecordingAction.RETAIN_ORIGINAL ||
                     handler.reservedOperationBinding(native.originalBody) != projection.reservedBinding)
-                    return@originalBody NativeOriginalHistoryBodyResult.HELD
-                val branch = dao.branch(scope.storageKey()) ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_HANDLER_MISMATCH)
+                val branch = dao.branch(scope.storageKey()) ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_PARENT_MISMATCH)
                 val parent = frame.originalParent
                 if (!branch.writable || branch.assignmentId != authority.assignmentId.value || branch.deviceId != authority.deviceId.value ||
                     branch.epoch != authority.epoch.value || parent.commandEpoch != branch.epoch ||
                     parent.commandSequence != branch.sequence || parent.commandDigest.value != branch.journalHash)
-                    return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_PARENT_MISMATCH)
                 val historicalStart = nativeOriginalStart(view, native, projection)
-                    ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_START_UNAVAILABLE)
                 val digest = semanticDigest(scope, projection.originalActorId, domain.command, native.originalBody)
                 val existing = view.retainedCommand(projection.recordingOperationId)
                 if (existing != null) {
@@ -416,12 +453,12 @@ public class AtomicMasterStore internal constructor(
                     // matching IDs/digests alone neither authorize nor rematerialize the fact.
                     if (!matchesNativeOriginal(existing, native, projection, historicalStart, digest) ||
                         !interpreter.verifyExisting(view, NativeOriginalImportContext(native, historicalStart, existing.recordedAt), existing))
-                        return@originalBody NativeOriginalHistoryBodyResult.HELD
+                        return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_EXISTING_UNJOINED)
                     return@originalBody NativeOriginalHistoryBodyResult.ALREADY_PRESENT
                 }
                 val at = clock.now().also(::requireEvidenceV1Time)
                 val plan = interpreter.prepare(view, NativeOriginalImportContext(native, historicalStart, at))
-                    ?: return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    ?: return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_PLAN_UNAVAILABLE)
                 check(plan.domain == domain && plan.command == domain.command && plan.operationId == projection.recordingOperationId &&
                     plan.originalActorId == projection.originalActorId && plan.canonicalBody == native.originalBody &&
                     plan.semanticDigest == digest && plan.reservedBinding == projection.reservedBinding &&
@@ -430,7 +467,7 @@ public class AtomicMasterStore internal constructor(
                 NativeOriginalRetainedCodecV1.requireChanges(plan.domain, plan.operationId, changes)
                 // Partial/advanced data is never overwritten, even if a bad interpreter proposed it.
                 if (changes.any { view.aggregate(it.key) != null } || invocation.denied)
-                    return@originalBody NativeOriginalHistoryBodyResult.HELD
+                    return@originalBody held(RuntimeHistoryDiagnosticStage.PHYSICAL_ORIGINAL_OUTPUT_OCCUPIED)
                 val provenance = nativeOriginalProvenance(frame, invocation, native, projection, historicalStart, digest)
                 invalidatePhysicalBeforeWrite(plan.operationId, changes.map { it.key }.toSet(), emptySet(), emptySet())
                 frame.captureNativeOriginal(plan, projection, provenance)
@@ -444,6 +481,89 @@ public class AtomicMasterStore internal constructor(
             view.finishNow()
             return if (invocation.denied) NativeOriginalHistoryBodyResult.HELD else result
         } finally { view.close() }
+    }
+
+    /**
+     * Read-only restoration of the exact generation-one source DATA for ONE actual native
+     * acquisition. No locator/actor/key query is exposed. The kernel-created invocation and
+     * original held certificate/requirement select the whole closed pair. Parsing the DATA
+     * never recreates a Start or proves a remote OS force. Native source retention/rechecks
+     * and the subsequent original-owner transaction remain required and unchanged.
+     */
+    internal suspend fun captureNativeOriginalSources(invocation: NativeOriginalIntakeInvocation,
+        source: NativeOriginalIntakeSource, requirement: StoredBytes,
+        encodedCertificate: StoredBytes): NativeOriginalSourceData? {
+        fun sameAssociation(): Boolean = invocation.store === this &&
+            invocation.endpoint === physicalEndpoint.value && source === physicalRecordingGate &&
+            invocation.source === source && invocation.scope == scope &&
+            invocation.storeIncarnationId == physicalStoreIncarnation &&
+            invocation.serviceIncarnationId == physicalServiceIncarnation && nativeOriginalInstalled.value &&
+            nativeOriginalIngress.value?.let { it.registeredSource === source &&
+                ownsNativeOriginalIntake(invocation.endpoint, it) } == true
+        if (!sameAssociation() || !physicalService.current() || !invocation.claimHistoricalSources(source) ||
+            requirement.size !in 1..PhysicalCommittedStartProjectionV1.MAX_REQUIREMENT_BYTES ||
+            encodedCertificate.size !in 1..PhysicalCommittedStartProjectionV1.MAX_BYTES) return null
+        return try {
+            val certificate = PhysicalCommittedStartProjectionV1.parse(encodedCertificate)
+            val domain = NativeOriginalDomain.entries.singleOrNull { it.command == certificate.command &&
+                it.domainProfile == certificate.domainProfile && it.startKind == certificate.startKind }
+                ?: return null
+            if (certificate.scope != scope || certificate.requirementBytes != requirement ||
+                domain !in nativeOriginalImports || certificate.sourceStamps.size != 2 ||
+                certificate.sourceStamps.none { it.key.id == invocation.locator.clientAllocationId }) return null
+            // The separately owned native acquisition has no borrowed Room context.
+            // Enter this SAME database's actual native owner for the read-only cut;
+            // a raw Room loan would dispatch without its watched ownership context.
+            val restored = database.runtimeWriterConnection { connection ->
+                connection.withTransaction(Transactor.SQLiteTransactionType.DEFERRED) {
+                    // This cut returns DATA through a real known ROLLBACK. It has no
+                    // employee grant or business/native write finalizer and must never
+                    // commit an unfinalized native frame. The exact owner still observes
+                    // actual outer rollback/cleanup before any snapshot escapes.
+                    val restored = run sourceRead@ {
+                        val view = TransactionView(scope, dao)
+                        try {
+                            val start = view.retainedCommand(certificate.intentOperationId)
+                                ?: return@sourceRead null
+                            if (!start.committed || start.nativeOriginalProvenance != null || start.scope != scope ||
+                                start.originalActorId != certificate.originalActorId || start.command != certificate.command ||
+                                start.semanticDigest != certificate.intentSemanticDigest ||
+                                start.assignmentId != certificate.assignmentId || start.authorityEpoch != certificate.epoch ||
+                                start.sequence != certificate.sequence || start.journalHash != certificate.journalHash ||
+                                start.resultHash != certificate.resultDigest || start.recordedAt != certificate.recordedAt)
+                                return@sourceRead null
+                            val sources = mutableListOf<AggregateChange>()
+                            for (stamp in certificate.sourceStamps) {
+                                val original = start.aggregateWrites.singleOrNull { it.key == stamp.key }
+                                    ?: return@sourceRead null
+                                val current = view.aggregate(stamp.key) ?: return@sourceRead null
+                                if (original.storageGeneration != Revision(1) || current.revision != Revision(1) ||
+                                    original.schema != PhysicalRecordingSourceProfileV1.SCHEMA || current.schema != original.schema ||
+                                    original.payload != current.payload || original.payloadDigest != current.digest ||
+                                    stamp.schema != original.schema || stamp.generation != original.storageGeneration ||
+                                    stamp.payloadDigest != original.payloadDigest || sha256(current.payload.copyBytes()) != current.digest)
+                                    return@sourceRead null
+                                sources += AggregateChange(stamp.key, null, original.schema, original.payload)
+                            }
+                            NativeOriginalSourceData(invocation, requirement, encodedCertificate, sources,
+                                checkNotNull(runtimeHistoryOwner).frameFor(connection).originalInstallationId)
+                        } finally { view.close() }
+                    }
+                    rollback(restored)
+                }
+            }
+            if (restored == null) {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PHYSICAL_ORIGINAL_SOURCE_UNAVAILABLE, null)
+                null
+            } else if (!invocation.historicalSourcesPending() || !physicalService.current() || !sameAssociation()) {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PHYSICAL_ORIGINAL_SOURCE_WINDOW_CLOSED, null)
+                null
+            } else restored.takeIf { invocation.retainHistoricalSources(it) }
+        } catch (cancelled: CancellationException) { throw cancelled }
+          catch (failure: Exception) {
+              reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PHYSICAL_ORIGINAL_SOURCE_READ_FAILED, failure)
+              null
+          }
     }
 
     private suspend fun nativeOriginalStart(view: CommandReadView, native: NativeOriginalRetained,
@@ -608,6 +728,410 @@ public class AtomicMasterStore internal constructor(
             ActionApprovalBusinessAttributionSupport.PRESERVE_ORIGINAL_REQUESTER
         else ActionApprovalBusinessAttributionSupport.UNSUPPORTED
 
+    /** One request-owned capture; provisional fields never escape the complete outer read. */
+    private class ChangesRead(
+        val profile: LocalMasterRpcWorkflowProfile,
+        val previous: LocalMasterChangeCursorV1?,
+        val strictCut: Boolean,
+    ) {
+        var cursor: LocalMasterChangeCursorV1? = null
+        var unchanged: Boolean = false
+        var refusal: LocalMasterChangesFailureV1? = null
+    }
+
+    public suspend fun snapshot(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1? = null): LocalMasterChangesReplyV1 =
+        changesRead(principal, selection, ChangesRead(profile, expectedCut, true), null)
+
+    public suspend fun pull(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1): LocalMasterChangesReplyV1 =
+        changesRead(principal, selection, ChangesRead(profile, cursor, false), null)
+
+    internal suspend fun snapshotRpcBusiness(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1?, audience: RoomLocalDisplayRpcAudience): LocalMasterChangesReplyV1 =
+        changesRead(principal, selection, ChangesRead(profile, expectedCut, true), audience)
+
+    internal suspend fun pullRpcBusiness(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1, audience: RoomLocalDisplayRpcAudience): LocalMasterChangesReplyV1 =
+        changesRead(principal, selection, ChangesRead(profile, cursor, false), audience)
+
+    private suspend fun changesRead(principal: AuthenticatedPrincipal?, selection: ReadRequest, capture: ChangesRead,
+        audience: RoomLocalDisplayRpcAudience?): LocalMasterChangesReplyV1 {
+        if (capture.profile == LocalMasterRpcWorkflowProfile.KITCHEN) {
+            val access = audience?.access as? LocalMasterRpcBusinessAccess.Read
+            if (access == null || access.profile != capture.profile || access.request.query != selection.query ||
+                access.request.payload != selection.payload)
+                return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        } else if (audience != null) {
+            return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        }
+        return when (val reply = readInternal(principal, selection, audience, capture)) {
+            is ReadReply.Unavailable -> LocalMasterChangesReplyV1.Unavailable(
+                // A later authorization/finalization/storage failure always wins over a
+                // provisional cursor refusal. Only the exact clean refusal is publishable.
+                if (reply.reason == ReadFailure.MALFORMED_REQUEST) capture.refusal ?: changesFailure(reply.reason)
+                else changesFailure(reply.reason))
+            is ReadReply.Data -> {
+                val cursor = capture.cursor
+                    ?: return LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN)
+                if (capture.unchanged) LocalMasterChangesReplyV1.Unchanged(cursor, reply.observedAt)
+                else LocalMasterChangesReplyV1.Snapshot(reply, cursor)
+            }
+        }
+    }
+
+    private fun changesKeyAccepted(profile: LocalMasterRpcWorkflowProfile, key: ReadKey): Boolean = when (profile) {
+        LocalMasterRpcWorkflowProfile.SUPPLIERS, LocalMasterRpcWorkflowProfile.WAREHOUSES -> true
+        LocalMasterRpcWorkflowProfile.REPORTS -> LocalMasterReportRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS -> LocalMasterStockTransferRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.KITCHEN -> LocalMasterKitchenRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.RETAIL_ORDERS -> LocalMasterRetailOrderRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS -> LocalMasterPaymentCorrectionRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS -> LocalMasterCustomerReceiptRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.FOOD_CHECKS -> LocalMasterFoodCheckRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL -> LocalMasterFoodCashFinancialRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS -> LocalMasterFoodTableAssignmentRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE -> LocalMasterInvoiceCaptureRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalMasterInvoiceMatchingRpcKeysV1.accepts(key)
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> LocalMasterLanBusinessRpcKeysV1.accepts(key)
+    }
+
+    private fun changeCursor(principal: LocalEmployeePrincipal, branch: BranchRow, profile: LocalMasterRpcWorkflowProfile,
+        digest: PayloadDigest, projectionDigest: PayloadDigest, grants: List<AuthorizedAction>): LocalMasterChangeCursorV1 {
+        val policy = grants.first().policyRevision
+        check(grants.all { it.actorId == principal.actorId && it.authenticationId == principal.sessionId &&
+            it.generation == principal.sessionGeneration && it.policyRevision == policy })
+        return LocalMasterChangeCursorV1(scope, authority, Revision(branch.revision), JournalSequence(branch.sequence),
+            PayloadDigest(branch.journalHash), principal.actorId, principal.deviceId, principal.sessionId,
+            principal.sessionGeneration, principal.admissionRevision, policy, profile, digest, projectionDigest)
+    }
+
+    private fun sameChangeBinding(left: LocalMasterChangeCursorV1, right: LocalMasterChangeCursorV1): Boolean =
+        left.scope == right.scope && left.authority == right.authority && left.actorId == right.actorId &&
+            left.deviceId == right.deviceId && left.sessionId == right.sessionId &&
+            left.sessionGeneration == right.sessionGeneration && left.admissionRevision == right.admissionRevision &&
+            left.policyRevision == right.policyRevision && left.profile == right.profile
+
+    private fun sameChangeCut(left: LocalMasterChangeCursorV1, right: LocalMasterChangeCursorV1): Boolean =
+        left.branchRevision == right.branchRevision && left.sequence == right.sequence && left.journalHash == right.journalHash
+
+    private fun checkedChangeMetadata(row: ChangeJournalMetadata): ChangeJournalMetadata {
+        check(row.storageValid && row.byteCount in 1L..MAX_RETAINED_ENVELOPE_BYTES.toLong() && row.sequence >= 1 &&
+            row.epoch == authority.epoch.value && DomainId(checkNotNull(row.assignmentId)) == authority.assignmentId)
+        OperationId(checkNotNull(row.operationId))
+        PayloadDigest(checkNotNull(row.previousHash))
+        PayloadDigest(checkNotNull(row.hash))
+        return row
+    }
+
+    /** Validates actual retained envelope bytes; these values never become an RPC projection. */
+    private suspend fun checkChangeEnvelope(metadata: ChangeJournalMetadata) {
+        val row = checkNotNull(dao.changeJournalEnvelope(scope.storageKey(), metadata.epoch, metadata.sequence))
+        check(row.scope == scope.storageKey() && row.operationId == metadata.operationId &&
+            row.assignmentId == metadata.assignmentId && row.epoch == metadata.epoch && row.sequence == metadata.sequence &&
+            row.previousHash == metadata.previousHash && row.hash == metadata.hash && row.envelope.size.toLong() == metadata.byteCount)
+        var operation: OperationRow? = null
+        try {
+            check(sha256(row.envelope) == PayloadDigest(checkNotNull(metadata.hash)))
+            val operationId = OperationId(checkNotNull(metadata.operationId))
+            val bounds = checkNotNull(dao.retainedOperationMetadata(scope.storageKey(), operationId.value))
+            check(bounds.storageValid && bounds.byteCount in 0L..MAX_STORED_BYTES.toLong())
+            val original = checkNotNull(dao.operation(scope.storageKey(), operationId.value)).also { operation = it }
+            if (RetainedCommandFramesV2.isRoot(row.envelope)) {
+                val root = RetainedCommandFramesV2.decodeRoot(row.envelope).identity
+                check(root.scope == scope && root.assignmentId == authority.assignmentId && root.authorityEpoch == authority.epoch &&
+                    root.sequence.value == metadata.sequence && root.producer.operationId == operationId &&
+                    root.previousJournalHash.value == metadata.previousHash && original.scope == scope.storageKey() &&
+                    original.operationId == operationId.value && original.epoch == metadata.epoch &&
+                    original.sequence == metadata.sequence && original.actorId == root.producer.originalActorId.value &&
+                    original.command == root.producer.command.name && original.commandVersion == root.producer.command.version &&
+                    original.digest == root.producer.semanticDigest.value && original.outcome == "committed" &&
+                    original.authenticationId == root.authenticationId.value && original.policyRevision == root.policyRevision.value &&
+                    original.committedAt == root.recordedAt.toString() && original.resultHash == root.resultHash.value &&
+                    sha256(original.result) == root.resultHash)
+            } else {
+                val legacy = checkNotNull(decodeRetainedCommand(scope, operationId, original, row))
+                check(legacy.assignmentId == authority.assignmentId && legacy.authorityEpoch == authority.epoch &&
+                    legacy.sequence.value == metadata.sequence && legacy.previousJournalHash.value == metadata.previousHash)
+            }
+        } finally {
+            row.envelope.fill(0)
+            operation?.result?.fill(0)
+        }
+    }
+
+    private suspend fun currentChangeHead(cursor: LocalMasterChangeCursorV1): ChangeJournalMetadata? {
+        if (cursor.sequence.value == 0L) {
+            check(dao.changeJournalWindow(scope.storageKey(), authority.epoch.value, 0, 1).isEmpty())
+            return null
+        }
+        val rows = dao.changeJournalWindow(scope.storageKey(), authority.epoch.value, cursor.sequence.value - 1, 2)
+        check(rows.size == 1)
+        val head = checkedChangeMetadata(rows.single())
+        check(head.sequence == cursor.sequence.value && head.hash == cursor.journalHash.value)
+        checkChangeEnvelope(head)
+        return head
+    }
+
+    private suspend fun validateChangeCursor(capture: ChangesRead, current: LocalMasterChangeCursorV1): LocalMasterChangesFailureV1? {
+        val head = currentChangeHead(current)
+        val previous = capture.previous ?: return null
+        if (!sameChangeBinding(previous, current) || (!capture.strictCut && previous.selectorDigest != current.selectorDigest))
+            return LocalMasterChangesFailureV1.CURSOR_EXPIRED
+        if (previous.sequence > current.sequence || previous.branchRevision > current.branchRevision)
+            return LocalMasterChangesFailureV1.MALFORMED_REQUEST
+        if (previous.sequence == current.sequence) {
+            if (!sameChangeCut(previous, current)) return LocalMasterChangesFailureV1.MALFORMED_REQUEST
+            return null
+        }
+        if (previous.branchRevision >= current.branchRevision) return LocalMasterChangesFailureV1.MALFORMED_REQUEST
+        if (capture.strictCut) return LocalMasterChangesFailureV1.CURSOR_EXPIRED
+        val lag = current.sequence.value - previous.sequence.value
+        if (lag > LOCAL_MASTER_CHANGES_MAX_CURSOR_LAG_V1) return LocalMasterChangesFailureV1.CURSOR_EXPIRED
+        val includesSaved = previous.sequence.value > 0
+        val count = lag.toInt() + if (includesSaved) 1 else 0
+        val rows = dao.changeJournalWindow(scope.storageKey(), authority.epoch.value,
+            if (includesSaved) previous.sequence.value - 1 else 0, count + 1)
+        check(rows.size == count)
+        var sequence = if (includesSaved) previous.sequence.value else 1L
+        var hash: String? = null
+        var bytes = 0L
+        for (item in rows) {
+            val row = checkedChangeMetadata(item)
+            check(row.sequence == sequence && (hash == null || row.previousHash == hash))
+            if (sequence != current.sequence.value) sequence++
+            hash = row.hash
+            bytes += row.byteCount // <=4097 validated envelopes of at most 4MiB: cannot overflow Long.
+        }
+        check(rows.last().sequence == current.sequence.value && hash == current.journalHash.value && head == rows.last())
+        // Validate all scalar identities, continuity and hash shapes before legitimate expiry.
+        // No body allocation occurs for the range until this bounded total has been checked.
+        if (bytes > LOCAL_MASTER_CHANGES_MAX_CATCH_UP_BYTES_V1) return LocalMasterChangesFailureV1.CURSOR_EXPIRED
+        rows.forEach { if (it.sequence != current.sequence.value) checkChangeEnvelope(it) }
+        val savedHash = if (includesSaved) rows.first().hash else rows.first().previousHash
+        if (savedHash != previous.journalHash.value) return LocalMasterChangesFailureV1.MALFORMED_REQUEST
+        return null
+    }
+
+    private class BatchReadSelection(val handler: MasterReadHandler, val request: ReadRequest,
+        val normalized: StoredBytes, val digest: PayloadDigest)
+
+    private sealed interface AuthorizedReadPreparation {
+        class Ready(val prepared: PreparedRead, val grants: List<AuthorizedAction>) : AuthorizedReadPreparation
+        data object Denied : AuthorizedReadPreparation
+        data object CapacityExceeded : AuthorizedReadPreparation
+    }
+
+    /** Shared typed requirements path; no batch can replace it with an identity-only grant. */
+    private suspend fun prepareAuthorizedRead(principal: LocalEmployeePrincipal, request: ReadRequest,
+        handler: MasterReadHandler, normalized: StoredBytes, digest: PayloadDigest,
+        view: TransactionView, policy: AuthorizationPolicy, remainingRequirements: Int = 256): AuthorizedReadPreparation {
+        val prepared = handler.prepare(normalized, view, ReadContext(scope, principal.actorId, request.query, digest))
+        val requirements = prepared.requirements.toList()
+        check(requirements.size in 1..256) { "Query must declare bounded authorization requirements" }
+        if (requirements.size > remainingRequirements) return AuthorizedReadPreparation.CapacityExceeded
+        val grants = requirements.map { requirement ->
+            check(requirement.scope == scope) { "Query returned cross-scope requirement" }
+            requirement.binding?.let {
+                check(it.operationId == null && it.payloadDigest == digest) {
+                    "Query authorization is not bound to normalized input"
+                }
+            }
+            when (val authorization = policy.authorize(principal, requirement)) {
+                is AuthorizationDecision.Allowed -> authorization.authorization
+                is AuthorizationDecision.Denied -> return AuthorizedReadPreparation.Denied
+            }
+        }
+        return AuthorizedReadPreparation.Ready(prepared, grants)
+    }
+
+    /** Whole visible-view replacement; no partial result survives any refusal/finalizer failure. */
+    public suspend fun snapshotBatch(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>): LocalMasterChangesBatchReplyV1 {
+        fun refused(reason: LocalMasterChangesFailureV1): LocalMasterChangesBatchReplyV1 {
+            if (reason == LocalMasterChangesFailureV1.STORAGE_UNCERTAIN) physicalService.deny()
+            return LocalMasterChangesBatchReplyV1.Unavailable(reason)
+        }
+        if (principal !is LocalEmployeePrincipal || profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+            return refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        if (principal.scope != scope) return refused(LocalMasterChangesFailureV1.WRONG_SCOPE)
+        if (selections.size !in 1..LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTORS_V1 ||
+            selections.sumOf { it.payload.size.toLong() } > LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTION_BYTES_V1)
+            return refused(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+        val normalizedSelections = mutableListOf<BatchReadSelection>()
+        val distinct = mutableSetOf<Pair<ReadKey, StoredBytes>>()
+        for (selection in selections) {
+            val handler = readHandlers[selection.query] ?: return refused(LocalMasterChangesFailureV1.UNKNOWN_QUERY)
+            val normalized = try {
+                handler.normalize(selection.payload)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: IllegalArgumentException) {
+                return refused(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+            }
+            if (!distinct.add(selection.query to normalized)) return refused(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+            if (!changesKeyAccepted(profile, selection.query) ||
+                !handler.supportsRpcWorkflow(localMasterRpcHandlerProfile(profile, selection.query, normalized, handler), normalized) ||
+                (handler as? MasterLocalDisplayReadHandler)?.requiresDelivery(normalized) == true)
+                return refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+            normalizedSelections += BatchReadSelection(handler, selection, normalized,
+                queryDigest(scope, principal.actorId, selection.query, normalized))
+        }
+        return try {
+            val result = database.runtimeWriterConnection { connection ->
+                requireDurableWriter(connection)
+                connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
+                    database.runtimeHistoryOwner?.frameFor(connection)?.enterTransaction(currentCoroutineContext())
+                    val view = transactionView(connection, principal)
+                    try {
+                        val reply = run batchBody@ {
+                            // This snapshot is confined to this exact original writer/view.
+                            // Every requirement is evaluated separately; the original final
+                            // protected reread/current sample still qualifies the whole reply.
+                            val current = authorizationSource.current(principal, view)
+                            val policy = AuthorizationPolicy(CurrentAuthorizationProvider { selected ->
+                                if (selected === principal) current else null
+                            })
+                            if (policy.currentIdentityDenial(principal) != null)
+                                return@batchBody refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+                            val branch = dao.branch(scope.storageKey())
+                                ?: return@batchBody refused(LocalMasterChangesFailureV1.WRITER_NOT_QUALIFIED)
+                            val observed = observe(branch, recoveryState(branch))
+                            if (!branch.writable || observed.authority != authority ||
+                                runtimeVerifier.writer(observed) != RuntimeVerification.VERIFIED)
+                                return@batchBody refused(LocalMasterChangesFailureV1.WRITER_NOT_QUALIFIED)
+                            var remaining = LOCAL_MASTER_CHANGES_BATCH_MAX_REQUIREMENTS_V1
+                            val prepared = mutableListOf<AuthorizedReadPreparation.Ready>()
+                            for (selection in normalizedSelections) {
+                                when (val ready = prepareAuthorizedRead(principal, selection.request, selection.handler,
+                                    selection.normalized, selection.digest, view, policy, remaining)) {
+                                    AuthorizedReadPreparation.Denied ->
+                                        return@batchBody refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+                                    AuthorizedReadPreparation.CapacityExceeded ->
+                                        return@batchBody refused(LocalMasterChangesFailureV1.CAPACITY_EXCEEDED)
+                                    is AuthorizedReadPreparation.Ready -> {
+                                        remaining -= ready.grants.size
+                                        prepared += ready
+                                    }
+                                }
+                            }
+                            val now = clock.now().also(::requireEvidenceV1Time)
+                            view.armLocalDisplaySupport()
+                            val snapshots = mutableListOf<LocalMasterChangesReplyV1.Snapshot>()
+                            var bytes = 0L
+                            for ((index, ready) in prepared.withIndex()) {
+                                val payload = ready.prepared.project(ready.grants, now)
+                                bytes += payload.size
+                                if (bytes > LOCAL_MASTER_CHANGES_BATCH_MAX_PROJECTION_BYTES_V1)
+                                    return@batchBody refused(LocalMasterChangesFailureV1.CAPACITY_EXCEEDED)
+                                val cursor = changeCursor(principal, branch, profile, normalizedSelections[index].digest,
+                                    sha256(payload.bytes()), ready.grants)
+                                if (index == 0) currentChangeHead(cursor)
+                                else check(sameChangeBinding(snapshots.first().cursor, cursor) &&
+                                    sameChangeCut(snapshots.first().cursor, cursor))
+                                snapshots += LocalMasterChangesReplyV1.Snapshot(ReadReply.Data(payload,
+                                    Revision(branch.revision), now), cursor)
+                            }
+                            LocalMasterChangesBatchReplyV1.Snapshot(snapshots)
+                        }
+                        view.prepareNormalReturn()
+                        view.finishNow()
+                        reply
+                    } catch (_: MasterLocalDisplayDeliveryUnavailable) {
+                        rollback(refused(LocalMasterChangesFailureV1.WRITER_NOT_QUALIFIED))
+                    } catch (_: RoomCurrentLocalAuthorizationDenied) {
+                        rollback(refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED))
+                    } catch (_: MasterReadAuthorizationDenied) {
+                        rollback(refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED))
+                    } catch (_: MasterReadInvalidSelection) {
+                        rollback(refused(LocalMasterChangesFailureV1.MALFORMED_REQUEST))
+                    } finally { view.close() }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            result
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_EXECUTION, failure)
+            refused(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN)
+        }
+    }
+
+    /**
+     * Exact fresh READ authorization for an immutable selector family at RPC authorization,
+     * status and disclosure boundaries. Pure projections are intentionally checked as well:
+     * typed adapters may impose an additional owner/selection refusal in project(). No grant
+     * or projection escapes; this method does not recover or replay a financial operation.
+     */
+    internal suspend fun authorizeChangesBusiness(principal: AuthenticatedPrincipal?,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>): LocalMasterChangesRpcAuthorizationV1 =
+        when (val reply = snapshotBatch(principal, profile, selections)) {
+            is LocalMasterChangesBatchReplyV1.Snapshot -> LocalMasterChangesRpcAuthorizationV1(
+                LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(reply.snapshots.map { it.cursor }))
+            is LocalMasterChangesBatchReplyV1.Unavailable -> LocalMasterChangesRpcAuthorizationV1(when (reply.reason) {
+                LocalMasterChangesFailureV1.AUTHORIZATION_DENIED, LocalMasterChangesFailureV1.WRONG_SCOPE,
+                LocalMasterChangesFailureV1.UNKNOWN_QUERY -> LocalMasterChangesRpcAccessResultV1.DENIED
+                LocalMasterChangesFailureV1.MALFORMED_REQUEST -> LocalMasterChangesRpcAccessResultV1.MALFORMED_ONLY
+                LocalMasterChangesFailureV1.CAPACITY_EXCEEDED -> LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
+                LocalMasterChangesFailureV1.WRITER_NOT_QUALIFIED, LocalMasterChangesFailureV1.STORAGE_UNCERTAIN,
+                LocalMasterChangesFailureV1.SERVICE_BUSY, LocalMasterChangesFailureV1.CURSOR_EXPIRED -> LocalMasterChangesRpcAccessResultV1.UNAVAILABLE
+            }, null)
+        }
+
+    /**
+     * Fresh protected identity for an immutable NO-DATA capacity-refusal RPC scope only.
+     * This path never checks or grants business-read access and can never return ALLOWED.
+     * In particular, its successful result cannot release an earlier cached DATA response.
+     * The actual registration fixes [profile]; it is never decoded as caller authority.
+     */
+    internal suspend fun authorizeChangesCapacity(principal: AuthenticatedPrincipal?,
+        profile: LocalMasterRpcWorkflowProfile): LocalMasterChangesRpcAuthorizationV1 {
+        // Explicit fixed routes only: a future profile must be reviewed here as well.
+        when (profile) {
+            LocalMasterRpcWorkflowProfile.SUPPLIERS, LocalMasterRpcWorkflowProfile.WAREHOUSES,
+            LocalMasterRpcWorkflowProfile.REPORTS, LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS,
+            LocalMasterRpcWorkflowProfile.KITCHEN, LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
+            LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS, LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
+            LocalMasterRpcWorkflowProfile.FOOD_CHECKS, LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS,
+            LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL, LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE,
+            LocalMasterRpcWorkflowProfile.INVOICE_MATCHING, LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> Unit
+        }
+        if (principal !is LocalEmployeePrincipal || principal.scope != scope)
+            return LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
+        return try {
+            val result = database.runtimeWriterConnection { connection ->
+                requireDurableWriter(connection)
+                connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
+                    database.runtimeHistoryOwner?.frameFor(connection)?.enterTransaction(currentCoroutineContext())
+                    val view = transactionView(connection, principal)
+                    try {
+                        val allowed = run identityBody@ {
+                            val policy = AuthorizationPolicy(CurrentAuthorizationProvider { authorizationSource.current(it, view) })
+                            if (policy.currentIdentityDenial(principal) != null) return@identityBody false
+                            val branch = dao.branch(scope.storageKey()) ?: return@identityBody false
+                            val observed = observe(branch, recoveryState(branch))
+                            branch.writable && observed.authority == authority &&
+                                runtimeVerifier.writer(observed) == RuntimeVerification.VERIFIED
+                        }
+                        view.prepareNormalReturn()
+                        view.finishNow()
+                        if (allowed) LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY else LocalMasterChangesRpcAccessResultV1.DENIED
+                    } catch (_: RoomCurrentLocalAuthorizationDenied) {
+                        rollback(LocalMasterChangesRpcAccessResultV1.DENIED)
+                    } finally { view.close() }
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            LocalMasterChangesRpcAuthorizationV1(result, null)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            physicalService.deny()
+            LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.UNAVAILABLE, null)
+        }
+    }
+
     /**
      * Current authorized domain read, not raw DAO exposure or an outcome lookup. Like execute,
      * this entry must be called from the supervised request ingress outside any inherited Room
@@ -627,7 +1151,7 @@ public class AtomicMasterStore internal constructor(
     }
 
     private suspend fun readInternal(principal: AuthenticatedPrincipal?, request: ReadRequest,
-        rpcAudience: RoomLocalDisplayRpcAudience?): ReadReply {
+        rpcAudience: RoomLocalDisplayRpcAudience?, changes: ChangesRead? = null): ReadReply {
         fun refused(reason: ReadFailure): ReadReply {
             if (reason == ReadFailure.STORAGE_UNCERTAIN) physicalService.deny()
             return ReadReply.Unavailable(reason)
@@ -644,6 +1168,9 @@ public class AtomicMasterStore internal constructor(
         }
         if (rpcAudience != null && (!LocalMasterKitchenRpcKeysV1.accepts(request.query) ||
             !handler.supportsRpcWorkflow(LocalMasterRpcWorkflowProfile.KITCHEN, normalized)))
+            return refused(ReadFailure.AUTHORIZATION_DENIED)
+        if (changes != null && (!changesKeyAccepted(changes.profile, request.query) ||
+            !handler.supportsRpcWorkflow(localMasterRpcHandlerProfile(changes.profile, request.query, normalized, handler), normalized)))
             return refused(ReadFailure.AUTHORIZATION_DENIED)
         val digest = queryDigest(scope, principal.actorId, request.query, normalized)
         val displayRead = (handler as? MasterLocalDisplayReadHandler)?.takeIf { it.requiresDelivery(normalized) }
@@ -667,26 +1194,30 @@ public class AtomicMasterStore internal constructor(
                                 runtimeVerifier.writer(observed) != RuntimeVerification.VERIFIED) {
                                 return@queryBody refused(ReadFailure.WRITER_NOT_QUALIFIED)
                             }
-                            val prepared = handler.prepare(normalized, view,
-                                ReadContext(scope, principal.actorId, request.query, digest))
-                            val requirements = prepared.requirements.toList()
-                            check(requirements.size in 1..256) { "Query must declare bounded authorization requirements" }
-                            val grants = requirements.map { requirement ->
-                                check(requirement.scope == scope) { "Query returned cross-scope requirement" }
-                                requirement.binding?.let {
-                                    check(it.operationId == null && it.payloadDigest == digest) {
-                                        "Query authorization is not bound to normalized input"
-                                    }
-                                }
-                                when (val authorization = policy.authorize(principal, requirement)) {
-                                    is AuthorizationDecision.Allowed -> authorization.authorization
-                                    is AuthorizationDecision.Denied -> return@queryBody refused(ReadFailure.AUTHORIZATION_DENIED)
-                                }
+                            val ready = when (val result = prepareAuthorizedRead(principal, request, handler,
+                                normalized, digest, view, policy)) {
+                                is AuthorizedReadPreparation.Ready -> result
+                                AuthorizedReadPreparation.Denied -> return@queryBody refused(ReadFailure.AUTHORIZATION_DENIED)
+                                AuthorizedReadPreparation.CapacityExceeded -> error("Single-query requirement budget unavailable")
                             }
                             val now = clock.now()
                             requireEvidenceV1Time(now)
                             view.armLocalDisplaySupport()
-                            ReadReply.Data(prepared.project(grants, now), Revision(branch.revision), now)
+                            val projection = ready.prepared.project(ready.grants, now)
+                            if (changes != null) {
+                                val cursor = changeCursor(principal, branch, changes.profile, digest,
+                                    sha256(projection.bytes()), ready.grants)
+                                val refusal = validateChangeCursor(changes, cursor)
+                                if (refusal != null) {
+                                    changes.refusal = refusal
+                                    return@queryBody refused(ReadFailure.MALFORMED_REQUEST)
+                                }
+                                changes.cursor = cursor
+                                changes.unchanged = !changes.strictCut && changes.previous?.let {
+                                    sameChangeCut(it, cursor) && it.projectionDigest == cursor.projectionDigest
+                                } == true
+                            }
+                            ReadReply.Data(projection, Revision(branch.revision), now)
                         }
                         view.prepareNormalReturn()
                         view.finishNow()
@@ -992,6 +1523,8 @@ public class AtomicMasterStore internal constructor(
                                          interactiveLifetime: PhysicalInteractiveRequestLifetime? = null,
                                          rpcAudience: RoomLocalDisplayRpcAudience? = null): MutationReply {
         fun deferred(reason: DeferredReason): MutationReply {
+            if (reason == DeferredReason.PHYSICAL_RECORDING_HELD)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PHYSICAL_CLIENT_NATIVE_ACQUIRE, IllegalStateException())
             // Withdraw physical continuations immediately, before cleanup or endpoint delivery.
             // Endpoint supervision separately retires the actual database/service on uncertainty.
             if (reason == DeferredReason.STORAGE_UNCERTAIN) physicalService.deny()
@@ -1676,7 +2209,8 @@ public class AtomicMasterStore internal constructor(
 
     /**
      * Private original-Host check. Reuses installed typed preparation/current policy in the
-     * real writer, but never evaluates a proposal, projects private data or executes a command.
+     * real writer. Reads project and discard their current result so additional typed privacy
+     * refusals are enforced before delivery; commands never evaluate or execute a proposal.
      * SDK session revocation separately fences the interval after this loan returns.
      */
     internal suspend fun authorizeRpcBusiness(principal: AuthenticatedPrincipal?,
@@ -1687,12 +2221,19 @@ public class AtomicMasterStore internal constructor(
         // Decode untrusted request bodies before entering the writer. A malformed typed
         // request is denied; it must not retire unrelated endpoint/native business work.
         val profile = access.profile
+        fun refusedAccess(): Boolean {
+            if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_AUTHORIZATION, IllegalStateException())
+            return false
+        }
         if (profile == LocalMasterRpcWorkflowProfile.KITCHEN &&
             (rpcAudience == null || rpcAudience.access !== access)) return LocalMasterRpcAccessResult.DENIED
         val selectedNormalized = try {
             when (access) {
                 is LocalMasterRpcBusinessAccess.Read -> {
-                    if (profile == LocalMasterRpcWorkflowProfile.REPORTS &&
+                    if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                        !LocalMasterLanBusinessRpcKeysV1.accepts(access.request.query) ||
+                        profile == LocalMasterRpcWorkflowProfile.REPORTS &&
                         !LocalMasterReportRpcKeysV1.accepts(access.request.query) ||
                         profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS &&
                         !LocalMasterStockTransferRpcKeysV1.accepts(access.request.query) ||
@@ -1716,12 +2257,15 @@ public class AtomicMasterStore internal constructor(
                         !LocalMasterInvoiceMatchingRpcKeysV1.accepts(access.request.query)) return LocalMasterRpcAccessResult.DENIED
                     val handler = readHandlers[access.request.query] ?: return LocalMasterRpcAccessResult.DENIED
                     handler.normalize(access.request.payload).also {
-                        if (!handler.supportsRpcWorkflow(profile, it)) return LocalMasterRpcAccessResult.DENIED
+                        if (!handler.supportsRpcWorkflow(localMasterRpcHandlerProfile(profile, access.request.query, it, handler), it))
+                            return LocalMasterRpcAccessResult.DENIED
                     }
                 }
                 is LocalMasterRpcBusinessAccess.Execute -> {
                     if (access.request.actionApprovalId != null) return LocalMasterRpcAccessResult.DENIED
-                    if (profile == LocalMasterRpcWorkflowProfile.REPORTS &&
+                    if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                        !LocalMasterLanBusinessRpcKeysV1.accepts(access.request.command) ||
+                        profile == LocalMasterRpcWorkflowProfile.REPORTS &&
                         !LocalMasterReportRpcKeysV1.accepts(access.request.command) ||
                         profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS &&
                         !LocalMasterStockTransferRpcKeysV1.accepts(access.request.command) ||
@@ -1744,8 +2288,15 @@ public class AtomicMasterStore internal constructor(
                         profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING &&
                         !LocalMasterInvoiceMatchingRpcKeysV1.accepts(access.request.command)) return LocalMasterRpcAccessResult.DENIED
                     val handler = handlers[access.request.command] ?: return LocalMasterRpcAccessResult.DENIED
+                    if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                        handler !is LocalMasterRpcRetainedOriginalAccessProvider &&
+                        handler !is LocalMasterRpcRetainedResultSourceAccessProvider &&
+                        handler !is LocalMasterRpcRetainedResultAccessProvider) return LocalMasterRpcAccessResult.DENIED
                     handler.normalize(access.request.payload).also {
-                        if (!handler.supportsRpcWorkflow(profile, it)) return LocalMasterRpcAccessResult.DENIED
+                        if (!handler.supportsRpcWorkflow(localMasterRpcHandlerProfile(profile, access.request.command, it, handler), it))
+                            return LocalMasterRpcAccessResult.DENIED
+                        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS &&
+                            handler.physicalRecordingAction(it) != null) return LocalMasterRpcAccessResult.DENIED
                     }
                 }
                 is LocalMasterRpcBusinessAccess.Lookup -> null
@@ -1766,36 +2317,42 @@ public class AtomicMasterStore internal constructor(
                         val allowed = run checkAccess@ {
                             val provider = CurrentAuthorizationProvider { authorizationSource.current(it, view) }
                             val policy = AuthorizationPolicy(provider)
-                            if (policy.currentIdentityDenial(principal) != null) return@checkAccess false
-                            val branch = dao.branch(scope.storageKey()) ?: return@checkAccess false
+                            if (policy.currentIdentityDenial(principal) != null) return@checkAccess refusedAccess()
+                            val branch = dao.branch(scope.storageKey()) ?: return@checkAccess refusedAccess()
                             val observed = observe(branch, recoveryState(branch))
                             if (!branch.writable || observed.authority != authority ||
-                                runtimeVerifier.writer(observed) != RuntimeVerification.VERIFIED) return@checkAccess false
+                                runtimeVerifier.writer(observed) != RuntimeVerification.VERIFIED) return@checkAccess refusedAccess()
                             val requirements: List<AuthorizationRequirement> = when (access) {
                                 is LocalMasterRpcBusinessAccess.Read -> {
                                     val request = access.request
-                                    val handler = readHandlers[request.query] ?: return@checkAccess false
+                                    val handler = readHandlers[request.query] ?: return@checkAccess refusedAccess()
                                     val normalized = checkNotNull(selectedNormalized)
                                     val digest = queryDigest(scope, principal.actorId, request.query, normalized)
-                                    val prepared = handler.prepare(normalized, view,
-                                        ReadContext(scope, principal.actorId, request.query, digest))
-                                    prepared.requirements.toList().also { list ->
-                                        check(list.size in 1..256)
-                                        list.forEach { requirement ->
-                                            check(requirement.scope == scope)
-                                            requirement.binding?.let { check(it.operationId == null && it.payloadDigest == digest) }
-                                        }
+                                    val ready = when (val prepared = prepareAuthorizedRead(principal, request, handler,
+                                        normalized, digest, view, policy)) {
+                                        is AuthorizedReadPreparation.Ready -> prepared
+                                        AuthorizedReadPreparation.Denied -> return@checkAccess refusedAccess()
+                                        AuthorizedReadPreparation.CapacityExceeded -> error("Single-query requirement budget unavailable")
                                     }
+                                    val now = clock.now()
+                                    requireEvidenceV1Time(now)
+                                    view.armLocalDisplaySupport()
+                                    // Some dedicated owner selectors deliberately refuse ANY_OWNER
+                                    // grants in project(). Requirements alone cannot authorize an
+                                    // already encoded response after its current source has changed.
+                                    ready.prepared.project(ready.grants, now)
+                                    return@checkAccess true
                                 }
                                 is LocalMasterRpcBusinessAccess.Execute -> {
                                     val request = access.request
-                                    if (request.actionApprovalId != null) return@checkAccess false
-                                    val handler = handlers[request.command] ?: return@checkAccess false
+                                    if (request.actionApprovalId != null) return@checkAccess refusedAccess()
+                                    val handler = handlers[request.command] ?: return@checkAccess refusedAccess()
                                     val normalized = checkNotNull(selectedNormalized)
                                     val digest = semanticDigest(scope, principal.actorId, request.command, normalized)
                                     if (requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                            principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
-                                    val retained = if (profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && requireRecovery ||
+                                            principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
+                                    val retained = if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS ||
+                                        profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS && requireRecovery ||
                                         profile == LocalMasterRpcWorkflowProfile.KITCHEN ||
                                         profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS ||
                                         profile == LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS ||
@@ -1808,51 +2365,56 @@ public class AtomicMasterStore internal constructor(
                                     if (retained != null) {
                                         // A retained original uses its current typed disclosure rights;
                                         // the original mutation is never prepared again for disclosure.
-                                        if (profile == LocalMasterRpcWorkflowProfile.KITCHEN) {
+                                        if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) {
+                                            if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
+                                            lanBusinessRpcExecuteResultRequirements(retained, request.operationId,
+                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess refusedAccess()
+                                        } else if (profile == LocalMasterRpcWorkflowProfile.KITCHEN) {
                                             if (recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             kitchenRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             retailOrderRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS) {
                                             paymentCorrectionRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             customerReceiptRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             foodCheckRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, view, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, view, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             foodCashFinancialRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             foodTableAssignmentRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             invoiceCaptureRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else if (profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING) {
                                             if (!requireRecovery && recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope,
-                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                                principal.actorId, request.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
                                             invoiceMatchingRpcRetainedResultRequirements(retained, request.operationId,
-                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess false
+                                                principal.actorId, digest, view, request.command, normalized) ?: return@checkAccess refusedAccess()
                                         } else stockRpcRetainedResultRequirements(retained, request.operationId,
-                                            principal.actorId, digest, normalized) ?: return@checkAccess false
+                                            principal.actorId, digest, normalized) ?: return@checkAccess refusedAccess()
                                     } else {
                                         val prepared = handler.prepare(normalized, view,
                                             CommandContext(scope, principal.actorId, request.operationId, request.command, digest))
@@ -1866,15 +2428,22 @@ public class AtomicMasterStore internal constructor(
                                 is LocalMasterRpcBusinessAccess.Lookup -> {
                                     val identity = access.identity
                                     if (identity.branchId != scope.branchId || identity.originalActorId != principal.actorId ||
-                                        identity.semanticDigestVersion != 1) return@checkAccess false
+                                        identity.semanticDigestVersion != 1) return@checkAccess refusedAccess()
                                     if (recoveryPolicy(provider).authorizeWithCurrentGrant(principal, scope, identity.originalActorId,
-                                            identity.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess false
+                                            identity.operationId) !is ResultRecoveryDecision.Allowed) return@checkAccess refusedAccess()
+                                    if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) {
+                                        val original = view.originalForKernel(identity.operationId)
+                                            ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
+                                        val requirements = lanBusinessRpcRetainedResultRequirements(original, identity.operationId,
+                                            identity.originalActorId, PayloadDigest(identity.semanticSha256), view) ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
+                                    }
                                     if (profile == LocalMasterRpcWorkflowProfile.KITCHEN) {
                                         val original = view.originalForKernel(identity.operationId)
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = kitchenRpcRetainedResultRequirements(original, identity.operationId,
-                                            identity.originalActorId, PayloadDigest(identity.semanticSha256)) ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            identity.originalActorId, PayloadDigest(identity.semanticSha256)) ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.RETAIL_ORDERS) {
                                         // Both original storage profiles use the same authentic reader. A
@@ -1882,8 +2451,8 @@ public class AtomicMasterStore internal constructor(
                                         val original = view.originalForKernel(identity.operationId)
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = retailOrderRpcRetainedResultRequirements(original, identity.operationId,
-                                            identity.originalActorId, PayloadDigest(identity.semanticSha256)) ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            identity.originalActorId, PayloadDigest(identity.semanticSha256)) ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS) {
                                         // Disclosure uses the exact authenticated retained legacy original.
@@ -1892,8 +2461,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = paymentCorrectionRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256))
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS) {
                                         // Original recovery remains separate from the explicit RETURN_LOOKUP
@@ -1902,8 +2471,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = customerReceiptRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256), view)
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS) {
                                         // Both committed streamed and explicitly qualified scalar refusals
@@ -1912,8 +2481,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = foodCheckRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256), view)
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL) {
                                         // Financial recovery uses immutable original business/native sources;
@@ -1922,8 +2491,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = foodCashFinancialRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256), view)
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS) {
                                         // The exact immutable association original supplies disclosure sources;
@@ -1932,8 +2501,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = foodTableAssignmentRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256), view)
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE) {
                                         // A completed claim retains its exact canonical original. Today's
@@ -1942,8 +2511,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = invoiceCaptureRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256))
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING) {
                                         // Disclosure uses the immutable captured claim for its full monetary
@@ -1952,8 +2521,8 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val requirements = invoiceMatchingRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256), view)
-                                            ?: return@checkAccess false
-                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                                            ?: return@checkAccess refusedAccess()
+                                        return@checkAccess requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                                     }
                                     if (profile == LocalMasterRpcWorkflowProfile.STOCK_TRANSFERS) {
                                         // The stock command has a streamed original. The legacy-only reader
@@ -1962,7 +2531,7 @@ public class AtomicMasterStore internal constructor(
                                             ?: return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                         val resultRequirements = stockRpcRetainedResultRequirements(original,
                                             identity.operationId, identity.originalActorId, PayloadDigest(identity.semanticSha256))
-                                            ?: return@checkAccess false
+                                            ?: return@checkAccess refusedAccess()
                                         return@checkAccess resultRequirements.all {
                                             policy.authorize(principal, it) is AuthorizationDecision.Allowed
                                         }
@@ -1979,20 +2548,20 @@ public class AtomicMasterStore internal constructor(
                                                 ActionBinding(scope.branchId, Revision(0), PayloadDigest(identity.semanticSha256),
                                                     identity.operationId, "report.export.audit"))
                                             if (policy.authorize(principal, requirement) !is AuthorizationDecision.Allowed)
-                                                return@checkAccess false
+                                                return@checkAccess refusedAccess()
                                         }
                                         return@checkAccess runtimeVerifier.absentOperation(observed, identity) == RuntimeVerification.VERIFIED
                                     }
                                     if (retained.nativeOriginalProvenance != null || retained.scope != scope ||
                                         retained.originalActorId != identity.originalActorId ||
-                                        retained.semanticDigest.value != identity.semanticSha256) return@checkAccess false
+                                        retained.semanticDigest.value != identity.semanticSha256) return@checkAccess refusedAccess()
                                     if (profile == LocalMasterRpcWorkflowProfile.REPORTS &&
-                                        !LocalMasterReportRpcKeysV1.accepts(retained.command)) return@checkAccess false
-                                    val handler = handlers[retained.command] ?: return@checkAccess false
+                                        !LocalMasterReportRpcKeysV1.accepts(retained.command)) return@checkAccess refusedAccess()
+                                    val handler = handlers[retained.command] ?: return@checkAccess refusedAccess()
                                     val normalized = handler.normalize(retained.normalized)
                                     if (normalized != retained.normalized || !handler.supportsRpcWorkflow(profile, normalized) ||
                                         semanticDigest(scope, retained.originalActorId, retained.command, normalized) != retained.semanticDigest)
-                                        return@checkAccess false
+                                        return@checkAccess refusedAccess()
                                     if (profile == LocalMasterRpcWorkflowProfile.REPORTS) {
                                         // Auth-only preparation resolves the actual current export audit
                                         // resource with the original command identity. Never evaluate a
@@ -2012,7 +2581,7 @@ public class AtomicMasterStore internal constructor(
                                     }
                                 }
                             }
-                            requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }
+                            requirements.all { policy.authorize(principal, it) is AuthorizationDecision.Allowed }.also { if (!it) refusedAccess() }
                         }
                         view.prepareNormalReturn()
                         view.finishNow()
@@ -2033,10 +2602,104 @@ public class AtomicMasterStore internal constructor(
                 LocalMasterRpcAccessResult.DENIED else result
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_AUTHORIZATION, failure)
             physicalService.deny()
             LocalMasterRpcAccessResult.UNAVAILABLE
         }
+    }
+
+    /** Exact original identity plus an explicit typed disclosure provider; never fresh preparation. */
+    /** A changed body on an owned immutable ordinary original can return only the kernel's
+     * identity conflict. Authorize through that original's complete current typed disclosure
+     * proof, never the changed body's proposed effects. The immutable request still reaches
+     * the kernel, which checks the original identity before preparing any mutation.
+     * Foreign actors/keys, native imports and physical actions cannot use this branch. */
+    private suspend fun lanBusinessRpcExecuteResultRequirements(original: RetainedOriginalV2, operationId: OperationId,
+        actorId: DomainId, requestedDigest: PayloadDigest, view: CommandReadView, key: CommandKey,
+        requested: StoredBytes): List<AuthorizationRequirement>? {
+        lanBusinessRpcRetainedResultRequirements(original, operationId, actorId, requestedDigest, view, key, requested)
+            ?.let { return it }
+        val storedKey: CommandKey
+        val storedBody: StoredBytes
+        val storedDigest: PayloadDigest
+        when (original) {
+            is RetainedOriginalV2.Legacy -> with(original.evidence) {
+                if (nativeOriginalProvenance != null || originalActorId != actorId) return null
+                storedKey = command; storedBody = normalized; storedDigest = semanticDigest
+            }
+            is RetainedOriginalV2.Streamed -> with(original.evidence) {
+                if (identity.producer.originalActorId != actorId) return null
+                storedKey = identity.producer.command; storedBody = normalized; storedDigest = identity.producer.semanticDigest
+            }
+        }
+        if (storedKey != key || storedBody == requested || handlers[storedKey]?.physicalRecordingAction(storedBody) != null)
+            return null
+        return lanBusinessRpcRetainedResultRequirements(original, operationId, actorId, storedDigest, view, storedKey, storedBody)
+    }
+
+    private suspend fun lanBusinessRpcRetainedResultRequirements(original: RetainedOriginalV2, operationId: OperationId,
+        originalActorId: DomainId, digest: PayloadDigest, view: CommandReadView, expectedKey: CommandKey? = null,
+        expectedNormalized: StoredBytes? = null): List<AuthorizationRequirement>? {
+        fun unavailableRequirements(): List<AuthorizationRequirement>? {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_AUTHORIZATION, IllegalStateException())
+            return null
+        }
+        if (view.scope != scope) return unavailableRequirements()
+        val key: CommandKey
+        val body: StoredBytes
+        val streamed = original is RetainedOriginalV2.Streamed
+        when (original) {
+            is RetainedOriginalV2.Legacy -> with(original.evidence) {
+                if (nativeOriginalProvenance != null || scope != this@AtomicMasterStore.scope ||
+                    this.operationId != operationId || this.originalActorId != originalActorId || semanticDigest != digest) return unavailableRequirements()
+                key = command; body = normalized
+            }
+            is RetainedOriginalV2.Streamed -> with(original.evidence) {
+                val producer = identity.producer
+                if (identity.scope != scope || producer.operationId != operationId ||
+                    producer.originalActorId != originalActorId || producer.semanticDigest != digest) return unavailableRequirements()
+                key = producer.command; body = normalized
+            }
+        }
+        if (!LocalMasterLanBusinessRpcKeysV1.accepts(key) || expectedKey != null && key != expectedKey) return unavailableRequirements()
+        val handler = handlers[key] ?: return unavailableRequirements()
+        val streamingKey = key in StockStreamingCommandsV2.all
+        if ((handler is MasterStreamingCommandHandler) != streamingKey || streamed && !streamingKey) return unavailableRequirements()
+        if (!streamed && streamingKey) {
+            // A streamed proposal's actual scalar rejection is recorded in the legacy
+            // terminal format after its spool is discarded. It needs an explicit source
+            // proof; an ordinary request-only access provider cannot admit this exception.
+            val rejected = (original as? RetainedOriginalV2.Legacy)?.evidence ?: return unavailableRequirements()
+            if (rejected.committed || rejected.aggregateWrites.isNotEmpty() || rejected.claimChanges.isNotEmpty() ||
+                rejected.jobs.isNotEmpty() || handler !is LocalMasterRpcRetainedOriginalAccessProvider &&
+                handler !is LocalMasterRpcRetainedResultSourceAccessProvider) return unavailableRequirements()
+        }
+        val normalized = handler.normalize(body)
+        val handlerProfile = localMasterRpcHandlerProfile(LocalMasterRpcWorkflowProfile.LAN_BUSINESS, key, normalized, handler)
+        val physicalRecovery = (handler as? LocalMasterRpcPhysicalRetainedResultAccessProvider)
+            ?.supportsRpcPhysicalRetainedResult(handlerProfile, normalized) == true
+        if (normalized != body || expectedNormalized != null && normalized != expectedNormalized ||
+            (!physicalRecovery && !handler.supportsRpcWorkflow(handlerProfile, normalized)) ||
+            handler.physicalRecordingAction(normalized) != null && !physicalRecovery ||
+            semanticDigest(scope, originalActorId, key, normalized) != digest) return unavailableRequirements()
+        val context = CommandContext(scope, originalActorId, operationId, key, digest)
+        val requirements = when (handler) {
+            is LocalMasterRpcRetainedOriginalAccessProvider -> handler.rpcRetainedOriginalRequirements(
+                handlerProfile, normalized, original, view, context)?.toList() ?: return unavailableRequirements()
+            is LocalMasterRpcRetainedResultSourceAccessProvider -> handler.rpcRetainedResultRequirements(
+                handlerProfile, normalized, view, context)?.toList() ?: return unavailableRequirements()
+            is LocalMasterRpcRetainedResultAccessProvider -> handler.rpcRetainedResultRequirements(
+                handlerProfile, normalized, context).toList()
+            else -> return unavailableRequirements()
+        }
+        check(requirements.size in 1..256)
+        requirements.forEach { requirement ->
+            check(requirement.scope == scope)
+            val binding = checkNotNull(requirement.binding)
+            check(binding.operationId == operationId && binding.payloadDigest == digest)
+        }
+        return requirements
     }
 
     /** An original matching result needs current financial authority over its whole immutable claim.
@@ -2915,6 +3578,16 @@ internal class TransactionView private constructor(
         throw cancelled
     } catch (_: RoomCurrentLocalAuthorizationDenied) { deny() }
     catch (_: Exception) { unavailable() }
+
+    override suspend fun financialOriginalSources(operationId: OperationId): RuntimeHistoricalFinancialSources? =
+        tracedRead(PhysicalReadDependency.Retained(operationId)) {
+            writer?.historyFrame?.financialOriginalSources(this, operationId)
+        }
+
+    override suspend fun cashConfigurationOriginalSources(operationId: OperationId): RuntimeHistoricalCashConfigurationSources? =
+        tracedRead(PhysicalReadDependency.Retained(operationId)) {
+            writer?.historyFrame?.cashConfigurationOriginalSources(this, operationId)
+        }
 
     override suspend fun foodCheckRejectedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? =
         tracedRead(PhysicalReadDependency.Retained(operationId)) {

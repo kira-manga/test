@@ -83,6 +83,8 @@ internal class DesktopLocalProvisionerV2(
     private val issuance = AndroidLocalCompanyIssuanceGate()
     private val actions = ConcurrentHashMap<DomainId, SelfOwnedDesktopActionV2>()
     private val closed = AtomicBoolean(false)
+    /** The ONE policy issuer of this native lifetime; its actions are bound to this exact owner. */
+    private val policies = AtomicReference<SelfOwnedDesktopCompanyPolicyPublicationV2?>(null)
 
     override val companyAuthority: LocalCompanyAuthority get() = this
     override val issuesNativePreparationV2: Boolean get() = true
@@ -156,7 +158,7 @@ internal class DesktopLocalProvisionerV2(
     }
 
     fun closeNative() {
-        core.close(); issuance.deny(null)
+        core.close(); issuance.deny(null); policies.get()?.close()
         if (closed.compareAndSet(false, true)) registry.closeNative()
     }
 
@@ -197,12 +199,19 @@ internal class DesktopLocalProvisionerV2(
         } finally { installer.fill('\u0000'); head.fill('\u0000') }
     }
 
+    // Head-approved company purchasing-policy publication over the V2 company container (Android V1 semantics).
     override suspend fun preparePolicyPublication(proposal: LocalCompanyPolicyProposal): LocalCompanyAuthorityResult<LocalCompanyPolicyAction> =
-        unsupported()
+        companyRun { policyIssuer().preparePolicyPublication(proposal) }
     override suspend fun approvePolicyPublication(action: LocalCompanyPolicyAction, headLogin: String,
-        secret: CharArray): LocalCompanyAuthorityResult<LocalCompanyPolicyPublication> { secret.fill('\u0000'); return unsupported() }
+        secret: CharArray): LocalCompanyAuthorityResult<LocalCompanyPolicyPublication> {
+        val owned = secret.copyOf()
+        try {
+            secret.fill('\u0000')
+            return companyRun { policyIssuer().approvePolicyPublication(action, headLogin, owned) }
+        } finally { owned.fill('\u0000') }
+    }
     override suspend fun recoverPolicyPublication(originalActionId: DomainId): LocalCompanyAuthorityResult<LocalCompanyPolicyPublication> =
-        unsupported()
+        companyRun { policyIssuer().recoverPolicyPublication(originalActionId) }
     // Original installation approval belongs to the installation owner's company issuer, not this provisioner.
     override suspend fun prepareOriginalInstallationDefinition(proposal: OriginalInstallationProposal):
         LocalCompanyAuthorityResult<LocalCompanyInstallationAction> = unsupported()
@@ -285,6 +294,11 @@ internal class DesktopLocalProvisionerV2(
 
     private fun nativeAction(action: LocalProvisionerPendingAction, kind: LocalProvisionerActionKind): SelfOwnedDesktopActionV2? =
         actions[action.originalId]?.takeIf { action.owner === this && action.kind == kind }
+
+    private fun policyIssuer(): SelfOwnedDesktopCompanyPolicyPublicationV2 = policies.get()
+        ?: SelfOwnedDesktopCompanyPolicyPublicationV2(environment, registry, keys, work, issuance).also {
+            if (!policies.compareAndSet(null, it)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        }
 
     private fun installationView() = SelfOwnedDesktopCompanyInstallationV2(environment, registry, keys, work, null, issuance)
 

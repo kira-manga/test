@@ -16,7 +16,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 
-internal enum class ClientJournalKind { CREDENTIALS, INTENTS, ACTOR_ALLOCATIONS }
+internal enum class ClientJournalKind { CREDENTIALS, INTENTS, ACTOR_ALLOCATIONS, READ_VIEWS_V1 }
 internal sealed interface ClientJournalOutcome<out T> {
     class Value<T>(val value: T) : ClientJournalOutcome<T>
     data object Unavailable : ClientJournalOutcome<Nothing>
@@ -73,6 +73,10 @@ internal class ClientJournalProcessLease private constructor(private val journal
  * Native-close uncertainty leaves the close result exceptional and exclusion retained.
  */
 internal class ClientJournalWork(private val lease: ClientJournalProcessLease, private val process: ClientJournalProcess) {
+    /** Same genuine process facts, with an independent retained native resource lifetime. */
+    fun derivedReadViewWork(derivedLease: ClientJournalProcessLease): ClientJournalWork = ClientJournalWork(derivedLease, process)
+
+    fun hasCurrentSuccessfulOwner(): Boolean = successfulOwner.get()?.let(::isCurrentOwner) == true
     private val gate = Any()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val lastElapsed = AtomicLong(process.elapsedMillis())

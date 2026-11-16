@@ -84,6 +84,16 @@ public interface CommandReadView {
      * Null is unavailable, never audit-time or client-time fallback. Current production
      * sources have no bound serial-time qualification and return null. */
     public suspend fun qualifiedSerialRegistrationTime(): QualifiedSerialRegistrationTime? = null
+    /** Closed financial original sources from this actual unmutated native writer loan.
+     * The complete authenticated original tail pairs actual observed BEFORE rows with their
+     * strictly earlier immutable writes. Captured requirements and pairings remain DATA:
+     * typed business qualification and current disclosure authority are separately mandatory.
+     * Null means unavailable, never an empty cut or permission to use current-row substitutes. */
+    public suspend fun financialOriginalSources(operationId: OperationId): RuntimeHistoricalFinancialSources? = null
+    /** Closed ordinary cash/configuration ancestor DATA on the same actual native writer.
+     * This separately selects finite installed ordinary subtypes; it never changes the
+     * financial selector or supplies a business pass, current view, grant or empty cut. */
+    public suspend fun cashConfigurationOriginalSources(operationId: OperationId): RuntimeHistoricalCashConfigurationSources? = null
     /** CLOSED FOOD scalar-refusal sources from the actual native owner's complete original
      * parent/tail join. Original capture and BEFORE pairing are inert DATA, not current rights.
      * Null is unavailable (including incompatible originals), never an invented empty cut. */

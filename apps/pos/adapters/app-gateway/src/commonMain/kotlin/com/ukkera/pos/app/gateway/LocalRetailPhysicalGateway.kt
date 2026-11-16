@@ -41,14 +41,25 @@ internal fun interface LocalRetailOriginalCredentialSource { suspend fun acquire
  * here from typed selectors and current reads. No caller JSON, original fact body, instruction
  * factory, principal, native receipt, allocation assertion or decoded review is an input port.
  */
-internal class LocalEndpointRetailPhysicalGateway(
-    private val binding: LocalRetailPhysicalBinding,
+internal class LocalEndpointRetailPhysicalGateway private constructor(
+    private val endpoint: LocalMasterClient,
+    private val binding: LocalRetailPhysicalBinding?,
+    private val remote: LocalRemoteRetailPhysicalActor?,
     private val journal: LocalClientIntentJournal,
     private val credentials: LocalWorkflowCredentialSource,
     private val originals: LocalRetailOriginalCredentialSource,
     private val installed: LocalWorkflowInstallation,
 ) : LocalRetailPhysicalGateway {
-    private val endpoint = binding.endpoint
+    internal constructor(binding: LocalRetailPhysicalBinding, journal: LocalClientIntentJournal,
+        credentials: LocalWorkflowCredentialSource, originals: LocalRetailOriginalCredentialSource,
+        installed: LocalWorkflowInstallation) : this(binding.endpoint, binding, null, journal, credentials, originals, installed)
+
+    internal constructor(endpoint: LocalMasterClient, remote: LocalRemoteRetailPhysicalActor,
+        journal: LocalClientIntentJournal, credentials: LocalWorkflowCredentialSource,
+        originals: LocalRetailOriginalCredentialSource, installed: LocalWorkflowInstallation) :
+        this(endpoint, null, remote, journal, credentials, originals, installed) {
+        require(remote.journal === journal)
+    }
     private var preparation: Preparation? = null // One bounded ephemeral handle, never durable custody.
     private val instruction = MutableStateFlow<Instruction?>(null)
 
@@ -235,12 +246,21 @@ internal class LocalEndpointRetailPhysicalGateway(
             when (request) {
                 is LocalRetailPhysicalRequest.Resolve -> request.observation.requireNonSupplierObservation()
                 is LocalRetailPhysicalRequest.FoodRefundResolve -> request.observation.requireNonSupplierObservation()
+                is LocalRetailPhysicalRequest.FoodRefundSupervisorResolve -> request.observation.requireNonSupplierObservation()
                 else -> Unit
             }
             val prepared = when (request) {
                 is LocalRetailPhysicalRequest.SupplierCash -> supplierCash(access, request)
                 is LocalRetailPhysicalRequest.SupplierCashApply -> supplierCashApply(access, request)
                 is LocalRetailPhysicalRequest.SupplierCashResolve -> supplierCashResolve(access, request)
+                is LocalRetailPhysicalRequest.FoodRefundSupervisorReview -> financialSupervisorReview(access,
+                    request.originalRecordingOperationId, foodRefund = true)
+                is LocalRetailPhysicalRequest.FoodRefundSupervisorApply -> foodRefundSupervisorApply(access, request)
+                is LocalRetailPhysicalRequest.FoodRefundSupervisorResolve -> foodRefundSupervisorResolve(access, request)
+                is LocalRetailPhysicalRequest.SupplierSupervisorReview -> financialSupervisorReview(access,
+                    request.originalRecordingOperationId, foodRefund = false)
+                is LocalRetailPhysicalRequest.SupplierSupervisorApply -> supplierSupervisorApply(access, request)
+                is LocalRetailPhysicalRequest.SupplierSupervisorResolve -> supplierSupervisorResolve(access, request)
                 is LocalRetailPhysicalRequest.BeginCollection -> begin(access, request)
                 is LocalRetailPhysicalRequest.Payment -> if (request.subject == LocalPaymentSubject.FOOD)
                     foodPayment(access, request) else payment(access, request)
@@ -263,7 +283,7 @@ internal class LocalEndpointRetailPhysicalGateway(
             // Only exact immutable non-Start continuations may coexist with outstanding original work.
             if (entry.localAction in physicalStartActions || entry.localAction == LocalAction.RETAIL_COLLECTION_BEGIN) {
                 if (pending.isNotEmpty()) throw GatewayFailure(LocalServiceProblem.RETRY_LATER)
-            } else if (entry.localAction !in setOf(LocalAction.RETAIL_SUPERVISOR_REVIEW, LocalAction.FOOD_SUPERVISOR_REVIEW)) {
+            } else if (entry.localAction !in setOf(LocalAction.RETAIL_SUPERVISOR_REVIEW, LocalAction.FOOD_SUPERVISOR_REVIEW) + financialSupervisorReviewActions) {
                 val same = pending.singleOrNull { it.localAction == entry.localAction && it.semanticSha256 == entry.semanticSha256 }
                 if (same != null) return@withAccess LocalRetailPhysicalReply.Staged(physicalSaved(same))
             }
@@ -310,6 +330,8 @@ internal class LocalEndpointRetailPhysicalGateway(
 
     /** Exactly one new invocation after a durable STAGED -> DISPATCH_UNRESOLVED transition. */
     override suspend fun start(operationId: OperationId, originalEntry: LocalRetailPhysicalLifetime): LocalRetailPhysicalReply {
+        if (remote != null) return startRemote(operationId, originalEntry, remote)
+        val binding = checkNotNull(binding)
         var captured: LocalRetailOriginalCredential? = null
         var lifetime: PhysicalInteractiveRequestLifetime? = null
         var entryAttachment: LocalRetailPhysicalLifetime.Attachment? = null
@@ -333,7 +355,7 @@ internal class LocalEndpointRetailPhysicalGateway(
                     if (instruction.value?.deliverable() == true) throw GatewayFailure(LocalServiceProblem.RETRY_LATER)
                     val request = entry.request()
                     if (!installed.has(request.command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
-                    val physical = endpoint.physicalActions ?: throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
+                    val physical = binding.endpoint.physicalActions ?: throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
                     val actual = physical.newRequestLifetime()
                     lifetime = actual
                     entryAttachment = originalEntry.attach(LocalRetailPhysicalDenial { actual.deny() })
@@ -361,7 +383,7 @@ internal class LocalEndpointRetailPhysicalGateway(
                                 if (native != null) {
                                     try {
                                         val display = instructionDisplay(entry, recorded, native.projection.canonicalRequirement)
-                                        val value = Instruction(native, actual, originalEntry, original.epoch,
+                                        val value = Instruction(LocalNativeInstruction(native), actual, originalEntry, original.epoch,
                                             checkNotNull(entryAttachment), checkNotNull(sessionAttachment),
                                             display, entry.localAction)
                                         candidate = value
@@ -372,7 +394,7 @@ internal class LocalEndpointRetailPhysicalGateway(
                         } else offer?.deny()
                         // SQL Start already committed; a failed client receipt cannot turn it into
                         // an absent/undispatched operation. Its old DISPATCH marker remains durable.
-                        journal.remember(operationId, StoredKernelResultV1.from(recorded))
+                        remember(operationId, StoredKernelResultV1.from(recorded))
                         access.checkCurrent()
                         val delivery = candidate
                         if (delivery != null && delivery.deliverable()) {
@@ -401,6 +423,93 @@ internal class LocalEndpointRetailPhysicalGateway(
         }
     }
 
+    /** The distributed path consumes the SAME durable client intent exactly once. Its
+     * actual native owner starts no network call until both original UI epochs are attached. */
+    private suspend fun startRemote(operationId: OperationId, originalEntry: LocalRetailPhysicalLifetime,
+        physical: LocalRemoteRetailPhysicalActor): LocalRetailPhysicalReply {
+        var captured: LocalRetailOriginalCredential? = null
+        var operation: DistributedPhysicalClientOperation? = null
+        var entryAttachment: LocalRetailPhysicalLifetime.Attachment? = null
+        var sessionAttachment: LocalRetailPhysicalLifetime.Attachment? = null
+        var candidate: Instruction? = null
+        var returned = false
+        try {
+            currentCoroutineContext().ensureActive()
+            if (originalEntry.denied || !physical.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+            val original = originals.acquire() ?: throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+            captured = original
+            val reply = journal.requests.withLock {
+                withLease(original.lease) { access ->
+                    if (originalEntry.denied || original.epoch.denied || !physical.isCurrent())
+                        throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                    val entry = required(journal.find(operationId)) ?: unavailable()
+                    requirePhysicalEntry(entry)
+                    if (entry.localAction !in physicalStartActions) invalid()
+                    if (entry.localPhase != LocalPendingPhase.STAGED || entry.recorded != null || entry.acknowledged)
+                        return@withLease recoverEntry(access, entry)
+                    if (instruction.value?.deliverable() == true) throw GatewayFailure(LocalServiceProblem.RETRY_LATER)
+                    val request = entry.request()
+                    if (!installed.has(request.command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
+                    val owner = physical.native ?: throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
+                    // Durable no-rearm marker precedes Begin. Unknown/lost Begin is recovery-only.
+                    if (journal.markDispatched(operationId) != JournalWrite.DURABLE)
+                        throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
+                    access.checkCurrent()
+                    val actual = physical.begin(request) ?: throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
+                    operation = actual
+                    entryAttachment = originalEntry.attach(LocalRetailPhysicalDenial { actual.deny() })
+                    sessionAttachment = original.epoch.attach(LocalRetailPhysicalDenial { actual.deny() })
+                    if (entryAttachment == null || sessionAttachment == null || !physical.isCurrent()) {
+                        actual.deny(); throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                    }
+                    var phase = owner.phase(actual)
+                    for (poll in 0 until 32) {
+                        if (phase !in setOf(DistributedPhysicalClientPhase.REQUESTED, DistributedPhysicalClientPhase.RESERVED)) break
+                        phase = owner.advance(actual, access.lease.credentials)
+                        if (!physical.isCurrent() || originalEntry.denied || original.epoch.denied) {
+                            actual.deny(); throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                        }
+                    }
+                    val native = if (phase == DistributedPhysicalClientPhase.START_RETAINED)
+                        owner.publish(actual, access.lease.credentials) else null
+                    val recorded = owner.startResult(actual)
+                    if (recorded != null && matches(entry, recorded)) {
+                        val progress = physicalRecordedProgress(entry, recorded)
+                        if (native != null && recorded.committed && !recorded.replayed && native.current()) {
+                            try {
+                                val display = instructionDisplay(entry, recorded, native.requirement.canonicalBytes)
+                                val value = Instruction(RemoteNativeInstruction(native), null, originalEntry, original.epoch,
+                                    checkNotNull(entryAttachment), checkNotNull(sessionAttachment), display, entry.localAction)
+                                candidate = value
+                                if (!instruction.compareAndSet(null, value)) { value.deny(); unavailable() }
+                            } catch (failure: Exception) { native.deny(); throw failure }
+                        } else native?.deny()
+                        remember(operationId, StoredKernelResultV1.from(recorded))
+                        access.checkCurrent()
+                        candidate?.takeIf { it.deliverable() }?.let { LocalRetailPhysicalReply.Instruction(it) }
+                            ?: LocalRetailPhysicalReply.Progress(progress)
+                    } else {
+                        native?.deny()
+                        // A missing response never changes DISPATCH_UNRESOLVED into STAGED.
+                        LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.STORAGE_UNCERTAIN, operationId)
+                    }
+                }
+            }
+            if (reply is LocalRetailPhysicalReply.Instruction) {
+                if (reply.value !== candidate || !reply.value.deliverable())
+                    throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                returned = true
+            }
+            return reply
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: GatewayFailure) { return LocalRetailPhysicalReply.Unavailable(failure.problem, operationId) }
+        catch (_: Exception) { return LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.UNAVAILABLE, operationId) }
+        finally {
+            if (!returned) { candidate?.deny(); operation?.deny(); entryAttachment?.close(); sessionAttachment?.close() }
+            captured?.lease?.destroy()
+        }
+    }
+
     /** SQL accounting/review or authorized native linked retention; NEVER a physical-action Start. */
     override suspend fun continueSql(operationId: OperationId): LocalRetailPhysicalReply = guarded(operationId) {
         withAccess { access ->
@@ -414,9 +523,41 @@ internal class LocalEndpointRetailPhysicalGateway(
                     if (!installed.has(entry.request().command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
                     if (journal.markDispatched(operationId) != JournalWrite.DURABLE) throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
                     access.checkCurrent()
-                    when (val result = endpoint.execute(access.lease.credentials, entry.request())) {
+                    if (remote != null && entry.localAction in setOf(LocalAction.RETAIL_PAYMENT_RESOLUTION,
+                            LocalAction.RETAIL_REFUND_RESOLUTION, LocalAction.FOOD_PAYMENT_RESOLUTION,
+                            LocalAction.FOOD_REFUND_RESOLUTION, LocalAction.SUPPLIER_CASH_RESOLUTION)) {
+                        val actual = remote.beginResolution(entry.request()) ?: run {
+                            reportLocalRetailPhysicalFailure(LocalRetailPhysicalFailureStage.REMOTE_RESOLUTION_SELECTION_UNAVAILABLE, null, null)
+                            throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
+                        }
+                        var stopped = false
+                        for (step in 0 until 32) {
+                            access.checkCurrent()
+                            if (!remote.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
+                            val phase = actual.advance(access.lease.credentials)
+                            val result = actual.result()
+                            if (result != null) {
+                                val reply = recorded(access, entry, result)
+                                actual.retire()
+                                return@withAccess reply
+                            }
+                            if (phase == null || phase in setOf(DistributedPhysicalClientPhase.HELD, DistributedPhysicalClientPhase.UNCERTAIN)) {
+                                stopped = true
+                                reportLocalRetailPhysicalFailure(when (phase) {
+                                    DistributedPhysicalClientPhase.HELD -> LocalRetailPhysicalFailureStage.REMOTE_RESOLUTION_HELD
+                                    DistributedPhysicalClientPhase.UNCERTAIN -> LocalRetailPhysicalFailureStage.REMOTE_RESOLUTION_UNCERTAIN
+                                    else -> LocalRetailPhysicalFailureStage.REMOTE_RESOLUTION_EXCHANGE_UNAVAILABLE
+                                }, null, null)
+                                break
+                            }
+                        }
+                        if (!stopped) reportLocalRetailPhysicalFailure(
+                            LocalRetailPhysicalFailureStage.REMOTE_RESOLUTION_STAGE_BUDGET_EXHAUSTED, null, null)
+                        return@withAccess LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.STORAGE_UNCERTAIN, operationId)
+                    }
+                    when (val result = access.execute(entry, entry.request())) {
                         is MutationReply.Recorded -> {
-                            if (matches(entry, result)) journal.remember(operationId, StoredKernelResultV1.from(result))
+                            if (matches(entry, result)) remember(operationId, StoredKernelResultV1.from(result))
                             access.checkCurrent()
                             recorded(access, entry, result)
                         }
@@ -564,7 +705,7 @@ internal class LocalEndpointRetailPhysicalGateway(
                     physicalRecordedProgress(entry, lookup.result)
                     val known = StoredKernelResultV1.from(lookup.result)
                     if (entry.recorded != null && entry.recorded != known) unavailable()
-                    journal.remember(entry.operationId, known)
+                    remember(entry.operationId, known)
                     saved += physicalSaved(entry.copy(phase = LocalPendingPhase.RECORDED_UNACKNOWLEDGED.name, recorded = known))
                 }
                 is LookupReply.AbsentAtCurrentWriter -> {
@@ -639,7 +780,13 @@ internal class LocalEndpointRetailPhysicalGateway(
             val progress = recorded(access, entry, lookup.result)
             // A Start result itself is never a prompt. Use actual SQL original/resolution reads
             // when present, without reaching native files, waiting for intake, or rearming.
-            if (lookup.result.committed && entry.localAction in supplierPhysicalActions) {
+            if (entry.localAction in financialSupervisorActions || lookup.result.committed &&
+                (entry.localAction == LocalAction.FOOD_REFUND_RESOLUTION ||
+                    entry.localAction == LocalAction.SUPPLIER_CASH_RESOLUTION && !hasOwnSupplierStart(entry))) {
+                // Exact source/current-authorized result recovery belongs to the resolver.
+                // Rich original-owner details still require a separately audited Review.
+                progress
+            } else if (lookup.result.committed && entry.localAction in supplierPhysicalActions) {
                 recoverSupplierResult(access, entry, lookup.result)
             } else if (lookup.result.committed && entry.localAction in foodRefundActions) {
                 recoverFoodRefundResult(access, entry, lookup.result, progress)
@@ -665,13 +812,11 @@ internal class LocalEndpointRetailPhysicalGateway(
             } else if (entry.localAction == LocalAction.FOOD_PAYMENT_RESOLUTION && lookup.result.committed) {
                 // A lost native-retention/SQL answer is recovered under the original fixed ID,
                 // never turned into another resolver input or a new physical instruction.
-                val body = LocalFoodPaymentCodec.decode(entry.request().payload) as? LocalFoodPaymentRequest.RecordResolution ?: unavailable()
-                val latest = foodResolutionFact(access, body.target.resolutionOperationId)
-                if (latest == null) progress else {
-                    require(latest.summary.target == body.target && latest.summary.originalBodyDigest == body.originalBodyDigest &&
-                        latest.summary.recordingActorId == entry.owner.actorId && latest.outcome == body.outcome)
-                    LocalRetailPhysicalReply.Progress(foodResolutionFactProgress(latest, entry.operationId))
-                }
+                // The current resolver owns this exact retained result, not the original
+                // cashier's private FOOD read lane. Current/source-backed lookup above
+                // proves the immutable resolution. Rich foreign projections still require
+                // the separate audited supervisor Review; never borrow private-owner access.
+                progress
             } else {
                 val started = if (lookup.result.committed && entry.localAction in retailStartActions)
                     LocalFinancialResultCodecV3.decode(lookup.result.result) as? LocalFinancialResultV3.AttemptStarted else null
@@ -802,17 +947,33 @@ internal class LocalEndpointRetailPhysicalGateway(
         if (!matches(entry, reply)) unavailable()
         val retained = StoredKernelResultV1.from(reply)
         if (entry.recorded != null && entry.recorded != retained) unavailable()
-        journal.remember(entry.operationId, retained)
+        val progress = physicalRecordedProgress(entry, reply)
+        remember(entry.operationId, retained)
         access.checkCurrent()
-        return LocalRetailPhysicalReply.Progress(physicalRecordedProgress(entry, reply))
+        return LocalRetailPhysicalReply.Progress(progress)
+    }
+
+    private suspend fun remember(operationId: OperationId, result: StoredKernelResultV1) {
+        if (journal.remember(operationId, result) != JournalWrite.DURABLE)
+            throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
+    }
+
+    /** Actual official acceptance callback: validate and retain before transport Receipt. */
+    private suspend fun retainForTransportReceipt(access: GatewayAccess, entry: StoredClientIntentV1,
+        reply: MutationReply.Recorded) {
+        access.checkCurrent()
+        recorded(access, entry, reply)
     }
 
     private fun matches(entry: StoredClientIntentV1, reply: MutationReply.Recorded): Boolean =
         reply.operationId == entry.operationId && reply.originalActorId == journal.owner.actorId
 
-    private fun mutationUnavailable(id: OperationId, result: MutationReply): LocalRetailPhysicalReply =
-        LocalRetailPhysicalReply.Unavailable(if (result is MutationReply.Deferred && result.operationId == id)
+    private fun mutationUnavailable(id: OperationId, result: MutationReply): LocalRetailPhysicalReply {
+        reportLocalRetailPhysicalFailure(if (result is MutationReply.Deferred) LocalRetailPhysicalFailureStage.MUTATION_DEFERRED
+            else LocalRetailPhysicalFailureStage.MUTATION_UNEXPECTED, (result as? MutationReply.Deferred)?.reason, null)
+        return LocalRetailPhysicalReply.Unavailable(if (result is MutationReply.Deferred && result.operationId == id)
             problem(result.reason) else LocalServiceProblem.UNAVAILABLE, id)
+    }
 
     private suspend fun collection(access: GatewayAccess, id: DomainId): LocalCollectionViewV1 {
         val read = LocalCollectionReadCodec.decode(access.read(LocalCollectionReadCodec.request(LocalCollectionQueryV1.Collection(id))).payload)
@@ -1016,6 +1177,20 @@ internal class LocalEndpointRetailPhysicalGateway(
                     "Retain actual evidence about the OLD payout only, under the actual original owner and current resolve grant. Never pay again or replace the fixed ID.",
                     "احفظ الدليل الفعلي عن الدفعة السابقة فقط، تحت المالك الأصلي الحقيقي وصلاحية التسوية الحالية. لا تدفع مجددًا ولا تستبدل المعرف الثابت."))) +
                 supplierObservationSummary(selected.observation))
+    }
+
+    /** Local journal DATA selects an own-source read, never grants that read. A different
+     * resolver has no matching Start here and keeps the exact minimal retained result;
+     * rich foreign details still require the separate audited Review. */
+    private suspend fun hasOwnSupplierStart(entry: StoredClientIntentV1): Boolean {
+        requireSupplierEntry(entry)
+        val resolution = LocalSupplierCashCodec.decode(entry.request().payload) as? LocalSupplierCashRequest.RecordResolution
+            ?: return false
+        val started = required(journal.find(resolution.target.intentOperationId)) ?: return false
+        requireSupplierEntry(started)
+        if (started.owner != journal.owner || started.localAction != LocalAction.SUPPLIER_CASH_START) return false
+        val body = LocalSupplierCashCodec.decode(started.request().payload) as? LocalSupplierCashRequest.StartCash ?: return false
+        return body.target(started.operationId) == resolution.target
     }
 
     private suspend fun recoverSupplierResult(access: GatewayAccess, entry: StoredClientIntentV1,
@@ -1265,6 +1440,81 @@ internal class LocalEndpointRetailPhysicalGateway(
             else -> unavailable()
         }
 
+    private fun financialSupervisorReview(access: GatewayAccess, originalId: OperationId, foodRefund: Boolean): Preparation {
+        val request = if (foodRefund) LocalFoodRefundSupervisorCodec.command(OperationId.random(), LocalFoodRefundSupervisorRequest.Review(originalId))
+            else LocalSupplierCashSupervisorCodec.command(OperationId.random(), LocalSupplierCashSupervisorRequest.Review(originalId))
+        return prepared(request, LocalRetailPhysicalKind.SUPERVISOR_REVIEW,
+            text("Request scoped audited supervisor review", "طلب مراجعة مشرف محددة ومدققة"), listOf(
+                recordValue(text("Original observation", "الإفادة الأصلية"), literal(originalId.value)),
+                recordValue(text("Current reviewer", "المراجع الحالي"), literal(access.view.actorId.value)),
+                recordValue(text("Disclosure", "الإفصاح"), text("Current authority and a durable audit precede original details.",
+                    "يسبق التصريح الحالي والتدقيق الدائم كشف التفاصيل الأصلية."))))
+    }
+
+    private suspend fun financialAuditedResult(access: GatewayAccess, id: OperationId, action: LocalAction): Pair<StoredClientIntentV1, MutationReply.Recorded> {
+        val entry = required(journal.find(id)) ?: unavailable()
+        requirePhysicalEntry(entry)
+        if (entry.localAction != action || action !in financialSupervisorReviewActions) invalid()
+        val result = (access.lookup(entry) as? LookupReply.Found)?.result ?: unavailable()
+        val known = StoredKernelResultV1.from(result)
+        if (entry.recorded != null && entry.recorded != known) unavailable()
+        remember(id, known)
+        return entry to result
+    }
+
+    private suspend fun foodRefundSupervisorApply(access: GatewayAccess, selected: LocalRetailPhysicalRequest.FoodRefundSupervisorApply): Preparation {
+        val (entry, result) = financialAuditedResult(access, selected.reviewOperationId, LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW)
+        val review = foodRefundAuditedReview(entry, result)
+        val phase = selected.phase.foodRefundFactPhase()
+        if (phase == LocalFoodRefundFactPhase.RESOLUTION && review.resolution == null) unavailable()
+        return prepared(LocalFoodRefundSupervisorCodec.command(OperationId.random(), LocalFoodRefundSupervisorRequest.Apply(
+            foodRefundFactOperation(review.original.target, phase), phase)), LocalRetailPhysicalKind.APPLICATION,
+            text("Apply recorded FOOD payout with supervision", "تطبيق رد الطعام المسجل بإشراف"), financialSupervisorSummary(
+                selected.reviewOperationId, review.original.originalActorId, access, review.original.amount))
+    }
+
+    private suspend fun foodRefundSupervisorResolve(access: GatewayAccess, selected: LocalRetailPhysicalRequest.FoodRefundSupervisorResolve): Preparation {
+        val (entry, result) = financialAuditedResult(access, selected.reviewOperationId, LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW)
+        val review = foodRefundAuditedReview(entry, result)
+        if (review.resolution != null || review.originalOutcome !is LocalFoodRefundOutcome.Unknown || selected.observation is LocalRetailObservation.Unknown) invalid()
+        val original = review.original
+        return prepared(LocalFoodRefundCodec.command(original.target.resolutionOperationId, LocalFoodRefundRequest.RecordResolution(
+            original.target, original.bodyDigest, access.view.actorId, selected.observation.foodRefundObservation())), LocalRetailPhysicalKind.RESOLUTION,
+            text("Retain one linked FOOD payout resolution", "حفظ تسوية واحدة مرتبطة لرد الطعام"), financialSupervisorSummary(
+                selected.reviewOperationId, original.originalActorId, access, original.amount) + retailObservationSummary(selected.observation))
+    }
+
+    private suspend fun supplierSupervisorApply(access: GatewayAccess, selected: LocalRetailPhysicalRequest.SupplierSupervisorApply): Preparation {
+        val (entry, result) = financialAuditedResult(access, selected.reviewOperationId, LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW)
+        val review = supplierAuditedReview(entry, result)
+        val phase = if (selected.phase == LocalRetailObservationPhase.ORIGINAL) LocalSupplierCashPhase.ORIGINAL else LocalSupplierCashPhase.RESOLUTION
+        if (phase == LocalSupplierCashPhase.RESOLUTION && review.resolution == null) unavailable()
+        return prepared(LocalSupplierCashSupervisorCodec.command(OperationId.random(), LocalSupplierCashSupervisorRequest.Apply(
+            review.original.target.factOperation(phase), phase)), LocalRetailPhysicalKind.APPLICATION,
+            text("Apply recorded supplier payout with supervision", "تطبيق صرف المورد المسجل بإشراف"), financialSupervisorSummary(
+                selected.reviewOperationId, review.original.originalActorId, access, review.original.amount))
+    }
+
+    private suspend fun supplierSupervisorResolve(access: GatewayAccess, selected: LocalRetailPhysicalRequest.SupplierSupervisorResolve): Preparation {
+        val (entry, result) = financialAuditedResult(access, selected.reviewOperationId, LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW)
+        val review = supplierAuditedReview(entry, result)
+        if (review.resolution != null || review.originalOutcome !is LocalSupplierCashOutcome.Unknown ||
+            review.original.appliedAction != LocalSupplierCashAction.UNKNOWN || selected.observation is LocalRetailObservation.Unknown) invalid()
+        val original = review.original
+        return prepared(LocalSupplierCashCodec.command(original.target.resolutionOperationId, LocalSupplierCashRequest.RecordResolution(
+            original.target, original.bodyDigest, access.view.actorId, selected.observation.supplierCashObservation())), LocalRetailPhysicalKind.RESOLUTION,
+            text("Retain one linked supplier payout resolution", "حفظ تسوية واحدة مرتبطة لصرف المورد"), financialSupervisorSummary(
+                selected.reviewOperationId, original.originalActorId, access, original.amount) + supplierObservationSummary(selected.observation))
+    }
+
+    private fun financialSupervisorSummary(review: OperationId, owner: DomainId, access: GatewayAccess, amount: Money): List<LocalRecordValue> = listOf(
+        recordValue(text("Audited review", "المراجعة المدققة"), literal(review.value)),
+        recordValue(text("Original cash custodian", "موظف العهدة النقدية الأصلي"), literal(owner.value)),
+        recordValue(text("Current resolver", "موظف التسوية الحالي"), literal(access.view.actorId.value)),
+        recordValue(text("Amount", "المبلغ"), moneyText(amount)),
+        recordValue(text("Existing observation only", "الإفادة الموجودة فقط"), text("Preserve original recording custody and IDs. No new payout is instructed.",
+            "احتفظ بحيازة التسجيل ومعرفاته الأصلية. لا تُطلب دفعة جديدة.")))
+
     private fun foodSupervisorReview(access: GatewayAccess, selected: LocalRetailPhysicalRequest.SupervisorReview): Preparation {
         require(selected.subject == LocalPaymentSubject.FOOD)
         // No foreign own/private read precedes the separate audited supervisor command.
@@ -1285,7 +1535,7 @@ internal class LocalEndpointRetailPhysicalGateway(
         val actual = foodReview(entry, found.result)
         val known = StoredKernelResultV1.from(found.result)
         if (entry.recorded != null && entry.recorded != known) unavailable()
-        journal.remember(operationId, known)
+        remember(operationId, known)
         return actual
     }
 
@@ -1364,7 +1614,7 @@ internal class LocalEndpointRetailPhysicalGateway(
         val actual = retailReview(entry, found.result)
         val known = StoredKernelResultV1.from(found.result)
         if (entry.recorded != null && entry.recorded != known) unavailable()
-        journal.remember(operationId, known)
+        remember(operationId, known)
         return actual
     }
 
@@ -1457,18 +1707,46 @@ internal class LocalEndpointRetailPhysicalGateway(
         }
     }
 
+    private interface NativeInstruction {
+        fun deliverable(): Boolean
+        fun deny()
+        fun capturePayment(value: LocalPaymentOutcomeV3): LocalPhysicalOriginalCaptureResult
+        fun captureRefund(value: LocalRefundOutcomeV3): LocalPhysicalOriginalCaptureResult
+        fun captureFoodPayment(value: LocalFoodCashOutcome): LocalPhysicalOriginalCaptureResult
+        fun captureFoodRefund(value: LocalFoodRefundOutcome): LocalPhysicalOriginalCaptureResult
+        fun captureSupplierCash(value: LocalSupplierCashOutcome): LocalPhysicalOriginalCaptureResult
+    }
+    private class LocalNativeInstruction(private val native: LocalPhysicalPublishedInstruction) : NativeInstruction {
+        override fun deliverable(): Boolean = native.deliverable()
+        override fun deny() = native.deny()
+        override fun capturePayment(value: LocalPaymentOutcomeV3) = native.capturePayment(value)
+        override fun captureRefund(value: LocalRefundOutcomeV3) = native.captureRefund(value)
+        override fun captureFoodPayment(value: LocalFoodCashOutcome) = native.captureFoodPayment(value)
+        override fun captureFoodRefund(value: LocalFoodRefundOutcome) = native.captureFoodRefund(value)
+        override fun captureSupplierCash(value: LocalSupplierCashOutcome) = native.captureSupplierCash(value)
+    }
+    private class RemoteNativeInstruction(private val native: DistributedPhysicalClientInstruction) : NativeInstruction {
+        override fun deliverable(): Boolean = native.current()
+        override fun deny() = native.deny()
+        override fun capturePayment(value: LocalPaymentOutcomeV3) = native.capturePayment(value)
+        override fun captureRefund(value: LocalRefundOutcomeV3) = native.captureRefund(value)
+        override fun captureFoodPayment(value: LocalFoodCashOutcome) = native.captureFoodPayment(value)
+        override fun captureFoodRefund(value: LocalFoodRefundOutcome) = native.captureFoodRefund(value)
+        override fun captureSupplierCash(value: LocalSupplierCashOutcome) = native.captureSupplierCash(value)
+    }
+
     /** Only this exact private registered wrapper can reach its real native handle. */
-    private inner class Instruction(private val native: LocalPhysicalPublishedInstruction,
-        private val original: PhysicalInteractiveRequestLifetime, private val entry: LocalRetailPhysicalLifetime,
+    private inner class Instruction(private val native: NativeInstruction,
+        private val original: PhysicalInteractiveRequestLifetime?, private val entry: LocalRetailPhysicalLifetime,
         private val epoch: LocalRetailPhysicalLifetime, private val entryAttachment: LocalRetailPhysicalLifetime.Attachment,
         private val sessionAttachment: LocalRetailPhysicalLifetime.Attachment,
         override val display: LocalRetailInstructionDisplay, private val startAction: LocalAction) : LocalRetailPhysicalInstruction {
         override fun deliverable(): Boolean {
-            if (instruction.value !== this || original.denied || entry.denied || epoch.denied || !native.deliverable()) { deny(); return false }
+            if (instruction.value !== this || original?.denied == true || entry.denied || epoch.denied || !native.deliverable()) { deny(); return false }
             return true
         }
         override fun deny() {
-            original.deny()
+            original?.deny()
             native.deny() // End-only; native Deciding/Accepted/Uncertain custody survives.
             entryAttachment.close()
             sessionAttachment.close()
@@ -1535,7 +1813,7 @@ internal class LocalEndpointRetailPhysicalGateway(
         }
         if (view.actorId != journal.owner.actorId || view.scope != journal.owner.scope || view.deviceId != journal.owner.deviceId)
             throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
-        val access = GatewayAccess(endpoint, lease, view, installed)
+        val access = GatewayAccess(endpoint, lease, view, installed, retainForReceipt = ::retainForTransportReceipt)
         val result = body(access)
         access.checkCurrent()
         return result
@@ -1545,8 +1823,14 @@ internal class LocalEndpointRetailPhysicalGateway(
         try { body() }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: GatewayFailure) { LocalRetailPhysicalReply.Unavailable(failure.problem, id) }
-        catch (_: IllegalArgumentException) { LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.INVALID_INPUT, id) }
-        catch (_: Exception) { LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.UNAVAILABLE, id) }
+        catch (failure: IllegalArgumentException) {
+            reportLocalRetailPhysicalFailure(LocalRetailPhysicalFailureStage.GUARDED_INPUT, null, failure)
+            LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.INVALID_INPUT, id)
+        }
+        catch (failure: Exception) {
+            reportLocalRetailPhysicalFailure(LocalRetailPhysicalFailureStage.GUARDED_FAILURE, null, failure)
+            LocalRetailPhysicalReply.Unavailable(LocalServiceProblem.UNAVAILABLE, id)
+        }
     }
 }
 

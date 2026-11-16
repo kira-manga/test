@@ -137,6 +137,18 @@ internal data class CurrentAggregateMetadata(val byteCount: Long, val storageVal
 /** The SQL query never hydrates an unbounded malformed identifier. */
 internal data class CurrentAggregateKey(val boundedId: String?)
 
+/** Bounded scalar cursor validation only; never an employee-facing journal projection. */
+internal data class ChangeJournalMetadata(
+    val sequence: Long,
+    val operationId: String?,
+    val assignmentId: String?,
+    val epoch: Long,
+    val previousHash: String?,
+    val hash: String?,
+    val byteCount: Long,
+    val storageValid: Boolean,
+)
+
 @Dao
 internal interface MasterDao {
     @Query("SELECT * FROM branch_authority WHERE scope=:scope")
@@ -191,6 +203,40 @@ internal interface MasterDao {
 
     @Query("SELECT * FROM journal_envelope WHERE scope=:scope AND operationId=:operationId")
     suspend fun retainedJournal(scope: String, operationId: String): JournalRow?
+
+    // No validity WHERE predicates may turn corrupt selected storage into a missing row.
+    // CASE bounds every returned identifier/hash before Room hydrates it. A cursor window
+    // includes at most 4097 positions plus one lookahead (saved position and 4096 successors).
+    @Query("""
+        SELECT CASE WHEN typeof(sequence)='integer' AND sequence>=1 THEN sequence ELSE -1 END AS sequence,
+        CASE WHEN typeof(operationId)='text' AND length(CAST(operationId AS BLOB))=36
+          THEN operationId ELSE NULL END AS operationId,
+        CASE WHEN typeof(assignmentId)='text' AND length(CAST(assignmentId AS BLOB))=36
+          THEN assignmentId ELSE NULL END AS assignmentId,
+        CASE WHEN typeof(epoch)='integer' AND epoch>=0 THEN epoch ELSE -1 END AS epoch,
+        CASE WHEN typeof(previousHash)='text' AND length(CAST(previousHash AS BLOB))=64
+          THEN previousHash ELSE NULL END AS previousHash,
+        CASE WHEN typeof(hash)='text' AND length(CAST(hash AS BLOB))=64
+          THEN hash ELSE NULL END AS hash,
+        COALESCE(length(envelope), -1) AS byteCount,
+        CASE WHEN typeof(envelope)='blob' AND length(envelope) BETWEEN 1 AND 4194304
+          AND typeof(scope)='text' AND length(CAST(scope AS BLOB))=110
+          AND typeof(operationId)='text' AND length(CAST(operationId AS BLOB))=36
+          AND typeof(assignmentId)='text' AND length(CAST(assignmentId AS BLOB))=36
+          AND typeof(sequence)='integer' AND sequence>=1
+          AND typeof(epoch)='integer' AND epoch>=0
+          AND typeof(previousHash)='text' AND length(CAST(previousHash AS BLOB))=64
+          AND typeof(hash)='text' AND length(CAST(hash AS BLOB))=64
+        THEN 1 ELSE 0 END AS storageValid
+        FROM journal_envelope
+        WHERE scope=:scope AND epoch=:epoch AND sequence>:after
+        ORDER BY sequence ASC LIMIT :limit
+    """)
+    suspend fun changeJournalWindow(scope: String, epoch: Long, after: Long, limit: Int): List<ChangeJournalMetadata>
+
+    /** Called only after successful same-transaction scalar bounds/identity validation. */
+    @Query("SELECT * FROM journal_envelope WHERE scope=:scope AND epoch=:epoch AND sequence=:sequence")
+    suspend fun changeJournalEnvelope(scope: String, epoch: Long, sequence: Long): JournalRow?
 
     @Insert suspend fun insertOperation(row: OperationRow)
 

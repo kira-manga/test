@@ -18,7 +18,12 @@ internal object AndroidRuntimeHistoryStartup {
             is RuntimeHistoryStartup.Selection.Allocation -> Selection.Allocation(selected.original)
             is RuntimeHistoryStartup.Selection.Ready -> Selection.Opened(openDatabase(platform,custody,selected.admission))
             is RuntimeHistoryStartup.Selection.AcknowledgementPending -> Selection.AcknowledgementPending(selected.original)
-            is RuntimeHistoryStartup.Selection.Held -> Selection.Held(selected.holds)
+            is RuntimeHistoryStartup.Selection.Held -> {
+                try { platform.diagnostics.warn("Original history startup held: " +
+                    selected.holds.map { it.name }.sorted().joinToString(",")) }
+                catch (_: Throwable) { /* Fixed enum diagnostics never change admission. */ }
+                Selection.Held(selected.holds)
+            }
         }
     }
     suspend fun openFirst(platform: SelfOwnedMasterPlatform,custody: SelfOwnedNativeHistoryCustody): RoomRuntimeHistoryOwner {

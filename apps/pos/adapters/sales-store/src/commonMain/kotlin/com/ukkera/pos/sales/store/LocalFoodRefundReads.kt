@@ -107,6 +107,9 @@ public class LocalFoodRefundReadHandler(private val stock: LocalStockRepository)
     override fun normalize(input: StoredBytes): StoredBytes = LocalFoodRefundReadCodec.encode(
         localSalesDecode(input, LocalFoodRefundQuery.serializer(), 2_048))
 
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+
     override suspend fun prepare(normalized: StoredBytes, borrowed: CommandReadView, context: ReadContext): PreparedRead {
         check(context.scope == borrowed.scope && context.key == key)
         val view = FoodReadView(commerceLoan(borrowed, stock))

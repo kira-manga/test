@@ -304,9 +304,9 @@ internal suspend fun PurchasingReader.requireSupplierApplicationOriginals(produc
     check(event.originalSource == purchasingSource(original.aggregateWrites.single { it.key == LocalSupplierCashJournal.rawKey(target.recordingOperationId) }))
     val observed = if (result.phase == LocalSupplierCashPhase.RESOLUTION) {
         val resolution = originalCommand(target.resolutionOperationId)
-        val resolved = LocalSupplierCashFacts.requireRaw(resolution, start, LocalSupplierCashPhase.RESOLUTION)
+        val resolved = LocalSupplierCashFacts.requireResolution(resolution, start, original)
         val request = LocalSupplierCashCodec.decode(resolved.body()) as LocalSupplierCashRequest.RecordResolution
-        LocalSupplierCashResolutionDescriptor.create(slot.requirement(), raw.body(), slot.originalActorId, resolved.body())
+        LocalSupplierCashResolutionDescriptor.create(slot.requirement(), raw.body(), resolved.recordingActorId, resolved.body())
         check(request.originalBodyDigest == raw.bodyDigest && before.originalBodyDigest == raw.bodyDigest &&
             event.resolutionSource == purchasingSource(resolution.aggregateWrites.single { it.key == LocalSupplierCashJournal.resolutionKey(target.resolutionOperationId) }) &&
             event.originalUnknownApplicationOperationId == before.applicationOperationIds.single())
@@ -316,6 +316,13 @@ internal suspend fun PurchasingReader.requireSupplierApplicationOriginals(produc
         is LocalSupplierCashRequest.RecordOriginal -> request.outcome
         is LocalSupplierCashRequest.RecordResolution -> request.outcome
         else -> error("Purchasing physical outcome unavailable")
+    }
+    val supervised = producer.command == LocalSupplierCashSupervisorCodec.COMMAND
+    if (!supervised) check(producer.originalActorId == slot.originalActorId && observed.recordingActorId == slot.originalActorId)
+    when (val selected = supplierCashApplicationRequest(producer.command, producer.normalized)) {
+        is LocalSupplierCashRequest.ApplyOriginal -> check(result.phase == LocalSupplierCashPhase.ORIGINAL && selected.recordingOperationId == target.recordingOperationId)
+        is LocalSupplierCashRequest.ApplyResolution -> check(result.phase == LocalSupplierCashPhase.RESOLUTION && selected.resolutionOperationId == target.resolutionOperationId)
+        else -> error("Purchasing supplier application subtype unavailable")
     }
     check(result.action == supplierCashKnownAction(outcome, before.amount))
     val application = LocalSupplierCashFacts.decodeApplication(producer.aggregateWrites.single {

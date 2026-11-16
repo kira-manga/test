@@ -9,8 +9,14 @@ import com.ukkera.pos.security.*
 import com.ukkera.pos.types.*
 
 /** Typed SQL-only selector; no Start/physical request can enter accounting. */
-internal data class FoodRefundApplySelection(val factOperationId: OperationId, val phase: LocalFoodRefundFactPhase)
+internal data class FoodRefundApplySelection(val factOperationId: OperationId, val phase: LocalFoodRefundFactPhase,
+    val supervised: Boolean = false)
 internal fun foodRefundApplySelection(command: CommandKey, normalized: StoredBytes): FoodRefundApplySelection {
+    if (command == LocalFoodRefundSupervisorCodec.COMMAND) {
+        val request = LocalFoodRefundSupervisorCodec.decode(normalized) as? LocalFoodRefundSupervisorRequest.Apply
+            ?: error("food.refund.supervisor_accounting_subtype")
+        return FoodRefundApplySelection(request.factOperationId, request.phase, true)
+    }
     check(command == LocalFoodRefundProfile.COMMAND)
     return when (val request = LocalFoodRefundCodec.decode(normalized)) {
         is LocalFoodRefundRequest.ApplyOriginal -> FoodRefundApplySelection(request.recordingOperationId, LocalFoodRefundFactPhase.ORIGINAL)
@@ -36,12 +42,19 @@ internal class FoodRefundApplicationFact(val original: FoodRefundRawCut, val res
 
 /** SQL-only Apply. Whole raw/UNKNOWN/Start/native custody precedes the nonstock accounting cut. */
 internal suspend fun prepareFoodRefundApplication(operationId: OperationId, phase: LocalFoodRefundFactPhase,
-    borrowed: CommandReadView, context: CommandContext, stock: LocalStockRepository): PreparedMutation {
+    borrowed: CommandReadView, context: CommandContext, stock: LocalStockRepository,
+    supervised: Boolean = false): PreparedMutation {
     run {
-        val body = if (phase == LocalFoodRefundFactPhase.ORIGINAL) LocalFoodRefundRequest.ApplyOriginal(operationId)
-            else LocalFoodRefundRequest.ApplyResolution(operationId)
-        check(context.key == LocalFoodRefundProfile.COMMAND && operationId != context.operationId &&
-            semanticDigest(context.scope, context.originalActorId, context.key, LocalFoodRefundCodec.encode(body)) == context.semanticDigest)
+        val body = if (supervised) {
+            check(context.key == LocalFoodRefundSupervisorCodec.COMMAND)
+            LocalFoodRefundSupervisorCodec.encode(LocalFoodRefundSupervisorRequest.Apply(operationId, phase))
+        } else {
+            check(context.key == LocalFoodRefundProfile.COMMAND)
+            LocalFoodRefundCodec.encode(if (phase == LocalFoodRefundFactPhase.ORIGINAL)
+                LocalFoodRefundRequest.ApplyOriginal(operationId) else LocalFoodRefundRequest.ApplyResolution(operationId))
+        }
+        check(operationId != context.operationId &&
+            semanticDigest(context.scope, context.originalActorId, context.key, body) == context.semanticDigest)
     }
     val rawKey = if (phase == LocalFoodRefundFactPhase.ORIGINAL) foodRefundRawKey(operationId) else foodRefundResolutionKey(operationId)
     val headerRow = borrowed.aggregate(rawKey) ?: return foodRefundUnavailablePreparation(context, DomainId(operationId.value))
@@ -55,7 +68,7 @@ internal suspend fun prepareFoodRefundApplication(operationId: OperationId, phas
         owner = header.originalActorId; recorder = header.recordingActorId
     }
     // Denial-only header before rich reads. Foreign recorder/custody remains explicitly held.
-    if (owner != context.originalActorId || recorder != context.originalActorId)
+    if (!supervised && (owner != context.originalActorId || recorder != context.originalActorId))
         return foodRefundUnavailablePreparation(context, DomainId(operationId.value))
     val originalView = FoodReadView(commerceLoan(borrowed, stock))
     val fact = if (phase == LocalFoodRefundFactPhase.ORIGINAL)
@@ -64,7 +77,7 @@ internal suspend fun prepareFoodRefundApplication(operationId: OperationId, phas
     val slot = fact.slot
     check(slot.target.factOperation(phase) == operationId && owner == slot.originalActorId && recorder == fact.recorderId &&
         context.operationId !in setOf(slot.target.intentOperationId, slot.target.recordingOperationId, slot.target.resolutionOperationId))
-    val resolve = phase == LocalFoodRefundFactPhase.RESOLUTION
+    val resolve = supervised || phase == LocalFoodRefundFactPhase.RESOLUTION
     val authorityResources = slot.domain.financialResources.toSet() + foodRefundAuthorityResources(slot.requirement()) + recordingAuthority(fact.recorderId)
     val pendingAction = if (resolve) SecurityAction.REFUND_RESOLVE else SecurityAction.RETURN_RECEIPT_LOOKUP
     fun pending(reason: LocalFoodRefundPendingReason, resources: Set<RecoveryResourceKey> = authorityResources): PreparedMutation =
@@ -123,8 +136,11 @@ internal suspend fun prepareFoodRefundApplication(operationId: OperationId, phas
             foodRefundApplicationBarriers, allowsActionApproval = resolve) { command, at ->
             try {
                 val observedOutcome = foodRefundOutcome(outcome, fact.recorderId)
-                val changed = FoodRefunds.applyObservation(command, cut.value, cash.session.value,
-                    attempt.id, operationId, observedOutcome)
+                val changed = if (supervised) FoodRefunds.applySupervisedObservation(command, cut.value, cash.session.value,
+                    attempt.id, operationId, fact.recorderId,
+                    if (phase == LocalFoodRefundFactPhase.RESOLUTION) slot.target.recordingOperationId else null,
+                    if (phase == LocalFoodRefundFactPhase.RESOLUTION) fact.originalBodyDigest else null, observedOutcome)
+                else FoodRefunds.applyObservation(command, cut.value, cash.session.value, attempt.id, operationId, observedOutcome)
                 val financialRevisions = listOf(LocalFoodStorageRevisionV1(LocalFoodFinancialProfileV1.REFUND, cut.value.id, cut.refund.row.revision.next())) +
                     listOfNotNull(if (changed.session === cash.session.value) null else LocalFoodStorageRevisionV1(CashNonSaleStoreProfile.SESSION_KIND,
                         changed.session.id, cash.session.stored.revision.next()))
@@ -134,7 +150,10 @@ internal suspend fun prepareFoodRefundApplication(operationId: OperationId, phas
                 val result = LocalFoodRefundResult.Applied(slot.target, checkNotNull(application.action), context.operationId,
                     financialRevisions + LocalFoodStorageRevisionV1(LocalFoodRefundProfile.APPLICATION, DomainId(operationId.value), Revision(2)), phase)
                 val extra = listOfNotNull(if (changed.session === cash.session.value) null else foodPaymentCashWrite(changed.session, cashInput.storageRevision),
-                    changed.movement?.let { movementWrite(context, it, at) }) + foodRefundApplicationWrite(application, Revision(1))
+                    changed.movement?.let { movement -> if (supervised) foodRefundSupervisedMovementLiteralWrite(context.scope,
+                        context.operationId, context.originalActorId, context.semanticDigest, LocalFoodRefundSupervisorCodec.encode(LocalFoodRefundSupervisorRequest.Apply(operationId, phase)),
+                        slot, fact.original.raw.value, fact.resolution?.raw?.value, movement, at)
+                        else movementWrite(context, movement, at) }) + foodRefundApplicationWrite(application, Revision(1))
                 val claims = listOfNotNull(changed.record?.let { ClaimChange.Acquire(LocalSalesStoreProfile.unique("refund_record", it.attemptId), cut.value.id) },
                     changed.movement?.let { ClaimChange.Acquire(CashNonSaleStoreProfile.cashSourceClaim(it.sourceId), cash.session.value.id) })
                 val writes = FoodRefundWrites(context, at, inputs, cashInput)

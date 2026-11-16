@@ -196,21 +196,63 @@ public class LocalPhysicalJournal internal constructor(
                 } == true &&
                 start.projection.size in 1..LocalPhysicalJournalFormatV1.MAX_START_BYTES)
         }) return LocalPhysicalStartWrite.IdentityConflict
+        return persistStartProjection(start.projection)
+    }
+
+    /**
+     * Remote Client delivery only. The private native wrapper retains the actual original
+     * authenticated SDK response and SAME Client reservation/FD; parsing bytes cannot create it.
+     * This retains projection DATA, never recreates a core Start or its service lifetime.
+     */
+    internal fun persistDeliveredStart(delivery: DistributedPhysicalStartDelivery): LocalPhysicalStartWrite {
+        if (!validJournalInput {
+            val r = receipt.binding.requirement
+            val start = delivery.projection
+            val owners = localPhysicalDomainOwners(r)
+            require(receipt.binding.owner.role == LocalPhysicalSpoolRole.CLIENT && delivery.matches(this) &&
+                start.scope == r.scope && start.originalActorId == r.originalActorId && start.intentOperationId == r.intentOperationId &&
+                start.command == r.command && start.intentSemanticDigest == r.intentSemanticDigest && start.domainProfile == r.domainProfile &&
+                start.requirementBytes == r.canonicalBytes && start.startKind.name == domain.startKind.name &&
+                start.masterDeviceId == r.masterDeviceId && start.assignmentId == owners.authority.assignmentId &&
+                start.epoch == owners.authority.epoch && start.sourceStamps.map { it.key.id }.toSet() ==
+                    setOf(r.masterAllocationId, r.clientAllocationId) &&
+                start.sourceStamps.singleOrNull { it.key == receipt.sourceChange.key }?.let {
+                    it.schema == LocalPhysicalJournalFormatV1.SOURCE_SCHEMA && it.generation.value == 1L &&
+                        it.payloadDigest == journalBodyDigest(receipt.sourceCommitment)
+                } == true && delivery.bytes.size in 1..LocalPhysicalJournalFormatV1.MAX_START_BYTES)
+        }) return LocalPhysicalStartWrite.IdentityConflict
+        return persistStartProjection(delivery.bytes, delivery)
+    }
+
+    /** Identical cells/force/readback for local core Start and authenticated original Client data. */
+    private fun persistStartProjection(projection: StoredBytes,
+        delivered: DistributedPhysicalStartDelivery? = null): LocalPhysicalStartWrite {
         return when (val result = owned.file.access {
             check(published)
             val prior = readPrimary()
             when {
-                prior.certificate != null -> if (prior.certificate == start.projection) LocalPhysicalStartWrite.AlreadyRetained
+                prior.certificate != null -> if (prior.certificate == projection) LocalPhysicalStartWrite.AlreadyRetained
                     else LocalPhysicalStartWrite.IdentityConflict
                 else -> {
-                    val capacityBefore = readNewActionCapacity() != null
+                    fun deliveryCapacity(): Boolean {
+                        if (readNewActionCapacity() == null) {
+                            com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                                com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_CLIENT_START_CAPACITY, null)
+                            return false
+                        }
+                        val fresh = delivered?.fresh() != false
+                        if (!fresh) com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                            com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_CLIENT_START_FRESHNESS, null)
+                        return fresh
+                    }
+                    val capacityBefore = deliveryCapacity()
                     // SQL has already committed. Unavailable future capacity must not suppress
                     // retention of the genuine obligation or mislabel it as historical replay.
-                    writeCell(PhysicalJournalCellV1.TRUE_START_CERT, start.projection)
-                    check(readPrimary().certificate == start.projection)
-                    val capacityAfter = readNewActionCapacity() != null
+                    writeCell(PhysicalJournalCellV1.TRUE_START_CERT, projection)
+                    check(readPrimary().certificate == projection)
+                    val capacityAfter = deliveryCapacity()
                     if (capacityBefore && capacityAfter)
-                        LocalPhysicalStartWrite.Fresh(this, start.projection).also { freshStart = it }
+                        LocalPhysicalStartWrite.Fresh(this, projection).also { freshStart = it }
                     else LocalPhysicalStartWrite.Retained
                 }
             }.also { verifyHeader() }

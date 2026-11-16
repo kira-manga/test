@@ -28,7 +28,12 @@ public class AndroidOriginalRpcClientOwner private constructor(private val share
     override val original: StateFlow<LocalDevicePairingSdkOriginal?> get() = shared.original
     override val approvedMaster: StateFlow<LocalDevicePairingApprovedMaster?> get() = shared.approvedMaster
     public suspend fun acquire(): RpcLocalIdentity = shared.acquire()
+    public val discoveredMasters: StateFlow<List<LocalRpcDiscoveredMaster>> get() = shared.discoveredMasters
+    public suspend fun startDiscovery(): Unit = shared.startDiscovery()
+    public suspend fun connectDiscovered(candidateId: DomainId): Unit = shared.connectDiscovered(candidateId)
     public suspend fun connect(endpoint: RpcEndpoint): Unit = shared.connect(endpoint)
+    public fun transportConnectedNow(): Boolean = shared.transportConnectedNow()
+    public suspend fun recoverTransport(): RpcLocalIdentity = shared.recoverTransport()
     override suspend fun authenticationService(): LocalRpcRemoteAuthenticationService = shared.authenticationService()
     public suspend fun supplierClient(): LocalRpcRemoteSupplierClient = shared.supplierClient()
     public suspend fun directoryClient(profile: LocalMasterRpcWorkflowProfile): LocalRpcRemoteDirectoryClient =
@@ -49,6 +54,13 @@ public class AndroidOriginalRpcClientOwner private constructor(private val share
         public fun retainExisting(application: Application, applicationScope: CoroutineScope, target: AndroidDevicePairingTarget,
             originalPairingActionId: DomainId, lan: OrganizationLan): AndroidOriginalRpcClientOwner =
             AndroidOriginalRpcClientOwner(LocalOriginalRpcClientOwner.retainExisting(applicationScope, target,
+                originalPairingActionId, lan, { RpcPlatform.android(application) },
+                { AndroidLocalNetworkAccess.requireGranted(application) }))
+
+        /** Selected-original native root with confirmed whole-role transport replacement. */
+        public fun retainRecoverableExisting(application: Application, applicationScope: CoroutineScope, target: AndroidDevicePairingTarget,
+            originalPairingActionId: DomainId, lan: OrganizationLan): AndroidOriginalRpcClientOwner =
+            AndroidOriginalRpcClientOwner(LocalOriginalRpcClientOwner.retainRecoverableExisting(applicationScope, target,
                 originalPairingActionId, lan, { RpcPlatform.android(application) },
                 { AndroidLocalNetworkAccess.requireGranted(application) }))
     }

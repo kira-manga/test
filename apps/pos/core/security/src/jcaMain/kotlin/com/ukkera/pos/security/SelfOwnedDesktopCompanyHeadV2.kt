@@ -240,9 +240,17 @@ internal class SelfOwnedDesktopCompanyHeadV2(
      * shared-core transition rules, seal, atomic replace and authenticated readback.
      */
     fun retainState(previous: LocalCompanyAuthorityStateV2, next: LocalCompanyAuthorityStateV2): LocalCompanyAuthorityStateV2 {
+        if (previous.serialCustody != next.serialCustody) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         requireOwned()
         val company = registry.companyBootstrapRecordV2() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
         return retainCompany(company, previous, next)
+    }
+
+    /** Dedicated mandatory serial marker replacement; generic company writes cannot mutate it. */
+    fun retainSerialCustody(previous: LocalCompanyAuthorityStateV2, next: NativeCompanySerialAuthorityCustodyV1): LocalCompanyAuthorityStateV2 {
+        requireOwned()
+        val company = registry.companyBootstrapRecordV2() ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        return retainCompany(company, previous, previous.next(serialCustody = next))
     }
 
     /**

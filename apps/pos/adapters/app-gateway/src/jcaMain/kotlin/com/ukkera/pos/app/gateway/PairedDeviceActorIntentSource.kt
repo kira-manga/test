@@ -64,6 +64,60 @@ internal class PairedDeviceActorIntentSource(
         }
     }
 
+    internal val physicalOriginal: com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
+        get() = ledger.nativeOriginal
+
+    /** Select only an already published SAME successful owner; no new journal or actor open. */
+    internal fun physicalJournalId(journal: LocalClientIntentJournal): com.ukkera.pos.types.DomainId? = synchronized(gate) {
+        if (!isCurrent()) null else published[journal.owner]?.takeIf {
+            it.owner.intentJournal === journal && it.owner.isCurrent()
+        }?.custody?.journalId
+    }
+
+    internal fun physicalDisposition(journal: LocalClientIntentJournal): LocalPairedDeviceCredentialJournalAction? =
+        synchronized(gate) {
+            if (!isCurrent()) null else published[journal.owner]?.takeIf {
+                it.owner.intentJournal === journal && it.owner.isCurrent()
+            }?.custody?.action
+        }
+
+    internal fun capturePhysical(journal: LocalClientIntentJournal): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody? =
+        synchronized(gate) {
+            if (!isCurrent()) null else published[journal.owner]?.takeIf {
+                it.owner.intentJournal === journal && it.owner.isCurrent()
+            }?.owner?.capturePhysical(journal)
+        }
+
+    internal suspend fun recheckPhysical(journal: LocalClientIntentJournal): Boolean {
+        val retained = synchronized(gate) {
+            if (!isCurrent()) null else published[journal.owner]?.takeIf {
+                it.owner.intentJournal === journal && it.owner.isCurrent()
+            }
+        } ?: return false
+        if (!retained.owner.recheckPhysical(journal)) return false
+        return synchronized(gate) {
+            isCurrent() && published[journal.owner] === retained && retained.owner.intentJournal === journal &&
+                retained.owner.isCurrent()
+        }
+    }
+
+    /** Original enrolled device recovery remains possible before login and after logout.
+     * A first-enrollment device has no prior physical catalogues; no absence fallback is used. */
+    internal suspend fun physicalRecoverySelections(): List<PairedPhysicalOriginalSelection>? =
+        if (!isCurrent() || ledger.nativeOriginal.action == LocalPairedDeviceCredentialJournalAction.ENROLL) null
+        else ledger.physicalRecoverySelections().takeIf { isCurrent() }
+
+    /** Complete actual device allocation history, including records genuinely enrolled during
+     * this root lifetime. This opens no foreign employee intent owner and grants no action. */
+    internal suspend fun physicalResolutionSelections(): List<PairedPhysicalOriginalSelection>? =
+        if (!isCurrent()) null else ledger.physicalRecoverySelections().takeIf { isCurrent() }
+
+    internal suspend fun recheckPhysicalRecovery(selection: PairedPhysicalOriginalSelection): Boolean =
+        isCurrent() && selection.ledger === ledger && ledger.recheckPhysicalRecovery(selection) && isCurrent()
+
+    internal fun capturePhysicalRecovery(selection: PairedPhysicalOriginalSelection): com.ukkera.pos.sales.store.LocalPhysicalExternalCustody? =
+        if (!isCurrent() || selection.ledger !== ledger) null else ledger.capturePhysicalRecovery(selection)
+
     override suspend fun acquireAuthenticated(owner: LocalClientIdentity,
         credentials: LocalGatewayCredentials): LocalClientIntentJournal? {
         currentCoroutineContext().ensureActive()

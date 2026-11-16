@@ -60,8 +60,8 @@ public object JvmPreallocatedPhysicalSpool {
         val spec = PhysicalNativeFileSpecV1(binding.installationId, binding.keyId,
             listOf("physical-spool-v1", binding.installationId.value, binding.spoolId.value, binding.allocationId.value),
             PhysicalNativeLayoutV1.LEGACY)
-        return legacySpoolFromNative(jvmAcquirePhysicalNative(directory, spec, key, expected?.nativeIdentity,
-            expected == null), binding, expected)
+        return legacySpoolFromNative(jvmAcquirePhysicalNative(directory, spec, key.keyId, { JvmPhysicalSpoolCipher(key) },
+            expected?.nativeIdentity, expected == null), binding, expected)
     }
 }
 
@@ -78,24 +78,56 @@ public object JvmPreallocatedPhysicalJournal {
     public fun openCatalogue(storageRoot: Path, owner: LocalPhysicalCatalogueBinding,
         key: JvmPhysicalSpoolKey): LocalPhysicalCatalogueOpen = openPhysicalCatalogue(owner, files(storageRoot, key))
 
-    private fun files(root: Path, key: JvmPhysicalSpoolKey): PhysicalJournalNativeFilesV1 = object : PhysicalJournalNativeFilesV1 {
+    private fun files(root: Path, key: JvmPhysicalSpoolKey): PhysicalJournalNativeFilesV1 =
+        files(root, key.keyId) { JvmPhysicalSpoolCipher(key) }
+
+    /** Same POSIX full-write manager over a module-supplied cipher of an existing service-custody key. */
+    internal fun createCatalogue(storageRoot: Path, owner: LocalPhysicalCatalogueBinding,
+        cipher: () -> PhysicalSpoolCipher): LocalPhysicalCatalogueOpen =
+        createPhysicalCatalogue(owner, files(storageRoot, owner.keyId, cipher))
+
+    internal fun openCatalogue(storageRoot: Path, owner: LocalPhysicalCatalogueBinding,
+        cipher: () -> PhysicalSpoolCipher): LocalPhysicalCatalogueOpen =
+        openPhysicalCatalogue(owner, files(storageRoot, owner.keyId, cipher))
+
+    /** Additive concrete one-role namespace; callers cannot supply native currentness/force predicates. */
+    internal fun createDistributedCatalogue(root: Path, owner: LocalPhysicalCatalogueBinding,
+        namespace: DistributedDesktopPhysicalNamespace): LocalPhysicalCatalogueOpen =
+        createPhysicalCatalogue(owner, distributedFiles(root, owner.keyId, namespace))
+
+    internal fun openDistributedCatalogue(root: Path, owner: LocalPhysicalCatalogueBinding,
+        namespace: DistributedDesktopPhysicalNamespace): LocalPhysicalCatalogueOpen =
+        openPhysicalCatalogue(owner, distributedFiles(root, owner.keyId, namespace))
+
+    private fun distributedFiles(root: Path, keyId: DomainId,
+        namespace: DistributedDesktopPhysicalNamespace): PhysicalJournalNativeFilesV1 =
+        filesForSpec(root, keyId) { spec -> namespace.cipherFor(spec) }
+
+    private fun files(root: Path, keyId: DomainId, cipher: () -> PhysicalSpoolCipher): PhysicalJournalNativeFilesV1 =
+        filesForSpec(root, keyId) { cipher() }
+
+    private fun filesForSpec(root: Path, keyId: DomainId,
+        cipher: (PhysicalNativeFileSpecV1) -> PhysicalSpoolCipher): PhysicalJournalNativeFilesV1 = object : PhysicalJournalNativeFilesV1 {
         override fun open(spec: PhysicalNativeFileSpecV1, native: LocalPhysicalSpoolNativeIdentity?,
             create: Boolean): PhysicalNativeOpenV1 {
             var directory = root
             for (segment in spec.segments) directory = directory.resolve(segment)
-            return jvmAcquirePhysicalNative(directory, spec, key, native, create)
+            return if (windowsPhysicalProfile(root)) windowsAcquirePhysicalNative(directory, spec, keyId, { cipher(spec) }, native, create)
+            else jvmAcquirePhysicalNative(directory, spec, keyId, { cipher(spec) }, native, create)
         }
 
         override fun list(spec: PhysicalNativeFileSpecV1, expectedDirectoryIdentity: String): List<String>? {
             var directory = root
             for (segment in spec.segments) directory = directory.resolve(segment)
-            return jvmListPhysicalNative(directory, expectedDirectoryIdentity)
+            return if (windowsPhysicalProfile(root)) windowsListPhysicalNative(directory, expectedDirectoryIdentity)
+            else jvmListPhysicalNative(directory, expectedDirectoryIdentity)
         }
     }
 }
 
 private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSpecV1,
-    key: JvmPhysicalSpoolKey, expected: LocalPhysicalSpoolNativeIdentity?, create: Boolean): PhysicalNativeOpenV1 {
+    keyId: DomainId, cipherFactory: () -> PhysicalSpoolCipher, expected: LocalPhysicalSpoolNativeIdentity?,
+    create: Boolean): PhysicalNativeOpenV1 {
     var stream: DirectoryStream<Path>? = null
     var directoryChannel: FileChannel? = null
     var rawChannel: SeekableByteChannel? = null
@@ -105,9 +137,9 @@ private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSp
     var transferred = false
     var result: PhysicalNativeOpenV1 = PhysicalNativeOpenV1.Held
     try {
-        check(!Thread.currentThread().isInterrupted && key.keyId == spec.keyId)
+        check(!Thread.currentThread().isInterrupted && keyId == spec.keyId)
         if (expected != null) check(expected.profile == LocalPhysicalSpoolStorageProfileV1.JVM_POSIX_FULL_WRITE_FORCE_V1)
-        val cipher = JvmPhysicalSpoolCipher(key)
+        val cipher = cipherFactory()
         check(directory.isAbsolute && directory.normalize() == directory && directory.fileSystem === FileSystems.getDefault())
         val beforeDirectory = jvmSpoolDirectory(directory)
         val directoryUid = jvmSpoolUnixNumber(directory, "uid")
@@ -154,7 +186,9 @@ private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSp
         transferred = result is PhysicalNativeOpenV1.Opened
     } catch (_: JvmPhysicalSpoolBusy) {
         result = PhysicalNativeOpenV1.Busy
-    } catch (_: Exception) {
+    } catch (failure: Exception) {
+        com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+            com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_NATIVE_FILE_OPEN, failure)
         result = PhysicalNativeOpenV1.Held
     } finally {
         if (!transferred) {
@@ -176,10 +210,10 @@ private fun jvmAcquirePhysicalNative(directory: Path, spec: PhysicalNativeFileSp
 }
 
 private const val JVM_PHYSICAL_SPOOL_FILE: String = "allocation.native-v1.enc"
-private class JvmPhysicalSpoolBusy : Exception()
+internal class JvmPhysicalSpoolBusy : Exception()
 
 /** A non-evicting in-process ownership guard, NEVER a physical-capacity or lifetime authority. */
-private class JvmPhysicalSpoolProcessOwner private constructor(private val directoryIdentity: String) {
+internal class JvmPhysicalSpoolProcessOwner private constructor(private val directoryIdentity: String) {
     fun requireCurrent() { check(owners[directoryIdentity] === this) }
     fun release(): Boolean = owners.remove(directoryIdentity, this)
 
@@ -222,7 +256,9 @@ private class JvmPhysicalSpoolFile(
             val value = block()
             current()
             PhysicalSpoolAccess.Value(value)
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                com.ukkera.pos.database.LocalMasterRpcReadStage.PHYSICAL_NATIVE_FILE_ACCESS, failure)
             retired.set(true)
             denyLeases()
             PhysicalSpoolAccess.Held
@@ -528,7 +564,7 @@ private fun jvmListPhysicalNative(directory: Path, expectedDirectoryIdentity: St
     names
 } catch (_: Exception) { null }
 
-private inline fun jvmSpoolCleanup(block: () -> Unit): Boolean = try { block(); true } catch (_: Exception) { false }
+internal inline fun jvmSpoolCleanup(block: () -> Unit): Boolean = try { block(); true } catch (_: Exception) { false }
 
 /** New profile captures exact ancestor identities; the legacy native receipt stays byte-compatible. */
 private class JvmPhysicalJournalNamespace private constructor(private val records: List<Record>) {

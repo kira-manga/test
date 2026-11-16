@@ -192,6 +192,39 @@ internal class DesktopProvisionerKeysV2(
         return try { sign(SelfOwnedNativeKeyRoleV1.ROOT, message) } finally { message.fill(0) }
     }
 
+    override fun signCompanyPolicyDelegation(body: ByteArray): ByteArray {
+        val delegation = try { LocalCompanyPolicyWireV1.decodeDelegationBody(body) } catch (_: RuntimeException) { uncertain() }
+        val canonical = LocalCompanyPolicyWireV1.encodeDelegationBody(delegation)
+        val root = bootstrap().key(SelfOwnedNativeKeyRoleV1.ROOT).keyId
+        val subject = delegation.subject.publicPoint.copyBytes()
+        val point = checkedHead(LocalCompanyHeadKeyRoleV1.POLICY)
+        try {
+            if (!canonical.contentEquals(body) || (delegation.issuer as? PurchasingAuthorityIssuerV1.Root)?.keyId != root ||
+                delegation.root.keyId != root || delegation.subject.keyId != company().key(LocalCompanyHeadKeyRoleV1.POLICY).keyId ||
+                !subject.contentEquals(point)) uncertain()
+        } finally { canonical.fill(0); subject.fill(0); point.fill(0) }
+        return sign(SelfOwnedNativeKeyRoleV1.ROOT, body)
+    }
+
+    override fun signCompanyPolicy(body: ByteArray): ByteArray {
+        val policy = try { LocalCompanyPolicyWireV1.decodePolicyBody(body) } catch (_: RuntimeException) { uncertain() }
+        val canonical = LocalCompanyPolicyWireV1.encodePolicyBody(policy)
+        try {
+            if (!canonical.contentEquals(body) || policy.root.keyId != bootstrap().key(SelfOwnedNativeKeyRoleV1.ROOT).keyId ||
+                policy.author.keyId != company().key(LocalCompanyHeadKeyRoleV1.POLICY).keyId) uncertain()
+        } finally { canonical.fill(0) }
+        val point = checkedHead(LocalCompanyHeadKeyRoleV1.POLICY)
+        try {
+            val raw = custody.signP256(headAlias(LocalCompanyHeadKeyRoleV1.POLICY), body)
+            try {
+                if (raw.size != 64) uncertain()
+                val signature = JvmP256Primitives.canonicalize(raw)
+                if (!JvmP256Primitives.verify(point, body, signature)) { signature.fill(0); uncertain() }
+                return signature
+            } finally { raw.fill(0) }
+        } finally { point.fill(0) }
+    }
+
     override fun toString(): String = "DesktopProvisionerKeysV2([REDACTED])"
 
     // ---- Internals ----

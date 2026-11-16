@@ -87,7 +87,8 @@ internal fun directoryConfigurationRequest(profile: LocalMasterRpcWorkflowProfil
         LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS, LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
         LocalMasterRpcWorkflowProfile.FOOD_CHECKS, LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL,
         LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS,
-        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING ->
+        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS ->
             throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
     }
     if (LocalConfigurationCodec.encode(saved) != request.payload ||

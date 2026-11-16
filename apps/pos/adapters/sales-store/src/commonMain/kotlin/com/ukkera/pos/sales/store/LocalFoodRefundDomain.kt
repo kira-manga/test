@@ -67,7 +67,7 @@ public object LocalFoodRefundCashJournalDomain : LocalPhysicalJournalDomain {
     override fun validateResolution(requirement: LocalPhysicalJournalRequirementV1, original: StoredBytes,
         resolverActorId: DomainId, resolverAuthorization: StoredBytes, body: StoredBytes) {
         check(classifyOriginal(requirement, original) == LocalPhysicalOriginalKind.UNKNOWN &&
-            resolverActorId == requirement.originalActorId && LocalFoodRefundCodec.normalize(body) == body)
+            LocalFoodRefundCodec.normalize(body) == body)
         val resolution = LocalFoodRefundCodec.decode(body) as? LocalFoodRefundRequest.RecordResolution
             ?: error("food.refund.resolution_subtype")
         check(resolution.target == foodRefundDomain(requirement).target &&

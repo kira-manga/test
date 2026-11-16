@@ -1,6 +1,8 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.*
+import com.ukkera.pos.security.BranchScope
+import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
 
@@ -11,20 +13,35 @@ internal class LocalRetailSupervisorReviewHistorySources(
     private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
 ) {
     suspend fun original(command: RuntimeHistoricalCommand, operationId: OperationId): LocalRetailJournalFactCutV3 =
-        fact(command, operationId, LocalJournalFactPhaseV3.ORIGINAL, null)
+        fact(RetailScanSources(command), operationId, LocalJournalFactPhaseV3.ORIGINAL, null)
 
     suspend fun resolution(command: RuntimeHistoricalCommand,
+        original: LocalRetailJournalFactCutV3): LocalRetailJournalFactCutV3? = resolution(RetailScanSources(command), original)
+
+    suspend fun fact(sources: RuntimeHistoricalFinancialSources, operationId: OperationId,
+        phase: LocalJournalFactPhaseV3): LocalRetailJournalFactCutV3 {
+        val source = RetailNativeFinancialSources(sources)
+        val parent = if (phase == LocalJournalFactPhaseV3.ORIGINAL) null else {
+            val raw = required(source, retailJournalFactKeyV3(phase, operationId)).row
+            val value = localSalesDecode(raw.payload, LocalRetailJournalFactV3.serializer(), LocalFinancialJournalProfileV3.MAX_FACT_BYTES)
+            fact(source, value.target.recordingOperationId, LocalJournalFactPhaseV3.ORIGINAL, null)
+        }
+        return fact(source, operationId, phase, parent)
+    }
+
+    suspend fun resolution(sources: RuntimeHistoricalFinancialSources,
+        original: LocalRetailJournalFactCutV3): LocalRetailJournalFactCutV3? = resolution(RetailNativeFinancialSources(sources), original)
+
+    private suspend fun resolution(command: RetailHistoricalSources,
         original: LocalRetailJournalFactCutV3): LocalRetailJournalFactCutV3? {
         val target = original.slot.value.target
-        // The real RETAIL Review selects only raw-resolution presence here. This complete
-        // native SQL absence is display DATA, never evidence that no native/human action exists.
         if (command.aggregateSource(retailJournalFactKeyV3(LocalJournalFactPhaseV3.RESOLUTION, target.resolutionOperationId)) == null) return null
         return fact(command, target.resolutionOperationId, LocalJournalFactPhaseV3.RESOLUTION, original)
     }
 
     private class Slot(val row: LocalSalesRow<LocalRetailJournalSlotV3>, val original: RetainedOriginalV2.Legacy)
 
-    private suspend fun slot(command: RuntimeHistoricalCommand, target: LocalJournalTargetV3): Slot {
+    private suspend fun slot(command: RetailHistoricalSources, target: LocalJournalTargetV3): Slot {
         val paired = required(command, retailJournalSlotKeyV3(target.recordingOperationId))
         val row = paired.row
         check(row.revision == Revision(1) && row.schema == LocalFinancialJournalProfileV3.SLOT_SCHEMA)
@@ -60,7 +77,7 @@ internal class LocalRetailSupervisorReviewHistorySources(
         return Slot(LocalSalesRow(row, value), origin)
     }
 
-    private suspend fun fact(command: RuntimeHistoricalCommand, operationId: OperationId,
+    private suspend fun fact(command: RetailHistoricalSources, operationId: OperationId,
         phase: LocalJournalFactPhaseV3, parent: LocalRetailJournalFactCutV3?): LocalRetailJournalFactCutV3 {
         val source = required(command, retailJournalFactKeyV3(phase, operationId))
         val row = source.row
@@ -107,7 +124,7 @@ internal class LocalRetailSupervisorReviewHistorySources(
         return LocalRetailJournalFactCutV3(slot.row, LocalSalesRow(row, value), application)
     }
 
-    private suspend fun application(command: RuntimeHistoricalCommand, raw: RetainedOriginalV2.Legacy,
+    private suspend fun application(command: RetailHistoricalSources, raw: RetainedOriginalV2.Legacy,
         slot: LocalSalesRow<LocalRetailJournalSlotV3>, fact: LocalSalesRow<LocalRetailJournalFactV3>,
         parent: LocalRetailJournalFactCutV3?): LocalSalesRow<LocalRetailJournalApplicationV3> {
         val source = required(command, retailJournalApplicationKeyV3(fact.value.target.factOperation(fact.value.phase)))
@@ -146,8 +163,51 @@ internal class LocalRetailSupervisorReviewHistorySources(
         return LocalSalesRow(row, value)
     }
 
-    private suspend fun required(command: RuntimeHistoricalCommand, key: AggregateKey): RuntimeHistoricalAggregateSource =
+    private suspend fun required(command: RetailHistoricalSources, key: AggregateKey): RetailHistoricalAggregateSource =
         command.aggregateSource(key) ?: error("sales.supervisor.history_source_unavailable")
-    private suspend fun earlier(command: RuntimeHistoricalCommand, operationId: OperationId): RetainedOriginalV2.Legacy =
+    private suspend fun earlier(command: RetailHistoricalSources, operationId: OperationId): RetainedOriginalV2.Legacy =
         command.earlierOriginal(operationId) as? RetainedOriginalV2.Legacy ?: error("sales.supervisor.history_original_unavailable")
+}
+
+/** Two genuine source owners only; no public supplied source reader or historical view. */
+private sealed interface RetailHistoricalSources {
+    val scope: BranchScope
+    suspend fun aggregateSource(key: AggregateKey): RetailHistoricalAggregateSource?
+    suspend fun earlierOriginal(operationId: OperationId): RetainedOriginalV2?
+    suspend fun claim(key: ClaimKey): DomainId?
+}
+private class RetailHistoricalAggregateSource(val row: StoredAggregate, val original: RetainedOriginalV2)
+private class RetailScanSources(private val command: RuntimeHistoricalCommand) : RetailHistoricalSources {
+    override val scope: BranchScope get() = command.scope
+    override suspend fun aggregateSource(key: AggregateKey): RetailHistoricalAggregateSource? =
+        command.aggregateSource(key)?.let { RetailHistoricalAggregateSource(it.row, it.original) }
+    override suspend fun earlierOriginal(operationId: OperationId): RetainedOriginalV2? = command.earlierOriginal(operationId)
+    override suspend fun claim(key: ClaimKey): DomainId? = command.claim(key)
+}
+private class RetailNativeFinancialSources(private val sources: RuntimeHistoricalFinancialSources) : RetailHistoricalSources {
+    override val scope: BranchScope get() = sources.evidence.scope
+    override suspend fun aggregateSource(key: AggregateKey): RetailHistoricalAggregateSource? {
+        val source = sources.beforeAggregateSources.singleOrNull { it.row.key == key }
+        if (source == null) { check(key in sources.beforeAbsentAggregateKeys); return null }
+        return RetailHistoricalAggregateSource(source.row, source.original)
+    }
+    override suspend fun claim(key: ClaimKey): DomainId? {
+        val source = sources.beforeClaimSources.singleOrNull { it.key == key }
+        if (source == null) { check(key in sources.beforeAbsentClaimKeys); return null }
+        return source.ownerId
+    }
+    override suspend fun earlierOriginal(operationId: OperationId): RetainedOriginalV2? =
+        (sources.beforeAggregateSources.map { it.original } + sources.beforeClaimSources.map { it.original }).firstOrNull {
+            when (it) {
+                is RetainedOriginalV2.Legacy -> it.evidence.operationId == operationId
+                is RetainedOriginalV2.Streamed -> it.evidence.identity.producer.operationId == operationId
+            }
+        }?.also {
+            when (it) {
+                is RetainedOriginalV2.Legacy -> check(it.evidence.scope == scope && it.evidence.assignmentId == sources.evidence.assignmentId &&
+                    it.evidence.authorityEpoch == sources.evidence.authorityEpoch && it.evidence.sequence < sources.evidence.sequence)
+                is RetainedOriginalV2.Streamed -> check(it.evidence.identity.scope == scope && it.evidence.identity.assignmentId == sources.evidence.assignmentId &&
+                    it.evidence.identity.authorityEpoch == sources.evidence.authorityEpoch && it.evidence.identity.sequence < sources.evidence.sequence)
+            }
+        }
 }

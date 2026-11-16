@@ -46,6 +46,8 @@ public data class LocalClientIdentity(
  * Ordinary intent capacity is NOT protected capacity for recording physical money outcomes.
  */
 public abstract class LocalClientIntentJournal internal constructor(public val owner: LocalClientIdentity) {
+    /** Separate native purpose; unsupported platforms never substitute an in-memory cache. */
+    internal open val readViews: LocalClientReadViewStore? get() = null
     /** All interactive adapters sharing this custody serialize read/stage/dispatch/ack handoffs. */
     internal val requests: Mutex = Mutex()
     internal abstract suspend fun find(operationId: OperationId): JournalRead<StoredClientIntentV1?>

@@ -34,7 +34,11 @@ internal fun requireAcceptedRefund(value: LocalAcceptedReturnViewV1) {
     require(value.obligations.fold(Money(currency, 0L)) { sum, it -> sum + it.amount } == value.originalPayable)
     value.attempts.forEach { attempt ->
         val obligation = obligations[attempt.originalPaymentId] ?: unavailable()
-        require(attempt.status in AttemptStatus.entries.map { it.name } && attempt.tender == obligation.tender &&
+        // An exchange offset settles the obligation without moving money: settled only, never recordable.
+        val offset = attempt.tender.kind == "EXCHANGE_OFFSET"
+        if (offset) require(attempt.tender.tenderId != null && attempt.tender == LocalTenderViewV1("EXCHANGE_OFFSET", attempt.tender.tenderId) &&
+            attempt.status == AttemptStatus.ATTESTED_PAID.name && attempt.activeRecordingOperationId == null)
+        require(attempt.status in AttemptStatus.entries.map { it.name } && (offset || attempt.tender == obligation.tender) &&
             attempt.amount.currency == currency && attempt.amount.minor > 0L && attempt.amount.minor <= obligation.amount.minor)
         val unresolved = refundUnresolved(attempt.status)
         require(attempt.activeRecordingOperationId == null || attempt.ownAttempt && unresolved)

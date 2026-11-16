@@ -1,6 +1,7 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.MasterReadHandler
 import com.ukkera.pos.database.PreparedRead
 import com.ukkera.pos.database.ReadContext
@@ -118,6 +119,9 @@ public class LocalCashReadHandler : MasterReadHandler {
     override public val key: ReadKey get() = LocalCashReadCodec.QUERY
     override public fun normalize(input: StoredBytes): StoredBytes =
         LocalCashReadCodec.encode(localSalesDecode(input, LocalCashQueryV1.serializer(), 2_048))
+
+    override public fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
 
     override public suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(view.scope == context.scope && context.key == key) { "sales.context.invalid" }

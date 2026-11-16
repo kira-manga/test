@@ -24,6 +24,9 @@ internal interface DesktopClientTargetPlatform {
     fun createKey(preparationId: DomainId, keyId: DomainId): DesktopClientTargetKey
     fun openKey(preparationId: DomainId, keyId: DomainId, originalPoint: ByteArray): DesktopClientTargetKey
     fun newSdkOwner(installed: SelfOwnedInstalledIdentityTargetV2): DevicePairingTargetSdkOwner
+    /** Separate actual key/private-directory owner. Absence denies physical acquisition;
+     * it is never replaced by identity metadata or a generic journal-storage callback. */
+    fun physicalJournalNative(action: LocalPairedDeviceCredentialJournalAction): DesktopPairedDevicePhysicalJournalNative? = null
 }
 
 /**
@@ -39,6 +42,19 @@ internal class DesktopDevicePairingTargetNative(private val platform: DesktopCli
     private val snapshots = linkedMapOf<String, ByteArray?>()
     private var key: DesktopClientTargetKey? = null
     private var keyIds: Pair<DomainId, DomainId>? = null
+
+    fun physicalJournalSource(original: PairedDeviceCredentialJournalCustody): DesktopPairedDevicePhysicalJournalCustody? {
+        core.requireReadable()
+        core.requireCredentialAllocation(original.originalRecord)
+        val actual = platform.physicalJournalNative(original.action) ?: return null
+        val parent = platform.parentDirectory().toAbsolutePath().normalize()
+        check(actual.parentDirectory.toAbsolutePath().normalize() == parent && parent.toRealPath() == parent &&
+            actual.installedApplication == (origin() as TargetOrigin.Desktop).installed &&
+            actual.installedApplication == original.sdkOriginal.identity.installedApplication)
+        actual.requireCurrent()
+        core.requireReadable()
+        return DesktopPairedDevicePhysicalJournalCustody(original, actual, parent)
+    }
 
     private fun store(): DesktopTargetSnapshotStore = store ?: selfOwnedFail(SelfOwnedInstallationFailureV1.UNAVAILABLE)
     private fun directory(): Path =
@@ -239,7 +255,10 @@ internal class DesktopDevicePairingTarget private constructor(private val native
         val (approved, sdk, record) = core.allocateCredentialJournal(originalPairingActionId, action)
         val settled = kotlinx.coroutines.CompletableDeferred(Unit)
         PairedDeviceCredentialJournalCustody(owner, custodySource, action, approved, sdk, record, settled)
-            .also { issuedCustody.set(it) }
+            .also { custody ->
+                issuedCustody.set(custody)
+                native.physicalJournalSource(custody)?.let(custody::attachPhysicalSource)
+            }
     }
 
     @Synchronized override fun close() {

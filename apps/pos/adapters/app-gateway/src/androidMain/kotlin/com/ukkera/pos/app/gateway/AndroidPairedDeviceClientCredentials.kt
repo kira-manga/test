@@ -36,6 +36,7 @@ public class AndroidPairedDeviceClientCredentials private constructor(
     private val closure = AtomicReference<CompletableDeferred<Unit>?>(null)
     private val actorGate = Any()
     private var actorSource: PairedDeviceActorIntentSource? = null
+    private var remotePhysical: PairedDeviceRemotePhysicalOwners? = null
 
     /** Exact admitted native journal lifetime, independent of old target/RPC currentness. */
     public fun isCurrent(): Boolean = closure.get() == null && credentialsOwner.isCurrent() &&
@@ -65,12 +66,42 @@ public class AndroidPairedDeviceClientCredentials private constructor(
         }
     }
 
+    /** SAME actual selected-original RPC plus genuine successful actor-native custody. */
+    public suspend fun remotePhysicalBinding(rpc: AndroidOriginalRpcClientOwner,
+        endpoint: com.ukkera.pos.rpc.LocalRpcRemoteDirectoryClient): LocalRemoteRetailPhysicalBinding? {
+        val source = actorIntentSource(rpc) as? PairedDeviceActorIntentSource ?: return null
+        val owners = synchronized(actorGate) {
+            if (!isCurrent()) null else remotePhysical ?: PairedDeviceRemotePhysicalOwners(source, ::isCurrent,
+                acquireNative = { companion, journal, journalId, loan, action ->
+                com.ukkera.pos.sales.store.AndroidDistributedRetailPhysicalRecording.acquireClient(
+                    application, custody, companion, journal.owner.actorId, journalId, loan, action)
+                }, acquireRecovery = { companion, selection, loan ->
+                    com.ukkera.pos.sales.store.AndroidDistributedRetailPhysicalRecording.acquireRawOriginalRecovery(
+                        application, custody, companion, selection.actorId, selection.journalId, loan)
+                }, acquireResolution = { companion, selection, loan ->
+                    com.ukkera.pos.sales.store.AndroidDistributedRetailPhysicalRecording.acquireExistingResolution(
+                        application, custody, companion, selection.actorId, selection.journalId, loan)
+                }).also { remotePhysical = it }
+        } ?: return null
+        return owners.binding(endpoint)
+    }
+
     /** Retire first and await actual native journal close. Unknown close retains that
      * owner's process lease; repeat close observes the same result, never retries OS close. */
     public suspend fun close(): Unit = withContext(NonCancellable) {
         val result = CompletableDeferred<Unit>()
         if (!closure.compareAndSet(null, result)) { checkNotNull(closure.get()).await(); return@withContext }
-        val source = synchronized(actorGate) { actorSource?.also { it.denyNewWork() } }
+        val selected = synchronized(actorGate) {
+            (actorSource?.also { it.denyNewWork() }) to (remotePhysical?.also { it.denyNewWork() })
+        }
+        val source = selected.first
+        // A child with unknown FD/force/close custody keeps every parent anchor. Calling
+        // source.close here would wait forever for the same retained counted loan.
+        if (selected.second?.close() == com.ukkera.pos.sales.store.LocalPhysicalSpoolClose.HELD) {
+            result.completeExceptionally(IllegalStateException("physical.client.custody_held"))
+            result.await()
+            return@withContext
+        }
         var failure: Throwable? = null
         suspend fun attempt(action: suspend () -> Unit) {
             try { action() } catch (caught: Throwable) {

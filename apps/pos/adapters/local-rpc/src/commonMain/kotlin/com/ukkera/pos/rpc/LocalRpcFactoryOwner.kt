@@ -4,14 +4,18 @@ import com.ukkera.pos.security.LocalDevicePairingProfileV2
 import com.ukkera.pos.security.LocalDevicePairingApprovedMaster
 import com.ukkera.pos.database.LocalMasterClientRpcBridgeV1
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
+import com.ukkera.pos.database.LocalMasterRpcReadStage
+import com.ukkera.pos.database.reportLocalMasterRpcReadFailure
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.security.LocalDevicePairingSdkIdentityV2
 import com.ukkera.pos.security.LocalDevicePairingSdkOriginal
 import com.ukkera.pos.security.LocalMasterSdkOriginal
 import dev.p2pkit.core.AppId
+import dev.p2pkit.core.FeatureState
 import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.rpc.RpcClient
 import dev.p2pkit.rpc.RpcConnectionState
+import dev.p2pkit.rpc.RpcDiscoveredHost
 import dev.p2pkit.rpc.RpcEndpoint
 import dev.p2pkit.rpc.RpcHost
 import dev.p2pkit.rpc.RpcHostState
@@ -34,10 +38,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -46,6 +54,7 @@ import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlin.time.Duration.Companion.seconds
 
 /** Identity ownership phase; READY does not itself assert activated transport. */
 public enum class LocalRpcFactoryPhase { NEW, ACQUIRING, READY, CLOSING, CLOSED, UNCERTAIN }
@@ -77,6 +86,7 @@ public class LocalRpcFactoryOwner private constructor(
     private val matchesOriginal: ((RpcLocalIdentity) -> Boolean)?,
     private val sessionIngress: LocalRpcMasterSessionIngress? = null,
     private val servingCurrent: (() -> Boolean)? = null,
+    private val advertiseHost: Boolean = false,
 ) {
     private val gate: Mutex = Mutex()
     private val state: MutableStateFlow<LocalRpcFactoryPhase> = MutableStateFlow(LocalRpcFactoryPhase.NEW)
@@ -95,6 +105,8 @@ public class LocalRpcFactoryOwner private constructor(
     private var starting: Deferred<Unit>? = null
     private var endpointRead: Deferred<RpcEndpoint>? = null
     private var connecting: Deferred<Unit>? = null
+    private var discoveryStarting: Deferred<Unit>? = null
+    private var discoveredConnectionTarget: RpcDiscoveredHost? = null
     private var authenticationCalls: Int = 0 // Shared selected-Client call loans, including directory work.
     private var directoryBridge: LocalMasterClientRpcBridgeV1? = null
     private val authenticationDrained: CompletableDeferred<Unit> = CompletableDeferred()
@@ -224,12 +236,74 @@ public class LocalRpcFactoryOwner private constructor(
         return endpoint
     }
 
+    /** Advisory discovery on the same retained original Client; it creates no trust or session. */
+    internal suspend fun startSelectedClientDiscovery(): Flow<List<RpcDiscoveredHost>> {
+        currentCoroutineContext().ensureActive()
+        val pending = gate.withLock {
+            requireAvailable()
+            check(!host && trustStore is LocalRpcSelectedMasterTrustStore) { "Selected-original RPC Client is unavailable" }
+            discoveryStarting ?: scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    acquire()
+                    val retained = gate.withLock { requireReady(); checkNotNull(role as? OwnedRole.Client) }
+                    retained.startDiscovery()
+                    gate.withLock { requireReady() }
+                } catch (failure: Throwable) {
+                    retireFailedOperation()
+                    throw failure
+                }
+            }.also { discoveryStarting = it; it.start() }
+        }
+        pending.await()
+        return gate.withLock { requireReady(); checkNotNull(role as? OwnedRole.Client).discoveryHosts }
+    }
+
+    /** A discovered address is resolved only by the SDK, against the approved original pin. */
+    internal suspend fun connectDiscoveredHost(host: RpcDiscoveredHost, expectedFingerprint: PeerFingerprint) {
+        currentCoroutineContext().ensureActive()
+        require(host.fingerprint == expectedFingerprint) { "Discovered Master differs from the paired original" }
+        val pending = gate.withLock {
+            requireAvailable()
+            check(!this.host && trustStore is LocalRpcSelectedMasterTrustStore && connectionTarget == null) {
+                "Selected-original RPC Client is unavailable"
+            }
+            discoveredConnectionTarget?.let { original ->
+                check(original.peer.id == host.peer.id && original.fingerprint == host.fingerprint) {
+                    "Original discovered Master selection differs"
+                }
+            }
+            connecting ?: scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    acquire()
+                    val retained = gate.withLock { requireReady(); checkNotNull(role as? OwnedRole.Client) }
+                    trustStore.replace(appId, RpcTrustPurpose.SelectedHosts, setOf(expectedFingerprint))
+                    gate.withLock { requireReady() }
+                    retained.connect(host)
+                    trustStore.replace(appId, RpcTrustPurpose.SelectedHosts, setOf(expectedFingerprint))
+                    gate.withLock {
+                        requireReady()
+                        val observed = retained.state
+                        check(observed == RpcConnectionState.Ready) { "Original RPC Client is not connected: $observed" }
+                        selectedConnection.value = retained
+                    }
+                } catch (failure: Throwable) {
+                    retireFailedOperation()
+                    throw failure
+                }
+            }.also { discoveredConnectionTarget = host; connecting = it; it.start() }
+        }
+        pending.await()
+        currentCoroutineContext().ensureActive()
+        trustStore.replace(appId, RpcTrustPurpose.SelectedHosts, setOf(expectedFingerprint))
+        assertSelectedClientConnected()
+    }
+
     /** One exact numeric selection, only with the internally qualified original-Master store. */
     internal suspend fun connectSelectedHost(selectedHost: RpcSelectedHost) {
         currentCoroutineContext().ensureActive()
         val pending = gate.withLock {
             requireAvailable()
-            check(!host && trustStore is LocalRpcSelectedMasterTrustStore) {
+            check(!host && trustStore is LocalRpcSelectedMasterTrustStore && discoveredConnectionTarget == null) {
                 "Selected-original RPC Client is unavailable"
             }
             connectionTarget?.let { original ->
@@ -251,7 +325,8 @@ public class LocalRpcFactoryOwner private constructor(
                     trustStore.replace(appId, RpcTrustPurpose.SelectedHosts, setOf(selectedHost.fingerprint))
                     gate.withLock {
                         requireReady()
-                        check(retained.state == RpcConnectionState.Ready) { "Original RPC Client is not connected" }
+                        val observed = retained.state
+                        check(observed == RpcConnectionState.Ready) { "Original RPC Client is not connected: $observed" }
                         selectedConnection.value = retained
                     }
                 } catch (failure: Throwable) {
@@ -277,6 +352,31 @@ public class LocalRpcFactoryOwner private constructor(
     /** Local lifetime sample, not admission/session/permission authority or a connection attempt. */
     internal fun selectedClientConnectedNow(): Boolean = parent.isActive &&
         state.value == LocalRpcFactoryPhase.READY && selectedConnection.value?.state == RpcConnectionState.Ready
+
+    /** Failure-only fixed observations. No messages, identities, payloads or state repair. */
+    internal fun reportSelectedClientFailure(failure: Throwable?) {
+        try {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_DIRECTORY_CALL, failure)
+            reportLocalMasterRpcReadFailure(if (state.value == LocalRpcFactoryPhase.READY)
+                LocalMasterRpcReadStage.CLIENT_FACTORY_READY else LocalMasterRpcReadStage.CLIENT_FACTORY_NOT_READY, null)
+            if (!parent.isActive) reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_PARENT_ENDED, null)
+            val client = selectedConnection.value
+            val stage = when (client?.state) {
+                RpcConnectionState.Ready -> LocalMasterRpcReadStage.CLIENT_SDK_READY
+                RpcConnectionState.Disconnected -> LocalMasterRpcReadStage.CLIENT_SDK_DISCONNECTED
+                RpcConnectionState.Closed -> LocalMasterRpcReadStage.CLIENT_SDK_CLOSED
+                RpcConnectionState.Failed -> LocalMasterRpcReadStage.CLIENT_SDK_FAILED
+                else -> LocalMasterRpcReadStage.CLIENT_SDK_OTHER
+            }
+            reportLocalMasterRpcReadFailure(stage, null)
+            client?.diagnostics?.let { diagnostics ->
+                if (diagnostics.protocolFailures > 0) reportLocalMasterRpcReadFailure(
+                    LocalMasterRpcReadStage.CLIENT_SDK_PROTOCOL_FAILURE_RECORDED, null)
+                if (diagnostics.connectionFailures > 0) reportLocalMasterRpcReadFailure(
+                    LocalMasterRpcReadStage.CLIENT_SDK_CONNECTION_FAILURE_RECORDED, null)
+            }
+        } catch (_: Throwable) { /* Observation cannot change the actual failure. */ }
+    }
 
     /** Observe the existing exact connection; this cannot start a connection or repair trust. */
     internal suspend fun assertSelectedClientConnected() {
@@ -323,6 +423,43 @@ public class LocalRpcFactoryOwner private constructor(
         } finally {
             // Includes an SDK-decoded result abandoned by its own timeout/cancellation boundary.
             codec?.destroy()
+            request.destroy()
+            if (admitted) withContext(NonCancellable) { gate.withLock { releaseAuthenticationCall() } }
+        }
+    }
+
+    /** Fresh identity-only probe on the existing route; it never issues or renews a login. */
+    internal suspend fun callSelectedClientIdentity(
+        request: LocalRpcCurrentIdentityRequest,
+    ): LocalRpcCurrentIdentityResponse? {
+        var admitted = false
+        try {
+            currentCoroutineContext().ensureActive()
+            require(request.access.size == 52) { "Self-session access is unavailable" }
+            val retained = gate.withLock {
+                requireSelectedClientConnected()
+                checkNotNull(role as? OwnedRole.Client).also { authenticationCalls++; admitted = true }
+            }
+            val shared = currentIdentityProcedure
+            val owned = RpcProcedure(shared.name, shared.version,
+                object : KSerializer<LocalRpcCurrentIdentityRequest> by shared.request {
+                    override fun serialize(encoder: Encoder, value: LocalRpcCurrentIdentityRequest) {
+                        check(value === request) { "Self-session request ownership differs" }
+                        try { shared.request.serialize(encoder, value) } finally { value.destroy() }
+                    }
+                }, shared.response, shared.applicationError, shared.retrySafety,
+                shared.requestLimitBytes, shared.responseLimitBytes, shared.errorLimitBytes)
+            val reply = retained.identityCall(owned, request)
+            gate.withLock {
+                currentCoroutineContext().ensureActive()
+                requireSelectedClientConnected()
+                check(role === retained) { "Selected original RPC Client differs" }
+            }
+            return when (reply) {
+                is RpcReply.Success -> reply.value
+                is RpcReply.ApplicationError -> null
+            }
+        } finally {
             request.destroy()
             if (admitted) withContext(NonCancellable) { gate.withLock { releaseAuthenticationCall() } }
         }
@@ -397,7 +534,7 @@ public class LocalRpcFactoryOwner private constructor(
                     deviceName = exactDeviceName
                     lan = this@LocalRpcFactoryOwner.lan
                     trustStore = this@LocalRpcFactoryOwner.trustStore
-                    advertise = false
+                    advertise = advertiseHost
                     allowNearbyPairing = false
                     sessionIngress?.install(this)
                 })
@@ -447,14 +584,22 @@ public class LocalRpcFactoryOwner private constructor(
         check(parent.isActive && state.value == LocalRpcFactoryPhase.READY) { "RPC identity owner is retired" }
     }
 
+    /** Exact official role's currently loaded pins; native authority is read separately. */
+    internal suspend fun servingTrustSnapshot(): Set<PeerFingerprint> = gate.withLock {
+        requireReady()
+        requireServingHost()
+        checkNotNull(role as? OwnedRole.Host).trustedFingerprints
+    }
+
     private fun requireServingHost() {
-        check(host && sessionIngress != null && trustStore is LocalRpcTrustStore &&
+        check(host && sessionIngress != null && sessionIngress.isCurrentForServing() && trustStore is LocalRpcTrustStore &&
             servingCurrent?.invoke() == true) { "Original-service RPC Host is unavailable" }
     }
 
     private fun requireSelectedClientConnected() {
         requireReady()
-        check(!host && trustStore is LocalRpcSelectedMasterTrustStore && connectionTarget != null &&
+        check(!host && trustStore is LocalRpcSelectedMasterTrustStore &&
+            (connectionTarget != null || discoveredConnectionTarget != null) &&
             connecting?.isCompleted == true && connecting?.isCancelled == false &&
             (role as? OwnedRole.Client)?.state == RpcConnectionState.Ready) {
             "Selected-original RPC Client is not connected"
@@ -482,7 +627,7 @@ public class LocalRpcFactoryOwner private constructor(
             val creating = gate.withLock { acquisition }
             // Do not cancel factory work: it can own resources before returning a handle.
             creating?.join()
-            val operations = gate.withLock { listOfNotNull<Job>(starting, endpointRead, connecting) }
+            val operations = gate.withLock { listOfNotNull<Job>(starting, endpointRead, connecting, discoveryStarting) }
             operations.forEach { it.join() }
             gate.withLock { if (authenticationCalls == 0) authenticationDrained.complete(Unit) }
             authenticationDrained.await()
@@ -525,11 +670,16 @@ public class LocalRpcFactoryOwner private constructor(
         internal fun reconstructServingHost(platform: RpcPlatform, applicationScope: CoroutineScope,
             original: LocalMasterSdkOriginal, lan: OrganizationLan, trustStore: RpcTrustStore,
             ingress: LocalRpcMasterSessionIngress, isCurrent: () -> Boolean): LocalRpcFactoryOwner =
+            reconstructServingHost(platform, applicationScope, original, lan, trustStore, ingress, false, isCurrent)
+
+        internal fun reconstructServingHost(platform: RpcPlatform, applicationScope: CoroutineScope,
+            original: LocalMasterSdkOriginal, lan: OrganizationLan, trustStore: RpcTrustStore,
+            ingress: LocalRpcMasterSessionIngress, advertise: Boolean, isCurrent: () -> Boolean): LocalRpcFactoryOwner =
             LocalRpcFactoryOwner(platform, applicationScope, original.appId, original.exactDeviceName,
                 lan, trustStore, true, { actual ->
                     original.matchesSdkTransportIdentity(actual.appId, actual.peerId, actual.fingerprint,
                         actual.pairingQr) && actual.deviceName == original.exactDeviceName
-                }, ingress, isCurrent)
+                }, ingress, isCurrent, advertise)
 
         /** A real Master original, never a substituted Client pairing descriptor or native key. */
         public fun reconstructHost(platform: RpcPlatform, applicationScope: CoroutineScope,
@@ -605,11 +755,36 @@ private sealed interface OwnedRole {
     class Client(private val value: RpcClient): OwnedRole {
         override val identity: RpcLocalIdentity get() = value.localIdentity
         val state: RpcConnectionState get() = value.state.value
+        val diagnostics: dev.p2pkit.rpc.RpcDiagnostics get() = value.diagnostics.value
         suspend fun connect(host: RpcSelectedHost) { value.connect(host) }
+        suspend fun connect(host: RpcDiscoveredHost) { value.connect(host) }
+        suspend fun startDiscovery() {
+            value.startDiscovery()
+            check(value.discoveryState.value == FeatureState.Active) { "Original Client discovery is unavailable" }
+        }
+        // Claim expiry/renewal need not change the public Peer descriptor. Read only the
+        // SDK's current verified-claim snapshot; connect still performs its own fresh check.
+        val discoveryHosts: Flow<List<RpcDiscoveredHost>> get() = flow {
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                check(value.discoveryState.value == FeatureState.Active) { "Original Client discovery is unavailable" }
+                emit(value.discoveredHosts())
+                delay(1_000)
+            }
+        }.distinctUntilChanged()
         suspend fun authenticationCall(
             procedure: RpcProcedure<LocalRpcAuthenticationRequest, LocalRpcAuthenticationResponse, LocalRpcAuthenticationError>,
             request: LocalRpcAuthenticationRequest,
         ): RpcReply<LocalRpcAuthenticationResponse, LocalRpcAuthenticationError> =
+            // Native authentication can own a 30-second service operation after admission.
+            // Use the official SDK's supported 30-second maximum instead of its
+            // 10-second default. This changes neither native deadlines nor retry identity:
+            // there is still one original execution and a timeout stays uncertain.
+            value.call(procedure, request, timeout = 30.seconds, retry = RpcRetry.RecoverOnly(maxAttempts = 1))
+        suspend fun identityCall(
+            procedure: RpcProcedure<LocalRpcCurrentIdentityRequest, LocalRpcCurrentIdentityResponse, LocalRpcSessionError>,
+            request: LocalRpcCurrentIdentityRequest,
+        ): RpcReply<LocalRpcCurrentIdentityResponse, LocalRpcSessionError> =
             value.call(procedure, request, retry = RpcRetry.RecoverOnly(maxAttempts = 1))
         fun directoryBridge(original: LocalDevicePairingSdkOriginal, approved: LocalDevicePairingApprovedMaster,
             lifetime: Job, connectionId: DomainId, profile: LocalMasterRpcWorkflowProfile): LocalMasterClientRpcBridgeV1 =

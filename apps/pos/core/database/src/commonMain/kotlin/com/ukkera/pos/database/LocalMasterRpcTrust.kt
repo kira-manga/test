@@ -8,6 +8,8 @@ import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.core.PeerIdentity
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 /**
  * Original native admission and its separately associated SDK identity, published only after
@@ -38,13 +40,18 @@ public class LocalMasterRpcPeerAssociation internal constructor(
  * This is not employee authorization, a SelectedHosts store or proof of a live connection.
  */
 public class LocalMasterRpcTrust internal constructor(private val controller: LocalMasterRpcTrustController) {
+    /** Wake-up hints from this original database. No membership or authority is conveyed. */
+    public val hostClientInvalidations: Flow<Unit> get() = controller.hostClientInvalidations
+
     public suspend fun loadCurrentHostClients(exactAppId: AppId): Set<PeerFingerprint> =
         controller.readCurrent(exactAppId, expected = null)
 
     /** Only an idempotent assertion of the already durably authorized complete set.
      * Transport APIs cannot add, withdraw or readmit a POS device by replacing this set. */
     public suspend fun assertCurrentHostClients(exactAppId: AppId, fingerprints: Set<PeerFingerprint>) {
-        controller.readCurrent(exactAppId, fingerprints.toSet())
+        val expected = fingerprints.toSet()
+        val current = controller.readCurrent(exactAppId, expected = null)
+        if (current != expected) throw LocalMasterRpcTrustSetChanged()
     }
 
     /**
@@ -61,6 +68,7 @@ public class LocalMasterRpcTrust internal constructor(private val controller: Lo
 /** Native composition must retain the actual read worker through settlement, independently
  * of an SDK caller abandoning its wait. Membership is decided by the same Room reader. */
 internal interface LocalMasterRpcTrustController {
+    val hostClientInvalidations: Flow<Unit> get() = emptyFlow()
     suspend fun readCurrent(exactAppId: AppId, expected: Set<PeerFingerprint>?): Set<PeerFingerprint>
     suspend fun readPeerAssociation(exactAppId: AppId, peer: PeerIdentity): LocalMasterRpcPeerAssociation?
 }
@@ -189,3 +197,8 @@ internal class RoomLocalMasterRpcTrust(
 
     override fun toString(): String = "RoomLocalMasterRpcTrust([REDACTED])"
 }
+
+/** A complete settled native census was readable, but differs from the supplied SDK pins.
+ * No absence, storage failure or authority grant is inferred from this distinct refusal. */
+public class LocalMasterRpcTrustSetChanged internal constructor() :
+    IllegalStateException("Original Master transport trust changed")

@@ -97,7 +97,13 @@ public object LocalFoodPaymentProducer {
         val nativeSources = original.aggregateWrites.filter { it.key.kind == PhysicalRecordingSourceProfileV1.KIND }.map { foodPaymentInsert(it) }
         val pair = requireFoodPaymentSourcePair(requirement, nativeSources)
         check(slot.masterSource == LocalFoodPaymentSourceReference.from(pair.first) && slot.clientSource == LocalFoodPaymentSourceReference.from(pair.second))
-        val gated = nativeSources + foodPaymentSlotWrite(slot) + foodPaymentFences(requirement)
+        // Native acquisition always emits MASTER then CLIENT. Retained journal writes are
+        // sorted by key; reconstruct the original event order from the already validated
+        // pair roles, not random allocation-ID order, before comparing its whole payload.
+        val orderedNativeSources = listOf(pair.first.allocationId, pair.second.allocationId).map { id ->
+            nativeSources.single { it.key.id == id }
+        }
+        val gated = orderedNativeSources + foodPaymentSlotWrite(slot) + foodPaymentFences(requirement)
         val revisions = listOf(LocalFoodStorageRevisionV1(LocalFoodFinancialProfileV1.COLLECTION, cut.collection.id, cut.collectionEnvelope.revision.next()),
             LocalFoodStorageRevisionV1(CashNonSaleStoreProfile.SESSION_KIND, cut.cash.id, cashInput.storageRevision.next()),
             LocalFoodStorageRevisionV1(LocalFoodPaymentProfile.SLOT, DomainId(target.recordingOperationId.value), Revision(1)))
@@ -242,9 +248,13 @@ internal fun foodPaymentAfterCash(original: RetainedCommandEvidence, id: DomainI
 internal fun foodPaymentRequireExactEffects(original: RetainedCommandEvidence, expected: ProposedOutcome.Apply) {
     check(original.result == expected.result && original.aggregateWrites.size == expected.changes.size &&
         original.claimChanges.size == expected.claims.size && original.jobs.size == expected.jobs.size)
-    for ((row, change) in original.aggregateWrites.zip(expected.changes)) check(row.key == change.key &&
+    // Both employee and native journals store the canonical key order. The proposal
+    // keeps its business/event order; compare every effect in the actual storage order.
+    val changes = expected.changes.sortedWith(compareBy({ it.key.kind }, { it.key.id.value }))
+    val claims = expected.claims.sortedWith(compareBy({ it.key.namespace }, { it.key.key }))
+    for ((row, change) in original.aggregateWrites.zip(changes)) check(row.key == change.key &&
         row.storageGeneration == (change.expectedRevision?.next() ?: Revision(1)) && row.schema == change.schema && row.payload == change.payload)
-    for ((claim, change) in original.claimChanges.zip(expected.claims)) check(claim.key == change.key && claim.ownerId == change.ownerId &&
+    for ((claim, change) in original.claimChanges.zip(claims)) check(claim.key == change.key && claim.ownerId == change.ownerId &&
         claim.action == if (change is ClaimChange.Acquire) RetainedClaimAction.ACQUIRE else RetainedClaimAction.RELEASE)
     for ((job, wanted) in original.jobs.zip(expected.jobs)) check(job.kind == wanted.kind && job.body == wanted.body)
 }
@@ -257,8 +267,9 @@ internal suspend fun requireFoodPaymentOriginalCustody(view: CommandReadView, or
         view.retainedCommand(id) ?: error("food.payment.original_ancestor_missing")
     }
     val proof = LocalFoodPaymentProducer.requireStart(lineage.start)
-    LocalStockPaymentObservations.requireOriginalStock(view, stock,
-        checkNotNull(StockReadEvidenceV1.read(lineage.start)), lineage.start)
+    val observed = checkNotNull(StockReadEvidenceV1.read(lineage.start))
+    if (view is FoodReadView) view.requireFinancialOriginalStock(observed, lineage.start)
+    else LocalStockPaymentObservations.requireOriginalStock(view, stock, observed, lineage.start)
     for (row in proof.cut.portions) {
         val portion = row.body as FoodBodyV1.Portion
         val entry = proof.cut.collection.portions.single { it.portionId == row.id }

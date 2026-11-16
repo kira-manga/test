@@ -177,6 +177,18 @@ internal object WindowsOriginalNative {
 
     fun openServiceDirectory(path: String): WindowsOriginalHandle? = openDirectoryHandle(path)
 
+    /** Separate packaged-user profile. Service SID grammar/ACL expectations stay unchanged. */
+    fun createPackagedUserDirectory(path: String, userSid: String): WindowsOriginalHandle {
+        requireSupported()
+        if (!SelfOwnedInstalledIdentityGrammarV2.accountSid(userSid))
+            selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_APPLICATION)
+        withValidatedPrivateAttributes(userSid, userSid, inheritable = true, rights = "FA") { attributes ->
+            if (kernel.CreateDirectoryW(WString(nativePath(path)), attributes) == 0)
+                selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+        }
+        return openDirectoryHandle(path) ?: selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
+    }
+
     fun createLockFile(
         path: String,
         accountSid: String,
@@ -931,9 +943,15 @@ internal object WindowsOriginalNative {
             !SelfOwnedInstalledIdentityGrammarV2.serviceSid(serviceSid)) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.INVALID_APPLICATION)
         }
+        return withValidatedPrivateAttributes(accountSid, serviceSid, inheritable, rights, work)
+    }
+
+    /** Both callers validated their DISTINCT closed principal profiles before this helper. */
+    private fun <T> withValidatedPrivateAttributes(accountSid: String, grantSid: String,
+        inheritable: Boolean, rights: String, work: (Pointer) -> T): T {
         val descriptor = PointerByReference()
         val flags = if (inheritable) "OICI" else ""
-        val text = "O:$accountSid" + "D:P(A;" + flags + ";$rights;;;$serviceSid)"
+        val text = "O:$accountSid" + "D:P(A;" + flags + ";$rights;;;$grantSid)"
         if (advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(WString(text), 1,
                 descriptor, null) == 0) {
             selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)

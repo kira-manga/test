@@ -41,6 +41,7 @@ import com.ukkera.pos.database.setup.SavedOriginalSetupV1
 import com.ukkera.pos.inventory.store.LocalStockOpeningEvidenceLineV1
 import com.ukkera.pos.inventory.store.LocalStockOpeningEvidenceV1
 import com.ukkera.pos.inventory.store.LocalStockOpeningEvidenceV1Source
+import com.ukkera.pos.inventory.store.LocalStockRepository
 import com.ukkera.pos.inventory.store.LocalStockStoreProfile
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.recovery.RecoveryResourceKind
@@ -72,21 +73,23 @@ import kotlin.coroutines.cancellation.CancellationException
 /** Installed production checkpoint commands and protected read. Registration grants nothing. */
 public class LocalSetupCheckpointServices(
     private val signatures: CompanyPublicationSignatureVerifier,
+    /** Null preserves legacy-only composition; normalized originals require the installed repository. */
+    private val stockRepository: LocalStockRepository? = null,
 ) {
     private val commandValues: List<MasterCommandHandler> = listOf(
         LocalSetupConfigurationHandler(signatures),
         LocalSetupCatalogImportRowHandler(),
         LocalSetupCompleteCatalogImportHandler(),
-        LocalSetupOpeningStockRowHandler(),
+        LocalSetupOpeningStockRowHandler(stockRepository),
         LocalSetupOpeningFloatRowHandler(),
-        LocalSetupCompleteOpeningHandler(),
+        LocalSetupCompleteOpeningHandler(stockRepository),
     )
     private val readValues: List<MasterReadHandler> = listOf(LocalSetupCheckpointReadHandler(), LocalSetupCheckpointRowsReadHandler())
 
     public val commands: List<MasterCommandHandler> get() = commandValues.toList()
     public val reads: List<MasterReadHandler> get() = readValues.toList()
     public val prerequisites: LocalSetupGoLivePrerequisiteSource =
-        LocalProductionSetupGoLivePrerequisites(signatures)
+        LocalProductionSetupGoLivePrerequisites(signatures, stockRepository)
 }
 
 internal data class CatalogEffectV1(
@@ -558,7 +561,7 @@ private class OpeningStockRowPrepared(
     }
 }
 
-private class LocalSetupOpeningStockRowHandler : MasterCommandHandler {
+private class LocalSetupOpeningStockRowHandler(private val stockRepository: LocalStockRepository?) : MasterCommandHandler {
     override val key: CommandKey get() = LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW
     override val writableKinds: Set<String> get() = setOf(LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW_KIND)
     override val claimNamespaces: Set<String> get() = setOf(LocalSetupCheckpointProfileV1.SOURCE_CLAIM_NAMESPACE)
@@ -579,7 +582,7 @@ private class LocalSetupOpeningStockRowHandler : MasterCommandHandler {
             LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW_KIND, installationId, request.sourceId)
         val occupied = view.aggregate(rowKey) != null || view.claim(claimKey) != null
         val effect = if (original == null || !request.target.original.matches(original) || occupied) null
-            else LocalStockOpeningEvidenceV1Source.observe(view, request.openingOperationId, request.receiptId)
+            else LocalStockOpeningEvidenceV1Source.observe(view, request.openingOperationId, request.receiptId, stockRepository)
         val line = effect?.lines?.singleOrNull { it.sourceId == request.sourceId }
         val requirement = openingRequirement(context, installationId, Revision(0))
         val resources = setupResources(context.originalActorId, installationId, setOfNotNull(
@@ -735,7 +738,7 @@ private class CompleteOpeningPrepared(
     }
 }
 
-private class LocalSetupCompleteOpeningHandler : MasterCommandHandler {
+private class LocalSetupCompleteOpeningHandler(private val stockRepository: LocalStockRepository?) : MasterCommandHandler {
     override val key: CommandKey get() = LocalSetupCheckpointProfileV1.COMPLETE_OPENING
     override val writableKinds: Set<String> get() = setOf(LocalSetupCheckpointProfileV1.OPENING_CHECKPOINT_KIND)
     override val claimNamespaces: Set<String> get() = emptySet()
@@ -757,7 +760,7 @@ private class LocalSetupCompleteOpeningHandler : MasterCommandHandler {
                 stock = scanStockRows(view, context.scope, installationId),
                 float = scanFloatRows(view, context.scope, installationId),
             )
-        val verified = scan?.let { verifyOpeningManifest(view, context.scope, installationId, request, it.stock, it.float) }
+        val verified = scan?.let { verifyOpeningManifest(view, context.scope, installationId, request, it.stock, it.float, stockRepository) }
         val requirement = openingRequirement(context, installationId, Revision(0))
         val resources = setupResources(context.originalActorId, installationId,
             (scan?.stock.orEmpty().map {
@@ -1004,7 +1007,8 @@ internal suspend fun verifyCatalogManifest(view: CommandReadView, scope: BranchS
 internal suspend fun verifyOpeningManifest(view: CommandReadView, scope: BranchScope, installationId: DomainId,
     request: LocalSetupOpeningCompleteRequestV1,
     actualStock: List<Pair<AggregateKey, LocalSetupOpeningStockRowRecordV1>>?,
-    actualFloat: List<Pair<AggregateKey, LocalSetupOpeningFloatRowRecordV1>>?):
+    actualFloat: List<Pair<AggregateKey, LocalSetupOpeningFloatRowRecordV1>>?,
+    stockRepository: LocalStockRepository? = null):
     Pair<List<LocalSetupOpeningStockRowRefV1>, List<LocalSetupOpeningFloatRowRefV1>>? {
     if (actualStock == null || actualFloat == null) return null
     val stock = if (request.stockChoice == LocalSetupOpeningChoiceV1.EXPLICIT_ZERO) {
@@ -1025,7 +1029,7 @@ internal suspend fun verifyOpeningManifest(view: CommandReadView, scope: BranchS
                         installationId, row.sourceId))) return null
             if (view.claim(LocalSetupCheckpointProfileV1.sourceClaim(
                     LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW_KIND, installationId, row.sourceId)) != key.id) return null
-            val effect = LocalStockOpeningEvidenceV1Source.observe(view, row.openingOperationId, row.receiptId) ?: return null
+            val effect = LocalStockOpeningEvidenceV1Source.observe(view, row.openingOperationId, row.receiptId, stockRepository) ?: return null
             val line = effect.lines.singleOrNull { it.sourceId == row.sourceId } ?: return null
             if (line.skuId != row.skuId || line.warehouseId != row.warehouseId || line.quantity != row.quantity ||
                 line.originalValue != row.value || line.lotId != row.lotId || line.serialId != row.serialId) return null
@@ -1072,6 +1076,7 @@ internal suspend fun verifyOpeningManifest(view: CommandReadView, scope: BranchS
  */
 public class LocalProductionSetupGoLivePrerequisites(
     private val signatures: CompanyPublicationSignatureVerifier,
+    private val stockRepository: LocalStockRepository? = null,
 ) : LocalSetupGoLivePrerequisiteSource {
     override suspend fun observe(view: CommandReadView, original: SavedOriginalSetupV1):
         List<LocalSetupPrerequisiteObservationV1> = listOf(
@@ -1278,7 +1283,7 @@ public class LocalProductionSetupGoLivePrerequisites(
                         LocalSetupCheckpointProfileV1.OPENING_STOCK_ROW_KIND, identity.installationId, rowValue.sourceId)) != rowKey.id)
                     return unavailable(LocalSetupPrerequisiteCodeV1.OPENING_SETTLEMENT,
                         "unavailable:setup.opening.stock.source-claim")
-                val effect = LocalStockOpeningEvidenceV1Source.observe(view, rowValue.openingOperationId, rowValue.receiptId)
+                val effect = LocalStockOpeningEvidenceV1Source.observe(view, rowValue.openingOperationId, rowValue.receiptId, stockRepository)
                     ?: return unavailable(LocalSetupPrerequisiteCodeV1.OPENING_SETTLEMENT,
                         "unavailable:setup.opening.stock.operation")
                 val line = effect.lines.singleOrNull { it.sourceId == rowValue.sourceId }

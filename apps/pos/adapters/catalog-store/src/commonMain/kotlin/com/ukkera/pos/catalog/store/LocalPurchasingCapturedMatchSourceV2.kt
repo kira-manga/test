@@ -18,7 +18,7 @@ internal class PurchasingCapturedMatchSourceReadV2(private val stock: LocalStock
             .also { require(it.size <= 4_096) }
     }
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING && normalize(normalized) == normalized
+        (profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         requirePurchasingReadContext(view, context, key, normalized)

@@ -53,7 +53,8 @@ internal fun FutureOperationReservation.matchesRecorderRoute(
 internal fun FutureOperationReservation.matchesSupervisedResolutionRequirement(
     requirement: AuthorizationRequirement,
 ): Boolean = requirement.permission.verb == PermissionVerb.PERFORM &&
-    requirement.permission.action in setOf(SecurityAction.COLLECTION_RESOLVE, SecurityAction.REFUND_RESOLVE) &&
+    requirement.permission.action in setOf(SecurityAction.COLLECTION_RESOLVE, SecurityAction.REFUND_RESOLVE,
+        SecurityAction.SUPPLIER_CASH_RESOLVE) &&
     requirement.owner == OwnerConstraint.OwnerPrivate(actorId)
 
 public object OperationReservationBinding {

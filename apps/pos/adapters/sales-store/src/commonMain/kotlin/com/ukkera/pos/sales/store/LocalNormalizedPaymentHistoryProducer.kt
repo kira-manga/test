@@ -32,6 +32,17 @@ public class LocalNormalizedPaymentHistoryProducer(
         }
     }
 
+    /** Exact existing supervisor Apply subtype only. The original key/body/digest and
+     * complete native BEFORE/effects remain unchanged; this grants no current authority. */
+    public suspend fun joinSupervisedApplication(command: RuntimeHistoricalCommand): Boolean {
+        if (command.command != LocalRetailSupervisorCodecV1.COMMAND) return false
+        check(LocalRetailSupervisorCodecV1.normalize(command.normalized) == command.normalized)
+        val request = LocalRetailSupervisorCodecV1.decode(command.normalized) as? LocalRetailSupervisorRequestV1.Apply ?: return false
+        if (request.kind != SalesRecordingKind.PAYMENT_ATTESTATION) return false
+        val original = (command.original as? RetainedOriginalV2.Legacy)?.evidence ?: return false
+        return apply(command, original, LocalCollectionRequestV3.ApplyObservation(request.recordingOperationId, request.phase), supervised = true)
+    }
+
     private suspend fun start(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
         request: LocalCollectionRequestV3.Start): Boolean {
         if (command.authority != RuntimeHistoricalAuthority.EMPLOYEE_COMMAND ||
@@ -176,14 +187,40 @@ public class LocalNormalizedPaymentHistoryProducer(
             requireRetailRetainedRowV3(fact.raw, row)
         } else {
             val previous = paired.original as? RetainedOriginalV2.Legacy ?: unavailable()
-            check(previous.evidence.nativeOriginalProvenance == null && previous.evidence.command == LocalFinancialJournalProfileV3.COLLECTION_COMMAND &&
-                previous.evidence.operationId == application.lastApplicationOperationId && application.updatedAt == previous.evidence.recordedAt &&
-                (application.state == LocalJournalApplicationStateV3.PENDING_RECONCILIATION || fact.value.phase == LocalJournalFactPhaseV3.ORIGINAL))
-            // The core pairing already requires this whole earlier business join. No
-            // unsupported PENDING reason is accepted here as a substitute for that join.
-            requireRetailApplicationOriginalV3(previous.evidence, fact.value, application, fact.slot.value, null, tenderPolicies)
+            check(previous.evidence.nativeOriginalProvenance == null && paymentApplicationProducer(previous.evidence, fact.value) &&
+                previous.evidence.operationId == application.lastApplicationOperationId && application.updatedAt == previous.evidence.recordedAt)
+            // The core pairing requires this earlier whole producer join, including its actual
+            // native BEFORE cut. Recheck the exact typed Apply and complete literal AFTER,
+            // including the genuine original UNKNOWN parent of an applied resolution.
+            val parent = if (fact.value.phase == LocalJournalFactPhaseV3.RESOLUTION &&
+                application.state == LocalJournalApplicationStateV3.APPLIED) unknownParent(command, fact) else null
+            requireRetailApplicationOriginalV3(previous.evidence, fact.value, application, fact.slot.value, parent, tenderPolicies)
         }
         return Application(application, paired)
+    }
+
+    private fun paymentApplicationProducer(original: RetainedCommandEvidence, fact: LocalRetailJournalFactV3): Boolean {
+        if (fact.target.kind != SalesRecordingKind.PAYMENT_ATTESTATION) return false
+        val operation = fact.target.factOperation(fact.phase)
+        return when (original.command) {
+            LocalFinancialJournalProfileV3.COLLECTION_COMMAND -> original.normalized == LocalCollectionCommandCodecV3.encode(
+                LocalCollectionRequestV3.ApplyObservation(operation, fact.phase))
+            LocalRetailSupervisorCodecV1.COMMAND -> original.normalized == LocalRetailSupervisorCodecV1.encode(
+                LocalRetailSupervisorRequestV1.Apply(SalesRecordingKind.PAYMENT_ATTESTATION, operation, fact.phase))
+            else -> false
+        }
+    }
+
+    private suspend fun unknownParent(command: RuntimeHistoricalCommand, fact: Fact): RetailApplicationParentV3 {
+        val parent = factBefore(command, fact.value.target.recordingOperationId, LocalJournalFactPhaseV3.ORIGINAL)
+        val application = applicationBefore(command, parent)
+        val previous = application.source.original as? RetainedOriginalV2.Legacy ?: unavailable()
+        val reference = LocalRetailParentApplicationV3(previous.evidence.operationId, application.source.row.revision,
+            application.source.row.digest.value)
+        check(application.value.state == LocalJournalApplicationStateV3.APPLIED &&
+            application.value.appliedAction == LocalSalesAction.PAYMENT_UNKNOWN &&
+            application.value.lastApplicationOperationId == reference.operationId && parent.value.bodyDigest == fact.value.originalBodyDigest)
+        return RetailApplicationParentV3(parent.value, application.value, reference)
     }
 
     private fun requireResolution(parent: LocalRetailJournalFactV3, resolution: LocalRetailJournalFactV3,
@@ -198,7 +235,7 @@ public class LocalNormalizedPaymentHistoryProducer(
     }
 
     private suspend fun apply(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
-        request: LocalCollectionRequestV3.ApplyObservation): Boolean {
+        request: LocalCollectionRequestV3.ApplyObservation, supervised: Boolean = false): Boolean {
         if (command.authority != RuntimeHistoricalAuthority.EMPLOYEE_COMMAND ||
             LocalFinancialResultCodecV3.decode(original.result) !is LocalFinancialResultV3.Applied) return false
         val fact = factBefore(command, request.recordingOperationId, request.phase)
@@ -238,7 +275,8 @@ public class LocalNormalizedPaymentHistoryProducer(
         val order = order(command, collection.orderId)
         val cash = cash(command, fact.value.target.sessionId)
         check(collection.stockRequirements.normalized)
-        command.requireRequirement(salesAuthorizationRequirement(retailFactAction(SalesRecordingKind.PAYMENT_ATTESTATION, request.phase),
+        command.requireRequirement(salesAuthorizationRequirement(retailFactAction(SalesRecordingKind.PAYMENT_ATTESTATION,
+            if (supervised) LocalJournalFactPhaseV3.RESOLUTION else request.phase),
             command.scope, collection.id, collection.revision, command.operationId, command.semanticDigest,
             "financial.journal.payment.apply", fact.slot.value.actorId, fact.slot.value.domain.amount))
         command.requireLegacyEffects(literalEffects(command, original, null), fact.slot.value.domain.financialResources.toSet() +
@@ -265,8 +303,18 @@ public class LocalNormalizedPaymentHistoryProducer(
                     link.generation == source.generation && link.digest == source.payloadHash && producer(paired.original) == identity)
                 when (val previous = paired.original) {
                     is RetainedOriginalV2.Streamed -> check(previous.evidence.identity.producer.command == StockStreamingCommandsV2.COLLECTION)
-                    is RetainedOriginalV2.Legacy -> check(source.key.kind == LocalSalesStoreProfile.COLLECTION_KIND &&
-                        previous.evidence.nativeOriginalProvenance == null && previous.evidence.command == LocalFinancialJournalProfileV3.COLLECTION_COMMAND)
+                    is RetainedOriginalV2.Legacy -> {
+                        check(source.key.kind == LocalSalesStoreProfile.COLLECTION_KIND && previous.evidence.nativeOriginalProvenance == null)
+                        if (previous.evidence.command == LocalRetailSupervisorCodecV1.COMMAND) {
+                            check(LocalRetailSupervisorCodecV1.normalize(previous.evidence.normalized) == previous.evidence.normalized)
+                            val applied = LocalRetailSupervisorCodecV1.decode(previous.evidence.normalized) as? LocalRetailSupervisorRequestV1.Apply ?: unavailable()
+                            check(applied.kind == SalesRecordingKind.PAYMENT_ATTESTATION)
+                            val fact = factBefore(command, applied.recordingOperationId, applied.phase)
+                            val application = applicationBefore(command, fact)
+                            check(application.source.original === previous && application.value.state == LocalJournalApplicationStateV3.APPLIED &&
+                                fact.value.target.documentId == source.key.id)
+                        } else check(previous.evidence.command == LocalFinancialJournalProfileV3.COLLECTION_COMMAND)
+                    }
                 }
             }
             if (source.key.kind == LocalSalesStoreProfile.PRICE_SOURCES_KIND) {

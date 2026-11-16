@@ -21,7 +21,6 @@ import com.ukkera.pos.security.SelfOwnedKeyProtectionV1
 import com.ukkera.pos.database.AndroidOriginalLocalClient
 import com.ukkera.pos.database.AndroidEmployeeClientCustody
 import com.ukkera.pos.sales.store.LocalPhysicalExternalCustody
-import com.ukkera.pos.sales.store.LocalPhysicalExternalDenialRegistration
 import com.ukkera.pos.security.NativeEmployeeClientJournalAction
 import com.ukkera.pos.security.NativeEmployeeJournalAllocation
 import com.ukkera.pos.security.PairedDeviceCredentialJournalCustody
@@ -34,6 +33,7 @@ import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -86,33 +86,77 @@ public class AndroidLocalClientJournalOwner private constructor(
         override val actorAllocationJournal: PairedDeviceActorAllocationJournal?
             get() = this@AndroidLocalClientJournalOwner.actorAllocationJournal
         override fun isCurrent(): Boolean = this@AndroidLocalClientJournalOwner.isCurrent()
+        override fun capturePhysical(journal: LocalClientIntentJournal): LocalPhysicalExternalCustody? =
+            if (!ownsPairedPhysical(journal) || !isCurrent()) null else loans.capture()
+        override suspend fun recheckPhysical(journal: LocalClientIntentJournal): Boolean =
+            recheckPairedPhysical(journal)
+        override fun capturePhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): LocalPhysicalExternalCustody? =
+            if (!ownsPairedPhysicalRecovery(ledger) || !isCurrent()) null else loans.capture()
+        override suspend fun recheckPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean =
+            recheckPairedPhysicalRecovery(ledger)
         override suspend fun close() = this@AndroidLocalClientJournalOwner.close()
     }
 
     // This private constructor is reached only AFTER the unchanged full typed validator,
     // native head admission and exact binding/continuity checks in the factories below.
     // A real custody or a lower file/head API cannot construct this successful owner.
-    private class PhysicalState(val denied: Boolean, val loans: List<PhysicalLoan>,
-        val observers: List<PhysicalObserver>)
-    private val physical = AtomicReference(PhysicalState(false, emptyList(), emptyList()))
-    private val physicalDrain = CompletableDeferred<Unit>()
-    private val physicalDenialDelivered = CompletableDeferred<Unit>()
+    // The loan census is declared BEFORE init: attaching this owner passes its facet.
+    private val loans = ClientJournalPhysicalLoans()
+
+    /** Shared work fences this owner's physical loans through this internal facet. */
+    internal val physicalFacet: ClientJournalPhysicalOwner get() = loans
     init {
         file.attachSuccessfulOwner(this)
         actorAllocationJournal?.attachSuccessfulOwner(paired)
     }
 
     /** Final memory-only denial; safe for the registered transaction participant read. */
-    /** Shared work fences this owner's physical loans through this internal facet. */
-    internal val physicalFacet: ClientJournalPhysicalOwner = object : ClientJournalPhysicalOwner {
-        override fun denyPhysical() = this@AndroidLocalClientJournalOwner.denyPhysical()
-        override val physicalDenied: Boolean get() = this@AndroidLocalClientJournalOwner.physicalDenied
-        override val physicalLoansDrained: Boolean get() = this@AndroidLocalClientJournalOwner.physicalLoansDrained
-        override suspend fun awaitPhysicalDrain() = this@AndroidLocalClientJournalOwner.awaitPhysicalDrain()
+    internal val physicalDenied: Boolean get() = loans.physicalDenied
+    internal val physicalLoansDrained: Boolean get() = loans.physicalLoansDrained
+
+    private fun ownsPairedPhysical(journal: LocalClientIntentJournal): Boolean =
+        file.pairedActorPhysicalCustody != null && file.kind == ClientJournalKind.INTENTS &&
+            intentJournal === journal && credentialJournal == null && actorAllocationJournal == null &&
+            journal.owner == file.pairedActorPhysicalCustody.identity
+
+    private suspend fun recheckPairedPhysical(journal: LocalClientIntentJournal): Boolean {
+        if (physicalDenied || !ownsPairedPhysical(journal) || !isCurrent()) return false
+        val checked = file.owned {
+            object : ClientJournalTask<Boolean> {
+                override fun execute(): Boolean {
+                    check(!physicalDenied && ownsPairedPhysical(journal) && isCurrent())
+                    AndroidEncryptedClientIntentJournal.validateExisting(file)
+                    file.assertContinuity()
+                    return !physicalDenied && ownsPairedPhysical(journal) && isCurrent()
+                }
+                override fun discard(value: Boolean) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return checked is ClientJournalOutcome.Value && checked.value && !physicalDenied &&
+            ownsPairedPhysical(journal) && isCurrent()
     }
-    internal val physicalDenied: Boolean get() = physical.get().denied
-    internal val physicalLoansDrained: Boolean get() = physicalDenialDelivered.isCompleted &&
-        physical.get().let { it.denied && it.loans.isEmpty() }
+
+    private fun ownsPairedPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean =
+        file.kind == ClientJournalKind.ACTOR_ALLOCATIONS && file.pairedDeviceAllocationCustody != null &&
+            actorAllocationJournal === ledger && intentJournal == null && credentialJournal == null
+
+    private suspend fun recheckPairedPhysicalRecovery(ledger: PairedDeviceActorAllocationJournal): Boolean {
+        if (!ownsPairedPhysicalRecovery(ledger) || !isCurrent()) return false
+        val result = file.owned {
+            object : ClientJournalTask<Boolean> {
+                override fun execute(): Boolean {
+                    check(ownsPairedPhysicalRecovery(ledger) && isCurrent())
+                    PairedDeviceActorAllocationJournal.validateExisting(file, checkNotNull(file.pairedDeviceAllocationCustody))
+                    file.assertContinuity()
+                    return ownsPairedPhysicalRecovery(ledger) && isCurrent()
+                }
+                override fun discard(value: Boolean) = Unit
+                override fun clearInputs() = Unit
+            }
+        }
+        return result is ClientJournalOutcome.Value && result.value && ownsPairedPhysicalRecovery(ledger) && isCurrent()
+    }
 
     /** Immutable reference/scalar join to THIS successful owner's private employee binding. */
     internal fun ownsEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean =
@@ -122,15 +166,8 @@ public class AndroidLocalClientJournalOwner private constructor(
 
     /** No native IO or grant callback. Actual currentness and FULL typed validation follow
      * outside Room under this same retained native worker before any backend IO is attempted. */
-    internal fun captureEmployeePhysical(custody: AndroidEmployeeClientCustody): LocalPhysicalExternalCustody? {
-        if (!ownsEmployeePhysical(custody)) return null
-        val loan = PhysicalLoan()
-        while (true) {
-            val selected = physical.get()
-            if (selected.denied) return null
-            if (physical.compareAndSet(selected, PhysicalState(false, selected.loans + loan, selected.observers))) return loan
-        }
-    }
+    internal fun captureEmployeePhysical(custody: AndroidEmployeeClientCustody): LocalPhysicalExternalCustody? =
+        if (!ownsEmployeePhysical(custody)) null else loans.capture()
 
     internal suspend fun recheckEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean {
         if (physicalDenied || !ownsEmployeePhysical(custody)) return false
@@ -154,93 +191,20 @@ public class AndroidLocalClientJournalOwner private constructor(
         return checked is ClientJournalOutcome.Value && !physicalDenied && ownsEmployeePhysical(custody)
     }
 
-    /** One CAS atom prevents retirement/capture races. Observer failure never prevents other
-     * end-only denials or loan drainage; no reset/replacement or positive verifier is exposed. */
-    internal fun denyPhysical() {
-        val selected = denyPhysicalState() ?: return
-        try {
-            selected.loans.forEach { it.deny() }
-            selected.observers.forEach { it.deny() }
-        } finally {
-            // A racing second retire/close cannot report drainage before the first denial
-            // has delivered every end-only core-atom notification.
-            physicalDenialDelivered.complete(Unit)
-            if (physical.get().loans.isEmpty()) physicalDrain.complete(Unit)
-        }
+    /** The shared original gate's view of THIS exact successful owner (stable identity). */
+    internal val physicalEmployee: CohostEmployeePhysicalOwner = object : CohostEmployeePhysicalOwner {
+        override val physicalDenied: Boolean get() = this@AndroidLocalClientJournalOwner.physicalDenied
+        override fun ownsEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean =
+            this@AndroidLocalClientJournalOwner.ownsEmployeePhysical(custody)
+        override suspend fun recheckEmployeePhysical(custody: AndroidEmployeeClientCustody): Boolean =
+            this@AndroidLocalClientJournalOwner.recheckEmployeePhysical(custody)
+        override fun captureEmployeePhysical(custody: AndroidEmployeeClientCustody): LocalPhysicalExternalCustody? =
+            this@AndroidLocalClientJournalOwner.captureEmployeePhysical(custody)
     }
 
-    private fun denyPhysicalState(): PhysicalState? {
-        while (true) {
-            val selected = physical.get()
-            if (selected.denied) return null
-            if (physical.compareAndSet(selected, PhysicalState(true, selected.loans, selected.observers))) return selected
-        }
-    }
+    internal fun denyPhysical() = loans.denyPhysical()
 
-    internal suspend fun awaitPhysicalDrain() {
-        denyPhysical()
-        if (physical.get().loans.isEmpty()) physicalDrain.complete(Unit)
-        physicalDenialDelivered.await()
-        physicalDrain.await()
-    }
-
-    private fun releasePhysicalLoan(loan: PhysicalLoan) {
-        while (true) {
-            val selected = physical.get()
-            if (selected.loans.none { it === loan }) return
-            val next = PhysicalState(selected.denied, selected.loans.filterNot { it === loan }, selected.observers)
-            if (physical.compareAndSet(selected, next)) {
-                return
-            }
-        }
-    }
-
-    private fun observePhysicalDenial(onDenial: () -> Unit): PhysicalObserver {
-        val observer = PhysicalObserver(onDenial)
-        while (true) {
-            val selected = physical.get()
-            if (selected.denied) { observer.deny(); return observer }
-            if (physical.compareAndSet(selected, PhysicalState(false, selected.loans, selected.observers + observer))) return observer
-        }
-    }
-
-    private fun releasePhysicalObserver(observer: PhysicalObserver) {
-        while (true) {
-            val selected = physical.get()
-            if (selected.observers.none { it === observer } || physical.compareAndSet(selected,
-                    PhysicalState(selected.denied, selected.loans, selected.observers.filterNot { it === observer }))) return
-        }
-    }
-
-    private inner class PhysicalObserver(private val onDenial: () -> Unit) : LocalPhysicalExternalDenialRegistration {
-        private val finished = AtomicReference(false)
-        fun deny() {
-            if (finished.compareAndSet(false, true)) try { onDenial() } catch (_: Throwable) { /* Denial cannot grant or stop other observers. */ }
-        }
-        override fun release() { finished.set(true); releasePhysicalObserver(this) }
-    }
-
-    private enum class PhysicalLoanState { OWNED, RELEASING, RELEASED, UNCERTAIN }
-    private inner class PhysicalLoan : LocalPhysicalExternalCustody {
-        private val state = AtomicReference(PhysicalLoanState.OWNED)
-        private val invocationDenied = AtomicReference(false)
-        override val denied: Boolean get() = lifetimeDenied || invocationDenied.get() || state.get() != PhysicalLoanState.OWNED
-        override val lifetimeDenied: Boolean get() = physicalDenied
-        override fun deny() { invocationDenied.set(true) }
-        override fun observeLifetimeDenial(onDenial: () -> Unit): LocalPhysicalExternalDenialRegistration = observePhysicalDenial(onDenial)
-        override fun release(): Boolean {
-            if (!state.compareAndSet(PhysicalLoanState.OWNED, PhysicalLoanState.RELEASING)) return state.get() == PhysicalLoanState.RELEASED
-            val complete = try { releasePhysicalLoan(this); true } catch (_: Throwable) { false }
-            state.set(if (complete) PhysicalLoanState.RELEASED else PhysicalLoanState.UNCERTAIN)
-            if (!complete) denyPhysical()
-            else if (physical.get().let { it.denied && it.loans.isEmpty() }) {
-                // Cleanup publication already succeeded; a memory-only wake cannot turn it
-                // into a failed release after the actual loan has left the owner census.
-                try { physicalDrain.complete(Unit) } catch (_: Throwable) { /* Close also resamples the empty census. */ }
-            }
-            return complete
-        }
-    }
+    internal suspend fun awaitPhysicalDrain() = loans.awaitPhysicalDrain()
 
     /** Success means actual native close AFTER all physical loans drain, not cancellation. */
     public suspend fun close() { file.closeOwner() }
@@ -275,7 +239,7 @@ public class AndroidLocalClientJournalOwner private constructor(
             recoverWrites: Boolean = false,
         ): ClientJournalOutcome<AndroidLocalClientJournalOwner> {
             check(!enroll || !recoverWrites)
-            if (kind == ClientJournalKind.ACTOR_ALLOCATIONS) return ClientJournalOutcome.Unavailable
+            if (kind !in setOf(ClientJournalKind.CREDENTIALS, ClientJournalKind.INTENTS)) return ClientJournalOutcome.Unavailable
             if (!binding.belongsTo(application) || (enroll && !binding.permitsFirstEnrollment()))
                 return ClientJournalOutcome.Unavailable
             val c = binding.material.coordinates
@@ -311,7 +275,7 @@ public class AndroidLocalClientJournalOwner private constructor(
                                     AndroidEncryptedClientCredentialJournal.validateExisting(file)
                                 ClientJournalKind.INTENTS ->
                                     AndroidEncryptedClientIntentJournal.validateExisting(file)
-                                ClientJournalKind.ACTOR_ALLOCATIONS -> error("client.original.kind")
+                                ClientJournalKind.ACTOR_ALLOCATIONS, ClientJournalKind.READ_VIEWS_V1 -> error("client.original.kind")
                             }
                             file.admitNativeHead(enroll)
                             file.assertContinuity()
@@ -491,7 +455,7 @@ public class AndroidLocalClientJournalOwner private constructor(
                                 ClientJournalKind.ACTOR_ALLOCATIONS -> PairedDeviceActorAllocationJournal.validateExisting(file,
                                     checkNotNull(file.pairedDeviceAllocationCustody))
                                 ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.validateExisting(file)
-                                ClientJournalKind.CREDENTIALS -> error("client.paired.actor.kind")
+                                ClientJournalKind.CREDENTIALS, ClientJournalKind.READ_VIEWS_V1 -> error("client.paired.actor.kind")
                             }
                             file.admitNativeHead(enroll)
                             file.assertContinuity()
@@ -533,6 +497,8 @@ internal class AndroidClientJournalFile private constructor(
     val employeePhysicalCustody: AndroidEmployeeClientCustody? = (journalBinding as? AndroidClientJournalBinding.Employee)?.custody
     val pairedDeviceAllocationCustody: PairedDeviceCredentialJournalCustody? =
         (journalBinding as? AndroidClientJournalBinding.PairedActorAllocations)?.custody
+    val pairedActorPhysicalCustody: PairedDeviceActorJournalCustody? =
+        (journalBinding as? AndroidClientJournalBinding.PairedActor)?.custody
 
     override fun initialManifest(): ByteArray = when (kind) {
         ClientJournalKind.CREDENTIALS -> if (journalBinding is AndroidClientJournalBinding.PairedDevice)
@@ -541,6 +507,7 @@ internal class AndroidClientJournalFile private constructor(
         ClientJournalKind.INTENTS -> AndroidEncryptedClientIntentJournal.originalEmptyManifest(this)
         ClientJournalKind.ACTOR_ALLOCATIONS ->
             PairedDeviceActorAllocationJournal.originalEmptyManifest(this, checkNotNull(pairedDeviceAllocationCustody))
+        ClientJournalKind.READ_VIEWS_V1 -> error("client.read-views.separate-purpose")
     }
 
     fun requireEmployeePhysicalCustody(custody: AndroidEmployeeClientCustody) {
@@ -549,9 +516,7 @@ internal class AndroidClientJournalFile private constructor(
     }
 
     fun attachSuccessfulOwner(owner: AndroidLocalClientJournalOwner) {
-        check(headAdmitted)
-        work.requireActive()
-        work.attachSuccessfulOwner(owner.physicalFacet)
+        attachAdmittedOwner(owner.physicalFacet)
     }
 
     fun isCurrentOwner(owner: AndroidLocalClientJournalOwner): Boolean = work.isCurrentOwner(owner.physicalFacet)
@@ -581,6 +546,84 @@ internal class AndroidClientJournalNative(
     private val work: ClientJournalWork,
     private val protection: SelfOwnedKeyProtectionV1,
 ) : ClientJournalNative {
+    override fun forkReadViews(work: ClientJournalWork): ClientJournalNative =
+        AndroidClientJournalNative(application, work, protection)
+
+    override fun readViewPurposeExists(rootName: String, journalId: DomainId): Boolean {
+        work.requireActive()
+        val current = AndroidClientJournalEnvironment.capture(application, work)
+        return !absent(File(File(current.noBackupDirectory, rootName), journalId.value))
+    }
+
+    private var readViewResetLock: FileLock? = null
+
+    override fun quarantineReadViews(purpose: ClientReadViewPurpose) {
+        work.requireActive()
+        assertBase() // Existing parent descriptors, actual original lock and application.
+        check(readViewResetLock == null)
+        val cacheRoot = File(environment.noBackupDirectory, purpose.rootName)
+        known(cacheRoot != root && cacheRoot.parentFile == environment.noBackupDirectory)
+        val cache = File(cacheRoot, purpose.journalId.value)
+        var cacheRootDescriptor: OwnedDescriptor? = null
+        var cacheLockDescriptor: OwnedDescriptor? = null
+        try {
+            if (!absent(cacheRoot)) {
+                val base = stamp(Os.lstat(cacheRoot.path))
+                requireDirectory(base, owned = true)
+                known(base.device == heldDirectories.getValue(root).second.device)
+                holdDirectory(cacheRoot, base)
+                cacheRootDescriptor = heldDirectories.getValue(cacheRoot).first
+                if (!absent(cache)) {
+                    val previous = stamp(Os.lstat(cache.path))
+                    requireDirectory(previous, owned = true)
+                    known(previous.device == base.device)
+                    val lockPath = File(cache, LOCK)
+                    if (!absent(lockPath)) {
+                        val expected = stamp(Os.lstat(lockPath.path))
+                        requireFile(expected, 0, allowEmpty = true)
+                        val descriptor = openDescriptor(lockPath,
+                            OsConstants.O_WRONLY or OsConstants.O_NONBLOCK or OsConstants.O_NOFOLLOW, 0)
+                        cacheLockDescriptor = descriptor
+                        val output = FileOutputStream(descriptor.fd)
+                        descriptor.borrower = output
+                        readViewResetLock = try { output.channel.tryLock() }
+                            catch (_: OverlappingFileLockException) { null }
+                        known(readViewResetLock?.isValid == true && expected.sameFile(stamp(Os.fstat(descriptor.fd))) &&
+                            expected.sameFile(stamp(Os.lstat(lockPath.path))))
+                    }
+                    val destination = (0 until ClientReadViewPurpose.MAX_QUARANTINES)
+                        .map { File(cacheRoot, purpose.journalId.value + ".quarantine-" + it) }
+                        .firstOrNull { absent(it) } ?: error("client.read-views.quarantine-capacity")
+                    work.requireActive()
+                    known(previous.sameDirectory(stamp(Os.lstat(cache.path))) && base.sameDirectory(stamp(Os.lstat(cacheRoot.path))))
+                    Os.rename(cache.path, destination.path)
+                    known(absent(cache) && previous.sameDirectory(stamp(Os.lstat(destination.path))))
+                    Os.fsync(checkNotNull(cacheRootDescriptor).fd)
+                    known(base.sameDirectory(stamp(Os.fstat(checkNotNull(cacheRootDescriptor).fd))) &&
+                        base.sameDirectory(stamp(Os.lstat(cacheRoot.path))))
+                }
+            }
+            val heads = keyNames(purpose.headKeyPrefix)
+            known(heads.size <= ClientReadViewPurpose.MAX_RESET_HEAD_KEYS && heads.distinct().size == heads.size &&
+                heads.all { it.startsWith(purpose.headKeyPrefix) })
+            for (name in heads + listOf(purpose.dataKeyAlias)) {
+                environment.requireCurrent(work)
+                if (keyExists(name)) deleteKey(name)
+                known(!keyExists(name))
+            }
+            known(keyNames(purpose.headKeyPrefix).isEmpty())
+            assertBase()
+        } finally {
+            try {
+                readViewResetLock?.let { held -> held.release(); known(!held.isValid); readViewResetLock = null }
+                cacheLockDescriptor?.let(::closeDescriptor)
+                cacheRootDescriptor?.let { descriptor ->
+                    closeDescriptor(descriptor)
+                    heldDirectories.remove(cacheRoot)
+                }
+            } catch (failure: Throwable) { work.nativeClosureUnknown(); throw failure }
+        }
+    }
     private lateinit var environment: AndroidClientJournalEnvironment
     private lateinit var root: File
     private lateinit var directory: File
@@ -735,6 +778,7 @@ internal class AndroidClientJournalNative(
     private fun key(name: String): SecretKey = inspectClientJournalKey(requireNotNull(keyStore), name, protection).first
 
     override fun release() {
+        known(readViewResetLock == null)
         for (stream in streams.toList().asReversed()) { stream.closeOnce(); streams.remove(stream) }
         lock?.let { held -> known(held.isValid); held.release(); known(!held.isValid); lock = null }
         for (descriptor in descriptors.toList().asReversed()) closeDescriptor(descriptor)

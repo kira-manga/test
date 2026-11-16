@@ -14,6 +14,8 @@ public enum class LocalPhysicalSpoolRole { MASTER, CLIENT }
 public enum class LocalPhysicalSpoolStorageProfileV1 {
     JVM_POSIX_FULL_WRITE_FORCE_V1,
     ANDROID_API30_APP_PRIVATE_FALLOCATE_V1,
+    /** Windows service-private NTFS directory: full encrypted writes, mandatory exclusive lock, FlushFileBuffers. */
+    JVM_WINDOWS_NTFS_FULL_WRITE_FLUSH_V1,
 }
 
 /** Constructor-trusted local configuration. Never decode this from a client's storage assertion. */

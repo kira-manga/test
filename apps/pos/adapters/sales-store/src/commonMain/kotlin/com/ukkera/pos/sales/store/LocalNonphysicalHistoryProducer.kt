@@ -26,6 +26,7 @@ public class LocalNonphysicalHistoryProducer(private val stock: LocalStockReposi
         if (command.original !is RetainedOriginalV2.Legacy) return false
         val request = LocalCashCommandCodec.decode(command.normalized)
         check(LocalCashCommandCodec.normalize(command.normalized) == command.normalized)
+        if (request is LocalCashRequestV1.NonSale) return joinCashNonSaleHistory(command, request)
         if (!(command.original as RetainedOriginalV2.Legacy).evidence.committed)
             return joinCashClosingRejectionHistory(command, request)
         val scope = LocalSalesScope.from(command.scope)

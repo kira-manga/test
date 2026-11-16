@@ -10,7 +10,8 @@ import com.ukkera.pos.types.*
 
 /** Genuine synchronous FOOD CASH lane, installed beside the SAME actual native gate. */
 public class LocalFoodRefundHandler(private val stock: LocalStockRepository,
-    private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource) : MasterCommandHandler {
+    private val participantsSource: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterCommandHandler, LocalMasterRpcRetainedResultSourceAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
     override val key: CommandKey get() = LocalFoodRefundProfile.COMMAND
     override val writableKinds: Set<String> = LocalFoodRefundProfile.gatedKinds + setOf(LocalFoodRefundProfile.APPLICATION,
         LocalFoodRefundProfile.EVENT, LocalFoodFinancialProfileV1.REFUND, LocalFoodFinancialProfileV1.FRAME,
@@ -21,6 +22,18 @@ public class LocalFoodRefundHandler(private val stock: LocalStockRepository,
     override val physicalRecordingClaimNamespaces: Set<String> get() = LocalFoodRefundProfile.gatedClaims
     override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalFoodRefundInteractiveAuthorization(stock)
     override fun normalize(input: StoredBytes): StoredBytes = LocalFoodRefundCodec.normalize(input)
+    override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalFoodRefundCodec.decode(normalized).let { it is LocalFoodRefundRequest.ApplyOriginal || it is LocalFoodRefundRequest.ApplyResolution }
+    override fun supportsRpcPhysicalRetainedResult(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized &&
+            LocalFoodRefundCodec.decode(normalized).let { it is LocalFoodRefundRequest.StartCash || it is LocalFoodRefundRequest.RecordResolution }
+    override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
+        view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
+        if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.key != key) return null
+        return foodRefundRpcRetainedRequirements(normalized, FoodReadView(commerceLoan(view, stock)), context, originalSources)
+    }
+
     override fun physicalRecordingAction(normalized: StoredBytes): PhysicalRecordingAction? = when (LocalFoodRefundCodec.decode(normalized)) {
         is LocalFoodRefundRequest.StartCash -> PhysicalRecordingAction.START_REFUND
         is LocalFoodRefundRequest.RecordOriginal -> PhysicalRecordingAction.RETAIN_ORIGINAL
@@ -198,9 +211,22 @@ catch (_: LocalSalesWireCapacityExceeded) { FoodRefundStartDraft.Refused(foodRef
 catch (_: LocalSalesCapacityExceeded) { FoodRefundStartDraft.Refused(foodRefundReject("food.refund.capacity_required")) }
 catch (failure: SalesRuleViolation) { FoodRefundStartDraft.Refused(foodRefundReject("food.refund.rule." + failure.rule.name.lowercase())) }
 
-internal fun foodRefundUnavailablePreparation(context: CommandContext, target: DomainId): PreparedMutation =
-    FoodRefundPrepared(context, SecurityAction.RETURN_RECEIPT_LOOKUP, target, Revision(0), context.originalActorId,
+internal fun foodRefundUnavailablePreparation(context: CommandContext, target: DomainId): PreparedMutation {
+    val ordinary = FoodRefundPrepared(context, SecurityAction.RETURN_RECEIPT_LOOKUP, target, Revision(0), context.originalActorId,
         "food.refund.unavailable", resources = setOf(entitlementResource(target), recordingAuthority(context.originalActorId))) { _, _ -> foodRefundReject("food.refund.not_available") }
+    if (context.key != LocalFoodRefundSupervisorCodec.COMMAND) return ordinary
+    // Preserve the actual read/current authority and resource checks, but never manufacture
+    // a known supervisor original whose target has no complete source/proof to disclose.
+    return object : PreparedMutation() {
+        override val requirement = ordinary.requirement
+        override val affectedResources = ordinary.affectedResources
+        override val recoveryHoldBarrierKinds = ordinary.recoveryHoldBarrierKinds
+        override val allowsActionApproval = false
+        override val admissionRestriction = PreparedMutationAdmissionRestriction.SOURCE_UNAVAILABLE
+        override fun evaluate(authorization: AuthorizedAction, recordedAt: UtcInstant): ProposedOutcome =
+            error("food.refund.missing_supervisor_source_must_defer")
+    }
+}
 
 /** CLOSED typed effective outcome, never an Apply result or request flag masquerading as Start. */
 internal fun foodRefundPhysicalOutcome(normalized: StoredBytes, outcome: ProposedOutcome,

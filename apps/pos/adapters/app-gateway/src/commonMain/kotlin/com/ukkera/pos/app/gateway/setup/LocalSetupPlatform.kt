@@ -58,6 +58,8 @@ import kotlinx.coroutines.flow.StateFlow
  * Client publication must reject handles not created by this same actual platform adapter.
  */
 public interface LocalSetupNativeServices {
+    /** Actual native private IPv4 interfaces, observed without acquiring a LAN role. */
+    public suspend fun observeLanNetworks(): List<com.ukkera.pos.app.setup.LocalSetupLanNetwork> = emptyList()
     /**
      * Exact fixed composition profile of this concrete native stack. A missing declaration
      * disables new pairing effects in every mode; no LIVE profile is inferred.
@@ -91,6 +93,8 @@ public interface LocalSetupNativeServices {
     public fun retainLanClient(target: LocalSetupFreshDeviceTarget, scope: CoroutineScope,
         originalPairingActionId: DomainId, settings: LocalSetupLanSettings): LocalSetupLanClient =
         throw UnsupportedOperationException("LAN Client is unavailable")
+    /** Master full-state backup custody of this native stack; null when unsupported. */
+    public val masterBackups: LocalSetupMasterBackups? get() = null
 }
 
 /** Exact native target owner plumbing. Public descriptors and results remain DATA. */
@@ -176,6 +180,11 @@ public interface LocalSetupMaster {
     public suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
         request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult =
         LocalMasterLifecycleResult.Unavailable
+    /**
+     * Consistent full-state copy of this OPERATIONAL Master into [destinationPath] (inside the
+     * platform's own capture directory), serialized with its writers. DATA only; null if unavailable.
+     */
+    public suspend fun captureFullStateSnapshot(destinationPath: String): com.ukkera.pos.database.LocalMasterStateCapture? = null
     public fun denyNewWork()
     public suspend fun quiesceAndClose(): Boolean
 }

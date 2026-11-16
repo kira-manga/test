@@ -34,7 +34,7 @@ public class LocalFoodMenuReadHandler(private val signatures: CompanyPublication
         return encodeValue(value, LocalFoodMenuQueryV1.serializer()).also { require(it == input) }
     }
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS && normalize(normalized) == normalized
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(context.key == key && context.scope == view.scope)
         val query = decodeValue(normalized, LocalFoodMenuQueryV1.serializer())

@@ -96,11 +96,11 @@ internal class DesktopSetupDirectory(parent: Path, name: String, private val max
     }
 
     /** Write `<name>.new`, force, atomic replace, force directory, readback. */
-    fun replace(name: String, bytes: ByteArray) {
+    fun replace(name: String, bytes: ByteArray, requireAbsentTemporary: Boolean = false) {
         require(bytes.size in 1..maximumBytes)
         val dir = checkNotNull(directory(true))
         val temporary = dir.resolve(requireName("$name.new"))
-        Files.deleteIfExists(temporary)
+        if (!requireAbsentTemporary) Files.deleteIfExists(temporary)
         FileChannel.open(temporary, setOf(StandardOpenOption.WRITE, StandardOpenOption.CREATE_NEW, LinkOption.NOFOLLOW_LINKS),
             *privateFile()).use { channel ->
             val buffer = ByteBuffer.wrap(bytes)
@@ -153,17 +153,14 @@ public class DesktopSetupIntentStorage internal constructor(private val director
 /** Launch hint: an interrupted replace is unresolved, never rolled back to an older record. */
 public class DesktopMasterLaunchStorage internal constructor(private val directory: DesktopSetupDirectory) : LocalMasterLaunchStorage {
     @Synchronized override fun read(): ByteArray? {
-        val names = directory.names() ?: return null
-        require(names.all { it == FILE || it == "$FILE.new" })
-        if (names.isEmpty()) return null
-        check(names == listOf(FILE)) { "Local launch record write remains unresolved" }
+        if (!LocalLaunchStorageNamespace.requireSettled(directory.names())) return null
         return directory.read(FILE)
     }
     @Synchronized override fun replaceAndForce(bytes: ByteArray) {
-        check(!directory.exists("$FILE.new")) { "Local launch record write remains unresolved" }
-        directory.replace(FILE, bytes)
+        LocalLaunchStorageNamespace.requireSettled(directory.names())
+        directory.replace(FILE, bytes, requireAbsentTemporary = true)
     }
-    private companion object { const val FILE = "launch" }
+    private companion object { const val FILE = LocalLaunchStorageNamespace.FILE_NAME }
 }
 
 /** Lifecycle intent record with explicit interrupted-write recovery. */
@@ -206,7 +203,9 @@ public class DesktopSetupStorages(parent: Path, suffix: String = "") {
     public val freshMaster: DesktopSetupIntentStorage = DesktopSetupIntentStorage(DesktopSetupDirectory(parent,
         "ukkera.fresh-device-pairing-master-setup-ui.v1$suffix", LocalFreshDevicePairingIntents.MAXIMUM_BYTES, LocalFreshDevicePairingIntents.MAXIMUM_FILES))
     public val launch: DesktopMasterLaunchStorage = DesktopMasterLaunchStorage(DesktopSetupDirectory(parent,
-        "ukkera.local-master-launch.v1$suffix", LocalMasterLaunchRecord.MAXIMUM_BYTES, 2))
+        "ukkera.local-master-launch.v1$suffix", LocalMasterLaunchRecord.MAXIMUM_BYTES, LocalLaunchStorageNamespace.MAXIMUM_FILES))
+    public val lanLaunch: DesktopMasterLaunchStorage = DesktopMasterLaunchStorage(DesktopSetupDirectory(parent,
+        "ukkera.local-lan-launch.v1$suffix", LocalLanLaunchRecord.MAXIMUM_BYTES, LocalLaunchStorageNamespace.MAXIMUM_FILES))
     public val lifecycle: DesktopMasterLifecycleIntentStorage = DesktopMasterLifecycleIntentStorage(DesktopSetupDirectory(parent,
         "ukkera.local-master-lifecycle-intent.v1$suffix", LocalMasterLifecycleIntentStore.MAXIMUM_BYTES, 2))
     public val stopBinding: DesktopMasterLifecycleIntentStorage = DesktopMasterLifecycleIntentStorage(DesktopSetupDirectory(parent,

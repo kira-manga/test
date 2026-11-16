@@ -5,6 +5,7 @@ import com.ukkera.pos.app.LocalEnrollmentResult
 import com.ukkera.pos.app.gateway.DesktopClientJournalStorage
 import com.ukkera.pos.app.gateway.DesktopClientJournalStorages
 import com.ukkera.pos.app.gateway.DesktopLocalBranchRuntime
+import com.ukkera.pos.app.gateway.DesktopOriginalPhysicalJournalExecutionGate
 import com.ukkera.pos.app.gateway.LocalClientPublication
 import com.ukkera.pos.app.gateway.LocalClientRole
 import com.ukkera.pos.database.AndroidLocalEmployeeEnrollmentConnection
@@ -29,6 +30,7 @@ import com.ukkera.pos.security.readOriginalPurchasingPolicies
 import com.ukkera.pos.app.gateway.LocalOriginalClientJournalAction
 import com.ukkera.pos.app.setup.LocalSetupLanEndpoint
 import com.ukkera.pos.catalog.store.LocalBranchCommerceRegistry
+import com.ukkera.pos.catalog.store.LocalCatalogReturnPolicySource
 import com.ukkera.pos.catalog.store.NativeCompanyPublicationSignatureVerifier
 import com.ukkera.pos.catalog.store.UnavailableCompanyPublicationSignatureVerifier
 import com.ukkera.pos.database.AndroidSelfOwnedMasterOpenResult
@@ -37,12 +39,13 @@ import com.ukkera.pos.database.DesktopSelfOwnedMasterServiceFactory
 import com.ukkera.pos.database.LocalMasterInstallationOutcome
 import com.ukkera.pos.database.LocalMasterInstallationReceiptOpenResult
 import com.ukkera.pos.database.LocalMasterLifecycleMode
+import com.ukkera.pos.database.LocalMasterStateCapture
 import com.ukkera.pos.database.LocalOriginalInstallationSetup
 import com.ukkera.pos.database.UnavailablePhysicalRecordingExecutionGate
 import com.ukkera.pos.rpc.DesktopOriginalRpcHostOwner
+import com.ukkera.pos.sales.store.UnavailableRetailJournalParticipantsSource
 import com.ukkera.pos.sales.store.UnavailableSalesPhysicalRecordingCapacityV2
 import com.ukkera.pos.sales.store.UnavailableSalesRecordingCapacity
-import com.ukkera.pos.sales.store.UnavailableSalesReturnPolicy
 import com.ukkera.pos.security.LocalAccountProvisioning
 import com.ukkera.pos.security.LocalBranchInstallationDefinitionV2
 import com.ukkera.pos.security.LocalBranchInstallationSnapshotV2
@@ -62,6 +65,7 @@ import com.ukkera.pos.security.SelfOwnedNativeReadResult
 import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.Revision
 import dev.p2pkit.core.security.JvmSecureIdentityStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -89,6 +93,8 @@ public class DesktopMasterSetupPlatform(
     /** The service's own same-device cohost journal custody (see [DesktopClientJournalStorages.masterService]).
      * Absent custody keeps the same-device Client and every admin ceremony unavailable. */
     internal val clientJournals: (() -> DesktopClientJournalStorage)? = null,
+    /** The service's own encrypted Master backup custody; absent keeps backup/restore unavailable. */
+    internal val masterBackups: (() -> LocalSetupMasterBackups)? = null,
 )
 
 /**
@@ -98,19 +104,32 @@ public class DesktopMasterSetupPlatform(
  * cohost Client's journals use the service's own custody ([DesktopMasterSetupPlatform.clientJournals]);
  * its gateway is published only on this service's [localClient]. The desktop UI process remains a
  * paired LAN Client of this Master. Every wrapper retains its exact native owner before checks.
- * Physical recording is unavailable on desktop (no native physical journal gate).
+ * Retail payment/refund and FOOD cash physical recording use the original physical gate over
+ * the SAME service custody, installed before activation exactly like Android; without that custody
+ * physical recording stays unavailable.
  */
 public class DesktopMasterSetupNativeServices(
     private val platform: DesktopMasterSetupPlatform,
     private val trainingSlot: LocalTrainingCompositionSlot? = null,
 ) : LocalSetupNativeServices {
+    override suspend fun observeLanNetworks(): List<com.ukkera.pos.app.setup.LocalSetupLanNetwork> =
+        LocalSetupNativeLanNetworks.observe()
+
     override val compositionProfile: LocalCompositionSdkProfileV1 =
         trainingSlot?.let { LocalTrainingSdkProfileV1(it) } ?: LocalMasterSdkProfileV1
     private var masterTransfer: Master? = null
     private var lifecycleTransfer: Lifecycle? = null
     private var clientTransfer: Client? = null
+    /** The ONE service journal storage whose custody the installed physical gate uses. */
+    private var serviceStorage: DesktopClientJournalStorage? = null
     /** Service-local publication of the cohost gateway; presentation only, never authority. */
     public val localClient: LocalClientPublication = LocalClientPublication()
+    private val backupGate = Any()
+    private var backups: LocalSetupMasterBackups? = null
+    /** Opened once on first use; a failed custody observation is not cached as success. */
+    override val masterBackups: LocalSetupMasterBackups? get() = synchronized(backupGate) {
+        backups ?: platform.masterBackups?.let { open -> runCatching(open).getOrNull() }?.also { backups = it }
+    }
 
     override suspend fun openProvisioner(originalOnly: Boolean): LocalProvisionerOpenResult = platform.openProvisioner(originalOnly)
     override suspend fun openTarget(preparation: Boolean): SelfOwnedNativeOpenResult = platform.openTarget(preparation)
@@ -130,11 +149,18 @@ public class DesktopMasterSetupNativeServices(
             is LocalCompanyAuthorityResult.Value -> read.value.trust
             is LocalCompanyAuthorityResult.Unavailable -> null
         }
-        val commerce = LocalBranchCommerceRegistry(signatures, UnavailableSalesReturnPolicy,
+        // The service's own custody, observed once before activation; the cohost Client reuses it.
+        // Missing/unavailable custody keeps physical recording (and the cohost Client) unavailable.
+        val storage = try { platform.clientJournals?.invoke() } catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: Exception) { null }
+        serviceStorage = storage
+        val physical = storage?.let { DesktopOriginalPhysicalJournalExecutionGate.create(platform.factory.owner, it) }
+        val commerce = LocalBranchCommerceRegistry(signatures, LocalCatalogReturnPolicySource(signatures),
             UnavailableSalesRecordingCapacity, UnavailableSalesPhysicalRecordingCapacityV2,
+            retailParticipants = physical ?: UnavailableRetailJournalParticipantsSource,
             purchasingPolicyTrust = purchasingPolicyTrust, nativePublications = publications)
         return when (val native = platform.factory.fromOriginalContext(context, commerce.commands, commerce.reads,
-            UnavailablePhysicalRecordingExecutionGate, commerce.nativeOriginalImports, commerce.stockProjection,
+            physical ?: UnavailablePhysicalRecordingExecutionGate, commerce.nativeOriginalImports, commerce.stockProjection,
             commerce.historyProducer)) {
             is AndroidSelfOwnedMasterOpenResult.Opened -> { holder.capture(native.service); opened }
             is AndroidSelfOwnedMasterOpenResult.Unresolved -> LocalSetupMasterOpenResult.Unresolved(native.reason)
@@ -158,7 +184,8 @@ public class DesktopMasterSetupNativeServices(
     override suspend fun connectClient(master: LocalSetupMaster, action: LocalOriginalClientJournalAction): LocalSetupClient? {
         val actual = master as? Master
         check(actual != null && masterTransfer === actual && actual.owner === this && clientTransfer == null)
-        val storage = platform.clientJournals?.invoke() ?: return null // Explicitly unavailable custody.
+        // The SAME storage the installed physical gate holds; otherwise the explicit custody owner.
+        val storage = serviceStorage ?: platform.clientJournals?.invoke() ?: return null // Explicitly unavailable custody.
         val holder = Client()
         clientTransfer = holder
         val acquired = DesktopLocalBranchRuntime.connectOriginal(platform.factory.owner, actual.value, action, storage)
@@ -222,6 +249,8 @@ public class DesktopMasterSetupNativeServices(
         override suspend fun authenticateAndApplyLifecycle(login: LocalLoginIdentifier, password: CharArray,
             request: LocalMasterLifecycleRequest): LocalMasterLifecycleResult = value.authenticateAndApplyLifecycle(login, password, request)
         override suspend fun readOriginalSetup(): LocalOriginalInstallationSetup = value.readOriginalSetup()
+        override suspend fun captureFullStateSnapshot(destinationPath: String): LocalMasterStateCapture? =
+            value.captureFullStateSnapshot(destinationPath)
         override fun denyNewWork() { synchronized(attachmentGate) { denied = true; value.denyNewWork() } }
         override suspend fun quiesceAndClose(): Boolean {
             denyNewWork()
@@ -284,7 +313,7 @@ public class DesktopMasterSetupNativeServices(
                         constructorEntered = true
                         try {
                             check(captured.complete(DesktopOriginalRpcHostOwner.retainExisting(platform.factory.owner,
-                                retainedScope, original, settings.lan, platform.identityStore)))
+                                retainedScope, original, settings.lan, settings.advertiseHost, platform.identityStore)))
                         } catch (failure: Throwable) { captured.completeExceptionally(failure); throw failure }
                     }
                 }.also { acquisition = it }

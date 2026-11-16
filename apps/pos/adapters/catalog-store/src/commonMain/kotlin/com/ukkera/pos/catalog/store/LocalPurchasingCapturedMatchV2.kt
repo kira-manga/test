@@ -254,7 +254,7 @@ internal class PurchasingCapturedMatchHandlerV2(private val stock: LocalStockRep
         catch (_: ArithmeticException) { throw IllegalArgumentException("Unsupported captured match precision or range") }
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING && normalize(normalized) == normalized
+        (profile == LocalMasterRpcWorkflowProfile.INVOICE_MATCHING || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized
 
     /** Disclosure only: derive the complete actual immutable claim, never the selected
      * increment/client amount, and never re-evaluate or mutate the original command. */

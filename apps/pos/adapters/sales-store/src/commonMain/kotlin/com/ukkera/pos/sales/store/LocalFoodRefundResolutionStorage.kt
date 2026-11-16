@@ -39,7 +39,7 @@ internal suspend fun readFoodRefundResolution(view: CommandReadView, operationId
         LocalFoodRefundProfile.schema(LocalFoodRefundProfile.RESOLUTION))
     val raw = localSalesDecode(row.payload, LocalFoodRefundResolutionRaw.serializer(), LocalFoodRefundProfile.MAX_RAW_BYTES)
     check(row.revision == Revision(1) && raw.version == 1 && raw.scope == view.scope &&
-        raw.target.resolutionOperationId == operationId && raw.originalActorId == raw.recordingActorId &&
+        raw.target.resolutionOperationId == operationId &&
         foodRefundResolutionWrite(raw).payload == row.payload &&
         raw.bodyDigest == sha256(raw.body().copyBytes()) && raw.semanticDigest == semanticDigest(raw.scope,
             raw.recordingActorId, LocalFoodRefundProfile.COMMAND, raw.body()))
@@ -79,4 +79,4 @@ internal suspend fun readFoodRefundResolution(view: CommandReadView, operationId
     return FoodRefundResolutionCut(original, LocalSalesRow(row, raw), LocalSalesRow(appRow, app), retained)
 }
 
-internal val foodRefundCommands: Set<CommandKey> = setOf(LocalFoodRefundProfile.COMMAND)
+internal val foodRefundCommands: Set<CommandKey> = setOf(LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND)

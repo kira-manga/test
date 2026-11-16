@@ -262,7 +262,10 @@ internal fun paymentCorrectionHistoricalView(request: LocalPaymentCorrectionRequ
         request.expectedLatestCorrectionId == head?.latest?.id && request.evidence.evidenceId != head?.latest?.id &&
         position.value < Long.MAX_VALUE && tenderSelectionMatches(request.correctedTender, tender) &&
         !PaymentClassificationCorrections.sameClassification(previous, tender))
+    // A restricted exchange offset is neither correctable nor a correction target.
+    requireLocalSalesSource(payment.tender !is Tender.ExchangeOffset)
     when (tender) {
+        is Tender.ExchangeOffset -> requireLocalSalesSource(false)
         Tender.Cash -> requireLocalSalesSource(request.terminal == null && request.reference == null)
         is Tender.External -> requireLocalSalesSource((!tender.requiresTerminal || request.terminal != null) &&
             (!tender.requiresReference || request.reference != null))

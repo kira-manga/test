@@ -13,6 +13,12 @@ public class RuntimeHistoricalSetupReadView(private val command: RuntimeHistoric
     override suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence? =
         (command.earlierOriginal(operationId) as? RetainedOriginalV2.Legacy)?.evidence
 
+    /** The SAME native BEFORE cut, with the original's real loan confined to [use].
+     * Only copied setup observations may escape; this does not manufacture a current
+     * relational read view or reopen today's SQL as historical stock authority. */
+    public suspend fun <T> withEarlierOriginal(operationId: OperationId,
+        use: suspend (RetainedOriginalV2?) -> T): T = command.withEarlierOriginal(operationId, use)
+
     override suspend fun aggregateKeys(kind: String, after: DomainId?, limit: Int): AggregateKeyPage {
         require(limit in 1..100)
         val keys = command.aggregates(kind).map { it.key }

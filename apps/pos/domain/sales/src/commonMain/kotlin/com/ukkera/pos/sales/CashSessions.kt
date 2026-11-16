@@ -155,6 +155,10 @@ public class CashSession internal constructor(
 
 public enum class CashMovementKind {
     CUSTOMER_RECEIPT, CUSTOMER_REFUND, NON_SALE_PAY_IN, OPERATING_EXPENSE, INVENTORY_SETTLEMENT, SAFE_DROP,
+    /** Additive: counted receipt of a float issued from a safe; a custody transfer, never revenue. */
+    SAFE_FLOAT_RECEIPT,
+    /** Additive: refundable container deposit liability received / actually refunded; never revenue. */
+    DEPOSIT_COLLECTED, DEPOSIT_REFUNDED,
 }
 
 public data class CashMovement internal constructor(
@@ -294,6 +298,35 @@ public object CashSessions {
         val after = session.update(totals = totals, expectedCash = session.expectedCash + delta, cashLedgerRevision = session.cashLedgerRevision.next())
         val movement = CashMovement(sourceId, command.operationId, session.id, actor, kind, delta, amount.zero(), amount.zero(), evidence, reason)
         return cashTransition(command, session, after, listOf(movement), listOf(SalesUniqueCheck(SalesUniqueKind.CASH_SOURCE, sourceId)))
+    }
+
+    /** Original BEFORE guards only. No authorization, command or physical observation is created. */
+    public fun requireHistoricalNonSaleBefore(session: CashSession, actorId: DomainId,
+        expectedRevision: Revision, kind: CashMovementKind, amount: Money,
+        evidence: CashierEvidence, reason: String): Unit {
+        requireSales(kind in listOf(CashMovementKind.NON_SALE_PAY_IN, CashMovementKind.OPERATING_EXPENSE,
+            CashMovementKind.INVENTORY_SETTLEMENT), SalesRule.INVALID_STATE)
+        amount.requirePositive()
+        requireRevision(session.revision, expectedRevision)
+        requireSessionOwner(session, actorId)
+        evidence.requireActor(actorId)
+        requireReason(reason)
+        sameCurrency(session.expectedCash, amount)
+        if (kind != CashMovementKind.NON_SALE_PAY_IN)
+            requireSales(session.availableCash.minor >= amount.minor, SalesRule.INSUFFICIENT_DRAWER_CASH)
+    }
+
+    /** Whole inert original image comparison; does not restore a session or invoke a sale. */
+    public fun requireHistoricalNonSale(before: CashSession, after: CashSession, actorId: DomainId,
+        expectedRevision: Revision, kind: CashMovementKind, amount: Money,
+        evidence: CashierEvidence, reason: String): Unit {
+        requireHistoricalNonSaleBefore(before, actorId, expectedRevision, kind, amount, evidence, reason)
+        val increase = kind == CashMovementKind.NON_SALE_PAY_IN
+        val totals = if (increase) before.totals.copy(payIns = before.totals.payIns + amount)
+            else before.totals.copy(payOuts = before.totals.payOuts + amount)
+        requireCashHistoryImage(after, before.update(totals = totals,
+            expectedCash = before.expectedCash + if (increase) amount else -amount,
+            cashLedgerRevision = before.cashLedgerRevision.next()))
     }
 
     public fun dropToSafe(

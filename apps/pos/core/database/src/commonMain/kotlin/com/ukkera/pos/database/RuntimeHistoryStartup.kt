@@ -91,6 +91,8 @@ internal object RuntimeHistoryStartup {
                     Selection.Ready(admission)
                 }
             } catch(failure: Throwable) {
+                try { reportRuntimeHistoryLoanFailure(failure) }
+                catch (_: Throwable) { /* Diagnostics cannot change mandatory denial/cleanup. */ }
                 withContext(NonCancellable) {
                     // The independent DATA handles must park before an original read close.
                     // A finished build park is never repeated; a prepare attempt has its own

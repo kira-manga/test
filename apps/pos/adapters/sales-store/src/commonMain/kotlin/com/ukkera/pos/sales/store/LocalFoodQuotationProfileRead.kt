@@ -59,7 +59,7 @@ public class LocalFoodQuotationProfileReadHandler(
         LocalFoodQuotationProfileReadCodecV1.encode(LocalFoodQuotationProfileReadCodecV1.query(input))
 
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
-        profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS && normalize(normalized) == normalized
+        (profile == LocalMasterRpcWorkflowProfile.FOOD_CHECKS || profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) && normalize(normalized) == normalized
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         LocalFoodQuotationProfileReadCodecV1.query(normalized)

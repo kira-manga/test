@@ -30,7 +30,22 @@ public sealed interface Tender {
         public val requiresTerminal: Boolean,
         public val requiresReference: Boolean,
     ) : Tender
+    /**
+     * Restricted exchange offset: part of an accepted return's refund obligation applied to the
+     * linked replacement sale in the same branch. Never cash, never a wallet or reusable credit.
+     * [source] is the original obligation's actual tender, used if the replacement is returned.
+     */
+    public data class ExchangeOffset(
+        public val exchangeId: DomainId,
+        public val returnId: DomainId,
+        public val source: Tender,
+    ) : Tender {
+        init { requireSales(source !is ExchangeOffset, SalesRule.TENDER_MISMATCH) }
+    }
 }
+
+/** The tender a refund of value paid by [this] tender must use (an offset refunds by its source). */
+public fun Tender.refundTender(): Tender = (this as? Tender.ExchangeOffset)?.source ?: this
 
 public data class ExternalTenderEvidence(
     public val attestation: CashierEvidence,
@@ -309,6 +324,7 @@ public object Collections {
         payerReference: String? = null, tender: Tender = Tender.Cash,
     ): SalesTransition<CollectionWithCash> {
         requireCollectionActor(command, "payment.record", collection, expectedRevision, session, expectedSessionRevision, amount.requirePositive())
+        requireSales(tender !is Tender.ExchangeOffset, SalesRule.TENDER_MISMATCH)
         requireSales(collection.stockRequirements.normalized, SalesRule.UNSUPPORTED_STOCK_TIMING)
         collection.stockRequirements.validate(collection.scope, collection.quote)
         requireSales(!collection.unresolved, SalesRule.PAYMENT_UNRESOLVED)
@@ -346,6 +362,7 @@ public object Collections {
         payerReference: String? = null,
     ): SalesTransition<CollectionWithCash> {
         requireCollectionActor(command, "payment.record", collection, expectedRevision, session, expectedSessionRevision, amount.requirePositive())
+        requireSales(tender !is Tender.ExchangeOffset, SalesRule.TENDER_MISMATCH)
         requireSales(!collection.unresolved, SalesRule.PAYMENT_UNRESOLVED)
         requireSales(collection.attempts.none { it.id == attemptId }, SalesRule.DUPLICATE_SOURCE_ALLOCATION)
         sameCurrency(collection.quote.payable, amount)

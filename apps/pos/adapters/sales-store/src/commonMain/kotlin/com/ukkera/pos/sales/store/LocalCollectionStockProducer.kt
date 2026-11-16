@@ -33,7 +33,9 @@ internal interface CommerceStockView : StockRelationalReadView, LocalCommerceRes
 internal class CommerceLoan(private val borrowed: CommandReadView, override val commerceStock: LocalStockRepository,
     private val sink: StreamedCommandSink? = null,
     override val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1 = commerceTenderPolicies(borrowed),
-) : CommerceStockView {
+) : CommerceStockView, FinancialOriginalProofCarrier {
+    override val financialOriginalProof: LocalFinancialOriginalProofScope?
+        get() = (borrowed as? FinancialOriginalProofCarrier)?.financialOriginalProof
     override val scope: BranchScope get() = borrowed.scope
     internal fun handoffBorrowedView(): CommandReadView = when (borrowed) {
         is CommerceLoan -> borrowed.handoffBorrowedView()
@@ -60,6 +62,10 @@ internal class CommerceLoan(private val borrowed: CommandReadView, override val 
     override suspend fun aggregateKeys(kind: String, after: DomainId?, limit: Int): AggregateKeyPage = borrowed.aggregateKeys(kind, after, limit)
     override suspend fun claimKeys(namespace: String, prefix: String, after: String?, limit: Int): ClaimKeyPage = borrowed.claimKeys(namespace, prefix, after, limit)
     override suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence? = borrowed.retainedCommand(operationId)
+    override suspend fun financialOriginalSources(operationId: OperationId): RuntimeHistoricalFinancialSources? =
+        borrowed.financialOriginalSources(operationId)
+    override suspend fun cashConfigurationOriginalSources(operationId: OperationId): RuntimeHistoricalCashConfigurationSources? =
+        borrowed.cashConfigurationOriginalSources(operationId)
     override suspend fun foodCheckRejectedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? =
         borrowed.foodCheckRejectedOriginalSources(operationId)
     override suspend fun foodPaymentAlreadyAppliedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodPaymentAlreadyAppliedSources? =
@@ -127,7 +133,8 @@ internal class CommerceCommandHandler(private val delegate: MasterCommandHandler
     /** Only the installed counter-receipt provider gets this same repository/source loan. */
     override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
         view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
-        if (profile != LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS || key != LocalRetailCustomerReceiptCodec.COMMAND) return null
+        if (profile != LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS ||
+            key != LocalRetailCustomerReceiptCodec.COMMAND) return null
         val provider = delegate as? LocalMasterRpcRetainedResultSourceAccessProvider ?: return null
         return provider.rpcRetainedResultRequirements(profile, normalized, commerceLoan(view, stock, tenderPolicies), context)
     }

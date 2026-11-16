@@ -335,8 +335,7 @@ internal class AndroidSelfOwnedHistoryAnchor(
     }
     private fun readOriginal(initialization: AndroidOriginalCompanionInitialization?): OriginalNativeHistorySnapshot {
         initialization?.requireAnchor(this)
-        guard()
-        val binding = owner.readOriginalStateForHistoryNative().originalBinding
+        val binding = guard().originalBinding
         val allocation = signing.originalHistoryAllocation(binding,initialization)
         val encoded = namespace.readHistoryAnchorBytes() ?: uncertain()
         val envelope = try { SelfOwnedNativeHistoryWireV2.decodeEnvelope(encoded) } finally { encoded.fill(0) }
@@ -674,7 +673,12 @@ internal class AndroidSelfOwnedHistoryAnchor(
         val bytes = SelfOwnedNativeHistoryWireV2.encodeRecord(record)
         bytes.fill(0)
     }
-    private fun guard() { environment.requireCurrent(); owner.requireDataNative(); work.requireActive() }
+    private fun guard(): SelfOwnedOriginalJournalState {
+        environment.requireCurrent()
+        val state = owner.requireDataNativeState()
+        work.requireActive()
+        return state
+    }
     private fun known(value: Boolean) { if (!value) uncertain() }
     private fun uncertain(): Nothing = selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN)
 }

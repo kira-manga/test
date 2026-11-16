@@ -11,19 +11,82 @@ import com.ukkera.pos.types.*
 
 /** Exact core-native BEFORE cut joins; no historical CommandReadView or employee grant is made. */
 public class LocalSupplierSettlementHistoryProducer(private val stock: LocalStockRepository) : RuntimeHistoryBusinessProducer {
-    override val commands: Set<CommandKey> = setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierSettlementProfile.ALLOCATE_ADVANCE)
+    override val commands: Set<CommandKey> = setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND, LocalSupplierSettlementProfile.ALLOCATE_ADVANCE)
     override suspend fun join(command: RuntimeHistoricalCommand): Boolean {
         if (command.command !in commands || command.original !is RetainedOriginalV2.Legacy) return false
         val original = (command.original as RetainedOriginalV2.Legacy).evidence
+        if (command.command == LocalSupplierCashSupervisorCodec.COMMAND &&
+            LocalSupplierCashSupervisorCodec.decode(command.normalized) is LocalSupplierCashSupervisorRequest.Review)
+            return review(command, original)
+        if (!original.committed && command.command == LocalSupplierCashSupervisorCodec.COMMAND) {
+            val request = LocalSupplierCashSupervisorCodec.decode(command.normalized) as? LocalSupplierCashSupervisorRequest.Apply
+                ?: return false
+            return applicationRefusal(command, original, request)
+        }
         requirePurchasingProducer(original)
         if (command.command == LocalSupplierSettlementProfile.ALLOCATE_ADVANCE) return allocate(command)
-        return when (val request = LocalSupplierCashCodec.decode(command.normalized)) {
+        return when (val request = supplierCashApplicationRequest(command.command, command.normalized)) {
             is LocalSupplierCashRequest.StartCash -> start(command, original, request)
             is LocalSupplierCashRequest.RecordOriginal -> raw(command, original, request.target, LocalSupplierCashPhase.ORIGINAL)
             is LocalSupplierCashRequest.RecordResolution -> raw(command, original, request.target, LocalSupplierCashPhase.RESOLUTION)
             is LocalSupplierCashRequest.ApplyOriginal -> apply(command, request.recordingOperationId, LocalSupplierCashPhase.ORIGINAL)
             is LocalSupplierCashRequest.ApplyResolution -> apply(command, request.resolutionOperationId, LocalSupplierCashPhase.RESOLUTION)
         }
+    }
+
+    private suspend fun review(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence): Boolean {
+        if (command.authority != RuntimeHistoricalAuthority.EMPLOYEE_COMMAND ||
+            command.supervisorReview != RuntimeHistoricalSupervisorReviewProfile.SUPPLIER_CASH) return false
+        check(!original.committed && original.code == SUPPLIER_SUPERVISOR_REVIEWED && original.nativeOriginalProvenance == null &&
+            original.scope == command.scope && original.operationId == command.operationId && original.command == command.command &&
+            original.originalActorId == command.actorId && original.semanticDigest == command.semanticDigest && original.normalized == command.normalized &&
+            original.authenticationId == command.authenticationId && original.policyRevision == command.policyRevision &&
+            original.recordedAt == command.recordedAt && original.aggregateWrites.isEmpty() && original.claimChanges.isEmpty() && original.jobs.isEmpty() &&
+            LocalSupplierCashSupervisorCodec.normalize(command.normalized) == command.normalized)
+        val request = LocalSupplierCashSupervisorCodec.decode(command.normalized) as LocalSupplierCashSupervisorRequest.Review
+        val reader = PurchasingReader(command)
+        val parent = supplierCashFact(command, request.originalRecordingOperationId, LocalSupplierCashPhase.ORIGINAL, reader)
+            ?: error("Original supplier Review fact unavailable")
+        val resolutionOperation = parent.value.target.resolutionOperationId
+        // This is the exact native BEFORE cut. A later legitimate resolution is not an
+        // earlier original of this Review. Core independently closes the original read
+        // dependencies; prove both immutable fact/application cells absent at this cut.
+        val resolution = if (command.aggregateSource(LocalSupplierCashJournal.resolutionKey(resolutionOperation)) == null) {
+            check(command.aggregateSource(LocalSupplierCashJournal.applicationKey(resolutionOperation)) == null)
+            null
+        } else supplierCashFact(command, resolutionOperation, LocalSupplierCashPhase.RESOLUTION, reader)
+            ?: error("Original supplier Review resolution unavailable")
+        val result = supplierCashSupervisorReview(parent, resolution)
+        command.requireRequirement(supplierCashSupervisorReviewRequirement(command.scope, command.operationId, command.semanticDigest, parent.slot.value))
+        command.requireSupervisorReviewRejection(ProposedOutcome.Reject(SUPPLIER_SUPERVISOR_REVIEWED,
+            LocalSupplierCashSupervisorCodec.review(result)), parent.slot.value.domain.financialResources.toSet() +
+            LocalSupplierCashJournal.authorityResources(parent.slot.value.requirement()) +
+            RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, command.actorId))
+        return true
+    }
+
+    /** Early no-effect accounting refusals only, derived from the same complete native
+     * physical/application BEFORE facts as the actual installed handler. Missing/capacity/
+     * changed financial sources are not inferred from a reason or an exception. */
+    private suspend fun applicationRefusal(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
+        request: LocalSupplierCashSupervisorRequest.Apply): Boolean {
+        if (command.authority != RuntimeHistoricalAuthority.EMPLOYEE_COMMAND) return false
+        check(!original.committed && original.nativeOriginalProvenance == null && original.scope == command.scope &&
+            original.operationId == command.operationId && original.originalActorId == command.actorId &&
+            original.command == command.command && original.semanticDigest == command.semanticDigest &&
+            original.normalized == command.normalized && LocalSupplierCashSupervisorCodec.encode(request) == command.normalized &&
+            original.aggregateWrites.isEmpty() && original.claimChanges.isEmpty() && original.jobs.isEmpty())
+        val proof = SupplierCashApplicationFirstRefusal(command).prove(request.factOperationId, request.phase) ?: return false
+        val code = when (proof.result) {
+            is LocalSupplierCashResult.AlreadyApplied -> "purchasing.supplier_cash_already_applied"
+            is LocalSupplierCashResult.Pending -> "purchasing.supplier_cash_pending"
+            else -> return false
+        }
+        val proposal = ProposedOutcome.Reject(code, LocalSupplierCashCodec.result(proof.result))
+        check(original.code == code && original.result == proposal.result)
+        command.requireRequirement(proof.requirement)
+        command.requireFinancialSupervisorApplicationRejection(proposal, proof.resources)
+        return true
     }
 
     private suspend fun start(command: RuntimeHistoricalCommand, original: RetainedCommandEvidence,
@@ -77,7 +140,8 @@ public class LocalSupplierSettlementHistoryProducer(private val stock: LocalStoc
         phase: LocalSupplierCashPhase): Boolean {
         val slot = LocalSupplierCashFacts.slot(command, target.recordingOperationId) ?: error("Original supplier native slot unavailable")
         requirePurchasingProducer(slot.start)
-        check(slot.value.target == target && command.actorId == slot.value.originalActorId && command.operationId == target.factOperation(phase))
+        check(slot.value.target == target && (phase == LocalSupplierCashPhase.RESOLUTION || command.actorId == slot.value.originalActorId) &&
+            command.operationId == target.factOperation(phase))
         val requirement = slot.value.requirement()
         val resolve = phase == LocalSupplierCashPhase.RESOLUTION
         if (resolve) {
@@ -105,7 +169,8 @@ public class LocalSupplierSettlementHistoryProducer(private val stock: LocalStoc
             command.requireRequirement(supplierCashAuthorizationRequirement(command.scope,
                 supplierCashCommitment(slot.value.domain.source, target.settlementId, slot.value.domain.amount), command.operationId,
                 command.semanticDigest, slot.value.domain.reasonCode, slot.value.originalActorId, resolve))
-            command.requireLegacyEffects(expected, resources)
+            command.requireLegacyEffects(expected, resources +
+                RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, command.actorId))
         }
         return true
     }
@@ -115,7 +180,8 @@ public class LocalSupplierSettlementHistoryProducer(private val stock: LocalStoc
         val reader = PurchasingReader(command)
         val fact = supplierCashFact(command, operationId, phase, reader) ?: error("Original supplier physical fact unavailable")
         val slot = fact.slot.value; val target = slot.target
-        check(command.actorId == slot.originalActorId && fact.value.recordingActorId == command.actorId &&
+        val supervised = command.command == LocalSupplierCashSupervisorCodec.COMMAND
+        check((supervised || command.actorId == slot.originalActorId && fact.value.recordingActorId == command.actorId) &&
             command.operationId !in setOf(target.intentOperationId, target.recordingOperationId, target.resolutionOperationId) &&
             fact.application.applicationOperationId == null && fact.applicationRow.revision == Revision(1))
         val resolve = phase == LocalSupplierCashPhase.RESOLUTION
@@ -147,17 +213,24 @@ public class LocalSupplierSettlementHistoryProducer(private val stock: LocalStoc
             reader.row(LocalSupplierSettlementProfile.PAYMENT, target.settlementId) == null &&
             (allocationId == null || reader.row(LocalSupplierSettlementProfile.ALLOCATION, allocationId) == null))
         command.requireRequirement(supplierCashAuthorizationRequirement(command.scope, before.commitment(), command.operationId,
-            command.semanticDigest, slot.domain.reasonCode, slot.originalActorId, resolve))
+            command.semanticDigest, slot.domain.reasonCode, slot.originalActorId, supervised || resolve))
         reader.requireSupplierHydrationCapacity(applying = before, action = action)
-        val changed = if (action == LocalSupplierCashAction.UNKNOWN) null else SupplierCashSettlements.historicalFinishImage(cash.session,
-            before.commitment(), command.actorId, cash.assignments, target.attemptId, command.operationId, action == LocalSupplierCashAction.CASH_PAID,
+        val changed = if (action == LocalSupplierCashAction.UNKNOWN) null
+        else if (supervised) SupplierCashSettlements.historicalSupervisedFinishImage(cash.session, before.commitment(), slot.originalActorId,
+            cash.assignments, target.attemptId, operationId, fact.value.recordingActorId, command.operationId,
+            if (resolve) target.recordingOperationId else null, if (resolve) parent.value.bodyDigest else null,
+            action == LocalSupplierCashAction.CASH_PAID, supplierEvidence(fact.outcome()).supplierDomain(fact.value.recordingActorId), slot.domain.reasonCode)
+        else SupplierCashSettlements.historicalFinishImage(cash.session, before.commitment(), command.actorId, cash.assignments,
+            target.attemptId, command.operationId, action == LocalSupplierCashAction.CASH_PAID,
             supplierEvidence(fact.outcome()).supplierDomain(command.actorId), slot.domain.reasonCode)
         val inputs = SupplierApplicationFact(slot, parent.value, fact.value, PurchasingSource.from(parent.row),
             if (resolve) PurchasingSource.from(fact.row) else null, fact.application, fact.applicationRow.revision)
         val expected = supplierApplyEffects(SupplierSettlementWrites(command), command.operationId, inputs, attempt, supplier, cut, cash, changed,
-            changed?.movement?.let { LocalSupplierCashStorage.historicalMovementWrite(command, it) })
+            changed?.movement?.let { if (supervised) LocalSupplierCashStorage.historicalSupervisedMovementWrite(command, slot, fact.value,
+                if (resolve) parent.value else null, it) else LocalSupplierCashStorage.historicalMovementWrite(command, it) })
         val resources = slot.domain.financialResources.toSet() + LocalSupplierCashJournal.authorityResources(slot.requirement()) +
-            supplierSettlementResources(supplier, cut, target, cash)
+            supplierSettlementResources(supplier, cut, target, cash) +
+            RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, command.actorId)
         command.requireLegacyEffects(expected, resources)
         return true
     }

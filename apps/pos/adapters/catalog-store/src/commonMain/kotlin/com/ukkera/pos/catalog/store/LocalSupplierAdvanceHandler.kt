@@ -10,8 +10,9 @@ import com.ukkera.pos.types.*
 
 /** Additive real master services; no separate writer, cash pool, default grant or native gate. */
 public class LocalSupplierSettlementServices(stock: LocalStockRepository,
-    participants: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource) {
-    public val commands: List<MasterCommandHandler> = listOf(LocalSupplierCashHandler(stock, participants), SupplierAdvanceAllocationHandler(stock))
+    participants: TransactionRetailJournalParticipantsSource = UnavailableRetailJournalParticipantsSource,
+    originalSources: LocalFinancialOriginalSourceServices? = null) {
+    public val commands: List<MasterCommandHandler> = listOf(LocalSupplierCashHandler(stock, participants, originalSources), LocalSupplierCashSupervisorHandler(stock, originalSources), SupplierAdvanceAllocationHandler(stock))
     public val reads: List<MasterReadHandler> = listOf(SupplierSettlementSourceRead(stock), SupplierAdvanceRead(), SupplierCashRead(), SupplierOwnCashRead())
     public val history: RuntimeHistoryBusinessProducer = LocalSupplierSettlementHistoryProducer(stock)
     public val nativeOriginalImport: NativeOriginalImportInterpreter = LocalSupplierCashNativeOriginalImport()

@@ -109,6 +109,9 @@ public class LocalReturnReadHandler : MasterReadHandler {
     override public fun normalize(input: StoredBytes): StoredBytes =
         LocalReturnReadCodec.encode(localSalesDecode(input, LocalReturnQueryV1.serializer(), 2_048))
 
+    override fun supportsRpcWorkflow(profile: com.ukkera.pos.database.LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
+        profile == com.ukkera.pos.database.LocalMasterRpcWorkflowProfile.LAN_BUSINESS && normalize(normalized) == normalized
+
     override public suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead {
         check(context.scope == view.scope && context.key == key) { "sales.context.invalid" }
         return when (val query = localSalesDecode(normalized, LocalReturnQueryV1.serializer(), 2_048)) {
@@ -215,4 +218,6 @@ private suspend fun returnView(view: CommandReadView, cut: LocalReturnCut, actor
 internal fun tenderView(tender: Tender): LocalTenderViewV1 = when (tender) {
     Tender.Cash -> LocalTenderViewV1("CASH")
     is Tender.External -> LocalTenderViewV1(tender.kind.name, tender.tenderId, tender.policyRevision, tender.requiresTerminal, tender.requiresReference)
+    // An exchange offset never moved money; it is shown by its exchange identity only.
+    is Tender.ExchangeOffset -> LocalTenderViewV1("EXCHANGE_OFFSET", tender.exchangeId)
 }

@@ -2,6 +2,7 @@ package com.ukkera.pos.database
 
 import com.ukkera.pos.recovery.OperationIdentity
 import com.ukkera.pos.security.LocalAuthenticatedPeer
+import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.LocalMasterLifecycleAction
 import com.ukkera.pos.security.LocalMasterLifecycleDenial
 import com.ukkera.pos.security.LocalMasterLifecycleRequest
@@ -125,7 +126,7 @@ public class LocalMasterEndpoint internal constructor(
     private val installationInitializer: LocalBranchInitializer? = null,
     private val administration: LocalAdministrationService? = null,
     private val lifecycle: LocalMasterLifecycleService? = null,
-) : LocalMasterClient, LocalMasterEnrollmentClient, LocalMasterApprovalClient, LocalMasterAdministrationClient, LocalMasterSerialPublications {
+) : LocalMasterClient, LocalMasterChangesClient, LocalMasterChangesBatchClient, LocalMasterEnrollmentClient, LocalMasterApprovalClient, LocalMasterAdministrationClient, LocalMasterSerialPublications {
     init {
         require(workers in 1..16 && maximumQueuedRequests in 1..256)
         require(maximumRequestMillis in 1_000..300_000)
@@ -139,6 +140,11 @@ public class LocalMasterEndpoint internal constructor(
     internal fun ownsPhysicalInstruction(gate: PhysicalRecordingExecutionGate,
         binding: PhysicalInstructionNativeBinding): Boolean =
         mutableHealth.value == LocalMasterEndpointHealth.ACTIVE && store.ownsPhysicalInstruction(this, gate, binding)
+
+    /** Actual configured optional SAME-object facet; no public transport attach/setter. */
+    internal val physicalRemoteGate: PhysicalRecordingRemoteGate? get() =
+        if (installationInitializer == null && mutableHealth.value == LocalMasterEndpointHealth.ACTIVE)
+            store.physicalRemoteGateFor(this) else null
 
     /** Actual owner calls this BEFORE retiring/closing state or ANY external callback. */
     internal fun denyPhysicalFromOwner() { store.denyPhysicalRecording() }
@@ -164,6 +170,7 @@ public class LocalMasterEndpoint internal constructor(
     // Bounded QUEUED/EXECUTING selectors only, never a lifetime/durable deduplication cache.
     // A completed SQL operation is recognized from its whole retained pair, not from this set.
     private val nativeOriginalRequests = MutableStateFlow<Set<DomainId>>(emptySet())
+    private val completedNativeOriginals = NativeOriginalCompletedScheduling()
     private val nativeOriginalScanQueued = MutableStateFlow(false)
     // One full definition/password preparation OR queued/executing ceremony, without waiters.
     // Releasing this on caller cancellation would permit unbounded detached preparation/work.
@@ -251,6 +258,9 @@ public class LocalMasterEndpoint internal constructor(
         if (mutableHealth.value != LocalMasterEndpointHealth.ACTIVE || installationInitializer != null ||
             nativeOriginalIntake !== intake || !store.acceptsNativeOriginal(this, intake))
             return NativeOriginalIntakeSubmission.UNAVAILABLE
+        // The catalogue remains retained. A known imported original needs no repeated
+        // writer work; this internal queue acknowledgement discloses no business result.
+        if (completedNativeOriginals.contains(locator)) return NativeOriginalIntakeSubmission.QUEUED
         while (true) {
             val current = nativeOriginalRequests.value
             if (locator.clientAllocationId in current) return NativeOriginalIntakeSubmission.QUEUED
@@ -301,9 +311,16 @@ public class LocalMasterEndpoint internal constructor(
     /** A reply timeout is not native completion. Renewable RPC reads retain this exact
      * accepted work until its input cleanup, even if the caller stops awaiting its reply. */
     internal suspend fun currentAfterExecutionSettles(credentials: LocalGatewayCredentials): LocalSessionViewResult {
+        val trace = LocalMasterRpcAuthenticationTrace(LocalMasterRpcAuthenticationTracePhase.CURRENT,
+            LocalMasterRpcAuthenticationStage.CURRENT_SERVICE)
+        var stage by trace
         val work = CurrentWork(credentials.copyOwned())
         return try { submit(work) }
-        finally { withContext(NonCancellable) { work.actualCleanup.await() } }
+        finally {
+            stage = LocalMasterRpcAuthenticationStage.CURRENT_CLEANUP
+            try { withContext(NonCancellable) { work.actualCleanup.await() } }
+            finally { trace.finish() }
+        }
     }
 
     override public suspend fun logout(credentials: LocalGatewayCredentials): LocalSignOutResult =
@@ -331,11 +348,65 @@ public class LocalMasterEndpoint internal constructor(
     override public suspend fun read(credentials: LocalGatewayCredentials, request: ReadRequest): ReadReply =
         submit(ReadWork(credentials.copyOwned(), request))
 
+    override public suspend fun snapshot(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1?): LocalMasterChangesReplyV1 =
+        submit(ChangesReadWork(credentials.copyOwned(), profile, selection, expectedCut, true))
+
+    override public suspend fun pull(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1): LocalMasterChangesReplyV1 =
+        submit(ChangesReadWork(credentials.copyOwned(), profile, selection, cursor, false))
+
+    override public suspend fun snapshotBatch(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>): LocalMasterChangesBatchReplyV1 {
+        if (selections.size !in 1..LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTORS_V1)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+        return submit(ChangesBatchReadWork(credentials.copyOwned(), profile, selections.toList(), null))
+    }
+
+    /** Private actual Host port: fresh exact-original authentication occurs in the SAME
+     * clean bounded endpoint worker before the unchanged coherent protected snapshot. */
+    internal suspend fun snapshotBatchRpcOriginal(credentials: LocalGatewayCredentials,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>,
+        resource: LocalMasterRpcResourceSession): LocalMasterChangesBatchReplyV1 {
+        if (profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS ||
+            selections.size !in 1..LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTORS_V1)
+            return LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
+        return submit(ChangesBatchReadWork(credentials.copyOwned(), profile, selections.toList(), resource))
+    }
+
+    internal suspend fun authorizeChangesBusiness(credentials: LocalGatewayCredentials,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>,
+        resource: LocalMasterRpcResourceSession): LocalMasterChangesRpcAuthorizationV1 {
+        // An invalid selector family still requires fresh exact-original authentication
+        // before its no-data refusal can participate in an SDK authorization scope.
+        val bounded = if (selections.size in 1..LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTORS_V1) selections.toList() else emptyList()
+        return submit(ChangesBusinessAccessWork(credentials.copyOwned(), profile, bounded, resource, false))
+    }
+
+    internal suspend fun authorizeChangesCapacity(credentials: LocalGatewayCredentials,
+        profile: LocalMasterRpcWorkflowProfile, resource: LocalMasterRpcResourceSession): LocalMasterChangesRpcAuthorizationV1 =
+        submit(ChangesBusinessAccessWork(credentials.copyOwned(), profile, emptyList(), resource, true))
+
+    internal suspend fun snapshotRpcBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, expectedCut: LocalMasterChangeCursorV1?, audience: RoomLocalDisplayRpcAudience): LocalMasterChangesReplyV1 =
+        submit(ChangesReadWork(credentials.copyOwned(), profile, selection, expectedCut, true, audience))
+
+    internal suspend fun pullRpcBusiness(credentials: LocalGatewayCredentials, profile: LocalMasterRpcWorkflowProfile,
+        selection: ReadRequest, cursor: LocalMasterChangeCursorV1, audience: RoomLocalDisplayRpcAudience): LocalMasterChangesReplyV1 =
+        submit(ChangesReadWork(credentials.copyOwned(), profile, selection, cursor, false, audience))
+
     /** Private retained-Host resource check uses the same supervised kernel and protected writer. */
     internal suspend fun authorizeRpcBusiness(credentials: LocalGatewayCredentials,
         access: LocalMasterRpcBusinessAccess, requireRecovery: Boolean,
         audience: RoomLocalDisplayRpcAudience? = null): LocalMasterRpcAccessResult =
-        submit(RpcBusinessAuthorizationWork(credentials.copyOwned(), access, requireRecovery, audience))
+        submit(RpcBusinessAuthorizationWork(credentials.copyOwned(), access, requireRecovery, audience, null))
+
+    /** LAN credential DATA is freshly joined to this exact retained SDK original after
+     * the actual queue wait. This is not a cached grant or caller-selected identity. */
+    internal suspend fun authorizeRpcBusinessOriginal(credentials: LocalGatewayCredentials,
+        access: LocalMasterRpcBusinessAccess, requireRecovery: Boolean,
+        original: LocalMasterRpcResourceSession): LocalMasterRpcAccessResult =
+        submit(RpcBusinessAuthorizationWork(credentials.copyOwned(), access, requireRecovery, null, original))
 
     internal suspend fun readRpcBusiness(credentials: LocalGatewayCredentials, request: ReadRequest,
         audience: RoomLocalDisplayRpcAudience): ReadReply = submit(ReadWork(credentials.copyOwned(), request, audience))
@@ -829,8 +900,14 @@ public class LocalMasterEndpoint internal constructor(
         private val cleared = MutableStateFlow(false)
         override fun unavailable(): NativeOriginalWorkerResult = NativeOriginalWorkerResult.HELD
         override suspend fun perform(): NativeOriginalWorkerResult = NativeOriginalWorkerResult.HELD
-        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): NativeOriginalWorkerResult =
-            store.importNativeOriginalFromOwnedIngress(intake, locator, physicalIngress)
+        override suspend fun performOwned(physicalIngress: PhysicalRecordingOwnedIngress): NativeOriginalWorkerResult {
+            val result = store.importNativeOriginalFromOwnedIngress(intake, locator, physicalIngress)
+            // Only this actual Work return follows the core's complete outer fate,
+            // same-native recheck and confirmed release. Held/unknown/cancelled work
+            // stays eligible; no background scan or caller can mark it completed.
+            completedNativeOriginals.record(locator, result)
+            return result
+        }
         override fun clearInput() {
             if (!cleared.compareAndSet(false, true)) return
             // Not caller cancellation: clear only after queue refusal/abandonment or actual
@@ -982,11 +1059,34 @@ public class LocalMasterEndpoint internal constructor(
 
     private inner class RpcBusinessAuthorizationWork(val credentials: LocalGatewayCredentials,
         val access: LocalMasterRpcBusinessAccess, val requireRecovery: Boolean,
-        val audience: RoomLocalDisplayRpcAudience?) : Work<LocalMasterRpcAccessResult>() {
+        val audience: RoomLocalDisplayRpcAudience?,
+        val original: LocalMasterRpcResourceSession?) : Work<LocalMasterRpcAccessResult>() {
         override fun unavailable(): LocalMasterRpcAccessResult = LocalMasterRpcAccessResult.UNAVAILABLE
         override fun denied(): LocalMasterRpcAccessResult = LocalMasterRpcAccessResult.DENIED
-        override suspend fun perform(): LocalMasterRpcAccessResult =
-            store.authorizeRpcBusiness(principals.authenticateLocal(credentials), access, requireRecovery, audience)
+        override suspend fun perform(): LocalMasterRpcAccessResult {
+            if (original != null && !original.current()) {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.AUTHORIZATION_SCOPE, IllegalStateException())
+                return denied()
+            }
+            val principal = principals.authenticateLocal(credentials)
+            if (original != null) {
+                val identity = original.identity
+                if (principal == null || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
+                    principal.authenticationPurpose != identity.purpose || principal.scope != identity.scope ||
+                    principal.actorId != identity.actorId || principal.deviceId != identity.deviceId ||
+                    principal.sessionId != identity.sessionId || principal.sessionGeneration != identity.generation ||
+                    principal.admissionRevision != identity.admissionRevision) {
+                    reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, IllegalStateException())
+                    return denied()
+                }
+            }
+            val result = store.authorizeRpcBusiness(principal, access, requireRecovery, audience)
+            currentCoroutineContext().ensureActive()
+            return if (original == null || original.current()) result else {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.FINAL_STATE, IllegalStateException())
+                denied()
+            }
+        }
         override fun clearInput() { credentials.bearer.destroy() }
         override fun uncertain(value: LocalMasterRpcAccessResult): Boolean = value == LocalMasterRpcAccessResult.UNAVAILABLE
     }
@@ -1001,6 +1101,77 @@ public class LocalMasterEndpoint internal constructor(
             else store.readRpcBusiness(principals.authenticateLocal(credentials), request, audience)
         override fun clearInput() { credentials.bearer.destroy() }
         override fun uncertain(value: ReadReply): Boolean = value is ReadReply.Unavailable && value.reason == ReadFailure.STORAGE_UNCERTAIN
+    }
+
+    /** Same clean bounded workers/deadline and owned credentials as ordinary protected reads. */
+    private inner class ChangesReadWork(val credentials: LocalGatewayCredentials,
+        val profile: LocalMasterRpcWorkflowProfile, val selection: ReadRequest,
+        val cursor: LocalMasterChangeCursorV1?, val snapshot: Boolean,
+        val audience: RoomLocalDisplayRpcAudience? = null) : Work<LocalMasterChangesReplyV1>() {
+        override fun unavailable(): LocalMasterChangesReplyV1 =
+            LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN)
+        override fun busy(): LocalMasterChangesReplyV1 =
+            LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.SERVICE_BUSY)
+        override fun denied(): LocalMasterChangesReplyV1 =
+            LocalMasterChangesReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        override suspend fun perform(): LocalMasterChangesReplyV1 {
+            val principal = principals.authenticateLocal(credentials)
+            return if (snapshot) {
+                if (audience == null) store.snapshot(principal, profile, selection, cursor)
+                else store.snapshotRpcBusiness(principal, profile, selection, cursor, audience)
+            } else {
+                if (audience == null) store.pull(principal, profile, selection, checkNotNull(cursor))
+                else store.pullRpcBusiness(principal, profile, selection, checkNotNull(cursor), audience)
+            }
+        }
+        override fun clearInput() { credentials.bearer.destroy() }
+        override fun uncertain(value: LocalMasterChangesReplyV1): Boolean =
+            value is LocalMasterChangesReplyV1.Unavailable && value.reason == LocalMasterChangesFailureV1.STORAGE_UNCERTAIN
+    }
+
+    private inner class ChangesBatchReadWork(val credentials: LocalGatewayCredentials,
+        val profile: LocalMasterRpcWorkflowProfile, val selections: List<ReadRequest>,
+        val resource: LocalMasterRpcResourceSession?) : Work<LocalMasterChangesBatchReplyV1>() {
+        override fun unavailable(): LocalMasterChangesBatchReplyV1 =
+            LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN)
+        override fun busy(): LocalMasterChangesBatchReplyV1 =
+            LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.SERVICE_BUSY)
+        override fun denied(): LocalMasterChangesBatchReplyV1 =
+            LocalMasterChangesBatchReplyV1.Unavailable(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+        override suspend fun perform(): LocalMasterChangesBatchReplyV1 {
+            if (resource != null && !resource.current()) return denied()
+            val principal = principals.authenticateLocal(credentials) ?: return denied()
+            if (resource != null && !resource.matchesOriginal(principal)) return denied()
+            val result = store.snapshotBatch(principal, profile, selections)
+            currentCoroutineContext().ensureActive()
+            return if (resource == null || resource.current()) result else denied()
+        }
+        override fun clearInput() { credentials.bearer.destroy() }
+        override fun uncertain(value: LocalMasterChangesBatchReplyV1): Boolean =
+            value is LocalMasterChangesBatchReplyV1.Unavailable && value.reason == LocalMasterChangesFailureV1.STORAGE_UNCERTAIN
+    }
+
+    private inner class ChangesBusinessAccessWork(val credentials: LocalGatewayCredentials,
+        val profile: LocalMasterRpcWorkflowProfile, val selections: List<ReadRequest>,
+        val resource: LocalMasterRpcResourceSession,
+        val capacityOnly: Boolean) : Work<LocalMasterChangesRpcAuthorizationV1>() {
+        override fun unavailable(): LocalMasterChangesRpcAuthorizationV1 =
+            LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.UNAVAILABLE, null)
+        override fun busy(): LocalMasterChangesRpcAuthorizationV1 = unavailable()
+        override fun denied(): LocalMasterChangesRpcAuthorizationV1 =
+            LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
+        override suspend fun perform(): LocalMasterChangesRpcAuthorizationV1 {
+            if (!resource.current()) return denied()
+            val principal = principals.authenticateLocal(credentials) ?: return denied()
+            if (!resource.matchesOriginal(principal)) return denied()
+            val result = if (capacityOnly) store.authorizeChangesCapacity(principal, profile)
+                else if (selections.isEmpty()) LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.MALFORMED_ONLY, null)
+                else store.authorizeChangesBusiness(principal, profile, selections)
+            currentCoroutineContext().ensureActive()
+            return if (resource.current()) result else denied()
+        }
+        override fun clearInput() { credentials.bearer.destroy() }
+        override fun uncertain(value: LocalMasterChangesRpcAuthorizationV1): Boolean = value.result == LocalMasterChangesRpcAccessResultV1.UNAVAILABLE
     }
 
     private inner class ActionApprovalPreviewWork(

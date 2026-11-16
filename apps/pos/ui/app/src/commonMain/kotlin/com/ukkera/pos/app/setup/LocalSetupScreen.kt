@@ -192,6 +192,7 @@ public fun LocalSetupScreen(
                                         "استئناف الجهاز الرئيسي الأصلي نفسه الموقوف صراحةً"),
                                     controller::authenticateAndResumeLocalMaster, editable)
                             }
+                            if (view.lifecycleStopped) MasterBackupSection(view, controller, editable, restore = true)
                             if (controller.compositionProfile != null) {
                                 OutlinedButton(onClick = controller::chooseFreshDeviceTarget, enabled = editable,
                                     modifier = Modifier.fillMaxWidth().touchTarget()) {
@@ -355,6 +356,7 @@ public fun LocalSetupScreen(
                                     t("Read this same retained installation status", "قراءة حالة التثبيت المحفوظ نفسه")
                                     else t("Close and verify the same original installation again", "إغلاق التثبيت الأصلي نفسه والتحقق منه مجددًا"))
                             }
+                            if (view.localClientConnected) MasterBackupSection(view, controller, editable, restore = false)
                             if (view.localClientConnected) {
                                 LifecycleAuthorityForm(
                                     t("Explicitly stop this local master",
@@ -384,6 +386,7 @@ public fun LocalSetupScreen(
                                         "استئناف الجهاز الرئيسي الأصلي نفسه الموقوف صراحةً"),
                                     controller::authenticateAndResumeLocalMaster, editable)
                             }
+                            if (view.lifecycleStopped) MasterBackupSection(view, controller, editable, restore = true)
                         }
                         LocalSetupPhase.CLOSING -> Notice(t("Waiting for actual native-owner close. No replacement owner is opened meanwhile.",
                             "بانتظار الإغلاق الفعلي للمالك الأصلي. لن يُفتح مالك بديل أثناء ذلك."))
@@ -789,6 +792,67 @@ internal fun workText(work: LocalSetupWork): String = when (work) {
     LocalSetupWork.CLOSING_LAN_ATTACHMENT -> t("Waiting for this LAN attachment's actual close…", "بانتظار الإغلاق الفعلي لاتصال الشبكة المحلية هذا…")
     LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_STOP -> t("Authenticating current authority for the intentional local-master stop…", "جارٍ التحقق من السلطة الحالية لإيقاف الجهاز الرئيسي المحلي صراحةً…")
     LocalSetupWork.AUTHENTICATING_LOCAL_MASTER_RESUME -> t("Authenticating current authority, then reopening only the same original installation…", "جارٍ التحقق من السلطة الحالية ثم إعادة فتح التثبيت الأصلي نفسه فقط…")
+    LocalSetupWork.READING_MASTER_BACKUPS -> t("Reading and authenticating the retained encrypted backups…", "جارٍ قراءة النسخ الاحتياطية المشفرة المحفوظة والتحقق منها…")
+    LocalSetupWork.CREATING_MASTER_BACKUP -> t("Capturing a consistent encrypted Master backup…", "جارٍ التقاط نسخة احتياطية مشفرة ومتسقة للجهاز الرئيسي…")
+    LocalSetupWork.VERIFYING_MASTER_BACKUP -> t("Verifying the selected encrypted backup end to end…", "جارٍ التحقق الكامل من النسخة الاحتياطية المشفرة المحددة…")
+    LocalSetupWork.RESTORING_MASTER_BACKUP -> t("Restoring the selected backup into a separate held candidate…", "جارٍ استعادة النسخة المحددة إلى مرشح منفصل معلّق…")
+}
+
+/**
+ * Encrypted full-state Master backups. Create runs only through the operational Master; restore is
+ * offered only while explicitly STOPPED and the Master itself re-checks the authenticated STOP
+ * binding. A restore yields a separate HELD candidate, never live state or writer admission.
+ */
+@Composable
+private fun MasterBackupSection(view: LocalSetupView, controller: LocalSetupController, enabled: Boolean, restore: Boolean) {
+    SectionHeading(t("Encrypted Master backups", "النسخ الاحتياطية المشفرة للجهاز الرئيسي"))
+    Notice(if (restore) t("Restoring writes only a separate held candidate after the authenticated stop. The live database, sessions and authority are not replaced.",
+            "تكتب الاستعادة مرشحًا منفصلًا معلّقًا فقط بعد الإيقاف الموثّق. لا تُستبدل قاعدة البيانات الحية أو الجلسات أو السلطة.")
+        else t("Backups are sealed by this device's protected recovery key and checked as an authenticated chain. Scheduled backups run automatically while the Master is operational.",
+            "تُختم النسخ الاحتياطية بمفتاح الاسترداد المحمي لهذا الجهاز وتُفحص كسلسلة موثّقة. تعمل النسخ المجدولة تلقائيًا أثناء تشغيل الجهاز الرئيسي."))
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlinedButton(onClick = controller::refreshMasterBackups, enabled = enabled, modifier = Modifier.touchTarget()) {
+            Text(t("Read backups", "قراءة النسخ"))
+        }
+        if (!restore) Button(onClick = controller::createMasterBackup, enabled = enabled, modifier = Modifier.touchTarget()) {
+            Text(t("Back up now", "نسخ احتياطي الآن"))
+        }
+    }
+    val backups = view.masterBackups ?: return
+    backups.chainIntact?.let { intact ->
+        Notice(if (intact) t("Backup chain authenticated.", "سلسلة النسخ موثّقة.")
+            else t("Backup chain is NOT intact. Keep every archive; do not delete or replace files.", "سلسلة النسخ غير سليمة. احتفظ بكل الأرشيفات؛ لا تحذف الملفات أو تستبدلها."),
+            caution = !intact)
+    }
+    backups.outcome?.let { outcome ->
+        val text = when (outcome) {
+            LocalSetupMasterBackupOutcome.CREATED -> t("Backup created.", "أُنشئت النسخة الاحتياطية.")
+            LocalSetupMasterBackupOutcome.NOT_DUE -> t("No backup was due.", "لم تحن نسخة احتياطية.")
+            LocalSetupMasterBackupOutcome.CREATE_FAILED -> t("Backup was not created.", "لم تُنشأ النسخة الاحتياطية.")
+            LocalSetupMasterBackupOutcome.VERIFIED -> t("Backup verified.", "تم التحقق من النسخة.")
+            LocalSetupMasterBackupOutcome.VERIFY_REFUSED -> t("Backup verification refused.", "رُفض التحقق من النسخة.")
+            LocalSetupMasterBackupOutcome.RESTORE_HELD -> t("Restored into a separate HELD candidate. Nothing live changed.", "استُعيدت إلى مرشح منفصل معلّق. لم يتغير شيء حي.")
+            LocalSetupMasterBackupOutcome.RESTORE_REFUSED -> t("Restore refused.", "رُفضت الاستعادة.")
+            LocalSetupMasterBackupOutcome.RESTORE_QUARANTINED -> t("Restore candidate quarantined.", "عُزل مرشح الاستعادة.")
+        }
+        val failed = outcome in setOf(LocalSetupMasterBackupOutcome.CREATE_FAILED, LocalSetupMasterBackupOutcome.VERIFY_REFUSED,
+            LocalSetupMasterBackupOutcome.RESTORE_REFUSED, LocalSetupMasterBackupOutcome.RESTORE_QUARANTINED)
+        Notice(text + (backups.reason?.let { " ($it)" } ?: ""), caution = failed)
+    }
+    if (backups.entries.isEmpty()) Notice(t("No retained backups.", "لا توجد نسخ محفوظة."))
+    backups.entries.sortedByDescending { it.sequence }.forEach { entry ->
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+            Text("#${entry.sequence} · ${entry.createdAtEpochMillis} · " +
+                (if (entry.scheduled) t("scheduled", "مجدولة") else t("on demand", "عند الطلب")) +
+                " · ${entry.snapshotBytes} B", style = MaterialTheme.typography.bodyMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(onClick = { controller.verifyMasterBackup(entry.backupId) }, enabled = enabled,
+                    modifier = Modifier.touchTarget()) { Text(t("Verify", "تحقق")) }
+                if (restore) Button(onClick = { controller.restoreMasterBackup(entry.backupId) }, enabled = enabled,
+                    modifier = Modifier.touchTarget()) { Text(t("Restore to held candidate", "استعادة إلى مرشح معلّق")) }
+            }
+        }
+    }
 }
 
 @Composable

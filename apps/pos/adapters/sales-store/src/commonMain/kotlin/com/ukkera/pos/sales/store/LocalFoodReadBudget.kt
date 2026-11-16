@@ -49,7 +49,9 @@ internal fun foodProducerReadBytes(evidence: RetainedCommandEvidence): Long =
  * still performed by the kernel AFTER prepare and BEFORE evaluate/project; no public result
  * may be emitted by this view, and observing a target header cannot authorize an Apply.
  */
-internal class FoodReadView(private val borrowed: CommandReadView) : CommerceStockView {
+internal class FoodReadView(private val borrowed: CommandReadView) : CommerceStockView, FinancialOriginalProofCarrier {
+    override val financialOriginalProof: LocalFinancialOriginalProofScope?
+        get() = (borrowed as? FinancialOriginalProofCarrier)?.financialOriginalProof
     override val commerceStock: com.ukkera.pos.inventory.store.LocalStockRepository get() = commerceRepository(borrowed)
     override val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1 get() = commerceTenderPolicies(borrowed)
     override suspend fun stockRelationalAccess(): StockRelationalAccess = borrowed.requireStockRelational()
@@ -60,6 +62,33 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
     }
     internal suspend fun recordLegacyStockSource(row: StoredAggregate, original: RetainedCommandEvidence) =
         commerceRecordLegacy(borrowed, row, original)
+    // One explicitly bracketed ORIGINAL-ONLY proof scope. It owns no current row,
+    // claim, range, activation, employee grant or resource frontier. The stock facade
+    // reopens every requested original/direct source and clears completed proofs on exit.
+    private var financialStockOriginals: com.ukkera.pos.inventory.store.LocalStockOriginalRead? = null
+    private var financialStockReading: Boolean = false
+    internal suspend fun <T> withFinancialStockOriginals(block: suspend () -> T): T {
+        if (financialStockOriginals != null) return block()
+        return commerceStock.withRelationalOriginalRead(this) { originals ->
+            check(financialStockOriginals == null && !financialStockReading)
+            financialStockOriginals = originals
+            try { block() }
+            finally { financialStockOriginals = null; check(!financialStockReading) }
+        }
+    }
+    internal suspend fun requireFinancialOriginalStock(observed: com.ukkera.pos.database.StockReadObservations,
+        original: RetainedCommandEvidence) {
+        val originals = financialStockOriginals
+        if (originals == null || financialStockReading) {
+            // A nested legacy financial dependency cannot reenter the original-only facade.
+            // It keeps the complete existing fresh traversal, never an in-progress pass.
+            com.ukkera.pos.inventory.store.LocalStockPaymentObservations.requireOriginalStock(this, commerceStock, observed, original)
+            return
+        }
+        financialStockReading = true
+        try { com.ukkera.pos.inventory.store.LocalStockPaymentObservations.requireOriginalStock(this, commerceStock, observed, original, originals) }
+        finally { financialStockReading = false }
+    }
     private val completeStockFoodProducers = mutableMapOf<OperationId, RetainedStreamedCommand>()
     /** Streaming physical stock cardinality is charged by its owner, not flattened into v1 bytes. */
     internal suspend fun foodStockProducer(id: OperationId): RetainedStreamedCommand {
@@ -147,6 +176,18 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
         return value
     }
 
+    override suspend fun financialOriginalSources(operationId: OperationId): RuntimeHistoricalFinancialSources? {
+        call()
+        val source = borrowed.financialOriginalSources(operationId)
+        data(source?.retainedDataBytes ?: 512L)
+        return source
+    }
+    override suspend fun cashConfigurationOriginalSources(operationId: OperationId): RuntimeHistoricalCashConfigurationSources? {
+        call()
+        val source = borrowed.cashConfigurationOriginalSources(operationId)
+        data(source?.retainedDataBytes ?: 512L)
+        return source
+    }
     override suspend fun foodCheckRejectedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? {
         call(); producers++; foodCapacity(producers <= FoodReadLimits.REQUEST_PRODUCERS)
         val source = borrowed.foodCheckRejectedOriginalSources(operationId)
@@ -240,7 +281,7 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
                     LocalFoodFinancialProfileV1.COMMAND -> LocalFoodFinancialProducer.requireComplete(producer)
                     LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND ->
                         requireFoodPaymentOriginalCustody(this, producer, commerceStock)
-                    LocalFoodRefundProfile.COMMAND -> requireFoodRefundOriginalCustody(this, producer, commerceStock)
+                    LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND -> requireFoodRefundOriginalCustody(this, producer, commerceStock)
                     else -> error("food.producer_profile")
                 }
                 if (producer.command == LocalFoodProfileV1.COMMAND) foodHandoffLegacyOriginInputV2(producer)?.let { before ->
@@ -282,7 +323,7 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
         val originals = linkedMapOf<OperationId, RetainedCommandEvidence>()
         var predecessorBytes = 0L
         val payment = producer.command in foodPaymentCommands
-        val refund = producer.command == LocalFoodRefundProfile.COMMAND
+        val refund = producer.command in foodRefundCommands
         val financialV2 = payment || refund || producer.command == LocalFoodFinancialProfileV1.COMMAND &&
             foodFinancialStoredEvent(producer).framing?.version == 2
         val paidHandoff = producer.command == LocalFoodProfileV1.COMMAND && isPaidFoodHandoffProducer(producer)
@@ -300,7 +341,7 @@ internal class FoodReadView(private val borrowed: CommandReadView) : CommerceSto
             LocalFoodFinancialProfileV1.COMMAND -> foodFinancialInputs(producer)
             LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND ->
                 if (foodPaymentHasFinancialInputs(producer)) foodPaymentInputs(producer) else emptyList()
-            LocalFoodRefundProfile.COMMAND -> if (isFoodRefundFinancialProducer(producer)) foodRefundInputs(producer) else emptyList()
+            LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND -> if (isFoodRefundFinancialProducer(producer)) foodRefundInputs(producer) else emptyList()
             else -> error("food.predecessor_profile")
         }
         for (before in inputs) {
@@ -427,7 +468,9 @@ internal class FoodRetainedCustody(private val owner: RetainedStreamedCommand,
                     LocalFoodProfileV1.COMMAND -> LocalFoodProducer.requireComplete(value)
                     LocalFoodFinancialProfileV1.COMMAND -> LocalFoodFinancialProducer.requireComplete(value)
                     LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND -> paymentWhole(value)
-                    LocalFoodRefundProfile.COMMAND -> { refundWhole(value); emptyList<LocalFoodRecipeSnapshotV1>() }
+                    LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND -> {
+                        refundWhole(value); emptyList<LocalFoodRecipeSnapshotV1>()
+                    }
                     else -> error("food.stock.legacy_commerce_profile")
                 }
                 snapshots.forEach { recipes.requireLegacyRecipe(it, value.scope) }
@@ -465,11 +508,11 @@ internal class FoodRetainedCustody(private val owner: RetainedStreamedCommand,
             LocalFoodFinancialProfileV1.COMMAND -> foodFinancialInputs(value)
             LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND ->
                 if (foodPaymentHasFinancialInputs(value)) foodPaymentInputs(value) else emptyList()
-            LocalFoodRefundProfile.COMMAND -> if (isFoodRefundFinancialProducer(value)) foodRefundInputs(value) else emptyList()
+            LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND -> if (isFoodRefundFinancialProducer(value)) foodRefundInputs(value) else emptyList()
             else -> error("food.stock.legacy_direct_profile")
         }
         val payment = value.command in foodPaymentCommands
-        val refund = value.command == LocalFoodRefundProfile.COMMAND
+        val refund = value.command in foodRefundCommands
         val financialV2 = payment || refund || value.command == LocalFoodFinancialProfileV1.COMMAND && foodFinancialStoredEvent(value).framing?.version == 2
         val maximum = if (financialV2 || isPaidFoodHandoffProducer(value)) FOOD_FINANCIAL_MAX_INPUTS_V2 else FoodReadLimits.PREDECESSOR_PRODUCERS
         val originals = mutableMapOf<OperationId, RetainedCommandEvidence>()

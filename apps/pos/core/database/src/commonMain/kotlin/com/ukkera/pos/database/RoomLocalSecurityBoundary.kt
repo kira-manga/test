@@ -51,7 +51,10 @@ internal suspend fun <T> localSecurityWriter(database: MasterRoomDatabase, block
         }
     } catch (cancelled: CancellationException) {
         throw cancelled
-    } catch (_: Exception) {
+    } catch (failure: Exception) {
+        // Opt-in fixed-source diagnostics preserve the originating failure before
+        // sanitization. No SQL/provider message, request value or cause escapes.
+        reportLocalAccessVerificationFailure(LocalAccessVerificationStage.NATIVE_FACTS, failure)
         localStorageUncertain()
     }
     currentCoroutineContext().ensureActive()
@@ -59,5 +62,8 @@ internal suspend fun <T> localSecurityWriter(database: MasterRoomDatabase, block
 }
 
 /** No-Room service phase; never wraps password hashing or multiple real transactions in one native child. */
-internal suspend fun <T> localSecurityLane(database: MasterRoomDatabase,block: suspend () -> T): T =
-    database.runtimeHistoryOwner?.securityLane(block) ?: localSecurityWriter(database) { block() }
+internal suspend fun <T> localSecurityLane(database: MasterRoomDatabase,block: suspend () -> T): T {
+    val owner = database.runtimeHistoryOwner
+    // A null result is a completed refusal. Select the lane by owner presence before execution.
+    return if (owner != null) owner.securityLane(block) else localSecurityWriter(database) { block() }
+}

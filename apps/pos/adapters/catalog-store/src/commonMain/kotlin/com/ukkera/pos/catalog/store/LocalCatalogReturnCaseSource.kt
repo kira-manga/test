@@ -83,7 +83,7 @@ public class LocalCatalogReturnCaseSource(
         check(request.binding.quantity.unitId == sold.unitId && request.binding.quantity.scale == sold.scale &&
             request.binding.quantity.scaled in 1..sold.scaled)
 
-        val promiseResources = requireCapturedPublication(request.scope, publication, readRow, readOriginal)
+        val promiseResources = requireCapturedReturnPublication(signatures, request.scope, publication, readRow, readOriginal)
         val current = rights.active()
         rights.sourcePolicies().forEach { requireReturnRightsSource(authenticReturnRights(signatures, request.scope, it)) }
         val applicable = current?.publication?.publication?.let { source ->
@@ -165,36 +165,37 @@ public class LocalCatalogReturnCaseSource(
             reasonCode = "AUTHORITATIVE_CHRONOLOGY_UNAVAILABLE"),
             maxOf(request.intakeRecordedAt, receipt.value.recordedAt, rights.active.record.recordedAt))
     }
+}
 
-    /** Exact captured immutable publication and its original installer, never today's SKU. */
-    private suspend fun requireCapturedPublication(scope: BranchScope, captured: LocalSalesReturnPublicationV2,
-        readRow: suspend (AggregateKey) -> StoredAggregate?,
-        readOriginal: suspend (OperationId) -> RetainedCommandEvidence?): Set<RecoveryResourceKey> {
-        val reference = captured.source
-        val row = readRow(AggregateKey(reference.kind, reference.id))
-            ?: error("sales.return.original_publication_unavailable")
-        check(row.revision == reference.storageRevision && row.schema == reference.schema && row.digest == reference.digest &&
-            sha256(row.payload.copyBytes()) == reference.digest)
-        val record = decodeRecord(scope, row)
-        val signed = record.signedSku()
-        val sku = signed.definition
-        check(sku.publicationId == reference.id && sku.skuId == captured.skuId && sku.skuRevision == captured.skuRevision &&
-            signed.signingKeyId == captured.signingKeyId && returnPromiseDescriptor(sku.returnPromise) == captured.promise)
-        check(signatures.verify(sku.company, signed.signingKeyId,
-            LocalConfigurationCodec.canonicalPublication(sku), signed.signatureHex)) {
-            "sales.return.original_publication_signature_unavailable"
-        }
-        val producer = readOriginal(reference.producerOperationId)
-            ?: error("sales.return.original_publication_producer_unavailable")
-        check(producer.originalActorId == reference.producerActorId && producer.command.name == reference.producerCommand &&
-            producer.command.version == reference.producerVersion)
-        val eventKey = LocalPricingProfile.key(LocalPricingProfile.HISTORY_EVENT, DomainId(producer.operationId.value))
-        val event = readRow(eventKey) ?: error("sales.return.original_publication_event_unavailable")
-        check(event.revision == Revision(1) && event.schema == LocalPricingProfile.schema(eventKey.kind))
-        requireRetailPublicationProducer(producer, scope, row.key, row.revision, row.schema, row.payload, row.digest,
-            event.payload, event.digest)
-        return companySourceResources(record, emptyList()) + priceResource(eventKey.id)
+/** Exact captured immutable publication and its original installer, never today's SKU. */
+internal suspend fun requireCapturedReturnPublication(signatures: CompanyPublicationSignatureVerifier,
+    scope: BranchScope, captured: LocalSalesReturnPublicationV2,
+    readRow: suspend (AggregateKey) -> StoredAggregate?,
+    readOriginal: suspend (OperationId) -> RetainedCommandEvidence?): Set<RecoveryResourceKey> {
+    val reference = captured.source
+    val row = readRow(AggregateKey(reference.kind, reference.id))
+        ?: error("sales.return.original_publication_unavailable")
+    check(row.revision == reference.storageRevision && row.schema == reference.schema && row.digest == reference.digest &&
+        sha256(row.payload.copyBytes()) == reference.digest)
+    val record = decodeRecord(scope, row)
+    val signed = record.signedSku()
+    val sku = signed.definition
+    check(sku.publicationId == reference.id && sku.skuId == captured.skuId && sku.skuRevision == captured.skuRevision &&
+        signed.signingKeyId == captured.signingKeyId && returnPromiseDescriptor(sku.returnPromise) == captured.promise)
+    check(signatures.verify(sku.company, signed.signingKeyId,
+        LocalConfigurationCodec.canonicalPublication(sku), signed.signatureHex)) {
+        "sales.return.original_publication_signature_unavailable"
     }
+    val producer = readOriginal(reference.producerOperationId)
+        ?: error("sales.return.original_publication_producer_unavailable")
+    check(producer.originalActorId == reference.producerActorId && producer.command.name == reference.producerCommand &&
+        producer.command.version == reference.producerVersion)
+    val eventKey = LocalPricingProfile.key(LocalPricingProfile.HISTORY_EVENT, DomainId(producer.operationId.value))
+    val event = readRow(eventKey) ?: error("sales.return.original_publication_event_unavailable")
+    check(event.revision == Revision(1) && event.schema == LocalPricingProfile.schema(eventKey.kind))
+    requireRetailPublicationProducer(producer, scope, row.key, row.revision, row.schema, row.payload, row.digest,
+        event.payload, event.digest)
+    return companySourceResources(record, emptyList()) + priceResource(eventKey.id)
 }
 
 private data class CatalogOrdinaryReturnAssessment(

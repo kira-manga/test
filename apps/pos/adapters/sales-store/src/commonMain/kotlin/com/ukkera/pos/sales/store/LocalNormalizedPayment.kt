@@ -423,7 +423,9 @@ private class NormalizedPaymentTraversal(private val borrowed: CommandReadView) 
      * financial dependencies for this owner, never for a different queued owner. */
     private suspend fun requireOne(owner: RetainedCommandEvidence, stockOriginals: LocalStockOriginalRead) {
         val observed = StockReadEvidenceV1.read(owner) ?: error("sales.stock.payment_read_required")
-        when (val result = LocalFinancialResultCodecV3.decode(owner.result)) {
+        // An exchange offset is its own closed producer; its observed collection sources are qualified below.
+        if (owner.command == LocalExchangeCodec.COMMAND) requireExchangeOriginal(owner)
+        else when (val result = LocalFinancialResultCodecV3.decode(owner.result)) {
             is LocalFinancialResultV3.AttemptStarted -> {
                 val slot = requireNormalizedPaymentStartOriginal(owner, commerceTenderPolicies(view))
                 check(slot.target.kind == SalesRecordingKind.PAYMENT_ATTESTATION)

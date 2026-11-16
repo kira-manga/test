@@ -9,6 +9,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,13 +58,18 @@ internal fun LocalSetupLanSection(
     var listenPort by remember(controller, role) { mutableStateOf("") }
     var hostAddress by remember(controller, role) { mutableStateOf("") }
     var hostPort by remember(controller, role) { mutableStateOf("") }
+    var manualEndpoint by remember(controller, role) { mutableStateOf(false) }
+    var advertiseHost by remember(controller, role) { mutableStateOf(true) }
+    LaunchedEffect(controller, permissionGranted, role) {
+        if (permissionGranted && role != null && idle) controller.refreshLanNetworks()
+    }
     var workflow by remember(controller, role) { mutableStateOf(LocalSetupLanWorkflow.AUTHENTICATION_ONLY) }
     var credentialAction by remember(controller, role) { mutableStateOf<LocalPairedDeviceCredentialJournalAction?>(null) }
     var actorIntentAction by remember(controller, role) { mutableStateOf<LocalPairedDeviceCredentialJournalAction?>(null) }
-    var reviewAttempted by remember(controller, role, subnets, interfaceName, localAddress, listenPort, hostAddress, hostPort, workflow, credentialAction, actorIntentAction) {
+    var reviewAttempted by remember(controller, role, subnets, interfaceName, localAddress, listenPort, hostAddress, hostPort, workflow, credentialAction, actorIntentAction, manualEndpoint, advertiseHost) {
         mutableStateOf(false)
     }
-    var reviewed by remember(controller, role, subnets, interfaceName, localAddress, listenPort, hostAddress, hostPort, workflow, credentialAction, actorIntentAction) {
+    var reviewed by remember(controller, role, subnets, interfaceName, localAddress, listenPort, hostAddress, hostPort, workflow, credentialAction, actorIntentAction, manualEndpoint, advertiseHost) {
         mutableStateOf(false)
     }
     val parsedListenPort = lanPort(listenPort, 0)
@@ -73,12 +79,13 @@ internal fun LocalSetupLanSection(
         LocalSetupLanInput(subnets.split('\n'), interfaceName, localAddress, parsedListenPort,
             credentialAction = if (isClient) credentialAction else null,
             workflow = if (isClient) workflow else LocalSetupLanWorkflow.AUTHENTICATION_ONLY,
-            actorIntentAction = if (isClient && businessWorkflow) actorIntentAction else null) else null
+            actorIntentAction = if (isClient && businessWorkflow) actorIntentAction else null,
+            advertiseHost = !isClient && advertiseHost) else null
     val endpoint = if (hostAddress.isNotEmpty() && parsedHostPort != null)
         LocalSetupLanEndpoint(hostAddress, parsedHostPort) else null
     val custodyComplete = !isClient || !businessWorkflow ||
         credentialAction != null && actorIntentAction != null
-    val complete = input != null && (!isClient || endpoint != null) && custodyComplete
+    val complete = input != null && (!isClient || !manualEndpoint || endpoint != null) && custodyComplete
 
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionHeading(t("Explicit branch LAN attachment", "اتصال صريح بالشبكة المحلية للفرع"))
@@ -121,8 +128,30 @@ internal fun LocalSetupLanSection(
             }, caution = true)
         }
         if (lan.status == LocalSetupLanStatus.NOT_ATTACHED && available) {
-            Notice(t("Enter the exact approved private CIDRs, physical interface and numeric private local address. No subnet, interface, address or port is selected for you. Entered text is submitted unchanged; invalid network values are refused.",
-                "أدخل نطاقات CIDR الخاصة المعتمدة والواجهة الفعلية والعنوان المحلي الخاص الرقمي بدقة. لا يُختار لك نطاق أو واجهة أو عنوان أو منفذ. يُرسل النص المدخل كما هو وتُرفض قيم الشبكة غير الصحيحة."))
+            Notice(t("Choose a local network observed on this device, then review the exact settings. You can also enter a private network manually.",
+                "اختر شبكة محلية مرصودة على هذا الجهاز، ثم راجع الإعدادات الدقيقة. يمكنك أيضًا إدخال شبكة خاصة يدويًا."))
+            OutlinedButton(onClick = controller::refreshLanNetworks, enabled = mayBegin,
+                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(t("Find local networks", "البحث عن الشبكات المحلية"))
+            }
+            for (network in lan.networks) OutlinedButton(onClick = {
+                interfaceName = network.interfaceName
+                localAddress = network.localAddress
+                subnets = network.subnet
+                if (listenPort.isEmpty()) listenPort = "0"
+            }, enabled = mayBegin, modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(network.interfaceName + " · " + network.localAddress + " · " + network.subnet)
+            }
+            if (!isClient) OutlinedButton(onClick = { advertiseHost = !advertiseHost }, enabled = mayBegin,
+                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text((if (advertiseHost) "✓ " else "") + t("Allow Clients to discover this Master on the selected LAN",
+                    "السماح للعملاء باكتشاف هذا الجهاز الرئيسي على الشبكة المختارة"))
+            }
+            if (isClient) OutlinedButton(onClick = { manualEndpoint = !manualEndpoint }, enabled = mayBegin,
+                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(if (manualEndpoint) t("Use automatic Master discovery", "استخدام الاكتشاف التلقائي للجهاز الرئيسي")
+                    else t("Use a numeric Master address instead", "استخدام عنوان رقمي للجهاز الرئيسي"))
+            }
             OutlinedTextField(subnets, { subnets = it }, enabled = mayBegin, minLines = 2, maxLines = 6,
                 label = { Text(t("Approved private CIDRs: one exact CIDR per line (1–64)", "نطاقات CIDR الخاصة المعتمدة: نطاق دقيق في كل سطر (1–64)")) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
@@ -133,7 +162,7 @@ internal fun LocalSetupLanSection(
                 invalid = (listenPort.isNotEmpty() || reviewAttempted) && parsedListenPort == null,
                 hint = t("Enter ASCII digits only, 0–65535. Explicit 0 requests an assigned port; an invalid value never becomes 0.",
                     "أدخل أرقام ASCII فقط من 0 إلى 65535. يطلب الصفر المدخل صراحةً منفذًا مخصصًا؛ ولا تتحول قيمة غير صحيحة إلى صفر."))
-            if (isClient) {
+            if (isClient && manualEndpoint) {
                 Notice(t("Enter the selected original Master's numeric Host endpoint in the approved LAN. Its address is transport data; it cannot replace the retained native Master approval.",
                     "أدخل نقطة اتصال المضيف الرقمية للجهاز الرئيسي الأصلي المختار ضمن الشبكة المحلية المعتمدة. عنوانه بيانات اتصال ولا يستبدل اعتماد الجهاز الرئيسي الأصلي المحفوظ."))
                 LanTextInput(hostAddress, { hostAddress = it }, t("Selected Host numeric address", "العنوان الرقمي للمضيف المختار"), mayBegin)
@@ -149,6 +178,9 @@ internal fun LocalSetupLanSection(
                     Text((if (workflow == choice) "✓ " else "") + lanWorkflowText(choice))
                 }
                 Notice(when (workflow) {
+                    LocalSetupLanWorkflow.LAN_BUSINESS -> t(
+                        "Branch business access uses the authoritative Master for each operation. Choose independent device and employee custody actions, then sign in with current permissions.",
+                        "يستخدم الوصول إلى أعمال الفرع الجهاز الرئيسي الموثوق لكل عملية. اختر إجراءي حفظ مستقلين للجهاز والموظف، ثم سجل الدخول بصلاحيات سارية.")
                     LocalSetupLanWorkflow.INVOICE_CAPTURE -> t(
                         "Supplier invoice capture only: retain the supplier's actual claim as unmatched and unapproved, with optional existing purchase-order context. Read, review and save before submitting separately; recover and acknowledge the same original result. Select independent device and employee custody actions and sign in freshly. Each read, capture and recovery requires current Master permission. Receiving, approval, matching, payments and configuration changes are unavailable on this connection.",
                         "حفظ فاتورة المورد فقط: احفظ مطالبة المورد الفعلية كغير مطابقة وغير معتمدة، مع سياق اختياري لأمر شراء موجود. اقرأ وراجع واحفظ قبل الإرسال في خطوة منفصلة؛ واستعد النتيجة الأصلية نفسها وأكد استلامها. اختر إجراءي حفظ مستقلين للجهاز والموظف وسجل الدخول مجددًا. تتطلب كل قراءة وحفظ واسترداد إذنًا حاليًا من الجهاز الرئيسي. لا يوفر هذا الاتصال الاستلام أو الاعتماد أو المطابقة أو المدفوعات أو تغيير الإعدادات.")
@@ -229,8 +261,11 @@ internal fun LocalSetupLanSection(
                 ReviewField(t("Numeric local address", "العنوان المحلي الرقمي"), localAddress)
                 ReviewField(t("Requested listener port", "منفذ الاستماع المطلوب"), listenPort)
                 if (isClient) {
-                    ReviewField(t("Selected Host numeric address", "العنوان الرقمي للمضيف المختار"), hostAddress)
-                    ReviewField(t("Selected Host port", "منفذ المضيف المختار"), hostPort)
+                    if (manualEndpoint) {
+                        ReviewField(t("Selected Host numeric address", "العنوان الرقمي للمضيف المختار"), hostAddress)
+                        ReviewField(t("Selected Host port", "منفذ المضيف المختار"), hostPort)
+                    } else Notice(t("Discover nearby Masters, then explicitly select the one matching the approved original Master.",
+                        "اكتشف الأجهزة الرئيسية القريبة، ثم اختر صراحةً الجهاز المطابق للجهاز الرئيسي الأصلي المعتمد."))
                     ReviewField(t("Requested workflow", "سير العمل المطلوب"), lanWorkflowText(workflow), code = false)
                     ReviewField(t("Device credential disposition", "إجراء بيانات اعتماد الجهاز"),
                         credentialActionText(credentialAction), code = false)
@@ -245,10 +280,12 @@ internal fun LocalSetupLanSection(
                     "يحفظ البدء هذا الاختيار الدقيق على الجهاز الرئيسي الموجود. لا يُعرض منفذ الاستماع صفر المدخل صراحةً بوصفه منفذًا مخصصًا فعليًا إلا بعد تأكيد الاستماع."))
                 Button(onClick = {
                     val exactInput = input ?: return@Button
-                    if (isClient) controller.connectLanClient(exactInput, endpoint ?: return@Button)
+                    if (isClient && !manualEndpoint) controller.startLanDiscovery(exactInput)
+                    else if (isClient) controller.connectLanClient(exactInput, endpoint ?: return@Button)
                     else controller.startLanHost(exactInput)
                 }, enabled = mayBegin, modifier = Modifier.fillMaxWidth().touchTarget()) {
-                    Text(if (isClient && workflow == LocalSetupLanWorkflow.SUPPLIERS)
+                    Text(if (isClient && !manualEndpoint) t("Discover the approved Master", "اكتشاف الجهاز الرئيسي المعتمد")
+                        else if (isClient && workflow == LocalSetupLanWorkflow.SUPPLIERS)
                         t("Connect with this supplier-only selection", "الاتصال باختيار الموردين فقط هذا")
                         else if (isClient && workflow == LocalSetupLanWorkflow.WAREHOUSES)
                         t("Connect with this warehouse-only selection", "الاتصال باختيار المخازن فقط هذا")
@@ -280,7 +317,36 @@ internal fun LocalSetupLanSection(
                 }
             }
         }
+        if (lan.discoveryActive) {
+            Notice(t("Nearby names and fingerprints are untrusted discovery data. Only a current claim matching this device’s approved original Master can be selected.",
+                "الأسماء والبصمات القريبة بيانات اكتشاف غير موثوقة. لا يمكن اختيار إلا إعلان حالي مطابق للجهاز الرئيسي الأصلي المعتمد لهذا الجهاز."))
+            if (lan.discoveredMasters.isEmpty()) Text(t("Looking for Masters on the selected network…", "جارٍ البحث عن الأجهزة الرئيسية على الشبكة المختارة…"))
+            for (candidate in lan.discoveredMasters) {
+                ReviewField(t("Discovered name", "الاسم المكتشف"), candidate.displayName, code = false)
+                ReviewField(t("Untrusted advertised fingerprint", "البصمة المعلنة غير الموثوقة"), candidate.fingerprint)
+                if (candidate.matchesOriginalMaster) Button(
+                    onClick = { controller.connectDiscoveredLanClient(candidate.candidateId) },
+                    enabled = idle && permissionGranted, modifier = Modifier.fillMaxWidth().touchTarget()) {
+                    Text(t("Connect to the approved original Master", "الاتصال بالجهاز الرئيسي الأصلي المعتمد"))
+                } else Text(t("Does not match this device’s approved Master", "لا يطابق الجهاز الرئيسي المعتمد لهذا الجهاز"))
+            }
+            LanTextInput(hostAddress, { hostAddress = it }, t("Optional numeric Host address", "عنوان رقمي اختياري للمضيف"), idle)
+            LanPortInput(hostPort, { hostPort = it }, t("Host port (1–65535)", "منفذ المضيف (1–65535)"), idle,
+                invalid = hostPort.isNotEmpty() && parsedHostPort == null,
+                hint = t("Use the Master’s displayed numeric endpoint if discovery is unavailable.", "استخدم نقطة الاتصال الرقمية المعروضة على الجهاز الرئيسي إذا تعذر الاكتشاف."))
+            OutlinedButton(onClick = {
+                controller.connectLanClient(input ?: return@OutlinedButton, endpoint ?: return@OutlinedButton)
+            }, enabled = idle && permissionGranted && input != null && endpoint != null && custodyComplete,
+                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(t("Connect using this numeric fallback", "الاتصال باستخدام هذا العنوان الرقمي البديل"))
+            }
+        }
         if (lan.status != LocalSetupLanStatus.NOT_ATTACHED) {
+            if (lan.role == LocalSetupLanRole.CLIENT) OutlinedButton(onClick = controller::recoverLanClient,
+                enabled = idle && permissionGranted && lan.status in setOf(LocalSetupLanStatus.CONNECTED, LocalSetupLanStatus.UNAVAILABLE),
+                modifier = Modifier.fillMaxWidth().touchTarget()) {
+                Text(t("Reconnect to this approved Master", "إعادة الاتصال بالجهاز الرئيسي المعتمد"))
+            }
             OutlinedButton(onClick = controller::refreshLanAttachment,
                 enabled = idle && (lan.status == LocalSetupLanStatus.LISTENING || lan.status == LocalSetupLanStatus.CONNECTED),
                 modifier = Modifier.fillMaxWidth().touchTarget()) {
@@ -292,8 +358,8 @@ internal fun LocalSetupLanSection(
                 Text(t("Close only this LAN attachment", "إغلاق اتصال الشبكة المحلية هذا فقط"))
             }
         }
-        Notice(t("Refresh only observes this retained attachment; it does not reconnect or select another endpoint. LAN close is terminal for this attachment. Locking or leaving setup keeps the authoritative Master running.",
-            "يرصد التحديث هذا الاتصال المحفوظ فقط، ولا يعيد الاتصال أو يختار نقطة اتصال أخرى. إغلاق الشبكة المحلية نهائي لهذا الاتصال. يبقى الجهاز الرئيسي صاحب السلطة يعمل عند قفل الإعداد أو مغادرته."))
+        Notice(t("Reconnect retains this device’s keys and journals, confirms the old transport is closed, then reconnects to the approved Master. Discovery requires a fresh matching selection and employee sign-in is checked again. Refresh observes the same attachment. LAN close ends its lifetime.",
+            "تحافظ إعادة الاتصال على مفاتيح هذا الجهاز وسجلاته، وتؤكد إغلاق النقل السابق، ثم تعيد الاتصال بالجهاز الرئيسي المعتمد. يتطلب الاكتشاف اختيارًا مطابقًا حديثًا ويُتحقق من تسجيل دخول الموظف مجددًا. يرصد التحديث الاتصال نفسه. ينهي الإغلاق مدة هذا الاتصال."))
     }
 }
 
@@ -326,12 +392,13 @@ private fun lanStatusText(status: LocalSetupLanStatus): String = when (status) {
     LocalSetupLanStatus.CONNECTED -> t("The LAN Client is confirmed connected to the selected original Master.", "تأكّد اتصال عميل الشبكة المحلية بالجهاز الرئيسي الأصلي المختار.")
     LocalSetupLanStatus.CLOSING -> t("Waiting for actual LAN attachment close.", "بانتظار الإغلاق الفعلي لاتصال الشبكة المحلية.")
     LocalSetupLanStatus.CLOSED -> t("This LAN attachment is closed. Its lifetime cannot be reused.", "أُغلق اتصال الشبكة المحلية هذا. لا يمكن إعادة استخدام دورة تشغيله.")
-    LocalSetupLanStatus.UNAVAILABLE -> t("This LAN attachment is unavailable. No replacement is started.", "اتصال الشبكة المحلية هذا غير متاح. لا يبدأ اتصال بديل.")
+    LocalSetupLanStatus.UNAVAILABLE -> t("This LAN attachment is unavailable. A Client can recover only after its old transport is confirmed closed.", "اتصال الشبكة المحلية هذا غير متاح. لا يمكن استعادة اتصال العميل إلا بعد تأكيد إغلاق النقل السابق.")
     LocalSetupLanStatus.UNKNOWN -> t("LAN state or cleanup is unconfirmed. Retained ownership prevents a replacement attachment.", "حالة الشبكة المحلية أو تنظيفها غير مؤكدة. تمنع الملكية المحفوظة اتصالًا بديلًا.")
 }
 
 @Composable
 private fun lanWorkflowText(workflow: LocalSetupLanWorkflow): String = when (workflow) {
+    LocalSetupLanWorkflow.LAN_BUSINESS -> t("Branch business operations", "عمليات أعمال الفرع")
     LocalSetupLanWorkflow.AUTHENTICATION_ONLY -> t("Authentication only — no business workflow", "المصادقة فقط — دون سير عمل تجاري")
     LocalSetupLanWorkflow.SUPPLIERS -> t("Suppliers only — original operations and recovery", "الموردون فقط — العمليات الأصلية والاسترداد")
     LocalSetupLanWorkflow.WAREHOUSES -> t("Warehouses only — original operations and recovery", "المخازن فقط — العمليات الأصلية والاسترداد")

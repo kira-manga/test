@@ -2,6 +2,9 @@ package com.ukkera.pos.rpc
 
 import com.ukkera.pos.security.LocalMasterSdkOriginal
 import com.ukkera.pos.database.LocalMasterRpcPeerRegistration
+import com.ukkera.pos.database.LocalMasterRpcTrustSetChanged
+import dev.p2pkit.rpc.RpcTrustPurpose
+import kotlinx.coroutines.CancellationException
 import dev.p2pkit.rpc.RpcEndpoint
 import dev.p2pkit.rpc.RpcLocalIdentity
 import dev.p2pkit.rpc.RpcPlatform
@@ -18,6 +21,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,8 +53,12 @@ internal class LocalRpcOriginalHostOwner(
     private val source: LocalRpcOriginalHostSource,
     private val platform: () -> RpcPlatform,
     private val lan: OrganizationLan,
+    private val advertise: Boolean = false,
 ) {
     private val gate = Mutex()
+    // SDK role replacement and public observations share this gate. The native Master,
+    // original SDK identity and service-pushed registration are retained for its lifetime.
+    private val roleGate = Mutex()
     private val state = MutableStateFlow(LocalRpcFactoryPhase.NEW)
     val phase: StateFlow<LocalRpcFactoryPhase> = state.asStateFlow()
     private val originalData = MutableStateFlow<LocalMasterSdkOriginal?>(null)
@@ -62,6 +71,9 @@ internal class LocalRpcOriginalHostOwner(
     private var closing: Deferred<Unit>? = null
     private var factory: LocalRpcFactoryOwner? = null
     private var factoryEntered = false
+    private var retainedTrust: RpcTrustStore? = null
+    private var retainedRegistration: LocalMasterRpcPeerRegistration? = null
+    private var refreshing: Job? = null
     private var sessionIngress: LocalRpcMasterSessionIngress? = null
     private val retired = CompletableDeferred<Unit>()
 
@@ -92,9 +104,7 @@ internal class LocalRpcOriginalHostOwner(
         }
         val identity = pending.await()
         currentCoroutineContext().ensureActive()
-        gate.withLock {
-            requireReady()
-        }
+        roleGate.withLock { gate.withLock { requireReady() } }
         return identity
     }
 
@@ -106,13 +116,21 @@ internal class LocalRpcOriginalHostOwner(
             starting ?: scope.async(start = CoroutineStart.LAZY) {
                 try {
                     acquire()
-                    val retainedFactory = gate.withLock {
-                        requireReady()
-                        check(sessionIngress != null) { "Original Host peer registration is unavailable" }
-                        checkNotNull(factory)
+                    roleGate.withLock {
+                        val retainedFactory = gate.withLock {
+                            requireReady()
+                            check(sessionIngress != null) { "Original Host peer registration is unavailable" }
+                            checkNotNull(factory)
+                        }
+                        try { retainedFactory.startServingHost() }
+                        catch (_: LocalMasterRpcTrustSetChanged) { replaceRunningHost() }
+                        gate.withLock {
+                            requireReady()
+                            if (refreshing == null) refreshing = scope.launch(start = CoroutineStart.LAZY) {
+                                refreshOwnedTrust()
+                            }.also { it.start() }
+                        }
                     }
-                    retainedFactory.startServingHost()
-                    gate.withLock { requireReady() }
                 } catch (failure: Throwable) {
                     retireFailedOperation()
                     throw failure
@@ -133,10 +151,12 @@ internal class LocalRpcOriginalHostOwner(
             endpointRead?.takeUnless { it.isCompleted } ?: scope.async(start = CoroutineStart.LAZY) {
                 try {
                     startup.await()
-                    val retainedFactory = gate.withLock { requireReady(); checkNotNull(factory) }
-                    val endpoint = retainedFactory.servingEndpoint()
-                    gate.withLock { requireReady() }
-                    endpoint
+                    roleGate.withLock {
+                        val retainedFactory = gate.withLock { requireReady(); checkNotNull(factory) }
+                        val endpoint = retainedFactory.servingEndpoint()
+                        gate.withLock { requireReady() }
+                        endpoint
+                    }
                 } catch (failure: Throwable) {
                     retireFailedOperation()
                     throw failure
@@ -168,34 +188,99 @@ internal class LocalRpcOriginalHostOwner(
             // is derived from the same actual Master, never supplied by a remote caller.
             val trust = source.trustStore()
             val registration = source.peerRegistration()
-            val ingress = registration?.let { LocalRpcMasterSessionIngress(it, scope, parent) }
-            gate.withLock {
-                sessionIngress = ingress
-                if (state.value != LocalRpcFactoryPhase.ACQUIRING ||
-                    !parent.isActive || !source.isCurrent()) ingress?.deny()
-                requireAcquiring()
-            }
-            val retainedFactory = gate.withLock {
-                requireAcquiring()
-                factoryEntered = true
-                (if (ingress == null) LocalRpcFactoryOwner.reconstructHost(platform(), scope, retainedOriginal, lan, trust)
-                 else LocalRpcFactoryOwner.reconstructServingHost(platform(), scope, retainedOriginal, lan, trust, ingress,
-                     { parent.isActive && source.isCurrent() && state.value == LocalRpcFactoryPhase.READY }))
-                    .also { factory = it }
-            }
-            gate.withLock { requireAcquiring() }
-            val identity = retainedFactory.acquire()
             gate.withLock {
                 requireAcquiring()
-                state.value = LocalRpcFactoryPhase.READY
+                retainedTrust = trust
+                retainedRegistration = registration
             }
-            return identity
+            return constructRetainedHost(retainedOriginal, trust, registration)
         } catch (failure: Throwable) {
             gate.withLock {
                 if (state.value != LocalRpcFactoryPhase.CLOSING) state.value = LocalRpcFactoryPhase.UNCERTAIN
             }
             beginClose()
             throw failure
+        }
+    }
+
+    /** Called only for the first acquisition or while roleGate owns a closed prior role. */
+    private suspend fun constructRetainedHost(retainedOriginal: LocalMasterSdkOriginal,
+        trust: RpcTrustStore, registration: LocalMasterRpcPeerRegistration?): RpcLocalIdentity {
+        val retainedFactory = gate.withLock {
+            requireAcquiring()
+            check(factory == null && !factoryEntered)
+            factoryEntered = true // Retain even an unreturned constructor's uncertain fate.
+            val ingress = registration?.let {
+                LocalRpcMasterSessionIngress(it, scope, parent, ownsRegistration = false)
+            }.also { sessionIngress = it }
+            (if (ingress == null) LocalRpcFactoryOwner.reconstructHost(platform(), scope, retainedOriginal, lan, trust)
+             else LocalRpcFactoryOwner.reconstructServingHost(platform(), scope, retainedOriginal, lan, trust, ingress, advertise,
+                 { parent.isActive && source.isCurrent() && state.value == LocalRpcFactoryPhase.READY &&
+                     sessionIngress === ingress }))
+                .also { factory = it }
+        }
+        val identity = retainedFactory.acquire()
+        gate.withLock { requireAcquiring(); state.value = LocalRpcFactoryPhase.READY }
+        return identity
+    }
+
+    /** Complete current native census only; no SDK pairing approval or remembered positive grant. */
+    private suspend fun refreshOwnedTrust() {
+        try {
+            // Actual table invalidations are wake-up hints only. The complete current
+            // native/protected census decides membership after every notification.
+            val changes = gate.withLock { retainedTrust as? LocalRpcTrustStore } ?: return
+            changes.hostClientInvalidations.conflate().collect {
+                roleGate.withLock {
+                    val (retainedFactory, trust, original) = gate.withLock {
+                        requireReady()
+                        Triple(checkNotNull(factory), checkNotNull(retainedTrust), checkNotNull(originalData.value))
+                    }
+                    val current = trust.load(original.appId, RpcTrustPurpose.HostClients)
+                    gate.withLock { requireReady() }
+                    if (current != retainedFactory.servingTrustSnapshot()) replaceRunningHost()
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            retireFailedOperation()
+        }
+    }
+
+    /** roleGate stays held until the replacement listener is running or ownership is retired.
+     * Only a fully verified changed census permits another bounded reconstruction attempt.
+     * Every preceding SDK role must report CLOSED before the same original can be reused. */
+    private suspend fun replaceRunningHost() {
+        repeat(MAXIMUM_TRUST_RECONSTRUCTIONS) { attempt ->
+            val previous = gate.withLock {
+                requireAvailable()
+                val owned = checkNotNull(factory)
+                state.value = LocalRpcFactoryPhase.ACQUIRING
+                sessionIngress?.deny()
+                owned
+            }
+            previous.close()
+            gate.withLock {
+                requireAcquiring()
+                check(previous.phase.value == LocalRpcFactoryPhase.CLOSED && factory === previous)
+                factory = null
+                factoryEntered = false
+                sessionIngress = null // Only confirmed SDK/native/callback cleanup permits replacement.
+            }
+            val (original, trust, registration) = gate.withLock {
+                requireAcquiring()
+                Triple(checkNotNull(originalData.value), checkNotNull(retainedTrust), checkNotNull(retainedRegistration))
+            }
+            constructRetainedHost(original, trust, registration)
+            val replacement = gate.withLock { requireReady(); checkNotNull(factory) }
+            try {
+                replacement.startServingHost()
+                gate.withLock { requireReady() }
+                return
+            } catch (changed: LocalMasterRpcTrustSetChanged) {
+                if (attempt == MAXIMUM_TRUST_RECONSTRUCTIONS - 1) throw changed
+            }
         }
     }
 
@@ -216,7 +301,7 @@ internal class LocalRpcOriginalHostOwner(
             factory?.phase?.value == LocalRpcFactoryPhase.READY) { "Original RPC Host owner is retired" }
     }
 
-    private suspend fun requireRunning() {
+    private suspend fun requireRunning() = roleGate.withLock {
         val retainedFactory = gate.withLock { requireReady(); checkNotNull(factory) }
         try {
             retainedFactory.assertServingHostRunning()
@@ -245,7 +330,11 @@ internal class LocalRpcOriginalHostOwner(
             gate.withLock { acquisition }?.join()
             val operations = gate.withLock { listOfNotNull<Job>(starting, endpointRead) }
             operations.forEach { it.join() }
+            gate.withLock { refreshing }?.cancelAndJoin()
             try {
+                // Whole-owner shutdown is the only path that retires the service-pushed
+                // registration. A role refresh revokes/drains its exact sessions only.
+                gate.withLock { retainedRegistration }?.awaitSessionRevocation()
                 gate.withLock { sessionIngress }?.closeOwned()
                 val retainedFactory = gate.withLock {
                     check(factory != null || !factoryEntered) { "Original RPC Host composition cleanup is uncertain" }
@@ -265,11 +354,13 @@ internal class LocalRpcOriginalHostOwner(
             closing = it
             state.value = LocalRpcFactoryPhase.CLOSING
             sessionIngress?.deny()
+            retainedRegistration?.retireAll()
             it.start()
         }
     }
 
     companion object {
+        private const val MAXIMUM_TRUST_RECONSTRUCTIONS = 4
         fun retentionLifetime(applicationScope: CoroutineScope): Job =
             requireNotNull(applicationScope.coroutineContext[Job]) { "A retained application lifetime is required" }
                 .also { require(it.isActive) { "The application lifetime is inactive" } }

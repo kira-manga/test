@@ -10,10 +10,14 @@ import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.database.LocalMasterRpcBusinessAccess
 import com.ukkera.pos.security.LocalGatewayCredentials
 import com.ukkera.pos.security.OpaqueCredential
+import com.ukkera.pos.security.BranchScope
+import com.ukkera.pos.security.SessionGeneration
+import com.ukkera.pos.types.Revision
 import dev.p2pkit.core.AppId
 import dev.p2pkit.core.PeerFingerprint
 import dev.p2pkit.rpc.RpcLocalIdentity
 import dev.p2pkit.rpc.RpcEndpoint
+import dev.p2pkit.rpc.RpcDiscoveredHost
 import dev.p2pkit.rpc.RpcPlatform
 import dev.p2pkit.rpc.RpcSelectedHost
 import dev.p2pkit.rpc.RpcTrustPurpose
@@ -33,6 +37,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -51,7 +56,8 @@ internal interface LocalRpcOriginalClientSource {
  * and acquired. The factory owner supplies all actual role acquisition and cleanup behavior.
  * Failed operations are cached; unknown cleanup keeps this holder and its exact source/factory.
  * The selected-Master route consumes only the coordinated qualified native readback, while
- * the existing identity-only route makes no selection claim. Both use this same lifecycle.
+ * the existing identity-only route makes no selection claim. Explicit recoverable native roots
+ * may replace only the transport generation after draining work and confirming whole-role close.
  */
 internal class LocalRpcOriginalClientOwner private constructor(
     applicationScope: CoroutineScope,
@@ -62,6 +68,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
     private val lan: OrganizationLan,
     private val providedTrustStore: RpcTrustStore?,
     private val onConfirmedClose: () -> Unit,
+    private val recoverableTransport: Boolean,
 ) {
     /** Existing identity-only composition; it cannot establish a selected Master. */
     constructor(
@@ -72,7 +79,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
         lan: OrganizationLan,
         trustStore: RpcTrustStore,
         onConfirmedClose: () -> Unit,
-    ) : this(applicationScope, parent, source, null, platform, lan, trustStore, onConfirmedClose)
+    ) : this(applicationScope, parent, source, null, platform, lan, trustStore, onConfirmedClose, false)
 
     /** Production selected-Master composition accepts no external store or approval DATA. */
     constructor(
@@ -82,7 +89,18 @@ internal class LocalRpcOriginalClientOwner private constructor(
         platform: () -> RpcPlatform,
         lan: OrganizationLan,
         onConfirmedClose: () -> Unit,
-    ) : this(applicationScope, parent, null, source, platform, lan, null, onConfirmedClose)
+    ) : this(applicationScope, parent, null, source, platform, lan, null, onConfirmedClose, false)
+
+    /** Explicit selected-original route retaining native custody across confirmed transport close. */
+    constructor(
+        applicationScope: CoroutineScope,
+        parent: Job,
+        source: LocalRpcSelectedMasterClientSource,
+        platform: () -> RpcPlatform,
+        lan: OrganizationLan,
+        recoverableTransport: Boolean,
+        onConfirmedClose: () -> Unit,
+    ) : this(applicationScope, parent, null, source, platform, lan, null, onConfirmedClose, recoverableTransport)
 
     private val gate = Mutex()
     private val state = MutableStateFlow(LocalRpcFactoryPhase.NEW)
@@ -97,9 +115,17 @@ internal class LocalRpcOriginalClientOwner private constructor(
     private var acquisition: Deferred<RpcLocalIdentity>? = null
     private var connection: Deferred<Unit>? = null
     private var selectedEndpoint: RpcEndpoint? = null
+    private var selectedDiscoveryId: DomainId? = null
+    private var discoveryStarting: Deferred<Unit>? = null
+    private var discoveryObserver: Job? = null
+    private var discoveryEntries: Map<DomainId, RpcDiscoveredHost> = emptyMap()
+    private val discoveryData = MutableStateFlow<List<LocalRpcDiscoveredMaster>>(emptyList())
+    val discoveredMasters: StateFlow<List<LocalRpcDiscoveredMaster>> = discoveryData.asStateFlow()
     private var sourceClosing: Deferred<Unit>? = null
     private var closing: Deferred<Unit>? = null
+    private var transportRecovery: Deferred<RpcLocalIdentity>? = null
     private var factory: LocalRpcFactoryOwner? = null
+    private val observedTransport = MutableStateFlow<LocalRpcFactoryOwner?>(null)
     private var remoteAuthentication: LocalRpcRemoteAuthenticationService? = null
     private var remoteDirectory: LocalRpcRemoteDirectoryClient? = null
     private var directoryBridge: LocalMasterClientRpcBridgeV1? = null
@@ -125,6 +151,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
     private val authenticationOperations = mutableSetOf<AuthenticationOperation<*>>()
     private val authenticationWorkers = mutableSetOf<Job>()
     private var selectedMasterTrustStore: LocalRpcSelectedMasterTrustStore? = null
+    private var selectedMasterReadback: LocalRpcSelectedMasterClientReadback? = null
     private var checkedFactoryIdentity: RpcLocalIdentity? = null
     private var sourceClosed = false
     private var factoryEntered = false
@@ -178,7 +205,9 @@ internal class LocalRpcOriginalClientOwner private constructor(
         val identity = pending.await()
         currentCoroutineContext().ensureActive()
         gate.withLock {
-            check(parent.isActive && state.value == LocalRpcFactoryPhase.READY) { "Original RPC client owner is retired" }
+            check(parent.isActive && state.value == LocalRpcFactoryPhase.READY && acquisition === pending) {
+                "Original RPC client generation is retired"
+            }
         }
         return identity
     }
@@ -189,6 +218,218 @@ internal class LocalRpcOriginalClientOwner private constructor(
         caller.ensureActive()
     }
 
+    /**
+     * Retire exactly one transport generation while retaining the genuine native readback.
+     * Whole-role close (including Kit stop) must succeed before another official role exists.
+     * A failed handoff remains cached: unknown cleanup can never authorize replacement.
+     */
+    suspend fun recoverTransport(): RpcLocalIdentity {
+        currentCoroutineContext().ensureActive()
+        val pending = gate.withLock {
+            check(recoverableTransport && selectedMasterSource != null && parent.isActive && closing == null) {
+                "Original Client transport recovery is unavailable"
+            }
+            transportRecovery ?: run {
+                check(state.value == LocalRpcFactoryPhase.READY || state.value == LocalRpcFactoryPhase.UNCERTAIN)
+                check(sourceClosed && selectedMasterReadback != null && selectedMasterTrustStore != null &&
+                    checkedFactoryIdentity != null && acquisition?.isCompleted == true && acquisition?.isCancelled == false) {
+                    "Original Client native acquisition is unconfirmed"
+                }
+                val oldFactory = checkNotNull(factory)
+                val oldDiscovery = discoveryStarting
+                val oldObserver = discoveryObserver
+                val oldConnection = connection
+                val workers = authenticationWorkers.toList() + directoryWorkers.toList()
+                state.value = LocalRpcFactoryPhase.UNCERTAIN
+                denyTransportLocked()
+                scope.async(start = CoroutineStart.LAZY) {
+                    try {
+                        oldDiscovery?.join()
+                        oldObserver?.cancelAndJoin()
+                        oldConnection?.join()
+                        workers.forEach { it.join() }
+                        // disconnect() alone cannot certify cleanup of an already detached link.
+                        // The official Client close awaits Kit stop and reports incomplete cleanup.
+                        oldFactory.close()
+                        check(oldFactory.phase.value == LocalRpcFactoryPhase.CLOSED) {
+                            "Original Client transport close is unconfirmed"
+                        }
+                        val retainedFactory = gate.withLock {
+                            check(parent.isActive && closing == null && factory === oldFactory &&
+                                state.value == LocalRpcFactoryPhase.UNCERTAIN) { "Original Client recovery is retired" }
+                            connection = null
+                            selectedEndpoint = null
+                            selectedDiscoveryId = null
+                            discoveryStarting = null
+                            discoveryObserver = null
+                            discoveryEntries = emptyMap()
+                            discoveryData.value = emptyList()
+                            remoteAuthentication = null
+                            remoteDirectory = null
+                            directoryBridge = null
+                            directoryOperations.clear()
+                            directoryWorkers.clear()
+                            authenticationOperations.clear()
+                            authenticationWorkers.clear()
+                            checkedFactoryIdentity = null
+                            val retainedStore = LocalRpcSelectedMasterTrustStore(this@LocalRpcOriginalClientOwner,
+                                checkNotNull(selectedMasterReadback))
+                            selectedMasterTrustStore = retainedStore
+                            acquisition = checkNotNull(transportRecovery)
+                            state.value = LocalRpcFactoryPhase.ACQUIRING
+                            LocalRpcFactoryOwner.reconstructClient(platform(), scope,
+                                checkNotNull(originalData.value), lan, retainedStore)
+                                .also { factory = it; observedTransport.value = it }
+                        }
+                        val identity = retainedFactory.acquire()
+                        gate.withLock {
+                            requireAcquiring()
+                            check(closing == null && factory === retainedFactory &&
+                                checkNotNull(selectedMasterReadback).matchesFactoryIdentity(identity)) {
+                                "Recovered Client original identity differs"
+                            }
+                            checkedFactoryIdentity = identity
+                            state.value = LocalRpcFactoryPhase.READY
+                        }
+                        identity
+                    } catch (failure: Throwable) {
+                        gate.withLock {
+                            if (state.value != LocalRpcFactoryPhase.CLOSING && state.value != LocalRpcFactoryPhase.CLOSED)
+                                state.value = LocalRpcFactoryPhase.UNCERTAIN
+                        }
+                        throw failure
+                    }
+                }.also { transportRecovery = it; it.start() }
+            }
+        }
+        val identity = pending.await()
+        currentCoroutineContext().ensureActive()
+        gate.withLock {
+            requireConnectedOwner()
+            check(transportRecovery === pending && acquisition === pending) { "Recovered Client generation is retired" }
+        }
+        return identity
+    }
+
+    /** Denial is synchronous with generation retirement; all admitted workers remain owned. */
+    private fun denyTransportLocked() {
+        authenticationLifetime.value = null
+        directoryLifetime.value = null
+        directoryBridge?.deny()
+        remoteDirectory?.deny()
+        discoveryData.value = emptyList()
+        directoryOperations.forEach { operation -> operation.awaiting = false; operation.result = null }
+        authenticationOperations.forEach { operation -> operation.awaiting = false; operation.destroyResult() }
+    }
+
+    private suspend fun transportUnavailable() {
+        val retainedForRecovery = gate.withLock {
+            if (state.value == LocalRpcFactoryPhase.CLOSING || state.value == LocalRpcFactoryPhase.CLOSED || closing != null)
+                return@withLock false
+            state.value = LocalRpcFactoryPhase.UNCERTAIN
+            denyTransportLocked()
+            recoverableTransport && sourceClosed && selectedMasterReadback != null &&
+                selectedMasterTrustStore != null && checkedFactoryIdentity != null && factory != null
+        }
+        if (!retainedForRecovery) beginClose()
+    }
+
+    /** Start advisory official discovery after recovering and closing the actual native target. */
+    suspend fun startDiscovery() {
+        currentCoroutineContext().ensureActive()
+        val pending = gate.withLock {
+            check(selectedMasterSource != null && parent.isActive && state.value in setOf(
+                LocalRpcFactoryPhase.NEW, LocalRpcFactoryPhase.ACQUIRING, LocalRpcFactoryPhase.READY,
+            )) { "Selected original Client is unavailable" }
+            check(transportRecovery?.isCompleted != false) { "Original Client transport recovery is pending" }
+            discoveryStarting ?: scope.async(start = CoroutineStart.LAZY) {
+                try {
+                    acquire()
+                    val retainedFactory = gate.withLock { requireConnectedOwner(); checkNotNull(factory) }
+                    val claims = retainedFactory.startSelectedClientDiscovery()
+                    gate.withLock {
+                        requireConnectedOwner()
+                        check(factory === retainedFactory)
+                        discoveryObserver = scope.launch(start = CoroutineStart.LAZY) {
+                            try {
+                                claims.collect { hosts ->
+                                    gate.withLock discoveryUpdate@{
+                                        if (state.value != LocalRpcFactoryPhase.READY || !parent.isActive || factory !== retainedFactory)
+                                            return@discoveryUpdate
+                                        val previous = discoveryEntries
+                                        val bounded = hosts.take(MAXIMUM_DISCOVERED_MASTERS)
+                                        discoveryEntries = bounded.associate { host ->
+                                            val id = previous.entries.firstOrNull { (_, old) ->
+                                                old.peer.id == host.peer.id && old.fingerprint == host.fingerprint
+                                            }?.key ?: DomainId.random()
+                                            id to host
+                                        }
+                                        val original = checkNotNull(approvedMasterData.value).masterSdkOriginal.fingerprint
+                                        discoveryData.value = discoveryEntries.map { (id, host) ->
+                                            LocalRpcDiscoveredMaster(id,
+                                                host.peer.name.filter { it.code >= 32 && it.code !in 127..159 }.take(128),
+                                                host.fingerprint.value, host.fingerprint == original)
+                                        }
+                                    }
+                                }
+                            } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
+                            catch (_: Throwable) {
+                                withContext(NonCancellable) {
+                                    transportUnavailable()
+                                }
+                            } finally {
+                                withContext(NonCancellable) {
+                                    gate.withLock { discoveryEntries = emptyMap(); discoveryData.value = emptyList() }
+                                }
+                            }
+                        }.also { it.start() }
+                    }
+                } catch (failure: Throwable) {
+                    transportUnavailable()
+                    throw failure
+                }
+            }.also { transportRecovery = null; discoveryStarting = it; it.start() }
+        }
+        pending.await()
+        currentCoroutineContext().ensureActive()
+        gate.withLock { requireConnectedOwner(); check(discoveryStarting === pending) { "Original discovery generation is retired" } }
+    }
+
+    /** Select an opaque current SDK claim, then negotiate only the actual approved original pin. */
+    suspend fun connectDiscovered(candidateId: DomainId) {
+        currentCoroutineContext().ensureActive()
+        val pending = gate.withLock {
+            requireConnectedOwner()
+            check(transportRecovery?.isCompleted != false) { "Original Client transport recovery is pending" }
+            check(selectedEndpoint == null) { "A numeric Master selection is already retained" }
+            selectedDiscoveryId?.let { check(it == candidateId) { "Original discovered Master selection differs" } }
+            connection ?: run {
+                val host = checkNotNull(discoveryEntries[candidateId]) { "Discovered Master is no longer current" }
+                val original = checkNotNull(approvedMasterData.value).masterSdkOriginal.fingerprint
+                check(host.fingerprint == original) { "Discovered Master differs from the paired original" }
+                scope.async(start = CoroutineStart.LAZY) {
+                    try {
+                        val retainedFactory = gate.withLock { requireConnectedOwner(); checkNotNull(factory) }
+                        retainedFactory.connectDiscoveredHost(host, original)
+                        gate.withLock { requireConnectedOwner() }
+                    } catch (failure: Throwable) {
+                        transportUnavailable()
+                        throw failure
+                    }
+                }.also { transportRecovery = null; selectedDiscoveryId = candidateId; connection = it; it.start() }
+            }
+        }
+        pending.await()
+        currentCoroutineContext().ensureActive()
+        val retainedFactory = gate.withLock {
+            requireConnectedOwner()
+            check(connection === pending && selectedDiscoveryId == candidateId) { "Original Client generation is retired" }
+            checkNotNull(factory)
+        }
+        retainedFactory.assertSelectedClientConnected()
+        gate.withLock { requireConnectedOwner(); check(factory === retainedFactory && connection === pending) }
+    }
+
     /** Explicit numeric connection to the qualified original Master, never a caller-supplied pin. */
     suspend fun connect(endpoint: RpcEndpoint) {
         currentCoroutineContext().ensureActive()
@@ -196,12 +437,15 @@ internal class LocalRpcOriginalClientOwner private constructor(
             check(selectedMasterSource != null && parent.isActive && state.value in setOf(
                 LocalRpcFactoryPhase.NEW, LocalRpcFactoryPhase.ACQUIRING, LocalRpcFactoryPhase.READY,
             )) { "Selected original Client is unavailable" }
+            check(transportRecovery?.isCompleted != false) { "Original Client transport recovery is pending" }
+            check(selectedDiscoveryId == null) { "A discovered Master selection is already retained" }
             selectedEndpoint?.let {
                 require(it.address == endpoint.address && it.port == endpoint.port) {
                     "Original Master endpoint differs"
                 }
             }
             connection ?: scope.async(start = CoroutineStart.LAZY) { connectOwned(endpoint) }.also {
+                transportRecovery = null
                 selectedEndpoint = endpoint
                 connection = it
                 it.start()
@@ -211,6 +455,9 @@ internal class LocalRpcOriginalClientOwner private constructor(
         currentCoroutineContext().ensureActive()
         val selected = gate.withLock {
             requireConnectedOwner()
+            check(connection === pending && selectedEndpoint?.let {
+                it.address == endpoint.address && it.port == endpoint.port
+            } == true) { "Original Client generation is retired" }
             checkNotNull(factory) to RpcSelectedHost(
                 checkNotNull(approvedMasterData.value).masterSdkOriginal.fingerprint, endpoint,
             )
@@ -218,7 +465,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
         // Reobserve the exact SDK connection even for a previously successful attempt.
         // The factory retains that attempt; this cannot reconnect or choose a new role.
         selected.first.connectSelectedHost(selected.second)
-        gate.withLock { requireConnectedOwner() }
+        gate.withLock { requireConnectedOwner(); check(factory === selected.first && connection === pending) }
     }
 
     /** Narrow authentication on this already-connected original; this cannot connect or replace it. */
@@ -284,6 +531,24 @@ internal class LocalRpcOriginalClientOwner private constructor(
             retained.factory.selectedClientConnectedNow() && authenticationServiceCurrent(client.authentication, client.connectionId)
     }
 
+    /** Device-only actual SDK loan from this SAME retained LAN business connection. No bearer,
+     * actor assertion, caller pin or directory exchange can fabricate the companion. */
+    internal suspend fun physicalCompanion(client: LocalRpcRemoteDirectoryClient):
+        com.ukkera.pos.database.LocalMasterPhysicalRpcClientV1? {
+        currentCoroutineContext().ensureActive()
+        val selected = gate.withLock {
+            if (client.profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS || !directoryClientCurrent(client))
+                return@withLock null
+            checkNotNull(factory) to checkNotNull(directoryBridge)
+        } ?: return null
+        val companion = selected.first.withDirectoryBridge(selected.second) { it.physicalCompanion() }
+        currentCoroutineContext().ensureActive()
+        return gate.withLock {
+            companion.takeIf { directoryClientCurrent(client) && factory === selected.first &&
+                directoryBridge === selected.second && it.isCurrent() }
+        }
+    }
+
     /** Actual owner retains admitted work and its result until exact one-shot adoption or abandonment. */
     internal suspend fun <T : Any> directoryExchange(client: LocalRpcRemoteDirectoryClient,
         credentials: LocalGatewayCredentials, access: LocalMasterRpcBusinessAccess?,
@@ -316,6 +581,8 @@ internal class LocalRpcOriginalClientOwner private constructor(
             currentCoroutineContext().ensureActive()
             return gate.withLock {
                 currentCoroutineContext().ensureActive()
+                if (!directoryClientCurrent(client) || !operation.awaiting)
+                    factory?.reportSelectedClientFailure(operation.result?.exceptionOrNull())
                 check(directoryClientCurrent(client) && operation.awaiting) { "Selected original Client is retired" }
                 val result = checkNotNull(operation.result)
                 operation.result = null; operation.awaiting = false; directoryOperations.remove(operation)
@@ -337,19 +604,30 @@ internal class LocalRpcOriginalClientOwner private constructor(
         var result: Result<T>? = null
         try {
             gate.withLock { check(directoryClientCurrent(client) && factory === retainedFactory && directoryBridge === bridge) }
-            // Fresh actual Current supplies the captured actor; no caller actor/device claims cross the wire.
-            val current = client.authentication.current(operation.credentials) as? LocalSessionViewResult.Current
+            // The existing identity-only route freshly checks this bearer on its exact
+            // physical binding. A read probe does not allocate an issuing-auth exchange.
+            val identityRequest = operation.credentials.bearer.useBytes { LocalRpcCurrentIdentityRequest(it.copyOf()) }
+            val current = retainedFactory.callSelectedClientIdentity(identityRequest)
                 ?: error("Directory session is unavailable")
             val approved = checkNotNull(approvedMasterData.value)
-            check(current.view.scope == approved.scope && current.view.deviceId == approved.targetDeviceId)
+            val scope = BranchScope(DomainId(current.organizationId), DomainId(current.companyId), DomainId(current.branchId))
+            val actor = DomainId(current.actorId)
+            val device = DomainId(current.deviceId)
+            DomainId(current.sessionId)
+            SessionGeneration(current.sessionGeneration)
+            Revision(current.admissionRevision)
+            check(scope == approved.scope && device == approved.targetDeviceId)
             if (operation.access is LocalMasterRpcBusinessAccess.Lookup)
-                check(operation.access.identity.originalActorId == current.view.actorId)
+                check(operation.access.identity.originalActorId == actor)
             gate.withLock { check(directoryClientCurrent(client) && factory === retainedFactory && directoryBridge === bridge) }
             val value = retainedFactory.withDirectoryBridge(bridge) {
-                operation.call(it, operation.credentials, current.view.actorId)
+                operation.call(it, operation.credentials, actor)
             }
             result = Result.success(value)
-        } catch (failure: Throwable) { result = Result.failure(failure) }
+        } catch (failure: Throwable) {
+            retainedFactory.reportSelectedClientFailure(failure)
+            result = Result.failure(failure)
+        }
         finally {
             operation.credentials.bearer.destroy()
             withContext(NonCancellable) {
@@ -363,6 +641,10 @@ internal class LocalRpcOriginalClientOwner private constructor(
             }
         }
     }
+
+    /** Transport observation only, including authentication-only connections. No employee grant. */
+    internal fun transportConnectedNow(): Boolean = parent.isActive &&
+        state.value == LocalRpcFactoryPhase.READY && observedTransport.value?.selectedClientConnectedNow() == true
 
     /** Reads only published immutable ownership and live thread-safe lifetime observations. */
     internal fun authenticationServiceCurrent(service: LocalRpcRemoteAuthenticationService, connectionId: DomainId): Boolean {
@@ -518,11 +800,13 @@ internal class LocalRpcOriginalClientOwner private constructor(
         authenticationServiceCurrent(service, connectionId) && sourceClosed &&
             selectedMasterSource != null && selectedMasterTrustStore != null && approvedMasterData.value != null &&
             checkedFactoryIdentity != null && factory?.phase?.value == LocalRpcFactoryPhase.READY &&
-            selectedEndpoint != null && connection?.isCompleted == true && connection?.isCancelled == false &&
+            (selectedEndpoint != null || selectedDiscoveryId != null) &&
+            connection?.isCompleted == true && connection?.isCancelled == false &&
             remoteAuthentication === service && service.connectionId == connectionId
 
     private fun requireConnectionAttemptFinished() {
-        check(selectedEndpoint != null && connection?.isCompleted == true && connection?.isCancelled == false) {
+        check((selectedEndpoint != null || selectedDiscoveryId != null) &&
+            connection?.isCompleted == true && connection?.isCancelled == false) {
             "Selected original Client is not connected"
         }
     }
@@ -539,14 +823,9 @@ internal class LocalRpcOriginalClientOwner private constructor(
             selected.first.connectSelectedHost(selected.second)
             gate.withLock { requireConnectedOwner() }
         } catch (failure: Throwable) {
-            gate.withLock {
-                if (state.value != LocalRpcFactoryPhase.CLOSING && state.value != LocalRpcFactoryPhase.CLOSED) {
-                    state.value = LocalRpcFactoryPhase.UNCERTAIN
-                }
-            }
             // Cleanup owns this exact connection attempt, including a lost result delivery.
-            // Schedule it without waiting for our own admitted operation to finish.
-            beginClose()
+            // Recoverable native roots retain custody until explicit confirmed-role handoff.
+            transportUnavailable()
             throw failure
         }
     }
@@ -571,6 +850,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
                 originalData.value = retainedOriginal
                 approvedMasterData.value = selected?.approvedMaster
                 selectedMasterTrustStore = selectedStore
+                selectedMasterReadback = selected
             }
             closeSourceOnce().await()
             val retainedFactory = gate.withLock {
@@ -578,7 +858,7 @@ internal class LocalRpcOriginalClientOwner private constructor(
                 sourceClosed = true
                 factoryEntered = true
                 LocalRpcFactoryOwner.reconstructClient(platform(), scope, retainedOriginal, lan, retainedTrustStore)
-                    .also { factory = it }
+                    .also { factory = it; observedTransport.value = it }
             }
             gate.withLock { requireAcquiring() }
             val identity = retainedFactory.acquire()
@@ -660,7 +940,10 @@ internal class LocalRpcOriginalClientOwner private constructor(
     private suspend fun beginClose(): Deferred<Unit> = gate.withLock {
         val workersToDrain = authenticationWorkers.toList() + directoryWorkers.toList()
         closing ?: scope.async<Unit>(start = CoroutineStart.LAZY) {
+            gate.withLock { transportRecovery }?.join()
             gate.withLock { acquisition }?.join()
+            gate.withLock { discoveryStarting }?.join()
+            gate.withLock { discoveryObserver }?.cancelAndJoin()
             gate.withLock { connection }?.join()
             workersToDrain.forEach { it.join() }
             try {
@@ -671,8 +954,10 @@ internal class LocalRpcOriginalClientOwner private constructor(
                 }
                 retainedFactory?.close()
                 gate.withLock {
+                    observedTransport.value = null
                     factory = null
                     selectedMasterTrustStore = null
+                    selectedMasterReadback = null
                     checkedFactoryIdentity = null
                     remoteAuthentication = null
                     remoteDirectory = null
@@ -681,6 +966,8 @@ internal class LocalRpcOriginalClientOwner private constructor(
                     directoryWorkers.clear()
                     authenticationOperations.clear()
                     authenticationWorkers.clear()
+                    discoveryEntries = emptyMap()
+                    discoveryData.value = emptyList()
                     state.value = LocalRpcFactoryPhase.CLOSED
                 }
                 retired.complete(Unit)
@@ -690,21 +977,14 @@ internal class LocalRpcOriginalClientOwner private constructor(
             }
         }.also {
             closing = it
-            authenticationLifetime.value = null
-            directoryLifetime.value = null
-            directoryBridge?.deny()
-            remoteDirectory?.deny()
-            directoryOperations.forEach { operation -> operation.awaiting = false; operation.result = null }
             state.value = LocalRpcFactoryPhase.CLOSING
-            authenticationOperations.forEach { operation ->
-                operation.awaiting = false
-                operation.destroyResult()
-            }
+            denyTransportLocked()
             it.start()
         }
     }
 
     companion object {
+        private const val MAXIMUM_DISCOVERED_MASTERS = 64
         private const val MAXIMUM_AUTHENTICATION_EXCHANGES = 8
 
         /** Validate before a native holder claims the caller's existing target. */

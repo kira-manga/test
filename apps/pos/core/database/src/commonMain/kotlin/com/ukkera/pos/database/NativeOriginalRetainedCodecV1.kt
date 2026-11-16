@@ -126,11 +126,15 @@ internal object NativeOriginalRetainedCodecV1 {
             writer.assignmentId == assignment && writer.epoch == epoch &&
             writer.runtimeProfile == SelfOwnedNativeHistoryWireV2.PROFILE &&
             writer.masterDeviceId == native.masterSource.deviceId &&
-            writer.installationId == native.masterSource.installationId &&
             historical.masterDeviceId == native.masterSource.deviceId &&
             native.masterSource.role == NativeOriginalJournalProvenanceV1.SourceRole.MASTER &&
             native.clientSource.role == NativeOriginalJournalProvenanceV1.SourceRole.CLIENT &&
             native.masterSource.allocationId != native.clientSource.allocationId)
+        // The writer names the POS original; a distributed physical catalogue has its
+        // own persisted installation namespace. This codec returns candidate DATA, never
+        // their authority/association. Actual issuance binds the source snapshot to the
+        // same original owner; history admission still binds writer.installationId and
+        // every native source/Start attribute to the actual original read and producer.
         // Cross-authority wall clocks are not causality. Within the SAME authority journal,
         // however, an original cannot precede or equal the Start that reserved its operation.
         if (historical.assignmentId == assignment && historical.epoch == epoch) {

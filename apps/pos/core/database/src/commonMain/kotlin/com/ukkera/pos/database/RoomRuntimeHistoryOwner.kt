@@ -11,7 +11,10 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 
 /** The single production owner of all Room loans on a self-owned database. Construction is
@@ -26,6 +29,13 @@ internal class RoomRuntimeHistoryOwner private constructor(
 ) {
     internal enum class Mode { INSTALLING, OPERATIONAL, POLICY_HELD, UNKNOWN, CLOSED }
     private val loans = Mutex()
+    private val accessVerificationWaiters = Semaphore(32)
+    private val accessVerificationSlot = Mutex()
+    private val admissionGeneration = MutableStateFlow(0L)
+    /** Memory-only notifications, including an initial replay for startup races.
+     * Collecting Room invalidationTracker.createFlow would register SQL triggers
+     * outside a watched native loan. This hint grants no membership or authority. */
+    internal val admissionInvalidations: Flow<Unit> get() = admissionGeneration.map { Unit }
     private var serialLoan: SerialPublicationLoan? = null
     // Client/journal workers also inspect this owner. Retirement/uncertainty must be
     // visible outside the Room loan, not only to the writer that changed the mode.
@@ -67,6 +77,19 @@ internal class RoomRuntimeHistoryOwner private constructor(
     internal val originalRecord: OriginalNativeHistorySnapshot get() = original
     internal val originalCustody: SelfOwnedNativeHistoryCustody get() = custody
     internal val operational: Boolean get() = mode == Mode.OPERATIONAL
+    /**
+     * Consistent backup copy serialized with every writer loan: the native owner copies the bound
+     * database between frames and reports the unchanged history anchor at that cut. DATA only.
+     */
+    internal suspend fun captureBackupSnapshot(destinationPath: String): com.ukkera.pos.security.SelfOwnedNativeBackupCapture =
+        loans.withLock {
+            currentCoroutineContext().ensureActive()
+            check(active == null && serialLoan == null && mode == Mode.OPERATIONAL)
+            val capture = custody.runRoomWork(block = { custody.captureBackupSnapshot(destinationPath) }, discard = { })
+            check(capture.historyRecordDigest == original.recordDigest &&
+                capture.historyGeneration == original.record.generation)
+            capture
+        }
     /** Read-only eligibility cut, never a replacement for the actual native writer authority. */
     internal fun permitsFirstClientEnrollment(receipt: LocalBranchInstallationReceiptV2): Boolean {
         if (!operational || loans.isLocked) return false
@@ -249,9 +272,49 @@ internal class RoomRuntimeHistoryOwner private constructor(
      * reserve/read/completion is separately owned; password hashing never borrows SQLite. */
     internal suspend fun <T> securityLane(block: suspend () -> T): T {
         currentCoroutineContext().ensureActive()
+        // active belongs to whichever independent request holds the writer. It
+        // cannot establish that THIS caller inherited its Room loan. Use the
+        // actual native invocation context; each transaction still queues on loans.
+        custody.requireUnborrowedRoomEntry()
         check(mode !in setOf(Mode.UNKNOWN,Mode.CLOSED))
-        check(active == null) { "Security phase inside an active original Room loan" }
         return block()
+    }
+    /** All native principal-factory callers share this bounded, cancellable queue.
+     * Waiting owns neither a Room loan nor a verified identity. The existing verifier
+     * still admits one operation and reads fresh protected facts after admission. */
+    internal suspend fun <T> accessVerification(block: suspend () -> T): T {
+        val caller = currentCoroutineContext()
+        caller.ensureActive()
+        custody.requireUnborrowedRoomEntry()
+        if (!accessVerificationWaiters.tryAcquire()) throw RoomLocalAccessVerificationBusy()
+        try {
+            return accessVerificationSlot.withLock {
+                caller.ensureActive()
+                check(mode !in setOf(Mode.UNKNOWN, Mode.CLOSED))
+                // An SDK callback deadline abandons delivery, not the actual native loan.
+                // Retain admission until its original work and cleanup have really ended;
+                // cancellation is rethrown before any verified identity can escape.
+                val result = withContext(NonCancellable) { block() }
+                caller.ensureActive()
+                result
+            }
+        } finally { accessVerificationWaiters.release() }
+    }
+    /** Password derivation uses the same original native worker as Room, without borrowing
+     * a database connection. Serialize admission with every writer/publication operation.
+     * Once admitted, retain this lock through actual native completion even if the request
+     * abandons delivery. The native watchdog is unchanged; a hash result grants no authority. */
+    internal suspend fun <T> passwordWork(block: suspend () -> T): T {
+        val caller = currentCoroutineContext()
+        caller.ensureActive()
+        custody.requireUnborrowedRoomEntry()
+        return loans.withLock {
+            caller.ensureActive()
+            check(active == null && serialLoan == null && mode !in setOf(Mode.UNKNOWN, Mode.CLOSED))
+            val result = withContext(NonCancellable) { block() }
+            caller.ensureActive()
+            result
+        }
     }
     internal suspend fun <T> writerLoan(block: suspend (Transactor) -> T): T = loans.withLock {
         writerLoanLocked(null, block)
@@ -388,6 +451,14 @@ internal class RoomRuntimeHistoryOwner private constructor(
                 if (original.record.attempt?.phase == NativeHistoryAttemptPhaseV2.RETIRING) {
                     invalidateReceiptMembership(); mode = Mode.POLICY_HELD
                 }
+                if (settlement.disposition == SelfOwnedNativeSqlDisposition.COMMITTED &&
+                    checkNotNull(frame).containsAdmissionImage) {
+                    // Serialized by this owner's real writer loan, after outer SQL and
+                    // native settlement. Conflation is safe: each wake reads the whole
+                    // current census, and the generation is never a durable cursor.
+                    val prior = admissionGeneration.value
+                    admissionGeneration.value = if (prior == Long.MAX_VALUE) 0L else prior + 1L
+                }
                 // Native settlement does not replay committed effects or reauthorize the caller.
                 result
             } catch (failure: Throwable) {
@@ -504,7 +575,10 @@ internal class RoomRuntimeHistoryOwner private constructor(
             return NativeOriginalIntakeDisposition(invocation,if (result == NativeOriginalHistoryBodyResult.HELD)
                 NativeOriginalIntakeDisposition.State.DISPOSED else NativeOriginalIntakeDisposition.State.SETTLED)
         } catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: Exception) { return NativeOriginalIntakeDisposition(invocation,NativeOriginalIntakeDisposition.State.UNCERTAIN) }
+        catch (failure: Exception) {
+            reportPhysicalRecordingFailure(failure)
+            return NativeOriginalIntakeDisposition(invocation,NativeOriginalIntakeDisposition.State.UNCERTAIN)
+        }
         finally { if (mode != Mode.UNKNOWN) { nativeInvocation=null; nativeLease=null } }
     }
     internal fun denyBusiness() {
@@ -583,9 +657,15 @@ internal class RoomOriginalHistoryAdmission private constructor(
     }
 }
 
-internal suspend fun <T> MasterRoomDatabase.runtimeWriterConnection(block: suspend (Transactor)->T): T =
-    runtimeHistoryOwner?.writerLoan(block) ?: useWriterConnection(block)
+internal suspend fun <T> MasterRoomDatabase.runtimeWriterConnection(block: suspend (Transactor)->T): T {
+    val owner = runtimeHistoryOwner
+    // Nullable callback results still belong to the original settled loan.
+    return if (owner != null) owner.writerLoan(block) else useWriterConnection(block)
+}
 
 internal suspend fun <T> MasterRoomDatabase.runtimeApprovedWriterConnection(operationId: com.ukkera.pos.types.OperationId?,
-    block: suspend (Transactor)->T): T = if (operationId == null) runtimeWriterConnection(block)
-    else runtimeHistoryOwner?.approvedCommandWriterLoan(operationId, block) ?: useWriterConnection(block)
+    block: suspend (Transactor)->T): T {
+    if (operationId == null) return runtimeWriterConnection(block)
+    val owner = runtimeHistoryOwner
+    return if (owner != null) owner.approvedCommandWriterLoan(operationId, block) else useWriterConnection(block)
+}

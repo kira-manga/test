@@ -14,6 +14,8 @@ import com.ukkera.pos.app.setup.LocalSetupDeviceAdmissionStage
 import com.ukkera.pos.app.setup.LocalSetupFreshDevicePairingRole
 import com.ukkera.pos.app.setup.LocalSetupFreshDevicePairingStage
 import com.ukkera.pos.app.setup.LocalSetupFreshDeviceTargetInput
+import com.ukkera.pos.app.setup.LocalSetupLanNetwork
+import com.ukkera.pos.app.setup.LocalSetupLanDiscoveredMaster
 import com.ukkera.pos.app.setup.LocalSetupLanEndpoint
 import com.ukkera.pos.app.setup.LocalSetupLanInput
 import com.ukkera.pos.app.setup.LocalSetupLanRole
@@ -69,6 +71,18 @@ import com.ukkera.pos.app.setup.LocalSetupProblem
 import com.ukkera.pos.app.setup.LocalSetupReceiptView
 import com.ukkera.pos.app.setup.LocalSetupView
 import com.ukkera.pos.app.setup.LocalSetupWork
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupEntry
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupOutcome
+import com.ukkera.pos.app.setup.LocalSetupMasterBackupView
+import com.ukkera.pos.recovery.store.MasterBackupOutcome
+import com.ukkera.pos.recovery.store.MasterBackupTrigger
+import com.ukkera.pos.recovery.store.MasterBackupVerification
+import com.ukkera.pos.recovery.store.MasterRestoreApproval
+import com.ukkera.pos.recovery.store.MasterRestoreAuthority
+import com.ukkera.pos.recovery.store.MasterRestoreOutcome
+import com.ukkera.pos.recovery.store.MasterRestoreRefusal
+import com.ukkera.pos.recovery.store.MasterStateBackupService
+import com.ukkera.pos.recovery.store.MasterStateSnapshotSource
 import com.ukkera.pos.app.gateway.LocalOriginalClientJournalAction
 import com.ukkera.pos.database.LocalMasterInstallationOutcome
 import com.ukkera.pos.database.LocalMasterLifecycleMode
@@ -104,11 +118,15 @@ import dev.p2pkit.core.AppId
 import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -138,6 +156,8 @@ public class LocalSetupCoordinator(
     private val lifecycleIntents: LocalMasterLifecycleIntentStore? = null,
     /** Exact twelve-coordinate binding for the durable STOP projection. */
     private val stopBindingIntents: LocalMasterLifecycleIntentStore? = null,
+    /** Separate role/network intent. It can reopen existing native owners only. */
+    private val lanLaunchRecord: LocalLanLaunchRecord? = null,
 ) : LocalSetupController {
     private val gate = LocalSetupMonitor()
     private val scope = CoroutineScope(SupervisorJob() + execution.dispatcher)
@@ -154,6 +174,7 @@ public class LocalSetupCoordinator(
     // A terminal attachment remains bound to this exact native owner/configuration. Neither
     // failed construction nor LAN-only close re-arms another factory in this setup lifetime.
     private var lanAttachment: LanAttachment? = null
+    private var lanNetworks: List<LocalSetupLanNetwork> = emptyList()
     private var active: Work? = null
     private var retiring = false
     private var retirement: CompletableDeferred<Unit>? = null
@@ -785,13 +806,158 @@ public class LocalSetupCoordinator(
 
     private class UnsupportedStopBinding : RuntimeException()
 
+    // One backup service per coordinator lifetime, so every backup/verify/restore on this
+    // platform vault is serialized by its single mutex. Guarded by [gate].
+    private var masterBackupService: MasterStateBackupService? = null
+
+    private fun masterBackupService(backups: LocalSetupMasterBackups): MasterStateBackupService = withSetupLock(gate) {
+        masterBackupService ?: MasterStateBackupService(
+            configuration = backups.configuration,
+            // Late-bound: only the CURRENT operational Master of this coordinator captures.
+            source = MasterStateSnapshotSource {
+                backups.capture(checkNotNull(operationalBackupMaster()) { "No operational Master" })
+            },
+            custody = backups.keys,
+            vault = backups.vault,
+            authority = MasterRestoreAuthority { approval, _, installationId -> restoreApprovalHolds(approval, installationId) },
+        ).also { masterBackupService = it }
+    }
+
+    private fun operationalBackupMaster(): LocalSetupMaster? = withSetupLock(gate) {
+        if (retiring) null else (native as? Target)?.master?.takeIf { it.mode.value == LocalMasterLifecycleMode.OPERATIONAL }
+    }
+
+    /**
+     * Restore approval = the durable, exactly bound authenticated current-authority STOP
+     * (MASTER_LIFECYCLE, Master-enforced and audited) of the same installation, re-read from
+     * storage at the moment of restore while the launch projection is still STOPPED. A cached
+     * approval object, UI state or an absent/legacy binding never approves.
+     */
+    private fun restoreApprovalHolds(approval: MasterRestoreApproval, installationId: DomainId): Boolean {
+        if (withSetupLock(gate) { retiring || native != null }) return false
+        if (launchRecord.read() != LocalMasterLaunchRecord.Read.Stopped) return false
+        val store = stopBindingIntents ?: return false
+        val binding = (readLifecycleStore(store) as? LocalMasterLifecycleIntentRead.Retained)?.intent ?: return false
+        return binding.request.action == LocalMasterLifecycleAction.STOP &&
+            binding.request.requestId == approval.approvalId &&
+            binding.installationId == approval.installationId && binding.installationId == installationId
+    }
+
+    private suspend fun publishMasterBackups(service: MasterStateBackupService,
+        outcome: LocalSetupMasterBackupOutcome? = null, outcomeBackupId: DomainId? = null, reason: String? = null) {
+        val report = service.verifyChain()
+        val entries = report.entries.map {
+            LocalSetupMasterBackupEntry(it.backupId, it.sequence, it.createdAtEpochMillis,
+                it.trigger == MasterBackupTrigger.SCHEDULED, it.schemaVersion, it.snapshotBytes)
+        }
+        change { it.copy(masterBackups = LocalSetupMasterBackupView(entries, report.intact, outcome, outcomeBackupId, reason)) }
+    }
+
+    override fun refreshMasterBackups() {
+        start(LocalSetupWork.READING_MASTER_BACKUPS, STOP_LIFECYCLE_PHASES) {
+            val backups = services.masterBackups ?: throw OriginalRequired()
+            operation { publishMasterBackups(masterBackupService(backups)) }
+        }
+    }
+
+    override fun createMasterBackup() {
+        start(LocalSetupWork.CREATING_MASTER_BACKUP, STOP_LIFECYCLE_PHASES) {
+            val backups = services.masterBackups ?: throw OriginalRequired()
+            val master = requireTarget().master ?: throw OriginalRequired()
+            requireOriginal(master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
+            operation {
+                val service = masterBackupService(backups)
+                when (val outcome = service.createBackup(MasterBackupTrigger.ON_DEMAND)) {
+                    is MasterBackupOutcome.Created -> publishMasterBackups(service, LocalSetupMasterBackupOutcome.CREATED,
+                        outcome.entry.backupId, if (outcome.retentionCompleted) null else "RETENTION_INCOMPLETE")
+                    MasterBackupOutcome.NotDue -> publishMasterBackups(service, LocalSetupMasterBackupOutcome.NOT_DUE)
+                    is MasterBackupOutcome.Failed -> publishMasterBackups(service,
+                        LocalSetupMasterBackupOutcome.CREATE_FAILED, reason = outcome.failure.name)
+                }
+            }
+        }
+    }
+
+    override fun verifyMasterBackup(backupId: DomainId) {
+        start(LocalSetupWork.VERIFYING_MASTER_BACKUP, STOP_LIFECYCLE_PHASES) {
+            val backups = services.masterBackups ?: throw OriginalRequired()
+            operation {
+                val service = masterBackupService(backups)
+                when (val result = service.verifyBackup(backupId)) {
+                    is MasterBackupVerification.Verified ->
+                        publishMasterBackups(service, LocalSetupMasterBackupOutcome.VERIFIED, backupId)
+                    is MasterBackupVerification.Refused -> publishMasterBackups(service,
+                        LocalSetupMasterBackupOutcome.VERIFY_REFUSED, backupId, result.failure.name)
+                }
+            }
+        }
+    }
+
+    override fun restoreMasterBackup(backupId: DomainId) {
+        start(LocalSetupWork.RESTORING_MASTER_BACKUP, RESUME_LIFECYCLE_PHASES) {
+            val backups = services.masterBackups ?: throw OriginalRequired()
+            requireOriginal(native == null)
+            operation {
+                val service = masterBackupService(backups)
+                if (launchRecord.read() != LocalMasterLaunchRecord.Read.Stopped) {
+                    publishMasterBackups(service, LocalSetupMasterBackupOutcome.RESTORE_REFUSED, backupId,
+                        MasterRestoreRefusal.APPROVAL_REQUIRED.name)
+                    return@operation
+                }
+                val binding = stopBindingIntents?.let { store ->
+                    (readLifecycleStore(store) as? LocalMasterLifecycleIntentRead.Retained)?.intent
+                }?.takeIf { it.request.action == LocalMasterLifecycleAction.STOP }
+                if (binding == null) {
+                    publishMasterBackups(service, LocalSetupMasterBackupOutcome.RESTORE_REFUSED, backupId,
+                        MasterRestoreRefusal.APPROVAL_REQUIRED.name)
+                    return@operation
+                }
+                val approval = MasterRestoreApproval(binding.request.requestId, binding.installationId)
+                when (val outcome = service.restore(backupId, approval, backups.restoreTarget)) {
+                    is MasterRestoreOutcome.Held -> publishMasterBackups(service,
+                        LocalSetupMasterBackupOutcome.RESTORE_HELD, outcome.backupId)
+                    is MasterRestoreOutcome.Refused -> publishMasterBackups(service,
+                        LocalSetupMasterBackupOutcome.RESTORE_REFUSED, backupId, outcome.reason.name)
+                    is MasterRestoreOutcome.Quarantined -> publishMasterBackups(service,
+                        LocalSetupMasterBackupOutcome.RESTORE_QUARANTINED, backupId, outcome.reason.name)
+                }
+            }
+        }
+    }
+
+    /**
+     * Host timer entry: creates a SCHEDULED backup through the current operational Master only
+     * when the newest archive is older than the configured interval. Returns the raw outcome;
+     * no Master, presentation lock or authority state is changed. Null when unavailable.
+     */
+    public suspend fun runScheduledMasterBackup(): MasterBackupOutcome? {
+        val backups = services.masterBackups ?: return null
+        if (operationalBackupMaster() == null) return null
+        val service = masterBackupService(backups)
+        val outcome = service.runScheduledIfDue()
+        if (outcome !is MasterBackupOutcome.NotDue && !withSetupLock(gate) { view.locked }) {
+            try {
+                publishMasterBackups(service, when (outcome) {
+                    is MasterBackupOutcome.Created -> LocalSetupMasterBackupOutcome.CREATED
+                    else -> LocalSetupMasterBackupOutcome.CREATE_FAILED
+                }, (outcome as? MasterBackupOutcome.Created)?.entry?.backupId, (outcome as? MasterBackupOutcome.Failed)?.failure?.name)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { }
+        }
+        return outcome
+    }
+
     override fun enrollOriginalLocalClient(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.ENROLL_FIRST_CLIENT)
     override fun continueOriginalLocalClientEnrollment(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.CONTINUE_FIRST_CLIENT)
     override fun reconnectOriginalLocalClient(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.REOPEN_EXISTING)
     override fun recoverOriginalLocalClientWrites(): Unit = connectOriginalClient(LocalOriginalClientJournalAction.RECOVER_PENDING_WRITES)
 
     /** App reopening is a trigger, never permission to install, promote, unlock or sign in. */
-    public fun reopenRetainedMaster(): Unit {
+    public fun reopenRetainedMaster(): Unit = reopenRetainedRoles(allowMaster = true)
+
+    /** The desktop UI may reopen its Client only; it never starts a Master service. */
+    public fun reopenRetainedLanClient(): Unit = reopenRetainedRoles(allowMaster = false)
+
+    private fun reopenRetainedRoles(allowMaster: Boolean) {
         withSetupLock(gate) {
             if (automaticReopenAttempted || retiring || active != null || native != null ||
                 view.phase != LocalSetupPhase.CHOOSE_ROUTE) return
@@ -799,8 +965,15 @@ public class LocalSetupCoordinator(
         }
         start(LocalSetupWork.OPENING_ORIGINAL_INSTALLATION, setOf(LocalSetupPhase.CHOOSE_ROUTE), allowLocked = true) {
             operation {
+                val lan = lanLaunchRecord?.read() ?: LocalLanLaunchRecord.Read.Absent
                 when (val retained = launchRecord.read()) {
-                    LocalMasterLaunchRecord.Read.Absent -> Unit // Fresh installation: no native open.
+                    LocalMasterLaunchRecord.Read.Absent -> when (lan) {
+                        is LocalLanLaunchRecord.Read.Client -> reopenOriginalLanClient(lan)
+                        is LocalLanLaunchRecord.Read.Host, LocalLanLaunchRecord.Read.Unresolved -> change {
+                            it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE)
+                        }
+                        else -> Unit // No native acquisition without an existing-only startup intent.
+                    }
                     LocalMasterLaunchRecord.Read.Stopped -> change {
                         it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_STOPPED, lifecycleStopped = true)
                     }
@@ -808,6 +981,7 @@ public class LocalSetupCoordinator(
                         it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE, lifecycleStopped = false)
                     }
                     is LocalMasterLaunchRecord.Read.Running -> {
+                        if (!allowMaster) return@operation
                         lockPresentation() // Backend startup does not unlock private setup or employee UI.
                         openOriginalInstallation(expectedLaunch = retained)
                         if (!continueWork()) return@operation
@@ -815,13 +989,44 @@ public class LocalSetupCoordinator(
                         val master = target.master ?: return@operation
                         if (master.mode.value != LocalMasterLifecycleMode.OPERATIONAL ||
                             target.localClient != null || !retained.matches(target.context.materialAtOpen.coordinates)) return@operation
-                        beforeClientHosting()
-                        attachOriginalClient(target, master, LocalOriginalClientJournalAction.REOPEN_EXISTING,
-                            automatic = true)
+                        if (lan !is LocalLanLaunchRecord.Read.Host || lan.cohost) {
+                            beforeClientHosting()
+                            attachOriginalClient(target, master, LocalOriginalClientJournalAction.REOPEN_EXISTING,
+                                automatic = true)
+                        }
+                        if (!continueWork()) return@operation
+                        when (lan) {
+                            is LocalLanLaunchRecord.Read.Host -> {
+                                requireOriginal(lan.matches(target.context.materialAtOpen.coordinates))
+                                prepareLanHost(lan.settings, automatic = true).execute()
+                            }
+                            is LocalLanLaunchRecord.Read.Client, LocalLanLaunchRecord.Read.Unresolved -> change {
+                                it.copy(problem = LocalSetupProblem.AUTOMATIC_REOPEN_UNAVAILABLE)
+                            }
+                            else -> Unit
+                        }
                     }
                 }
             }
         }
+    }
+
+    private suspend fun reopenOriginalLanClient(retained: LocalLanLaunchRecord.Read.Client) {
+        lockPresentation()
+        // A missing UI intent is not permission to prepare a target or enroll a journal.
+        val saved = requireFreshPairingJournal().target() ?: throw OriginalRequired()
+        val original = LocalSetupFreshDeviceTargetOriginal()
+        original.retainRecord(saved)
+        withSetupLock(gate) {
+            requireOriginal(!retiring && native == null && freshTargetOriginal == null)
+            freshTargetOriginal = original
+        }
+        presentFreshTarget(original, LocalSetupFreshDevicePairingStage.ORIGINAL_UNAVAILABLE)
+        val owner = acquireFreshTarget(original, null) ?: return
+        if (!freshTargetCurrent(owner, original) || !readFreshTarget(owner, original)) return
+        requireOriginal(original.responseActionId == retained.originalPairingActionId &&
+            original.verifiedMaster?.originalPairingActionId == retained.originalPairingActionId)
+        prepareLanClient(retained.settings, retained.endpoint, automatic = true).execute()
     }
 
     private fun connectOriginalClient(action: LocalOriginalClientJournalAction) {
@@ -876,6 +1081,9 @@ public class LocalSetupCoordinator(
             val problem = launchProblem(retained, coordinates, allowAbsent = !automatic)
             if (problem != null) return@withSetupLock problem
             if (retained == LocalMasterLaunchRecord.Read.Absent) launchRecord.retainRunning(coordinates)
+            if (!automatic) (lanAttachment as? LanHost)?.takeIf { it.owner === target }?.let {
+                lanLaunchRecord?.retainHost(coordinates, it.settings, cohost = true)
+            }
             // Saving a launch hint cannot make an expired/native-held runtime usable.
             requireOriginal(!retiring && client.isCurrent() && master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
             services.publishClient(target, client)
@@ -916,79 +1124,175 @@ public class LocalSetupCoordinator(
 
     override fun startLanHost(input: LocalSetupLanInput) {
         start(LocalSetupWork.STARTING_LAN_HOST, LAN_HOST_PHASES) {
-            val settings = LocalSetupLanSettings.from(input)
-            val target = requireTarget()
-            val master = target.master ?: throw OriginalRequired()
-            requireOriginal(master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
-            val retained = lanAttachment
-            requireOriginal(retained == null || retained is LanHost && retained.owner === target &&
-                retained.master === master && retained.settings.sameSelection(settings) && retained.canObserve)
-            beforeClientHosting() // The actual service notice precedes explicit Host activation.
+            prepareLanHost(LocalSetupLanSettings.from(input), automatic = false)
+        }
+    }
+
+    private fun prepareLanHost(settings: LocalSetupLanSettings, automatic: Boolean): Operation {
+        val target = requireTarget()
+        val master = target.master ?: throw OriginalRequired()
+        requireOriginal(master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
+        val startupProblem = launchProblem(launchRecord.read(), target.context.materialAtOpen.coordinates,
+            allowAbsent = !automatic)
+        if (startupProblem != null) return operation { refuseLaunch(startupProblem) }
+        val retained = lanAttachment
+        requireOriginal(retained == null || retained is LanHost && retained.owner === target &&
+            retained.master === master && retained.settings.sameSelection(settings) && retained.canObserve)
+        beforeClientHosting() // The actual service notice precedes explicit Host activation.
+        return operation {
+            if (!automatic) lanLaunchRecord?.retainHost(target.context.materialAtOpen.coordinates, settings,
+                cohost = target.localClient != null)
+            val attachment = (retained as? LanHost) ?: withSetupLock(gate) {
+                if (retiring) return@withSetupLock null
+                requireOriginal(native === target && lanAttachment == null && !acquisitionCloseUnobserved &&
+                    master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
+                LanHost(target, master, settings, newLanScope()).also {
+                    lanAttachment = it // BEFORE the native constructor can retain or claim anything.
+                    publishLocked()
+                }
+            } ?: return@operation
+            try {
+                if (!attachment.captured) {
+                    val actual = services.retainLanHost(master, attachment.retainedScope, settings)
+                    attachment.capture(actual) // Direct retention before checks or publication.
+                }
+                if (!beginLanObservation(attachment)) return@operation
+                val endpoint = attachment.value.start()
+                // Transport activation does not consent to restarting the Master. Only
+                // the separate original-client/lifecycle action may write its RUN record.
+                publishLanEndpoint(attachment, endpoint)
+            } catch (_: Throwable) { lanObservationFailed(attachment) }
+        }
+    }
+
+    override fun refreshLanNetworks() {
+        start(LocalSetupWork.READING_LAN_ATTACHMENT, LAN_ACTION_PHASES) {
             operation {
-                val attachment = (retained as? LanHost) ?: withSetupLock(gate) {
-                    if (retiring) return@withSetupLock null
-                    requireOriginal(native === target && lanAttachment == null && !acquisitionCloseUnobserved &&
-                        master.mode.value == LocalMasterLifecycleMode.OPERATIONAL)
-                    LanHost(target, master, settings, newLanScope()).also {
-                        lanAttachment = it // BEFORE the native constructor can retain or claim anything.
+                val observed = services.observeLanNetworks().take(64).toList()
+                withSetupLock(gate) {
+                    if (retiring) return@withSetupLock
+                    lanNetworks = observed
+                    publishLocked()
+                }
+            }
+        }
+    }
+
+    override fun startLanDiscovery(input: LocalSetupLanInput): Unit = beginLanClient(input, null)
+
+    override fun connectLanClient(input: LocalSetupLanInput, endpoint: LocalSetupLanEndpoint): Unit =
+        beginLanClient(input, endpoint)
+
+    private fun beginLanClient(input: LocalSetupLanInput, endpoint: LocalSetupLanEndpoint?) {
+        start(LocalSetupWork.CONNECTING_LAN_CLIENT, setOf(LocalSetupPhase.FRESH_DEVICE_PAIRING)) {
+            prepareLanClient(LocalSetupLanSettings.from(input), endpoint, automatic = false)
+        }
+    }
+
+    private fun prepareLanClient(settings: LocalSetupLanSettings, endpoint: LocalSetupLanEndpoint?,
+        automatic: Boolean): Operation {
+        endpoint?.let { settings.validateEndpoint(it) }
+        val target = (native as? FreshDeviceTarget) ?: throw OriginalRequired()
+        val original = target.original
+        val actionId = original.responseActionId ?: throw OriginalRequired()
+        val verified = original.verifiedMaster ?: throw OriginalRequired()
+        requireOriginal(freshTargetOriginal === original && verified.originalPairingActionId == actionId &&
+            original.identity != null && original.possession != null && !original.continuationAttempted)
+        requireFreshRpcNamespace(requireNotNull(original.identity), targetCompositionProfile(target.value))
+        val retained = lanAttachment
+        requireOriginal(retained == null && freshTargetCurrent(target, original) || retained is LanClient &&
+            retained.owner === target && retained.original === original && retained.actionId == actionId &&
+            retained.selectedCandidateId == null &&
+            (retained.selectedEndpoint == null || retained.selectedEndpoint == endpoint) &&
+            retained.settings.sameSelection(settings) && retained.canObserve)
+        beforeClientHosting()
+        return operation {
+            val attachment = (retained as? LanClient) ?: withSetupLock(gate) {
+                if (retiring) return@withSetupLock null
+                requireOriginal(native === target && lanAttachment == null && !acquisitionCloseUnobserved &&
+                    freshTargetCurrent(target, original) && original.responseActionId == actionId &&
+                    original.verifiedMaster === verified)
+                LanClient(target, original, actionId, settings, endpoint, newLanScope()).also {
+                    it.automaticResumeRequested = automatic
+                    lanAttachment = it
+                    target.lanTransferEntered = true
+                    view = view.copy(freshDevicePairing = null)
+                    publishLocked()
+                }
+            } ?: return@operation
+            try {
+                if (!attachment.captured) {
+                    val actual = services.retainLanClient(target.value, attachment.retainedScope, actionId, settings)
+                    attachment.capture(actual)
+                }
+                if (!beginLanObservation(attachment)) return@operation
+                if (endpoint == null) {
+                    observeDiscoveredMasters(attachment)
+                    attachment.value.startDiscovery()
+                    withSetupLock(gate) {
+                        if (!lanOwnerCurrentLocked(attachment)) return@withSetupLock
+                        attachment.discoveryActive = true
+                        if (automatic) startLanClientMonitorLocked(attachment)
+                        view = view.copy(problem = null, nativeProblem = null)
                         publishLocked()
                     }
-                } ?: return@operation
-                try {
-                    if (!attachment.captured) {
-                        val actual = services.retainLanHost(master, attachment.retainedScope, settings)
-                        attachment.capture(actual) // Direct retention before checks or publication.
-                    }
-                    if (!beginLanObservation(attachment)) return@operation
-                    val endpoint = attachment.value.start()
+                } else {
+                    if (!automatic) lanLaunchRecord?.retainClient(actionId, settings, endpoint)
+                    withSetupLock(gate) { attachment.selectedEndpoint = endpoint; attachment.discoveryActive = false }
+                    attachment.value.connect(endpoint)
+                    publishLanAuthentication(attachment)
                     publishLanEndpoint(attachment, endpoint)
+                }
+            } catch (_: Throwable) { lanObservationFailed(attachment) }
+        }
+    }
+
+    private fun observeDiscoveredMasters(attachment: LanClient) = withSetupLock(gate) {
+        if (attachment.discoveryObserver != null) return@withSetupLock
+        attachment.discoveryObserver = attachment.retainedScope.launch(start = CoroutineStart.LAZY) {
+            try {
+                attachment.value.discoveredMasters.collect { entries ->
+                    withSetupLock(gate) discoveryUpdate@{
+                        if (!lanOwnerCurrentLocked(attachment)) return@discoveryUpdate
+                        attachment.discoveredMasters = entries.take(64).toList()
+                        publishLocked()
+                    }
+                }
+            } catch (failure: kotlinx.coroutines.CancellationException) { throw failure }
+            catch (_: Throwable) { lanObservationFailed(attachment) }
+        }.also { it.start() }
+    }
+
+    override fun connectDiscoveredLanClient(candidateId: DomainId): Unit = connectDiscoveredLanClient(candidateId, false)
+
+    private fun connectDiscoveredLanClient(candidateId: DomainId, automatic: Boolean) {
+        start(LocalSetupWork.CONNECTING_LAN_CLIENT, setOf(LocalSetupPhase.FRESH_DEVICE_PAIRING), allowLocked = automatic) {
+            val attachment = lanAttachment as? LanClient ?: throw OriginalRequired()
+            requireOriginal(attachment.captured && attachment.canObserve && attachment.selectedEndpoint == null &&
+                (attachment.selectedCandidateId == null || attachment.selectedCandidateId == candidateId) &&
+                attachment.discoveredMasters.any { it.candidateId == candidateId && it.matchesOriginalMaster })
+            operation {
+                try {
+                    if (!beginLanObservation(attachment)) return@operation
+                    if (!automatic) lanLaunchRecord?.retainClient(attachment.actionId, attachment.settings)
+                    withSetupLock(gate) { attachment.selectedCandidateId = candidateId; attachment.discoveryActive = false }
+                    attachment.value.connectDiscovered(candidateId)
+                    publishLanAuthentication(attachment)
+                    publishDiscoveredLanConnected(attachment)
                 } catch (_: Throwable) { lanObservationFailed(attachment) }
             }
         }
     }
 
-    override fun connectLanClient(input: LocalSetupLanInput, endpoint: LocalSetupLanEndpoint) {
-        start(LocalSetupWork.CONNECTING_LAN_CLIENT, setOf(LocalSetupPhase.FRESH_DEVICE_PAIRING)) {
-            val settings = LocalSetupLanSettings.from(input)
-            settings.validateEndpoint(endpoint) // Numeric private address/subnet and nonzero port.
-            val target = (native as? FreshDeviceTarget) ?: throw OriginalRequired()
-            val original = target.original
-            val actionId = original.responseActionId ?: throw OriginalRequired()
-            val verified = original.verifiedMaster ?: throw OriginalRequired()
-            requireOriginal(freshTargetOriginal === original && verified.originalPairingActionId == actionId &&
-                original.identity != null && original.possession != null && !original.continuationAttempted)
-            requireFreshRpcNamespace(requireNotNull(original.identity), targetCompositionProfile(target.value))
-            val retained = lanAttachment
-            requireOriginal(retained == null && freshTargetCurrent(target, original) || retained is LanClient &&
-                retained.owner === target && retained.original === original && retained.actionId == actionId &&
-                retained.selectedEndpoint == endpoint && retained.settings.sameSelection(settings) && retained.canObserve)
-            operation {
-                val attachment = (retained as? LanClient) ?: withSetupLock(gate) {
-                    if (retiring) return@withSetupLock null
-                    requireOriginal(native === target && lanAttachment == null && !acquisitionCloseUnobserved &&
-                        freshTargetCurrent(target, original) && original.responseActionId == actionId &&
-                        original.verifiedMaster === verified)
-                    LanClient(target, original, actionId, settings, endpoint, newLanScope()).also {
-                        lanAttachment = it
-                        // Fence common ceremonies only. Native original readbacks must happen
-                        // before raw-target denial/close inside the selected-original adapter.
-                        target.lanTransferEntered = true
-                        view = view.copy(freshDevicePairing = null)
-                        publishLocked()
-                    }
-                } ?: return@operation
-                try {
-                    if (!attachment.captured) {
-                        val actual = services.retainLanClient(target.value, attachment.retainedScope, actionId, settings)
-                        attachment.capture(actual) // Unknown constructor results never remove this holder.
-                    }
-                    if (!beginLanObservation(attachment)) return@operation
-                    attachment.value.connect(attachment.selectedEndpoint)
-                    publishLanAuthentication(attachment)
-                    publishLanEndpoint(attachment, attachment.selectedEndpoint)
-                } catch (_: Throwable) { lanObservationFailed(attachment) }
-            }
-        }
+    private fun publishDiscoveredLanConnected(attachment: LanClient) = withSetupLock(gate) {
+        if (!lanOwnerCurrentLocked(attachment)) return@withSetupLock
+        check(attachment.selectedEndpoint == null && attachment.selectedCandidateId != null)
+        attachment.status = LocalSetupLanStatus.CONNECTED
+        attachment.connectedOnce = true
+        startLanClientMonitorLocked(attachment)
+        attachment.endpoint = null // SDK discovery intentionally exposes no numeric endpoint.
+        view = view.copy(problem = null, nativeProblem = null)
+        publishLocked()
     }
 
     private suspend fun publishLanAuthentication(attachment: LanClient) {
@@ -1019,7 +1323,8 @@ public class LocalSetupCoordinator(
     override fun refreshLanAttachment() {
         start(LocalSetupWork.READING_LAN_ATTACHMENT, LAN_ACTION_PHASES) {
             val attachment = lanAttachment ?: throw OriginalRequired()
-            requireOriginal(attachment.captured && attachment.canObserve && attachment.observedEndpoint != null)
+            requireOriginal(attachment.captured && attachment.canObserve && (attachment.observedEndpoint != null ||
+                attachment is LanClient && attachment.selectedCandidateId != null))
             operation {
                 try {
                     if (!beginLanObservation(attachment)) return@operation
@@ -1028,8 +1333,14 @@ public class LocalSetupCoordinator(
                         is LanClient -> {
                             // The retained native operation reobserves the same Ready connection;
                             // it never creates another connection attempt or selected factory.
-                            attachment.value.connect(attachment.selectedEndpoint)
-                            publishLanEndpoint(attachment, attachment.selectedEndpoint)
+                            val endpoint = attachment.selectedEndpoint
+                            if (endpoint != null) {
+                                attachment.value.connect(endpoint)
+                                publishLanEndpoint(attachment, endpoint)
+                            } else {
+                                attachment.value.connectDiscovered(checkNotNull(attachment.selectedCandidateId))
+                                publishDiscoveredLanConnected(attachment)
+                            }
                         }
                     }
                 } catch (_: Throwable) { lanObservationFailed(attachment) }
@@ -1037,10 +1348,119 @@ public class LocalSetupCoordinator(
         }
     }
 
+    override fun recoverLanClient(): Unit = recoverLanClient(false)
+
+    private fun recoverLanClient(automatic: Boolean) {
+        start(LocalSetupWork.CONNECTING_LAN_CLIENT, setOf(LocalSetupPhase.FRESH_DEVICE_PAIRING), allowLocked = automatic) {
+            val attachment = lanAttachment as? LanClient ?: throw OriginalRequired()
+            requireOriginal(lanClientRetainedLocked(attachment) && attachment.captured &&
+                attachment.status in setOf(LocalSetupLanStatus.CONNECTED, LocalSetupLanStatus.UNAVAILABLE) &&
+                attachment.authenticationDenialFailure == null)
+            val endpoint = attachment.selectedEndpoint
+            operation {
+                var recovered = false
+                try {
+                    withSetupLock(gate) {
+                        requireOriginal(lanClientRetainedLocked(attachment))
+                        withdrawLanAuthenticationLocked(attachment)
+                        requireOriginal(attachment.authenticationDenialFailure == null)
+                        attachment.status = LocalSetupLanStatus.CONNECTING
+                        attachment.endpoint = null
+                        attachment.discoveryActive = false
+                        attachment.discoveredMasters = emptyList()
+                        publishLocked()
+                    }
+                    val oldObserver = withSetupLock(gate) { attachment.discoveryObserver }
+                    oldObserver?.cancelAndJoin()
+                    withSetupLock(gate) {
+                        requireOriginal(lanClientRetainedLocked(attachment))
+                        check(attachment.discoveryObserver === oldObserver)
+                        attachment.discoveryObserver = null
+                    }
+                    attachment.value.recoverTransport()
+                    recovered = true
+                    withSetupLock(gate) {
+                        requireOriginal(lanClientRetainedLocked(attachment))
+                        attachment.authentication = null
+                        attachment.selectedCandidateId = null
+                        attachment.observedEndpoint = null
+                        view = view.copy(problem = null, nativeProblem = null)
+                        publishLocked()
+                    }
+                    if (endpoint != null) {
+                        attachment.value.connect(endpoint)
+                        publishLanAuthentication(attachment)
+                        publishLanEndpoint(attachment, endpoint)
+                    } else {
+                        observeDiscoveredMasters(attachment)
+                        attachment.value.startDiscovery()
+                        withSetupLock(gate) {
+                            if (!lanOwnerCurrentLocked(attachment)) return@withSetupLock
+                            attachment.discoveryActive = true
+                            publishLocked()
+                        }
+                    }
+                } catch (_: Throwable) {
+                    if (recovered) { lanObservationFailed(attachment); return@operation }
+                    withSetupLock(gate) {
+                        if (retiring || lanAttachment !== attachment) return@withSetupLock
+                        withdrawLanAuthenticationLocked(attachment)
+                        attachment.endpoint = null
+                        attachment.discoveryActive = false
+                        attachment.discoveredMasters = emptyList()
+                        attachment.status = LocalSetupLanStatus.UNKNOWN
+                        problemLocked(LocalSetupProblem.CLOSE_UNCONFIRMED)
+                    }
+                }
+            }
+        }
+    }
+
+    /** Retained shared policy; native code supplies only actual SDK connection facts.
+     * The first selection stays explicit. Recovery may select only a unique current
+     * candidate matching the already approved original; a handshake still verifies it.
+     * No employee credential or business operation is submitted by this worker. */
+    private fun startLanClientMonitorLocked(attachment: LanClient) {
+        if (attachment.connectionMonitor != null) return
+        attachment.connectionMonitor = attachment.retainedScope.launch(start = CoroutineStart.LAZY) {
+            var retryDelay = 1_000L
+            while (currentCoroutineContext().isActive) {
+                delay(retryDelay)
+                val keepRunning = withSetupLock(gate) {
+                    if (!lanClientRetainedLocked(attachment) || attachment.status == LocalSetupLanStatus.UNKNOWN) false
+                    else {
+                        if (active == null && (attachment.connectedOnce || attachment.automaticResumeRequested)) {
+                            if (attachment.status == LocalSetupLanStatus.CONNECTED) {
+                                val connected = attachment.value.transportConnectedNow()
+                                if (connected == null) return@withSetupLock false
+                                if (!connected) lanObservationFailed(attachment)
+                                else retryDelay = 1_000L
+                            }
+                            when {
+                                attachment.status == LocalSetupLanStatus.UNAVAILABLE &&
+                                    attachment.authenticationDenialFailure == null -> {
+                                    recoverLanClient(true)
+                                    retryDelay = (retryDelay * 2).coerceAtMost(30_000L)
+                                }
+                                attachment.status == LocalSetupLanStatus.CONNECTING && attachment.discoveryActive -> {
+                                    val candidate = attachment.discoveredMasters.filter { it.matchesOriginalMaster }.singleOrNull()
+                                    if (candidate != null) connectDiscoveredLanClient(candidate.candidateId, true)
+                                }
+                            }
+                        }
+                        true
+                    }
+                }
+                if (!keepRunning) return@launch
+            }
+        }.also { it.start() }
+    }
+
     override fun closeLanAttachment() {
         start(LocalSetupWork.CLOSING_LAN_ATTACHMENT, LAN_ACTION_PHASES) {
             val attachment = lanAttachment ?: throw OriginalRequired()
             operation {
+                lanLaunchRecord?.retainStop() // Durable negative intent before explicit retirement.
                 try { closeLanOwned(attachment) }
                 catch (_: Throwable) { /* Unknown close stays retained; it is never Master stop. */ }
             }
@@ -1062,6 +1482,14 @@ public class LocalSetupCoordinator(
                 attachment.original.verifiedMaster?.originalPairingActionId == attachment.actionId
         }
     }
+
+    /** Retained native custody may outlive a failed transport observation. */
+    private fun lanClientRetainedLocked(attachment: LanClient): Boolean =
+        !retiring && lanAttachment === attachment && native === attachment.owner &&
+            attachment.closeResult == null && checkNotNull(attachment.retainedScope.coroutineContext[Job]).isActive &&
+            attachment.target.original === attachment.original && freshTargetOriginal === attachment.original &&
+            attachment.original.responseActionId == attachment.actionId &&
+            attachment.original.verifiedMaster?.originalPairingActionId == attachment.actionId
 
     private fun beginLanObservation(attachment: LanAttachment): Boolean = withSetupLock(gate) {
         if (!lanOwnerCurrentLocked(attachment)) {
@@ -1098,6 +1526,10 @@ public class LocalSetupCoordinator(
             attachment.observedEndpoint = endpoint
             attachment.endpoint = endpoint
             attachment.status = if (attachment is LanHost) LocalSetupLanStatus.LISTENING else LocalSetupLanStatus.CONNECTED
+            if (attachment is LanClient) {
+                attachment.connectedOnce = true
+                startLanClientMonitorLocked(attachment)
+            }
             view = view.copy(problem = null, nativeProblem = null)
             publishLocked() // Endpoint observation supplies no employee/business authority.
         }
@@ -1105,7 +1537,11 @@ public class LocalSetupCoordinator(
 
     private fun lanObservationFailed(attachment: LanAttachment) = withSetupLock(gate) {
         if (retiring || lanAttachment !== attachment) return@withSetupLock
-        if (attachment is LanClient) withdrawLanAuthenticationLocked(attachment)
+        if (attachment is LanClient) {
+            withdrawLanAuthenticationLocked(attachment)
+            attachment.discoveryActive = false
+            attachment.discoveredMasters = emptyList()
+        }
         attachment.endpoint = null
         val denialUnconfirmed = attachment is LanClient && attachment.authenticationDenialFailure != null
         attachment.status = if (attachment.captured && !denialUnconfirmed) LocalSetupLanStatus.UNAVAILABLE else LocalSetupLanStatus.UNKNOWN
@@ -1118,7 +1554,11 @@ public class LocalSetupCoordinator(
             attachment.closeResult?.let { return@withSetupLock it to false }
             val outcome = CompletableDeferred<Unit>()
             attachment.closeResult = outcome // A failed/unknown exact close is never rearmed.
-            if (attachment is LanClient) withdrawLanAuthenticationLocked(attachment)
+            if (attachment is LanClient) {
+                withdrawLanAuthenticationLocked(attachment)
+                attachment.discoveryActive = false
+                attachment.discoveredMasters = emptyList()
+            }
             attachment.status = LocalSetupLanStatus.CLOSING
             attachment.endpoint = null
             publishLocked()
@@ -4221,6 +4661,10 @@ public class LocalSetupCoordinator(
                 fresh != null && !fresh.lanTransferEntered && original != null && freshTargetOriginal === original &&
                 original.responseActionId != null && original.verifiedMaster?.originalPairingActionId == original.responseActionId &&
                 original.identity != null && original.possession != null && !original.continuationAttempted,
+            networks = if (retiring || view.locked) emptyList() else lanNetworks.toList(),
+            discoveryActive = !retiring && !view.locked && attachment is LanClient && attachment.discoveryActive && attachment.canObserve,
+            discoveredMasters = if (retiring || view.locked || attachment !is LanClient || !attachment.canObserve)
+                emptyList() else attachment.discoveredMasters.toList(),
         )
     }
 
@@ -4360,10 +4804,17 @@ public class LocalSetupCoordinator(
         val original: LocalSetupFreshDeviceTargetOriginal,
         val actionId: DomainId,
         settings: LocalSetupLanSettings,
-        val selectedEndpoint: LocalSetupLanEndpoint,
+        var selectedEndpoint: LocalSetupLanEndpoint?,
         retainedScope: CoroutineScope,
     ) : LanAttachment(target, settings, retainedScope, LocalSetupLanRole.CLIENT) {
         @Volatile private var acquired: LocalSetupLanClient? = null
+        var selectedCandidateId: DomainId? = null
+        var discoveryActive: Boolean = false
+        var discoveredMasters: List<LocalSetupLanDiscoveredMaster> = emptyList()
+        var discoveryObserver: Job? = null
+        var connectionMonitor: Job? = null
+        var connectedOnce = false
+        var automaticResumeRequested = false
         var authentication: LocalSetupLanAuthentication? = null
         var authenticationPublished = false
         var authenticationDenialFailure: Throwable? = null

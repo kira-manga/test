@@ -2,6 +2,7 @@ package com.ukkera.pos.database
 
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.SelfOwnedNativeHistoryReadSession
+import com.ukkera.pos.security.NativeDeviceAdmissionHistorySource
 
 /** Memory-only proof of one original employee command at its actual historical event cut.
  * The separate native-seeded reducer registers this exact object ONLY after joining its
@@ -17,6 +18,8 @@ internal class RuntimeEmployeeCommandHistoryAuthorization internal constructor(
     private val eventDigest: PayloadDigest,
     val evidence: RuntimeCommandAuthorizationEvidenceV1,
     private val capturedPolicyDigest: PayloadDigest,
+    private val additionalDeviceOrigin: NativeDeviceAdmissionHistorySource?,
+    private val capturedAdmissionDigest: PayloadDigest,
 ) {
     val sequence: Long get() = header.sequence
     private var capturedSession: SelfOwnedNativeHistoryReadSession? = null
@@ -65,15 +68,29 @@ internal class RuntimeEmployeeCommandHistoryAuthorization internal constructor(
         historyShapeV2(source.matchesNativeSelection(session) &&
             source.scope == coordinates.scope && authorization.scope == coordinates.scope &&
             source.actorId == authorization.actorId && authorization.actorId != coordinates.firstActorId &&
-            source.originalCohostDeviceId == coordinates.deviceId && authorization.deviceId == source.originalCohostDeviceId &&
+            source.originalCohostDeviceId == coordinates.deviceId &&
             source.child.historySequence < header.sequence && source.child.commandSequence < header.commandSequence &&
             source.child.commandEpoch == header.commandEpoch && source.child.installationGenesisDigest == header.installationGenesisDigest &&
             header.scope == coordinates.scope.storageKey() && header.assignmentId == coordinates.assignmentId &&
             header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY && evidence.purposeTag == header.purpose.tag &&
             evidence.capturedChanges == header.changeCount && evidence.actionApprovalId == null &&
             authorization.dependencies.policy == capturedPolicyDigest &&
-            authorization.dependencies.admission == source.admissionDigests.single {
+            authorization.dependencies.admission == capturedAdmissionDigest)
+        if (authorization.deviceId == source.originalCohostDeviceId) {
+            historyShapeV2(additionalDeviceOrigin == null && capturedAdmissionDigest == source.admissionDigests.single {
                 it.first == source.originalCohostDeviceId }.second)
+        } else {
+            val origin = checkNotNull(additionalDeviceOrigin)
+            historyShapeV2(session.hasDeviceAdmissionHistoryTraversal &&
+                session.deviceAdmissions.any { it === origin } &&
+                origin.originalCohostDeviceId == coordinates.deviceId &&
+                origin.requested.request.scope == coordinates.scope &&
+                origin.requested.request.targetId == authorization.deviceId &&
+                origin.requested.admission.admitted &&
+                origin.child.historySequence < header.sequence && origin.child.commandEpoch == header.commandEpoch &&
+                origin.child.installationGenesisDigest == header.installationGenesisDigest &&
+                origin.evidence.images.first().plaintextDigest == capturedAdmissionDigest)
+        }
     }
 
     fun clear() { discarded = true; capturedSession = null; joined = false }

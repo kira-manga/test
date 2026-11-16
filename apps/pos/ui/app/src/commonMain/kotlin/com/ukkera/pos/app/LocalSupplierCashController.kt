@@ -95,12 +95,12 @@ internal class LocalSupplierCashController(
     fun activate(workflow: LocalWorkflow, reference: LocalRecordReference?, query: LocalPurchasingUiQuery,
         selectedSupplierId: DomainId? = null, freshPayoutAllowed: Boolean = reference?.kind != LocalRecordKind.PURCHASE_INVOICE) {
         deactivate()
-        if (workflow != LocalWorkflow.PURCHASING || !query.includeCosts || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
+        if (workflow != LocalWorkflow.PURCHASING || !runtime.ownsLocalAttachment(session, owner, attachmentKey)) return
         active = true
         val supplierId = reference?.takeIf { it.kind == LocalRecordKind.SUPPLIER }?.id ?: selectedSupplierId
         val invoiceId = reference?.takeIf { it.kind in setOf(LocalRecordKind.PURCHASE_INVOICE, LocalRecordKind.SUPPLIER_PAYABLE) }?.id
         update(LocalSupplierCashWorkspace(reference = reference, purchasingQuery = query,
-            supplierId = supplierId?.value.orEmpty(), invoiceId = invoiceId?.value.orEmpty(), freshPayoutAllowed = freshPayoutAllowed))
+            supplierId = supplierId?.value.orEmpty(), invoiceId = invoiceId?.value.orEmpty(), freshPayoutAllowed = freshPayoutAllowed && query.includeCosts))
     }
 
     fun snapshotDraft(): LocalSupplierDraftContinuation? = state.value.takeIf { active }?.let { value ->
@@ -232,8 +232,32 @@ internal class LocalSupplierCashController(
         recover(original, token)
     }
 
-    fun canResolve(value: LocalRetailPhysicalProgress?): Boolean = value != null && ownFact(value) &&
-        value.phase == LocalRetailObservationPhase.ORIGINAL && value.state == LocalRetailDurableState.OBSERVATION_APPLIED_UNRESOLVED &&
+    fun reviewOriginal(token: NavigationToken, fresh: Boolean = false) {
+        if (!editable(token)) return
+        val id = if (fresh) currentReview()?.originalRecordingOperationId ?: return
+            else try { OperationId(state.value.recoveryId) } catch (_: IllegalArgumentException) { invalid(); return }
+        prepare(LocalRetailPhysicalRequest.SupplierSupervisorReview(id), LocalRetailPhysicalKind.SUPERVISOR_REVIEW)
+    }
+
+    private fun currentReview(): LocalRetailPhysicalProgress? = state.value.progress?.takeIf {
+        supplierProgress(it) && it.state == LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED &&
+            it.originalRecordingOperationId != null && it.reviewDisplay?.recordingOperationId == it.originalRecordingOperationId &&
+            it.reviewDisplay?.resolutionOperationId == it.resolutionOperationId
+    }
+
+    fun canPrepareSupervisedApplication(phase: LocalRetailObservationPhase): Boolean = currentReview()?.let {
+        if (phase == LocalRetailObservationPhase.ORIGINAL) !it.originalApplied else it.originalApplied && it.resolutionRecorded
+    } == true
+
+    fun supervisorApply(phase: LocalRetailObservationPhase, token: NavigationToken) {
+        if (!editable(token) || !canPrepareSupervisedApplication(phase)) return
+        val review = currentReview() ?: return
+        prepare(LocalRetailPhysicalRequest.SupplierSupervisorApply(review.operationId, phase), LocalRetailPhysicalKind.APPLICATION)
+    }
+
+    fun canResolve(value: LocalRetailPhysicalProgress?): Boolean = value != null &&
+        (ownFact(value) && value.state == LocalRetailDurableState.OBSERVATION_APPLIED_UNRESOLVED ||
+            value === currentReview()) && value.phase == LocalRetailObservationPhase.ORIGINAL &&
         value.originalUnknown && value.originalApplied && !value.resolutionRecorded
 
     fun resolve(token: NavigationToken) {
@@ -241,8 +265,10 @@ internal class LocalSupplierCashController(
         val value = state.value.progress?.takeIf(::canResolve) ?: return
         val original = value.originalRecordingOperationId ?: return
         val observed = observation(allowUnknown = false) ?: return
-        prepare(LocalRetailPhysicalRequest.SupplierCashResolve(original, observed), LocalRetailPhysicalKind.RESOLUTION,
-            expected = value.resolutionOperationId)
+        val request = if (value.state == LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED)
+            LocalRetailPhysicalRequest.SupplierSupervisorResolve(value.operationId, observed)
+        else LocalRetailPhysicalRequest.SupplierCashResolve(original, observed)
+        prepare(request, LocalRetailPhysicalKind.RESOLUTION, expected = value.resolutionOperationId)
     }
 
     private fun displayed(value: LocalRetailPhysicalProgress): Boolean = state.value.progress === value || state.value.facts.any { it === value }
@@ -482,7 +508,8 @@ internal class LocalSupplierCashController(
 
     private fun supplierPreparation(value: LocalRetailPhysicalPreparation, kind: LocalRetailPhysicalKind): Boolean =
         value.subject == LocalPaymentSubject.SUPPLIER && value.financialKind == LocalRetailFinancialKind.SUPPLIER_CASH && value.kind == kind &&
-            kind in setOf(LocalRetailPhysicalKind.SUPPLIER_CASH_OUT, LocalRetailPhysicalKind.APPLICATION, LocalRetailPhysicalKind.RESOLUTION) && value.summary.size in 1..32
+            kind in setOf(LocalRetailPhysicalKind.SUPPLIER_CASH_OUT, LocalRetailPhysicalKind.APPLICATION,
+                LocalRetailPhysicalKind.RESOLUTION, LocalRetailPhysicalKind.SUPERVISOR_REVIEW) && value.summary.size in 1..32
     private fun supplierSaved(value: LocalRetailSavedOperation): Boolean = value.subject == LocalPaymentSubject.SUPPLIER &&
         value.financialKind == LocalRetailFinancialKind.SUPPLIER_CASH && !(value.isPhysicalStart && value.requiresNativeRetention) && value.summary.size <= 32
     private fun supplierDisplay(value: LocalRetailInstructionDisplay): Boolean = value.subject == LocalPaymentSubject.SUPPLIER &&
@@ -491,7 +518,7 @@ internal class LocalSupplierCashController(
         setOf(value.operationId, value.recordingOperationId, value.resolutionOperationId).size == 3
     private fun supplierProgress(value: LocalRetailPhysicalProgress): Boolean = value.subject == LocalPaymentSubject.SUPPLIER &&
         value.financialKind == LocalRetailFinancialKind.SUPPLIER_CASH && value.state !in setOf(LocalRetailDurableState.COLLECTION_PREPARED,
-            LocalRetailDurableState.STOCK_HELD_NO_INSTRUCTION, LocalRetailDurableState.SUPERVISOR_REVIEW_RECORDED) &&
+            LocalRetailDurableState.STOCK_HELD_NO_INSTRUCTION) &&
         (value.reviewDisplay == null || supplierDisplay(value.reviewDisplay)) && value.reviewValues.size <= 32
 
     private fun unavailable(problem: LocalServiceProblem) {

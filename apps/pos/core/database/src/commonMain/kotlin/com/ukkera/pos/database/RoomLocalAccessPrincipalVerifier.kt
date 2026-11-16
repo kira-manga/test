@@ -104,54 +104,77 @@ internal class RoomLocalAccessPrincipalVerifier(
     override suspend fun verifyLocal(credentials: LocalGatewayCredentials): VerifiedLocalIdentity? {
         val caller = currentCoroutineContext()
         caller.ensureActive()
-        if (!admission.tryAcquire()) throw RoomLocalAccessVerificationBusy()
+        if (!admission.tryAcquire()) {
+            reportLocalAccessVerificationFailure(LocalAccessVerificationStage.CAPACITY, null)
+            throw RoomLocalAccessVerificationBusy()
+        }
         var parsed: ParsedLocalAccessBearer? = null
+        var stage = LocalAccessVerificationStage.BEARER
+        var verified = false
+        var diagnosticFailure: Throwable? = null
         return try {
             val bearer = credentials.bearer.useBytes { ParsedLocalAccessBearer.parse(it) }
             parsed = bearer
             caller.ensureActive()
             if (bearer == null) return null
+            stage = LocalAccessVerificationStage.PEER_CAPTURE
             val peer = peers.capture(credentials.connectionId)
             caller.ensureActive()
             if (peer == null || peer.connectionId != credentials.connectionId || peer.scope != scope) return null
 
+            stage = LocalAccessVerificationStage.NATIVE_FACTS
             val result = localSecurityLane(store.database) {
                 val facts = store.transaction { transaction ->
                     val current = transaction.readLocalAccessFacts(scope, bearer.sessionId) ?: return@transaction null
+                    stage = LocalAccessVerificationStage.BINDING
                     if (current.issuance.deviceId != peer.deviceId || !peer.matchesAdmission(current.admission) ||
                         !bearer.matches(current.issuance.tokenHash)) return@transaction null
+                    stage = LocalAccessVerificationStage.AUTHORIZATION_HEALTH
                     transaction.ensureAuthorizationHealthy()
                     current // Never return a provisional identity from the inner transaction.
                 } ?: return@localSecurityLane null
 
                 caller.ensureActive()
+                stage = LocalAccessVerificationStage.PEER_CURRENT
                 val peerCurrent = peer.isCurrent()
                 caller.ensureActive()
                 if (!peerCurrent) return@localSecurityLane null
                 // Last security observation, not a promise that Room has no later cleanup.
+                stage = LocalAccessVerificationStage.QUALIFIED_ENVIRONMENT
                 val observation = authorization.observeCurrent(caller)
                 val issuance = facts.issuance
                 val candidate = VerifiedLocalIdentity(issuance.actorId, issuance.scope, issuance.deviceId,
                     issuance.sessionId, issuance.generation, issuance.admissionRevisionAtIssue,
                     issuance.authenticationPurpose)
+                stage = LocalAccessVerificationStage.ELIGIBILITY
                 if (LocalAccessEligibility.matchesCurrentFacts(candidate, issuance, facts.account,
                         facts.credentialRevision, facts.credentialPresent, facts.admission,
-                        observation.issuerContextId, observation.moment)) candidate else null
+                        observation.issuerContextId, observation.moment)) {
+                    stage = LocalAccessVerificationStage.OUTER_RELEASE
+                    candidate
+                } else null
             }
             caller.ensureActive()
+            verified = result != null
+            if (verified) stage = LocalAccessVerificationStage.RETURN
             result
         } catch (cancelled: CancellationException) {
+            diagnosticFailure = cancelled
             throw cancelled
-        } catch (_: RoomCurrentLocalAuthorizationDenied) {
+        } catch (failure: RoomCurrentLocalAuthorizationDenied) {
+            diagnosticFailure = failure
             caller.ensureActive()
             null
-        } catch (_: RoomLocalStorageUncertain) {
+        } catch (failure: RoomLocalStorageUncertain) {
+            diagnosticFailure = failure
             caller.ensureActive()
             throw RoomLocalAccessVerificationStorageUncertain()
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            diagnosticFailure = failure
             caller.ensureActive()
             localAccessVerificationUnavailable()
         } finally {
+            if (!verified) reportLocalAccessVerificationFailure(stage, diagnosticFailure)
             parsed?.close()
             admission.release()
         }

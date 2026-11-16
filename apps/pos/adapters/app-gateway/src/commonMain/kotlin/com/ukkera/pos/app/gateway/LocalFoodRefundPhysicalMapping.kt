@@ -13,10 +13,16 @@ import com.ukkera.pos.types.OperationId
 
 /** Distinct FOOD accepted-liability payout. These are never payment or retail-return routes. */
 internal val foodRefundActions: Set<LocalAction> = setOf(LocalAction.FOOD_REFUND_START,
-    LocalAction.FOOD_REFUND_APPLY, LocalAction.FOOD_REFUND_RESOLUTION, LocalAction.FOOD_REFUND_RESOLUTION_APPLY)
+    LocalAction.FOOD_REFUND_APPLY, LocalAction.FOOD_REFUND_RESOLUTION, LocalAction.FOOD_REFUND_RESOLUTION_APPLY,
+    LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW, LocalAction.FOOD_REFUND_SUPERVISOR_APPLY)
 
 internal fun foodRefundRequestAction(request: MutationRequest): LocalAction? {
-    if (request.command != LocalFoodRefundProfile.COMMAND || request.actionApprovalId != null) return null
+    if (request.actionApprovalId != null) return null
+    if (request.command == LocalFoodRefundSupervisorCodec.COMMAND) return when (LocalFoodRefundSupervisorCodec.decode(request.payload)) {
+        is LocalFoodRefundSupervisorRequest.Review -> LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW
+        is LocalFoodRefundSupervisorRequest.Apply -> LocalAction.FOOD_REFUND_SUPERVISOR_APPLY
+    }
+    if (request.command != LocalFoodRefundProfile.COMMAND) return null
     return when (LocalFoodRefundCodec.decode(request.payload)) {
         is LocalFoodRefundRequest.StartCash -> LocalAction.FOOD_REFUND_START
         is LocalFoodRefundRequest.ApplyOriginal -> LocalAction.FOOD_REFUND_APPLY
@@ -39,6 +45,13 @@ internal fun requireFoodRefundEntry(entry: StoredClientIntentV1) {
     require(entry.localAction in foodRefundActions && entry.formVersion == 2 &&
         foodRefundRequestAction(entry.request()) == entry.localAction &&
         entry.inputDigest == inputDigest(physicalUiIntent(entry.operationId, entry.localAction, entry.semanticSha256)))
+    if (entry.request().command == LocalFoodRefundSupervisorCodec.COMMAND) {
+        when (val body = LocalFoodRefundSupervisorCodec.decode(entry.request().payload)) {
+            is LocalFoodRefundSupervisorRequest.Review -> require(entry.operationId != body.originalRecordingOperationId)
+            is LocalFoodRefundSupervisorRequest.Apply -> require(entry.operationId != body.factOperationId)
+        }
+        return
+    }
     when (val body = LocalFoodRefundCodec.decode(entry.request().payload)) {
         is LocalFoodRefundRequest.StartCash -> require(entry.operationId !in setOf(body.recordingOperationId, body.resolutionOperationId))
         is LocalFoodRefundRequest.RecordResolution -> require(entry.operationId == body.target.resolutionOperationId &&
@@ -57,7 +70,7 @@ private fun requireFoodRefundStartTarget(entry: StoredClientIntentV1,
     target: LocalFoodRefundTarget): LocalFoodRefundRequest.StartCash {
     requireFoodRefundEntry(entry)
     require(entry.localAction == LocalAction.FOOD_REFUND_START)
-    val body = LocalFoodRefundCodec.decode(entry.request().payload) as? LocalFoodRefundRequest.StartCash ?: unavailable()
+    val body = foodRefundSavedRequest(entry) as? LocalFoodRefundRequest.StartCash ?: unavailable()
     require(target.refundId == body.refundId && target.originalPaymentId == body.originalPaymentId &&
         target.sessionId == body.sessionId && target.attemptId == body.attemptId && target.intentOperationId == entry.operationId &&
         target.recordingOperationId == body.recordingOperationId && target.resolutionOperationId == body.resolutionOperationId)
@@ -126,7 +139,7 @@ internal fun requireSameFoodRefundOriginal(previous: LocalFoodRefundOriginalSumm
 }
 
 internal fun requireFoodRefundResolutionSummary(value: LocalFoodRefundResolutionSummary) {
-    require(value.originalActorId == value.recordingActorId && value.amount.currency == Currency.EGP && value.amount.minor > 0L)
+    require(value.amount.currency == Currency.EGP && value.amount.minor > 0L)
     val applied = value.applicationState == LocalFoodRefundApplicationState.APPLIED
     require(if (applied) value.appliedAction != null && value.appliedAction != LocalFoodRefundAction.UNKNOWN &&
         value.pendingReason == null && value.lastApplicationOperationId != null
@@ -202,7 +215,7 @@ private fun foodRefundAccountingSelector(body: LocalFoodRefundRequest): Pair<Ope
 
 private fun requireFoodRefundRecorded(entry: StoredClientIntentV1, result: LocalFoodRefundResult, committed: Boolean, code: String) {
     requireFoodRefundEntry(entry)
-    val body = LocalFoodRefundCodec.decode(entry.request().payload)
+    val body = foodRefundSavedRequest(entry)
     val accounting = foodRefundAccountingSelector(body)
     when (result) {
         is LocalFoodRefundResult.AttemptStarted -> {
@@ -241,6 +254,7 @@ internal fun LocalRetailObservationPhase.foodRefundFactPhase(): LocalFoodRefundF
 
 internal fun foodRefundRecordedProgress(entry: StoredClientIntentV1, reply: MutationReply.Recorded): LocalRetailPhysicalProgress {
     require(reply.operationId == entry.operationId && reply.originalActorId == entry.owner.actorId)
+    if (entry.localAction == LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW) return financialSupervisorReviewProgress(entry, reply)
     val value = LocalFoodRefundCodec.result(reply.result)
     requireFoodRefundRecorded(entry, value, reply.committed, reply.code)
     val target = when (value) {
@@ -284,6 +298,7 @@ internal fun foodRefundRecordedProgress(entry: StoredClientIntentV1, reply: Muta
 
 internal fun foodRefundRecordedDecision(entry: StoredClientIntentV1, result: StoredKernelResultV1): LocalRecordedDecision {
     require(result.operationId == entry.operationId && result.originalActorId == entry.owner.actorId)
+    if (entry.localAction == LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW) return financialSupervisorReviewDecision(entry, result)
     val value = LocalFoodRefundCodec.result(decodeHex(result.payloadHex, 65_536).useWiped { StoredBytes(it) })
     requireFoodRefundRecorded(entry, value, result.committed, result.code)
     return when (value) {
@@ -296,7 +311,9 @@ internal fun foodRefundRecordedDecision(entry: StoredClientIntentV1, result: Sto
 
 internal fun foodRefundRecordedUi(entry: StoredClientIntentV1, reply: MutationReply.Recorded): LocalOperationResult.Recorded {
     val progress = foodRefundRecordedProgress(entry, reply)
-    val body = LocalFoodRefundCodec.decode(entry.request().payload)
+    if (entry.localAction == LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW) return LocalOperationResult.Recorded(entry.operationId,
+        financialSupervisorReviewDecision(entry, StoredKernelResultV1.from(reply)), progress.message, null, reply.replayed)
+    val body = foodRefundSavedRequest(entry)
     val refundId = when (body) {
         is LocalFoodRefundRequest.StartCash -> body.refundId
         is LocalFoodRefundRequest.RecordResolution -> body.target.refundId

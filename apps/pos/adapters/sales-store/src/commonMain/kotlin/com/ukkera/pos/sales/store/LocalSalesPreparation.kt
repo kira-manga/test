@@ -2,6 +2,7 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandContext
 import com.ukkera.pos.database.PreparedMutation
+import com.ukkera.pos.database.PreparedMutationAdmissionRestriction
 import com.ukkera.pos.database.ProposedOutcome
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.recovery.RecoveryResourceKind
@@ -31,6 +32,7 @@ internal class LocalSalesPrepared(
     amount: Money? = null,
     resources: Set<RecoveryResourceKey>,
     override val recoveryHoldBarrierKinds: Set<RecoveryResourceKind> = emptySet(),
+    override val admissionRestriction: PreparedMutationAdmissionRestriction? = null,
     private val proposal: (SalesCommand, UtcInstant) -> ProposedOutcome,
 ) : PreparedMutation() {
     override val requirement: AuthorizationRequirement = salesAuthorizationRequirement(action, context.scope,
@@ -39,7 +41,7 @@ internal class LocalSalesPrepared(
         RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, context.originalActorId)
 
     override fun evaluate(authorization: AuthorizedAction, recordedAt: UtcInstant): ProposedOutcome {
-        check(authorization.principalKind == PrincipalKind.LOCAL_EMPLOYEE &&
+        check(admissionRestriction == null && authorization.principalKind == PrincipalKind.LOCAL_EMPLOYEE &&
             authorization.isBoundTo(requirement, context.originalActorId)) { "sales.authorization.invalid" }
         val command = SalesCommand(context.operationId, authorization, recordedAt.value, context.semanticDigest, reason)
         return try {

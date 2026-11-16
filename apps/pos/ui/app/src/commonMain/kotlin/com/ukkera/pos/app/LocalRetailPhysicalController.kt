@@ -211,7 +211,7 @@ internal class LocalRetailPhysicalController(
 
     fun chooseObservation(value: LocalRetailObserved, token: NavigationToken) {
         if (!accepts(token) || !parentAvailable() || state.value.working || prepared != null) return
-        val display = state.value.instruction ?: currentFoodRefundOriginal()?.display ?: currentReview()?.reviewDisplay ?: return
+        val display = state.value.instruction ?: currentReview()?.reviewDisplay ?: currentFoodRefundOriginal()?.display ?: return
         if (value == LocalRetailObserved.CASH_PAID && display.kind != LocalRetailPhysicalKind.REFUND ||
             value == LocalRetailObserved.CASH_RECEIVED && display.kind != LocalRetailPhysicalKind.PAYMENT ||
             state.value.instruction == null && value == LocalRetailObserved.UNKNOWN) return
@@ -366,7 +366,12 @@ internal class LocalRetailPhysicalController(
     }
 
     fun reviewOriginal(token: NavigationToken, fresh: Boolean = false) {
-        if (!editable(token) || foodRefundLane) return
+        if (!editable(token)) return
+        if (foodRefundLane || fresh && ((state.value.review?.subject == LocalPaymentSubject.FOOD &&
+                state.value.review?.financialKind == LocalRetailFinancialKind.REFUND) ||
+                (state.value.progress?.subject == LocalPaymentSubject.FOOD && state.value.progress?.financialKind == LocalRetailFinancialKind.REFUND))) {
+            reviewFoodRefundOriginal(token, fresh); return
+        }
         val id = if (fresh) state.value.reviewedOriginalId ?: return else parseOperation(state.value.recoveryId) ?: return
         val subject = if (fresh) state.value.reviewedSubject ?: return
             else if (state.value.workflow == LocalWorkflow.FOOD) LocalPaymentSubject.FOOD
@@ -376,6 +381,16 @@ internal class LocalRetailPhysicalController(
             reviewedOriginalId = state.value.reviewedOriginalId.takeIf { fresh },
             reviewedSubject = state.value.reviewedSubject.takeIf { fresh }))
         prepare(LocalRetailPhysicalRequest.SupervisorReview(id, subject))
+    }
+
+    /** Explicit payout Review selector; does not require foreign private obligation reads. */
+    fun reviewFoodRefundOriginal(token: NavigationToken, fresh: Boolean = false) {
+        if (!editable(token) || state.value.workflow != LocalWorkflow.FOOD) return
+        val id = if (fresh) state.value.reviewedOriginalId ?: return else parseOperation(state.value.recoveryId) ?: return
+        update(state.value.copy(review = null, observation = LocalRetailObservationDraft(),
+            reviewedOriginalId = state.value.reviewedOriginalId.takeIf { fresh },
+            reviewedSubject = state.value.reviewedSubject.takeIf { fresh }))
+        prepare(LocalRetailPhysicalRequest.FoodRefundSupervisorReview(id))
     }
 
     /** Historical display has a validated subject/selector; it is never authority itself. */
@@ -402,8 +417,13 @@ internal class LocalRetailPhysicalController(
         val phase = known.phase ?: return
         if (known.state !in setOf(LocalRetailDurableState.SQL_ORIGINAL_PENDING, LocalRetailDurableState.SQL_RESOLUTION_PENDING)) return
         if (known.subject == LocalPaymentSubject.FOOD && known.financialKind == LocalRetailFinancialKind.REFUND) {
-            // Foreign payout recorder/custody takeover is deliberately held; no supervisor alias.
             if (canPrepareOwnApplication(known)) prepare(LocalRetailPhysicalRequest.FoodRefundApply(id, phase))
+            else {
+                val original = known.originalRecordingOperationId ?: return
+                update(state.value.copy(review = null, reviewedOriginalId = null, reviewedSubject = null,
+                    recoveryId = original.value, observation = LocalRetailObservationDraft()))
+                prepare(LocalRetailPhysicalRequest.FoodRefundSupervisorReview(original))
+            }
         } else if (canPrepareOwnApplication(known)) prepare(LocalRetailPhysicalRequest.Apply(id, phase, known.subject))
         else {
             // Cross-recorder/custodian or result-only progress is NOT ordinary application
@@ -417,14 +437,24 @@ internal class LocalRetailPhysicalController(
     }
 
     fun supervisorApply(phase: LocalRetailObservationPhase, token: NavigationToken) {
-        if (!editable(token) || foodRefundLane) return
+        if (!editable(token)) return
         val review = currentReview() ?: return
         if (phase == LocalRetailObservationPhase.RESOLUTION && !review.resolutionRecorded) return
-        prepare(LocalRetailPhysicalRequest.SupervisorApply(review.operationId, phase, review.subject))
+        if (review.subject == LocalPaymentSubject.FOOD && review.financialKind == LocalRetailFinancialKind.REFUND)
+            prepare(LocalRetailPhysicalRequest.FoodRefundSupervisorApply(review.operationId, phase))
+        else prepare(LocalRetailPhysicalRequest.SupervisorApply(review.operationId, phase, review.subject))
     }
 
     fun resolve(token: NavigationToken) {
         if (!editable(token)) return
+        val reviewed = currentReview()
+        if (reviewed?.subject == LocalPaymentSubject.FOOD && reviewed.financialKind == LocalRetailFinancialKind.REFUND) {
+            if (!reviewed.originalUnknown || reviewed.resolutionRecorded) return
+            val display = reviewed.reviewDisplay ?: return
+            val observed = observation(display, allowUnknown = false) ?: return
+            prepare(LocalRetailPhysicalRequest.FoodRefundSupervisorResolve(reviewed.operationId, observed))
+            return
+        }
         if (foodRefundLane) {
             val original = currentFoodRefundOriginal() ?: return
             if (!original.original.originalUnknown || original.resolution != null) return
@@ -442,7 +472,9 @@ internal class LocalRetailPhysicalController(
     private fun prepare(value: LocalRetailPhysicalRequest) {
         if (refundOnly && (value is LocalRetailPhysicalRequest.BeginCollection || value is LocalRetailPhysicalRequest.Payment)) return
         if (foodRefundLane && value !is LocalRetailPhysicalRequest.FoodRefund &&
-            value !is LocalRetailPhysicalRequest.FoodRefundApply && value !is LocalRetailPhysicalRequest.FoodRefundResolve) return
+            value !is LocalRetailPhysicalRequest.FoodRefundApply && value !is LocalRetailPhysicalRequest.FoodRefundResolve &&
+            value !is LocalRetailPhysicalRequest.FoodRefundSupervisorReview && value !is LocalRetailPhysicalRequest.FoodRefundSupervisorApply &&
+            value !is LocalRetailPhysicalRequest.FoodRefundSupervisorResolve) return
         update(state.value.copy(problem = null, inputProblem = false, notice = null, capture = null))
         request(LocalRetailBusy.PREPARING) { gateway.prepare(value) }
     }

@@ -3,6 +3,7 @@ package com.ukkera.pos.desktop
 import com.sun.jna.Platform
 import com.ukkera.pos.app.gateway.DesktopClientJournalStorages
 import com.ukkera.pos.app.gateway.setup.DesktopLocalSetupExecution
+import com.ukkera.pos.app.gateway.setup.DesktopMasterBackups
 import com.ukkera.pos.app.gateway.setup.DesktopMasterSetupNativeServices
 import com.ukkera.pos.app.gateway.setup.DesktopMasterSetupPlatform
 import com.ukkera.pos.app.gateway.setup.DesktopSetupStorages
@@ -10,6 +11,7 @@ import com.ukkera.pos.app.gateway.setup.LocalDeviceAdmissionIntents
 import com.ukkera.pos.app.gateway.setup.LocalEmployeeSetupIntents
 import com.ukkera.pos.app.gateway.setup.LocalFreshDevicePairingIntents
 import com.ukkera.pos.app.gateway.setup.LocalMasterLaunchRecord
+import com.ukkera.pos.app.gateway.setup.LocalLanLaunchRecord
 import com.ukkera.pos.app.gateway.setup.LocalMasterLifecycleIntentStore
 import com.ukkera.pos.app.gateway.setup.LocalSetupCoordinator
 import com.ukkera.pos.app.gateway.setup.ipc.DesktopSetupIpcDocuments
@@ -19,6 +21,7 @@ import com.ukkera.pos.app.gateway.setup.ipc.DesktopSetupUnixIpc
 import com.ukkera.pos.database.DesktopSelfOwnedMasterDiagnostics
 import com.ukkera.pos.database.DesktopSelfOwnedMasterNativeOwner
 import com.ukkera.pos.database.DesktopSelfOwnedMasterServiceFactory
+import com.ukkera.pos.security.DesktopMasterBackupCustody
 import com.ukkera.pos.security.DesktopMasterClientJournalCustody
 import com.ukkera.pos.security.DesktopMasterServiceDirectories
 import com.ukkera.pos.security.DesktopSelfOwnedEnrollmentSource
@@ -32,6 +35,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeoutOrNull
 import java.nio.file.Path
@@ -67,12 +73,15 @@ internal class DesktopMasterServiceHost private constructor(
             identityStore = identityStore,
             // Same-device original Client over the service's own custody (never the UI-process stores).
             clientJournals = { DesktopClientJournalStorages.masterService(DesktopMasterClientJournalCustody.open(service)) },
+            // Encrypted full-state archives in the service's own owner-only custody and OS recovery key.
+            masterBackups = { DesktopMasterBackups.open(DesktopMasterBackupCustody.open(service)) },
         ))
         val storages = DesktopSetupStorages(root)
         coordinator = LocalSetupCoordinator(
             services = services,
             employeeSetupIntents = LocalEmployeeSetupIntents(storages.employee),
             launchRecord = LocalMasterLaunchRecord(storages.launch),
+            lanLaunchRecord = LocalLanLaunchRecord(storages.lanLaunch),
             execution = DesktopLocalSetupExecution(),
             beforeRetirement = { _, _ -> },
             beforeClientHosting = {},
@@ -90,6 +99,14 @@ internal class DesktopMasterServiceHost private constructor(
         listening = opened
         server.serve(opened)
         coordinator.reopenRetainedMaster()
+        // Scheduled backups: a due check only; creation goes through the operational Master.
+        scope.launch {
+            while (isActive) {
+                delay(SCHEDULE_CHECK_MILLIS)
+                runCatching { coordinator.runScheduledMasterBackup() }
+                    .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+            }
+        }
     }
 
     /** Ordinary service stop: unintentional retirement (never an authenticated product STOP). */
@@ -101,6 +118,8 @@ internal class DesktopMasterServiceHost private constructor(
     }
 
     companion object {
+        private const val SCHEDULE_CHECK_MILLIS = 15L * 60 * 1000
+
         /** Fails closed (throws) unless this process is the packaged service with observed identity. */
         fun windows(): DesktopMasterServiceHost {
             val identity = DesktopWindowsServiceIdentity.TEST.target()

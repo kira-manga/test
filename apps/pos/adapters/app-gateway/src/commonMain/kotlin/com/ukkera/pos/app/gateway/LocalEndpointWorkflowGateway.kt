@@ -31,7 +31,9 @@ import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.DeferredReason
 import com.ukkera.pos.database.LocalMasterClient
 import com.ukkera.pos.database.LocalMasterClientResultAcceptance
+import com.ukkera.pos.database.LocalMasterChangesClient
 import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
+import com.ukkera.pos.database.LocalMasterLanBusinessRpcKeysV1
 import com.ukkera.pos.database.LocalMasterApprovalClient
 import com.ukkera.pos.database.LookupReply
 import com.ukkera.pos.database.MutationReply
@@ -61,9 +63,13 @@ import com.ukkera.pos.types.DomainId
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
@@ -138,6 +144,7 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
     private val readKeys: Set<ReadKey> = reads.toSet()
     init { require(commandKeys.size <= 128 && readKeys.size <= 128) }
     internal val isRestricted: Boolean get() = directoryProfile != null
+    internal val isLanBusiness: Boolean get() = directoryProfile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS
     internal val isSupplierOnly: Boolean get() = directoryProfile == LocalMasterRpcWorkflowProfile.SUPPLIERS
     internal val isWarehouseOnly: Boolean get() = directoryProfile == LocalMasterRpcWorkflowProfile.WAREHOUSES
     internal val isReportsOnly: Boolean get() = directoryProfile == LocalMasterRpcWorkflowProfile.REPORTS
@@ -160,11 +167,13 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
         LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL,
         LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS, LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
         LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS, LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
-        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING, null -> null
+        LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS, null -> null
     }
     internal fun has(command: CommandKey): Boolean = command in commandKeys
     internal fun has(read: ReadKey): Boolean = read in readKeys
     internal fun allows(action: LocalAction): Boolean = when (directoryProfile) {
+        LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> action in lanBusinessActions
         LocalMasterRpcWorkflowProfile.SUPPLIERS -> action in supplierConfigurationActions
         LocalMasterRpcWorkflowProfile.WAREHOUSES -> action == LocalAction.WAREHOUSE_CONFIGURE
         LocalMasterRpcWorkflowProfile.REPORTS -> false // Export has its own typed native audit workflow, not a generic action form.
@@ -183,6 +192,10 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
 
     internal fun requireWorkflow(query: LocalWorkflowQuery) {
         if (!isRestricted) return
+        if (isLanBusiness) {
+            requireLanBusinessWorkflow(query)
+            return
+        }
         if (isInvoiceCaptureOnly || isInvoiceMatchingOnly) {
             requireInvoiceReadWorkflow(query)
             return
@@ -236,7 +249,8 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
             LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL,
             LocalMasterRpcWorkflowProfile.FOOD_TABLE_ASSIGNMENTS, LocalMasterRpcWorkflowProfile.RETAIL_ORDERS,
             LocalMasterRpcWorkflowProfile.PAYMENT_CORRECTIONS, LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS,
-            LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING, null -> false
+            LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE, LocalMasterRpcWorkflowProfile.INVOICE_MATCHING,
+            LocalMasterRpcWorkflowProfile.LAN_BUSINESS, null -> false
         }
         if (!selected || query.reference?.let { configurationKind(it.kind) != directoryKind || it.parentId != null } == true ||
             query.pricePreview != null || query.branchReport != null || query.food != null || query.returns != null ||
@@ -274,6 +288,10 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
 
     internal fun requireIntent(intent: LocalCommandIntent) {
         if (!isRestricted) return
+        if (isLanBusiness) {
+            requireLanBusinessIntent(intent)
+            return
+        }
         if (isInvoiceCaptureOnly) {
             requireInvoiceCaptureIntent(intent)
             return
@@ -384,6 +402,10 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
     internal fun requireMutation(action: LocalAction, request: MutationRequest) {
         if (isReportsOnly) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
         if (!has(request.command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
+        if (isLanBusiness) {
+            requireLanBusinessMutation(action, request)
+            return
+        }
         if (isInvoiceCaptureOnly) {
             invoiceCaptureRequest(action, request)
             return
@@ -433,6 +455,11 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
 
     internal fun requireOriginal(entry: StoredClientIntentV1) {
         val profile = directoryProfile ?: return
+        if (isLanBusiness) {
+            if (!has(entry.request().command)) throw GatewayFailure(LocalServiceProblem.NOT_IMPLEMENTED)
+            requireLanBusinessOriginal(entry)
+            return
+        }
         if (isInvoiceCaptureOnly) {
             invoiceCaptureRequest(entry.localAction, entry.request())
             savedSupplierInvoiceCaptureRequest(entry)
@@ -485,6 +512,11 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
     }
 
     public companion object {
+        /** Fixed explicit LAN vocabulary, not capability negotiation or employee authority. */
+        public fun remoteBusiness(): LocalWorkflowInstallation = LocalWorkflowInstallation(
+            LocalMasterLanBusinessRpcKeysV1.commandKeys, LocalMasterLanBusinessRpcKeysV1.readKeys,
+            LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+
         /** Fixed bounded profile; shared configuration keys never install their other variants. */
         public fun directoryOnly(profile: LocalMasterRpcWorkflowProfile, supplierReferences: Boolean = false): LocalWorkflowInstallation = when (profile) {
             LocalMasterRpcWorkflowProfile.SUPPLIERS -> LocalWorkflowInstallation(
@@ -510,6 +542,8 @@ public class LocalWorkflowInstallation private constructor(commands: Set<Command
                 invoiceCaptureCommands, invoiceCaptureReads, profile)
             LocalMasterRpcWorkflowProfile.INVOICE_MATCHING -> LocalWorkflowInstallation(
                 invoiceMatchingCommands, invoiceMatchingReads, profile)
+            LocalMasterRpcWorkflowProfile.LAN_BUSINESS ->
+                throw IllegalArgumentException("LAN business requires its authenticated journal composition")
         }
 
         public fun supplierOnly(supplierReferences: Boolean = false): LocalWorkflowInstallation =
@@ -530,13 +564,17 @@ public class LocalEndpointWorkflowGateway(
     private val installed: LocalWorkflowInstallation,
     /** A same-endpoint composition capability, not authority or remote qualification. */
     private val actionApprovals: LocalMasterApprovalClient? = if (installed.isRestricted) null else endpoint as? LocalMasterApprovalClient,
-) : LocalWorkflowGateway {
+) : LocalWorkflowGateway, LocalWorkflowLiveViews {
     init {
         require(actionApprovals == null || actionApprovals === endpoint)
         require(!installed.isRestricted || actionApprovals == null)
     }
     private val approvalWorkflow = LocalActionApprovalWorkflow(actionApprovals, journal)
     private val documentDownloads = Mutex()
+    private val readViews: LocalWorkflowReadViewCoordinator? = (endpoint as? LocalMasterChangesClient)?.let { client ->
+        journal.readViews?.let { store -> LocalWorkflowReadViewCoordinator(client, store,
+            installed.directoryProfile ?: LocalMasterRpcWorkflowProfile.LAN_BUSINESS) }
+    }
 
     override suspend fun downloadPurchasingDocument(documentId: DomainId, files: LocalPurchasingDocumentFiles,
         isCurrent: () -> Boolean): LocalPurchasingDocumentDownloadResult = documentDownloads.withLock {
@@ -832,7 +870,7 @@ public class LocalEndpointWorkflowGateway(
 
     override suspend fun exportBranchReport(selection: LocalBranchReportExportSelection, files: LocalBranchReportFileDelivery,
         lifetime: LocalBranchReportExportLifetime, progress: (LocalBranchReportExportProgress) -> Unit): LocalBranchReportExportResult = reportExports.withLock {
-        if (installed.isRestricted && !installed.isReportsOnly)
+        if (installed.isRestricted && !installed.isReportsOnly && !installed.isLanBusiness)
             return@withLock LocalBranchReportExportResult.Unavailable(serviceProblem = LocalServiceProblem.NOT_IMPLEMENTED)
         try { withAccess { exportLocalBranchReport(it, selection, files, lifetime, progress) } }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -842,7 +880,7 @@ public class LocalEndpointWorkflowGateway(
 
     override suspend fun branchReportExports(files: LocalBranchReportFileDelivery, lifetime: LocalBranchReportExportLifetime,
         after: DomainId?): LocalBranchReportExportHistory = reportExports.withLock {
-        if (installed.isRestricted && !installed.isReportsOnly)
+        if (installed.isRestricted && !installed.isReportsOnly && !installed.isLanBusiness)
             return@withLock LocalBranchReportExportHistory.Unavailable(serviceProblem = LocalServiceProblem.NOT_IMPLEMENTED)
         try { withAccess { listLocalBranchReportExports(it, files, lifetime, after) } }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -852,7 +890,7 @@ public class LocalEndpointWorkflowGateway(
 
     override suspend fun recoverBranchReportExport(exportId: DomainId, files: LocalBranchReportFileDelivery,
         lifetime: LocalBranchReportExportLifetime): LocalBranchReportExportResult = reportExports.withLock {
-        if (installed.isRestricted && !installed.isReportsOnly)
+        if (installed.isRestricted && !installed.isReportsOnly && !installed.isLanBusiness)
             return@withLock LocalBranchReportExportResult.Unavailable(serviceProblem = LocalServiceProblem.NOT_IMPLEMENTED, exportId = exportId)
         try { withAccess { recoverLocalBranchReportExport(it, exportId, files, lifetime) } }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -862,21 +900,59 @@ public class LocalEndpointWorkflowGateway(
 
     override public suspend fun read(query: LocalWorkflowQuery): LocalReadResult = journal.requests.withLock {
         try { withAccess { access ->
-            val page = if (installed.isCustomerReceiptsOnly) {
-                installed.requireWorkflow(query)
-                customerReceiptWorkflow(access, query)
-            } else if (installed.isFoodCashFinancialOnly) {
-                installed.requireWorkflow(query)
-                foodCashFinancialWorkflow(access, query)
-            } else if (installed.isFoodChecksOnly) {
-                installed.requireWorkflow(query)
-                foodCheckWorkflow(access, query)
-            } else readLocalWorkflow(access, query)
+            val page = readViews?.read(access, query, ::readPage) ?: readPage(access, query)
             LocalReadResult.Available(page)
         } }
-        catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: GatewayFailure) { LocalReadResult.Unavailable(failure.problem) }
-        catch (_: Exception) { LocalReadResult.Unavailable(LocalServiceProblem.UNAVAILABLE) }
+        catch (cancelled: CancellationException) { invalidateAfterReadFailure(); throw cancelled }
+        catch (failure: GatewayFailure) { invalidateAfterReadFailure(); LocalReadResult.Unavailable(failure.problem) }
+        catch (_: Exception) { invalidateAfterReadFailure(); LocalReadResult.Unavailable(LocalServiceProblem.UNAVAILABLE) }
+    }
+
+    private suspend fun readPage(access: GatewayAccess, query: LocalWorkflowQuery): LocalWorkflowPage =
+        if (installed.isCustomerReceiptsOnly) {
+            installed.requireWorkflow(query)
+            customerReceiptWorkflow(access, query)
+        } else if (installed.isFoodCashFinancialOnly) {
+            installed.requireWorkflow(query)
+            foodCashFinancialWorkflow(access, query)
+        } else if (installed.isFoodChecksOnly) {
+            installed.requireWorkflow(query)
+            foodCheckWorkflow(access, query)
+        } else readLocalWorkflow(access, query)
+
+    override public fun readUpdates(query: LocalWorkflowQuery): Flow<LocalWorkflowReadUpdate> = flow {
+        val views = readViews ?: return@flow
+        // Bounded repair polling; hints are optional and no delivery-latency promise is inferred.
+        while (currentCoroutineContext().isActive) {
+            delay(1_000)
+            val update = journal.requests.withLock {
+                try { withAccess { access -> views.poll(access, query, ::readPage) } }
+                catch (cancelled: CancellationException) { invalidateAfterReadFailure(); throw cancelled }
+                catch (failure: GatewayFailure) {
+                    com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                        com.ukkera.pos.database.LocalMasterRpcReadStage.QUERY_EXECUTION, failure)
+                    invalidateAfterReadFailure()
+                    if (failure.problem == LocalServiceProblem.READ_RESTART_REQUIRED) LocalWorkflowReadUpdate.RestartRequired
+                    else LocalWorkflowReadUpdate.Unavailable(failure.problem)
+                }
+                catch (failure: Exception) {
+                    com.ukkera.pos.database.reportLocalMasterRpcReadFailure(
+                        com.ukkera.pos.database.LocalMasterRpcReadStage.QUERY_EXECUTION, failure)
+                    invalidateAfterReadFailure()
+                    LocalWorkflowReadUpdate.Unavailable(LocalServiceProblem.UNAVAILABLE)
+                }
+            }
+            currentCoroutineContext().ensureActive()
+            update?.let { emit(it) }
+        }
+    }
+
+    override public suspend fun invalidateReadViews(): Unit = journal.requests.withLock { invalidateAfterReadFailure() }
+
+    private suspend fun invalidateAfterReadFailure(): Unit = withContext(NonCancellable) {
+        // Failure to erase a disposable cache must never revive or expose its data. Every
+        // subsequent use still requires a current protected Master read and this exact lifetime.
+        try { readViews?.invalidate() } catch (_: Exception) { /* cache remains unusable */ }
     }
 
     override suspend fun references(query: LocalReferenceQuery): LocalReferenceResult = journal.requests.withLock {
@@ -887,7 +963,7 @@ public class LocalEndpointWorkflowGateway(
     }
 
     override suspend fun previewFood(input: LocalFoodPreviewInput): LocalFoodPricePreviewResult {
-        if (installed.isRestricted && !installed.isFoodChecksOnly)
+        if (installed.isRestricted && !installed.isFoodChecksOnly && !installed.isLanBusiness)
             return LocalFoodPricePreviewResult.Unavailable(LocalServiceProblem.NOT_IMPLEMENTED)
         // Snapshot before waiting for another action. LocalInputLine has identity equality;
         // the structural comparison also rejects edits while the protected reads are awaited.
@@ -898,7 +974,7 @@ public class LocalEndpointWorkflowGateway(
                 if (!selection.sameSelection(input)) invalid()
                 val result = withAccess { access ->
                     if (!selection.sameSelection(input)) invalid()
-                    val preview = if (installed.isFoodChecksOnly) previewFoodCheckSelection(access, selection)
+                    val preview = if (installed.isFoodChecksOnly || installed.isLanBusiness) previewFoodCheckSelection(access, selection)
                         else previewLocalFoodSelection(access, selection)
                     access.checkCurrent()
                     if (!selection.sameSelection(input)) invalid()
@@ -1136,9 +1212,10 @@ public class LocalEndpointWorkflowGateway(
     }
 
     private fun pendingOriginal(entry: StoredClientIntentV1, submitAllowed: Boolean): LocalPendingOperation =
-        if (installed.isFoodCashFinancialOnly) foodCashFinancialPending(entry, submitAllowed) else pendingEntry(entry, submitAllowed)
+        if (installed.isFoodCashFinancialOnly || installed.isLanBusiness && entry.localAction in foodCashFinancialActions)
+            foodCashFinancialPending(entry, submitAllowed) else pendingEntry(entry, submitAllowed)
 
-    private fun sqlFoodOriginalApply(entry: StoredClientIntentV1): Boolean = installed.isFoodCashFinancialOnly &&
+    private fun sqlFoodOriginalApply(entry: StoredClientIntentV1): Boolean = (installed.isFoodCashFinancialOnly || installed.isLanBusiness) &&
         entry.localAction == LocalAction.FOOD_PAYMENT_APPLY && entry.formVersion == 1 &&
         savedFoodCashFinancialRequest(entry) is LocalFoodCashFinancialOriginal.ApplyOriginal
 
@@ -1163,12 +1240,14 @@ public class LocalEndpointWorkflowGateway(
         // Validate the exact typed outcome before retaining, exposing or acknowledging it.
         // Matching actor/operation identity alone cannot establish the reviewed destination/CAS.
         if (installed.isStockTransfersOnly) stockTransferRecorded(entry, reply)
-        if (installed.isKitchenOnly) kitchenStationRecorded(entry, reply)
+        if (installed.isKitchenOnly || installed.isLanBusiness && entry.localAction in kitchenStationActions) kitchenStationRecorded(entry, reply)
         if (installed.isFoodChecksOnly) foodCheckRecorded(entry, reply)
         if (installed.isFoodCashFinancialOnly) foodCashFinancialRecorded(entry, reply)
         if (installed.isFoodTableAssignmentsOnly && reply.sequence.value == 0L)
             throw GatewayFailure(LocalServiceProblem.STORAGE_UNCERTAIN)
-        if (installed.isRetailOrdersOnly) retailOrderRecorded(entry, reply)
+        if (installed.isRetailOrdersOnly || installed.isLanBusiness && entry.localAction in retailOrderActions)
+            retailOrderRecorded(entry, reply)
+        if (installed.isLanBusiness && entry.localAction in lanCollectionActions) lanCollectionRecorded(entry, reply)
         if (entry.localAction == LocalAction.RETAIL_CUSTOMER_RECEIPT ||
             CommandKey(entry.commandName, entry.commandVersion) == LocalRetailCustomerReceiptCodec.COMMAND)
             customerReceiptRecorded(entry, reply)
@@ -1291,13 +1370,17 @@ internal class GatewayAccess(
     val installed: LocalWorkflowInstallation,
     val actionApprovalsBound: Boolean = false,
     private val retainForReceipt: (suspend (GatewayAccess, StoredClientIntentV1, MutationReply.Recorded) -> Unit)? = null,
+    private val readOverride: (suspend (ReadRequest) -> ReadReply.Data)? = null,
 ) {
+    fun withReadOverride(reader: suspend (ReadRequest) -> ReadReply.Data): GatewayAccess = GatewayAccess(
+        endpoint, lease, view, installed, actionApprovalsBound, retainForReceipt, reader)
     suspend fun checkCurrent() {
         currentCoroutineContext().ensureActive()
         if (!lease.isCurrent()) throw GatewayFailure(LocalServiceProblem.SESSION_ENDED)
     }
     suspend fun read(request: ReadRequest): ReadReply.Data {
         checkCurrent()
+        readOverride?.let { reader -> return reader(request).also { checkCurrent() } }
         installed.requireRead(request)
         val reply = endpoint.read(lease.credentials, request)
         checkCurrent()
@@ -1321,10 +1404,48 @@ internal class GatewayAccess(
         checkCurrent()
         requireOriginal(entry)
         val retention = retainForReceipt
-        val result = if (endpoint is LocalMasterClientResultAcceptance && retention != null)
-            endpoint.executeAccepting(lease.credentials, request) { reply -> retention(this, entry, reply) }
-        else endpoint.execute(lease.credentials, request)
-        return result
+        return try {
+            if (endpoint is LocalMasterClientResultAcceptance && retention != null)
+                endpoint.executeAccepting(lease.credentials, request) { reply -> retention(this, entry, reply) }
+            else endpoint.execute(lease.credentials, request)
+        } catch (failure: dev.p2pkit.rpc.RpcFailure) {
+            if (failure.executionEvidence !in setOf(dev.p2pkit.rpc.RpcExecutionEvidence.MayHaveExecuted,
+                    dev.p2pkit.rpc.RpcExecutionEvidence.HandlerFinished) ||
+                failure.kind !in setOf(dev.p2pkit.rpc.RpcFailureKind.DeadlineExceeded, dev.p2pkit.rpc.RpcFailureKind.UnknownOutcome))
+                throw failure
+            // The saved request remains dispatched. A second current-authorized read may
+            // recover its exact original; no retry, replacement operation or effect is made.
+            checkCurrent()
+            when (val recovered = recoverDispatchedOriginal(entry)) {
+                is LookupReply.Found -> if (recovered.result.operationId == entry.operationId &&
+                    recovered.result.originalActorId == entry.owner.actorId) recovered.result
+                    else MutationReply.Deferred(entry.operationId, DeferredReason.STORAGE_UNCERTAIN)
+                is LookupReply.Deferred -> MutationReply.Deferred(entry.operationId,
+                    if (recovered.operationId == entry.operationId) recovered.reason else DeferredReason.STORAGE_UNCERTAIN)
+                // A conflicting lookup is not a new execution outcome. Keep its
+                // already-dispatched original unresolved; only the kernel records conflicts.
+                is LookupReply.IdentityConflict -> MutationReply.Deferred(entry.operationId, DeferredReason.STORAGE_UNCERTAIN)
+                is LookupReply.AbsentAtCurrentWriter -> MutationReply.Deferred(entry.operationId, DeferredReason.STORAGE_UNCERTAIN)
+            }
+        }
+    }
+
+    /** Only reads retry: an accepted command is never submitted a second time here.
+     * A currentness cut, concrete refusal or uncertain local persistence stops recovery. */
+    private suspend fun recoverDispatchedOriginal(entry: StoredClientIntentV1): LookupReply {
+        for (attempt in 0 until 3) {
+            checkCurrent()
+            try { return lookup(entry) }
+            catch (failure: dev.p2pkit.rpc.RpcFailure) {
+                if (attempt == 2 || failure.executionEvidence !in setOf(
+                        dev.p2pkit.rpc.RpcExecutionEvidence.MayHaveExecuted,
+                        dev.p2pkit.rpc.RpcExecutionEvidence.HandlerFinished) ||
+                    failure.kind !in setOf(dev.p2pkit.rpc.RpcFailureKind.DeadlineExceeded,
+                        dev.p2pkit.rpc.RpcFailureKind.UnknownOutcome)) throw failure
+                kotlinx.coroutines.delay(250)
+            }
+        }
+        error("Original recovery bound exhausted")
     }
 
     fun requireOriginal(entry: StoredClientIntentV1) {
@@ -1402,12 +1523,14 @@ internal class GatewayAccess(
 
     suspend fun canContinue(entry: StoredClientIntentV1): Boolean {
         requireOriginal(entry)
-        val sqlOriginalApply = installed.isFoodCashFinancialOnly && entry.localAction == LocalAction.FOOD_PAYMENT_APPLY &&
+        val sqlOriginalApply = (installed.isFoodCashFinancialOnly || installed.isLanBusiness) && entry.localAction == LocalAction.FOOD_PAYMENT_APPLY &&
             entry.formVersion == 1 && savedFoodCashFinancialRequest(entry) is LocalFoodCashFinancialOriginal.ApplyOriginal
         return (entry.localAction !in physicalActions || sqlOriginalApply) && entry.recorded == null && !entry.acknowledged &&
             installed.has(CommandKey(entry.commandName, entry.commandVersion)) && when {
-                installed.isFoodCashFinancialOnly -> foodCashFinancialContinuationHint(this, entry)
-                installed.isFoodChecksOnly -> foodCheckContinuationHint(this, entry)
+                installed.isFoodCashFinancialOnly || installed.isLanBusiness && entry.localAction in foodCashFinancialActions ->
+                    foodCashFinancialContinuationHint(this, entry)
+                installed.isFoodChecksOnly || installed.isLanBusiness && entry.localAction in foodCheckActions ->
+                    foodCheckContinuationHint(this, entry)
                 else -> continuationHint(this, entry)
             }
     }

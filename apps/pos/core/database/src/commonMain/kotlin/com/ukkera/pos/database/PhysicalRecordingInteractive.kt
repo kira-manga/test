@@ -31,6 +31,17 @@ public class LocalMasterPhysicalActions internal constructor(
         lifetime: PhysicalInteractiveRequestLifetime): PhysicalFreshStartReply =
         endpoint.startPhysicalInstruction(credentials, request, lifetime)
 
+    internal fun remoteAction(request: MutationRequest): PhysicalRecordingAction? = store.remotePhysicalAction(request)
+
+    /** Exact native-linked continuation only, through the existing protected owned worker.
+     * Begin's actual Host invocation is already retained by the same installed native gate. */
+    internal suspend fun retainLinkedResolution(credentials: LocalGatewayCredentials,
+        request: MutationRequest): MutationReply {
+        if (store.remotePhysicalAction(request) != PhysicalRecordingAction.RETAIN_RESOLUTION)
+            return MutationReply.Deferred(request.operationId, DeferredReason.PHYSICAL_RECORDING_HELD)
+        return endpoint.execute(credentials, request)
+    }
+
     public suspend fun publishInstruction(credentials: LocalGatewayCredentials, offer: PhysicalInstructionOffer,
         lifetime: PhysicalInteractiveRequestLifetime): PhysicalInstructionReply =
         endpoint.publishPhysicalInstruction(credentials, offer, lifetime)
@@ -94,6 +105,9 @@ public class PhysicalPublishedInstruction internal constructor(
     /** Necessary-only live sampling of the SAME security-owned continuity source. */
     public fun deliverableTo(original: PhysicalInteractiveRequestLifetime): Boolean =
         binding.lifetime.registry.deliverable(this, original)
+
+    /** DATA only from this SAME adopted publication's immutable original access/business ceiling. */
+    public fun remoteOriginalValidityMillis(): Long? = binding.lifetime.registry.remoteOriginalValidityMillis(this)
 
     /** Association only, not an alternative take/adoption/capacity entry point. */
     public fun matchesNativePreparation(binding: PhysicalInstructionNativeBinding): Boolean =

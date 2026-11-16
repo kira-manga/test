@@ -36,6 +36,16 @@ sealed interface LocalRetailPhysicalRequest {
         val phase: LocalRetailObservationPhase) : LocalRetailPhysicalRequest
     data class FoodRefundResolve(val originalRecordingOperationId: OperationId,
         val observation: LocalRetailObservation) : LocalRetailPhysicalRequest
+    data class FoodRefundSupervisorReview(val originalRecordingOperationId: OperationId) : LocalRetailPhysicalRequest
+    data class FoodRefundSupervisorApply(val reviewOperationId: OperationId,
+        val phase: LocalRetailObservationPhase) : LocalRetailPhysicalRequest
+    data class FoodRefundSupervisorResolve(val reviewOperationId: OperationId,
+        val observation: LocalRetailObservation) : LocalRetailPhysicalRequest
+    data class SupplierSupervisorReview(val originalRecordingOperationId: OperationId) : LocalRetailPhysicalRequest
+    data class SupplierSupervisorApply(val reviewOperationId: OperationId,
+        val phase: LocalRetailObservationPhase) : LocalRetailPhysicalRequest
+    data class SupplierSupervisorResolve(val reviewOperationId: OperationId,
+        val observation: LocalRetailObservation) : LocalRetailPhysicalRequest
     data class Apply(val recordingOperationId: OperationId, val phase: LocalRetailObservationPhase,
         val subject: LocalPaymentSubject = LocalPaymentSubject.RETAIL) : LocalRetailPhysicalRequest
     data class SupervisorReview(val recordingOperationId: OperationId,

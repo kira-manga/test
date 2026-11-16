@@ -25,6 +25,10 @@ internal class RoomRuntimeHistoryFrame internal constructor(
 ) {
     private enum class Phase { NEW, BODY, PREPARING, PREPARED, FINISHED, CLOSED }
     private var phase = Phase.NEW
+    // Wake hint only. The owner publishes it only after actual native COMMITTED
+    // settlement; a receiver must still acquire its own fresh protected census.
+    internal var containsAdmissionImage: Boolean = false
+        private set
     internal lateinit var coroutineContext: CoroutineContext
         private set
     internal val originalParent: NativeHistoryRecordedHeadV2 get() = checkNotNull(native.original.record.parent)
@@ -285,6 +289,32 @@ internal class RoomRuntimeHistoryFrame internal constructor(
     /** Source-only native refusal read on this actual, still unmutated employee writer loan.
      * A complete original startup and serialized custody are necessary eligibility gates,
      * not a substitute for the full immutable tail/row/original authentication below. */
+    internal suspend fun financialOriginalSources(caller: TransactionView,
+        operationId: OperationId): RuntimeHistoricalFinancialSources? {
+        requireClosedRejectedSourceRead(caller)
+        val reader = RoomClosedRejectedOriginalSources(this, caller, operationId)
+        return try { reader.readFinancial() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            try { if (runtimeHistoryCaptureDiagnosticsEnabled()) reportRuntimeHistoryLoanFailure(failure) } catch (_: Throwable) { }
+            null
+        }
+        finally { reader.clear(); requireClosedRejectedSourceRead(caller) }
+    }
+
+    internal suspend fun cashConfigurationOriginalSources(caller: TransactionView,
+        operationId: OperationId): RuntimeHistoricalCashConfigurationSources? {
+        requireClosedRejectedSourceRead(caller)
+        val reader = RoomClosedRejectedOriginalSources(this, caller, operationId)
+        return try { reader.readCashConfigurationAncestor() }
+        catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            try { if (runtimeHistoryCaptureDiagnosticsEnabled()) reportRuntimeHistoryLoanFailure(failure) } catch (_: Throwable) { }
+            null
+        }
+        finally { reader.clear(); requireClosedRejectedSourceRead(caller) }
+    }
+
     internal suspend fun foodCheckRejectedOriginalSources(caller: TransactionView,
         operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? {
         requireClosedRejectedSourceRead(caller)
@@ -821,6 +851,7 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         }
         // Only actual participating protected sealing supplies these hashes. This borrows
         // the writer's buffer and neither retains nor clears plaintext/credential bytes.
+        if (binding.key is ProtectedLocalRecordKey.Admission) containsAdmissionImage = true
     }
     internal fun beginSessionRevocation(capture: RuntimeSessionRevocationHistoryCapture) {
         body(); requireNoApprovalRetirement()

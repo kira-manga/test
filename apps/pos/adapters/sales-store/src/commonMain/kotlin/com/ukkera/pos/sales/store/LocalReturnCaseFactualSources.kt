@@ -87,8 +87,21 @@ public class LocalReturnCaseFactualCutV1 internal constructor(
  */
 public object LocalReturnCaseFactualSourcesV1 {
     /** Borrowed genuine writer view only. Missing, damaged or unsupported sources throw. */
-    public suspend fun read(view: CommandReadView, saleId: DomainId): LocalReturnCaseFactualCutV1 {
+    public suspend fun read(view: CommandReadView, saleId: DomainId): LocalReturnCaseFactualCutV1 =
+        read(view, readReturnSaleSource(view, saleId))
+
+    /**
+     * Null only when the genuine original sale carries no captured return-policy companion
+     * (legacy or non-retail profile): such a sale is never backfilled with today's policy.
+     * A captured sale still requires every receipt/capture source, or throws.
+     */
+    public suspend fun readCaptured(view: CommandReadView, saleId: DomainId): LocalReturnCaseFactualCutV1? {
         val sale = readReturnSaleSource(view, saleId)
+        return if (sale.returnPolicyCapture == null) null else read(view, sale)
+    }
+
+    private suspend fun read(view: CommandReadView, sale: LocalReturnSaleCut): LocalReturnCaseFactualCutV1 {
+        val saleId = sale.sale.value.id
         val original = readRetailCustomerReceiptOriginalSource(view, saleId)
         val head = findRetailCustomerReceiptHead(view, original)
         val capture = sale.returnPolicyCapture?.let { row ->

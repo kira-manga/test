@@ -74,16 +74,17 @@ internal suspend fun orderWorkflow(access: GatewayAccess, query: LocalWorkflowQu
         val profile = result.stockProfiles[orderId]
         val version = orderFormVersion(access, profile)
         if (version != null) {
-            if (incoming && query.workflow == LocalWorkflow.ORDERS && order.handoffId != null && access.allow(LocalAction.ORDER_ACCEPT_HANDOFF, orderId))
+            val handoffInstalled = !access.installed.isLanBusiness || version == 2
+            if (handoffInstalled && incoming && query.workflow == LocalWorkflow.ORDERS && order.handoffId != null && access.allow(LocalAction.ORDER_ACCEPT_HANDOFF, orderId))
                 forms += form(LocalAction.ORDER_ACCEPT_HANDOFF, base + listOf(idField(LocalField.HANDOFF_ID, order.handoffId), newIdField(LocalField.EVIDENCE_ID), instantField(LocalField.OCCURRED_AT)), version = version)
             else if (!incoming && order.collectionId == null && order.saleId == null) {
                 if (order.handoffId == null && access.allow(LocalAction.ORDER_REPLACE, orderId)) orderSelectionForm(access, version, order)?.let(forms::add)
                 if (query.workflow == LocalWorkflow.ORDERS) {
-                    if (order.handoffId == null && access.allow(LocalAction.ORDER_OFFER_HANDOFF, orderId)) forms += form(LocalAction.ORDER_OFFER_HANDOFF,
+                    if (handoffInstalled && order.handoffId == null && access.allow(LocalAction.ORDER_OFFER_HANDOFF, orderId)) forms += form(LocalAction.ORDER_OFFER_HANDOFF,
                         base + listOf(newIdField(LocalField.HANDOFF_ID), idField(LocalField.RECIPIENT_ID), newIdField(LocalField.EVIDENCE_ID), instantField(LocalField.OCCURRED_AT)),
                         text("An offer only: the named employee must separately authenticate and accept. Ownership is not silently reassigned.",
                             "عرض فقط: يجب على الموظف المقصود تسجيل الدخول والقبول بشكل منفصل. لا تُنقل الملكية ضمنيًا."), version = version)
-                    if (order.handoffId != null && access.allow(LocalAction.ORDER_CANCEL_HANDOFF, orderId)) forms += form(LocalAction.ORDER_CANCEL_HANDOFF,
+                    if (handoffInstalled && order.handoffId != null && access.allow(LocalAction.ORDER_CANCEL_HANDOFF, orderId)) forms += form(LocalAction.ORDER_CANCEL_HANDOFF,
                         base + idField(LocalField.HANDOFF_ID, order.handoffId), version = version)
                 }
             }

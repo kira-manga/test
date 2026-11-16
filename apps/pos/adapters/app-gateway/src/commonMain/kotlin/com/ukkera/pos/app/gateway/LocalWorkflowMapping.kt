@@ -74,6 +74,8 @@ internal suspend fun prepareLocalIntent(access: GatewayAccess, intent: LocalComm
         LocalAction.RETAIL_CUSTOMER_RECEIPT -> prepareCustomerReceipt(access, intent)
         in floorConfigurationActions -> prepareFoodFloor(access, intent)
         LocalAction.CASH_ADD_CLOSE_NOTE -> prepareCashCloseNote(access, intent)
+        in safeFloatActions -> prepareSafeFloat(access, intent)
+        LocalAction.RETURN_EXCHANGE_APPLY -> prepareExchange(access, intent)
         LocalAction.PAYMENT_CLASSIFICATION_CORRECT -> preparePaymentCorrection(access, intent)
         LocalAction.ORDER_REASSIGN -> prepareManagerReassignment(access, intent)
         in cashActions -> prepareCash(access, intent)
@@ -98,6 +100,8 @@ internal suspend fun prepareLocalIntent(access: GatewayAccess, intent: LocalComm
         LocalAction.FOOD_ASSIGN_TABLE -> tableAssignmentIntentSummary(request)
         LocalAction.RETAIL_CUSTOMER_RECEIPT -> customerReceiptIntentSummary(request)
         LocalAction.CASH_ADD_CLOSE_NOTE -> cashCloseNoteSummary(request)
+        in safeFloatActions -> safeFloatSummary(request)
+        LocalAction.RETURN_EXCHANGE_APPLY -> exchangeSummary(request)
         LocalAction.PAYMENT_CLASSIFICATION_CORRECT -> paymentCorrectionSummary(request)
         in foodActions -> foodIntentSummary(intent,
             if (intent.action == LocalAction.FOOD_CREATE_DRAFT) savedFoodDraft(request) ?: unavailable() else null)
@@ -196,10 +200,14 @@ internal fun normalizeLocalRequest(key: CommandKey, body: StoredBytes): StoredBy
     LocalFoodFloorProfileV1.COMMAND -> LocalFoodFloorCodecV1.encode(LocalFoodFloorCodecV1.decode(body))
     LocalOpeningSupplierObligationProfile.COMMAND -> LocalOpeningSupplierObligationCodec.normalize(body)
     LocalSupplierCashProfile.COMMAND -> LocalSupplierCashCodec.normalize(body)
+    LocalSupplierCashSupervisorCodec.COMMAND -> LocalSupplierCashSupervisorCodec.normalize(body)
     LocalCashCloseNoteCodec.COMMAND -> LocalCashCloseNoteCodec.normalize(body)
+    LocalSafeFloatCodec.COMMAND -> LocalSafeFloatCodec.normalize(body)
+    LocalExchangeCodec.COMMAND -> LocalExchangeCodec.normalize(body)
     LocalPaymentCorrectionCodec.COMMAND -> LocalPaymentCorrectionCodec.normalize(body)
     LocalFoodPaymentProfile.COMMAND -> LocalFoodPaymentCodec.normalize(body)
     LocalFoodRefundProfile.COMMAND -> LocalFoodRefundCodec.normalize(body)
+    LocalFoodRefundSupervisorCodec.COMMAND -> LocalFoodRefundSupervisorCodec.normalize(body)
     LocalFoodPaymentSupervisorCodec.COMMAND -> LocalFoodPaymentSupervisorCodec.normalize(body)
     LocalFoodFinancialProfileV1.COMMAND -> LocalFoodFinancialCodecV1.normalize(body)
     LocalReturnCaseProfileV1.COMMAND -> LocalReturnCaseCommandCodecV1.normalize(body)
@@ -281,9 +289,9 @@ internal fun actionMatches(action: LocalAction, request: MutationRequest): Boole
         action == floorConfigurationAction(LocalFoodFloorCodecV1.decode(request.payload))
     LocalOpeningSupplierObligationProfile.COMMAND -> request.actionApprovalId == null &&
         action == LocalAction.SUPPLIER_OPENING_RECORD && LocalOpeningSupplierObligationCodec.normalize(request.payload) == request.payload
-    LocalSupplierCashProfile.COMMAND -> action in supplierPhysicalActions &&
+    LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND -> action in supplierPhysicalActions &&
         normalizeLocalRequest(request.command, request.payload) == request.payload && supplierPhysicalRequestAction(request) == action
-    LocalFoodRefundProfile.COMMAND -> action in foodRefundActions &&
+    LocalFoodRefundProfile.COMMAND, LocalFoodRefundSupervisorCodec.COMMAND -> action in foodRefundActions &&
         normalizeLocalRequest(request.command, request.payload) == request.payload && foodRefundRequestAction(request) == action
     LocalFoodPaymentProfile.COMMAND, LocalFoodPaymentSupervisorCodec.COMMAND -> action in foodPhysicalActions &&
         normalizeLocalRequest(request.command, request.payload) == request.payload && foodPhysicalRequestAction(request) == action
@@ -293,6 +301,10 @@ internal fun actionMatches(action: LocalAction, request: MutationRequest): Boole
         action == LocalAction.PAYMENT_CLASSIFICATION_CORRECT && LocalPaymentCorrectionCodec.normalize(request.payload) == request.payload
     LocalCashCloseNoteCodec.COMMAND -> request.actionApprovalId == null && action == LocalAction.CASH_ADD_CLOSE_NOTE &&
         LocalCashCloseNoteCodec.normalize(request.payload) == request.payload
+    LocalExchangeCodec.COMMAND -> exchangeRequestValid(request, action)
+    LocalSafeFloatCodec.COMMAND -> request.actionApprovalId == null && action in safeFloatActions &&
+        LocalSafeFloatCodec.normalize(request.payload) == request.payload &&
+        safeFloatAction(LocalSafeFloatCodec.decode(request.payload)) == action
     LocalFoodFinancialProfileV1.COMMAND -> request.actionApprovalId == null &&
         action == foodFinancialAction(LocalFoodFinancialCodecV1.decode(request.payload))
     LocalReturnCaseProfileV1.COMMAND -> request.actionApprovalId == null &&
@@ -309,15 +321,15 @@ internal fun actionMatches(action: LocalAction, request: MutationRequest): Boole
             LocalSupplierSettlementProfile.ALLOCATE_ADVANCE -> LocalAction.SUPPLIER_ADVANCE_ALLOCATE
             else -> unavailable()
         }
-    LocalCollectionStockCodecV2.COMMAND -> request.actionApprovalId == null && action == when (LocalCollectionStockCodecV2.decode(request.payload)) {
-        is LocalCollectionStockRequestV2.CreateOrder -> LocalAction.ORDER_CREATE
-        is LocalCollectionStockRequestV2.ReplaceUnlockedOrder -> LocalAction.ORDER_REPLACE
-        is LocalCollectionStockRequestV2.OfferHandoff -> LocalAction.ORDER_OFFER_HANDOFF
-        is LocalCollectionStockRequestV2.CancelHandoff -> LocalAction.ORDER_CANCEL_HANDOFF
-        is LocalCollectionStockRequestV2.AcceptHandoff -> LocalAction.ORDER_ACCEPT_HANDOFF
-        is LocalCollectionStockRequestV2.ReassignOrder -> LocalAction.ORDER_REASSIGN
-        is LocalCollectionStockRequestV2.Begin -> LocalAction.COLLECTION_PREPARE
-        is LocalCollectionStockRequestV2.Finalize -> LocalAction.SALE_FINALIZE
+    LocalCollectionStockCodecV2.COMMAND -> request.actionApprovalId == null && when (LocalCollectionStockCodecV2.decode(request.payload)) {
+        is LocalCollectionStockRequestV2.CreateOrder -> action == LocalAction.ORDER_CREATE
+        is LocalCollectionStockRequestV2.ReplaceUnlockedOrder -> action == LocalAction.ORDER_REPLACE
+        is LocalCollectionStockRequestV2.OfferHandoff -> action == LocalAction.ORDER_OFFER_HANDOFF
+        is LocalCollectionStockRequestV2.CancelHandoff -> action == LocalAction.ORDER_CANCEL_HANDOFF
+        is LocalCollectionStockRequestV2.AcceptHandoff -> action == LocalAction.ORDER_ACCEPT_HANDOFF
+        is LocalCollectionStockRequestV2.ReassignOrder -> action == LocalAction.ORDER_REASSIGN
+        is LocalCollectionStockRequestV2.Begin -> action == LocalAction.COLLECTION_PREPARE || action == LocalAction.RETAIL_COLLECTION_BEGIN
+        is LocalCollectionStockRequestV2.Finalize -> action == LocalAction.SALE_FINALIZE
     }
     LocalStockRelationalProfileV2.COMMAND -> request.actionApprovalId == null && when (val value = LocalStockRelationalCommandsV2.decode(request.payload)) {
         is LocalStockRelationalCommand.Receive -> value.operationId == request.operationId && action ==
@@ -413,9 +425,11 @@ internal fun actionPermission(action: LocalAction): Permission? {
         LocalAction.PAYMENT_CLASSIFICATION_CORRECT -> SecurityAction.PAYMENT_CLASSIFICATION_CORRECT
         in floorConfigurationActions -> SecurityAction.FLOOR_CONFIGURE
         LocalAction.SUPPLIER_CASH_START, LocalAction.SUPPLIER_CASH_APPLY -> SecurityAction.SUPPLIER_CASH_SETTLE
-        LocalAction.SUPPLIER_CASH_RESOLUTION, LocalAction.SUPPLIER_CASH_RESOLUTION_APPLY -> SecurityAction.SUPPLIER_CASH_RESOLVE
+        LocalAction.SUPPLIER_CASH_RESOLUTION, LocalAction.SUPPLIER_CASH_RESOLUTION_APPLY,
+        LocalAction.SUPPLIER_CASH_SUPERVISOR_REVIEW, LocalAction.SUPPLIER_CASH_SUPERVISOR_APPLY -> SecurityAction.SUPPLIER_CASH_RESOLVE
         LocalAction.FOOD_REFUND_START, LocalAction.FOOD_REFUND_APPLY -> SecurityAction.REFUND_RECORD
-        LocalAction.FOOD_REFUND_RESOLUTION, LocalAction.FOOD_REFUND_RESOLUTION_APPLY -> SecurityAction.REFUND_RESOLVE
+        LocalAction.FOOD_REFUND_RESOLUTION, LocalAction.FOOD_REFUND_RESOLUTION_APPLY,
+        LocalAction.FOOD_REFUND_SUPERVISOR_REVIEW, LocalAction.FOOD_REFUND_SUPERVISOR_APPLY -> SecurityAction.REFUND_RESOLVE
         in foodResolutionActions -> SecurityAction.COLLECTION_RESOLVE
         in foodPhysicalActions -> SecurityAction.COLLECTION_ATTEST
         in foodFinancialActions -> foodFinancialSecurity(action)
@@ -426,7 +440,8 @@ internal fun actionPermission(action: LocalAction): Permission? {
         LocalAction.CASH_RECORD_COUNT, LocalAction.CASH_SUBMIT_COUNTED -> SecurityAction.CASH_CLOSE
         LocalAction.CASH_REVIEW_CLOSE, LocalAction.CASH_ADD_CLOSE_NOTE -> SecurityAction.CASH_REVIEW
         LocalAction.CASH_DROP_TO_SAFE, LocalAction.CASH_DELIVER_COUNTED -> SecurityAction.CASH_TRANSFER
-        LocalAction.CASH_RECEIVE_SAFE -> SecurityAction.CASH_RECEIVE
+        LocalAction.CASH_RECEIVE_SAFE, LocalAction.CASH_RECEIVE_SAFE_FLOAT -> SecurityAction.CASH_RECEIVE
+        LocalAction.CASH_ISSUE_SAFE_FLOAT, LocalAction.CASH_RECALL_SAFE_FLOAT -> SecurityAction.CASH_TRANSFER
         LocalAction.CASH_NON_SALE -> SecurityAction.CASH_MOVE
         LocalAction.ORDER_CREATE -> SecurityAction.ORDER_CREATE
         LocalAction.ORDER_REPLACE -> SecurityAction.ORDER_EDIT
@@ -436,6 +451,7 @@ internal fun actionPermission(action: LocalAction): Permission? {
         LocalAction.SALE_FINALIZE -> SecurityAction.COLLECTION_FINALIZE
         in stockActions, in unpricedArrivalActions, LocalAction.COUNT_APPROVE_SURPLUS,
         LocalAction.RETURN_STOCK_POST -> SecurityAction.INVENTORY_ADJUST
+        LocalAction.RETURN_EXCHANGE_APPLY -> SecurityAction.REFUND_RECORD
         in branchPriceActions -> SecurityAction.BRANCH_PRICE_EDIT
         in pricingAdministrationActions -> SecurityAction.CATALOG_ACTIVATE
         LocalAction.CATALOG_ACTIVATE, LocalAction.CATALOG_RELEASE_ACTIVATE, LocalAction.SERIAL_REGISTRATION_ACTIVATE, LocalAction.RETURN_RIGHTS_ACTIVATE,
@@ -562,6 +578,17 @@ internal suspend fun continuationHint(access: GatewayAccess, entry: StoredClient
         return actionMatches(entry.localAction, saved) && access.allow(entry.localAction,
             LocalPaymentCorrectionCodec.decode(saved.payload).saleId)
     }
+    if (entry.localAction == LocalAction.RETURN_EXCHANGE_APPLY) {
+        val saved = entry.request()
+        // Continue only the saved original request; never rebuild it from a current page.
+        return saved.command == LocalExchangeCodec.COMMAND && entry.actionApproval == null && actionMatches(entry.localAction, saved) &&
+            access.allow(entry.localAction, LocalExchangeCodec.decode(saved.payload).returnId)
+    }
+    if (entry.localAction in safeFloatActions) {
+        val saved = entry.request()
+        return saved.command == LocalSafeFloatCodec.COMMAND && actionMatches(entry.localAction, saved) &&
+            access.allow(entry.localAction, safeFloatRequestTarget(LocalSafeFloatCodec.decode(saved.payload)))
+    }
     if (entry.localAction == LocalAction.CASH_ADD_CLOSE_NOTE) {
         val saved = entry.request()
         return actionMatches(entry.localAction, saved) &&
@@ -686,6 +713,8 @@ internal fun renderRecorded(entry: StoredClientIntentV1, reply: MutationReply.Re
         return tableAssignmentRecorded(entry, reply)
     if (entry.localAction == LocalAction.STOCK_INITIALIZE) return stockInitializationRecorded(entry, reply)
     if (entry.localAction == LocalAction.CASH_ADD_CLOSE_NOTE) return cashCloseNoteRecorded(entry, reply)
+    if (entry.localAction in safeFloatActions) return safeFloatRecorded(entry, reply)
+    if (entry.localAction == LocalAction.RETURN_EXCHANGE_APPLY) return exchangeRecorded(entry, reply)
     if (entry.localAction == LocalAction.PAYMENT_CLASSIFICATION_CORRECT) return paymentCorrectionRecorded(entry, reply)
     if (entry.localAction in cashActions) return cashRecorded(entry, reply)
     if (entry.localAction in physicalActions) return physicalRecordedUi(entry, reply)

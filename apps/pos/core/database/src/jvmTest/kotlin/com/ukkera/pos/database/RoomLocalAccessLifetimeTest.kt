@@ -192,7 +192,7 @@ private fun runCleanupProbe(path: Path, variant: String) {
     val classpath = requireNotNull(System.getProperty("ukkera.test.runtime.classpath"))
     val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
     val log = path.resolveSibling("cleanup-$variant.log")
-    val process = ProcessBuilder(java, "-Xmx128m", "-XX:ActiveProcessorCount=2",
+    val process = ProcessBuilder(java, "-Xmx128m", "-XX:ActiveProcessorCount=2", "-XX:-UsePerfData",
         "-Djava.io.tmpdir=${System.getProperty("java.io.tmpdir")}", "-ea", "-cp", classpath,
         LocalAccessCleanupProbe::class.java.name, path.toString(), variant)
         .apply {

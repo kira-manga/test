@@ -32,6 +32,12 @@ internal interface ClientJournalBindingFacts {
  * ([ARCHIVE] for archive entries). Every operation observes or acts on genuine native state.
  */
 internal interface ClientJournalNative {
+    /** Actual platform context, retained independently for the disposable read-view purpose. */
+    fun forkReadViews(work: ClientJournalWork): ClientJournalNative
+    /** Existing-only native probe; corruption and access failures must throw, never mean absent. */
+    fun readViewPurposeExists(rootName: String, journalId: DomainId): Boolean
+    /** Disposable purpose only, under the SAME parent's actual exclusive native custody. */
+    fun quarantineReadViews(purpose: ClientReadViewPurpose)
     /** Parent/root/journal/archive directory custody; [enrollChecks] then [createDataKey] run before any creation. */
     fun openCustody(rootName: String, journalId: DomainId, archive: Boolean, enroll: Boolean,
         enrollChecks: () -> Unit, createDataKey: () -> Unit)
@@ -92,6 +98,8 @@ internal class ClientJournalHead(private val native: ClientJournalNative, privat
         check(readHeads() == expected && expected.last().digest == digest)
     }
     fun requireInitial(digest: String) { requireCurrent(digest); check(retained == listOf(head(0, digest))) }
+    /** Read-only complete head census: no missing or prepared successor head is settled. */
+    fun requireSettledNamespace() { check(retained == null && readHeads().size == 1) }
     fun settledSequence(digest: String): Long { requireCurrent(digest); pruneOld(); return checkNotNull(retained).single().sequence }
     fun prepare(previousSequence: Long, previousDigest: String, nextDigest: String) {
         requireCurrent(previousDigest)
@@ -162,28 +170,30 @@ internal abstract class ClientJournalFileCore(
     init { binding.requireCoordinates(deviceOwner, actorId, journalId, keyId, protection) }
     val kind: ClientJournalKind = binding.fixedKind ?: if (actorId == null) ClientJournalKind.CREDENTIALS else ClientJournalKind.INTENTS
     private enum class Phase { NEW, OPENING, OPEN, CLOSE_STARTED, CLOSED }
-    private var phase = Phase.NEW
+    @Volatile private var phase = Phase.NEW
     private var manifestStamp: ClientJournalMark? = null
     private var archiveStamps: Map<String, ClientJournalMark>? = null
     private var keySecurity: Any? = null
     private var keyWitness: ByteArray? = null
     private var keyWitnessDigest: ByteArray? = null
     private var head: ClientJournalHead? = null
-    protected var headAdmitted: Boolean = false
+    @Volatile protected var headAdmitted: Boolean = false
         private set
     private var recoveredWriteHead = false
+    @Volatile private var readViewStore: ProtectedClientReadViews? = null
     private val alias: String get() = binding.keyAliasNamespace + journalId.value + "/" + keyId.value
     private val intents: Boolean get() = kind == ClientJournalKind.INTENTS
     private val maximumManifest: Int get() = when (kind) {
         ClientJournalKind.CREDENTIALS -> MAX_CLIENT_CREDENTIAL_BYTES
         ClientJournalKind.INTENTS -> MAX_CLIENT_INTENT_MANIFEST_BYTES
         ClientJournalKind.ACTOR_ALLOCATIONS -> MAX_PAIRED_ACTOR_ALLOCATION_BYTES
+        ClientJournalKind.READ_VIEWS_V1 -> MAX_CLIENT_READ_VIEW_BYTES_V1
     }
 
     /** Platform/kind-specific original empty manifest for explicit first enrollment only. */
     protected abstract fun initialManifest(): ByteArray
 
-    fun openNative(enroll: Boolean, recoverWrites: Boolean) {
+    fun openNative(enroll: Boolean, recoverWrites: Boolean, onSettledNamespace: (() -> Unit)? = null) {
         check(phase == Phase.NEW)
         known(!enroll || !recoverWrites)
         known(binding.isCurrent() && (!enroll || binding.permitsEnrollment()))
@@ -206,6 +216,15 @@ internal abstract class ClientJournalFileCore(
         native.acquireLock(enroll)
         phase = Phase.OPEN
         native.assertBase()
+        if (!enroll && !hasWriteAhead && !hasTemporary && onSettledNamespace != null) {
+            // Optional disposable-cache recovery proof only. Absence probes alone cannot
+            // prove a settled original: acquire actual exclusion, census exact names and all
+            // original native heads first. Any earlier failure leaves this proof unavailable.
+            checkNames()
+            requireNotNull(head).requireSettledNamespace()
+            native.assertBase()
+            onSettledNamespace()
+        }
         if (enroll) createInitialManifest()
         checkNames(pending = hasTemporary, writeAhead = hasWriteAhead)
         val snapshot = native.readSnapshot(MANIFEST, false, maximumManifest + ENVELOPE_BYTES)
@@ -229,6 +248,18 @@ internal abstract class ClientJournalFileCore(
             else -> requireNotNull(head).open(digest)
         }
         headAdmitted = true
+    }
+
+    /**
+     * Attach the delivered owner after the native-open task has settled. Attachment does
+     * no native IO and therefore must not require that already completed task's segment.
+     * Later IO still enters its own watched work segment; retirement, process continuity
+     * and uncertain close are fenced by this same retained work owner.
+     */
+    protected fun attachAdmittedOwner(owner: ClientJournalPhysicalOwner) {
+        known(phase == Phase.OPEN && headAdmitted)
+        work.attachSuccessfulOwner(owner)
+        known(work.isCurrentOwner(owner))
     }
 
     /** Sequence-zero complete head: the FIRST journal never held work. */
@@ -275,8 +306,53 @@ internal abstract class ClientJournalFileCore(
             } catch (failure: Throwable) { task.clearInputs(); throw failure }
         }
 
-    suspend fun closeView() { work.retireView().await() }
-    suspend fun closeOwner() { work.requestClose { closeNative() }.await() }
+    internal fun readViews(): LocalClientReadViewStore = synchronized(this) {
+        check(kind == ClientJournalKind.INTENTS && actorId != null)
+        readViewStore ?: ProtectedClientReadViews(this).also { readViewStore = it }
+    }
+
+    // The acquisition binding is consumed by native handoff. After delivery only
+    // this exact successful owner's retained work/native lifetime can lend a child.
+    // It grants no RPC access; every private projection still comes from the Master.
+    internal fun readViewParentCurrent(): Boolean = phase == Phase.OPEN && headAdmitted &&
+        work.hasCurrentSuccessfulOwner()
+
+    internal fun readViewPurpose(): ClientReadViewPurpose {
+        check(kind == ClientJournalKind.INTENTS && actorId != null && readViewParentCurrent())
+        return ClientReadViewPurpose(this, binding, protection,
+            { lease -> work.derivedReadViewWork(lease) }, { derivedWork -> native.forkReadViews(derivedWork) })
+    }
+
+    internal suspend fun quarantineReadViews(purpose: ClientReadViewPurpose): Boolean {
+        if (!purpose.belongsTo(this) || !readViewParentCurrent() || readViewStore?.nativeResourcesClosed != true) return false
+        return owned {
+            object : ClientJournalTask<Unit> {
+                override fun execute() {
+                    check(purpose.belongsTo(this@ClientJournalFileCore) && readViewParentCurrent() &&
+                        readViewStore?.nativeResourcesClosed == true)
+                    native.quarantineReadViews(purpose)
+                    check(readViewParentCurrent())
+                }
+                override fun discard(value: Unit) = Unit
+                override fun clearInputs() = Unit
+            }
+        } is ClientJournalOutcome.Value
+    }
+
+    suspend fun closeView() {
+        val (retired, child) = synchronized(this) { work.retireView() to readViewStore }
+        try { child?.close() } finally { retired.await() }
+    }
+    suspend fun closeOwner() {
+        val child = synchronized(this) { work.retireView(); readViewStore }
+        try { child?.close() } catch (failure: Throwable) {
+            // An unconfirmed child may still own native work. Keep this parent's real
+            // exclusion so another process cannot replace that child's namespace.
+            work.nativeClosureUnknown()
+            throw failure
+        }
+        work.requestClose { closeNative() }.await()
+    }
 
     fun readManifest(maximumBytes: Int): ByteArray {
         known(maximumBytes == maximumManifest)
@@ -551,7 +627,7 @@ internal abstract class ClientJournalFileCore(
             text(binding.aeadDomain)
             text(deviceOwner.scope.organizationId.value); text(deviceOwner.scope.companyId.value)
             text(deviceOwner.scope.branchId.value); text(deviceOwner.deviceId.value)
-            out.putInt(when (kind) { ClientJournalKind.CREDENTIALS -> 1; ClientJournalKind.INTENTS -> 2; ClientJournalKind.ACTOR_ALLOCATIONS -> 3 })
+            out.putInt(when (kind) { ClientJournalKind.CREDENTIALS -> 1; ClientJournalKind.INTENTS -> 2; ClientJournalKind.ACTOR_ALLOCATIONS -> 3; ClientJournalKind.READ_VIEWS_V1 -> 4 })
             text(actorId?.value.orEmpty()); text(journalId.value); text(keyId.value)
             binding.employeeEnrollmentCommitment?.let(::text)
             binding.pairedDeviceEnrollmentCommitment?.let(::text)
@@ -574,6 +650,7 @@ internal abstract class ClientJournalFileCore(
         if (phase == Phase.CLOSE_STARTED) { work.nativeClosureUnknown(); error("client.journal.close-unknown") }
         phase = Phase.CLOSE_STARTED
         try {
+            check(readViewStore?.nativeResourcesClosed != false) { "client.read-views.close-unconfirmed" }
             native.release()
             keyWitness?.fill(0); keyWitnessDigest?.fill(0)
             keyWitness = null; keyWitnessDigest = null; keySecurity = null

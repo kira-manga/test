@@ -144,17 +144,29 @@ internal class DesktopOriginalSigningV2(
     }
 
     override fun validateOriginalBinding(binding: SelfOwnedNativeOriginalBinding) {
-        val actual = (binding as? SelfOwnedNativeBindingV2 ?: keyFailure()).body()
-        val signature = binding.signature()
+        val original = guard()
         val point = checkedPoint()
         try {
+            validateBindingAtPoint(binding, original, point)
+            checkedPoint().fill(0)
+            if (guard() !== original) keyFailure()
+        } finally { point.fill(0) }
+    }
+
+    /** Reuse only this synchronous primitive's actual fresh preflight point. The public
+     * primitive independently proves possession again after validation. No proof survives it. */
+    private fun validateBindingAtPoint(binding: SelfOwnedNativeOriginalBinding,
+        original: SelfOwnedNativeIntentV2, point: ByteArray) {
+        val actual = (binding as? SelfOwnedNativeBindingV2 ?: keyFailure()).body()
+        val signature = binding.signature()
+        try {
             val session = bindingSession(actual)
-            val expected = SelfOwnedNativeInstallationWireV2.encodeBindingBody(expectedBindingBody(session))
+            val expected = SelfOwnedNativeInstallationWireV2.encodeBindingBody(expectedBindingBody(session, original, point))
             try { if (!expected.contentEquals(actual)) keyFailure() } finally { expected.fill(0) }
             val message = SelfOwnedNativeInstallationWireV2.bindingSigningMessage(actual)
             try { if (!JvmP256Primitives.verify(point, message, signature)) keyFailure() } finally { message.fill(0) }
-            checkedPoint().fill(0); guard()
-        } finally { actual.fill(0); signature.fill(0); point.fill(0) }
+            if (guard() !== original) keyFailure()
+        } finally { actual.fill(0); signature.fill(0) }
     }
 
     override fun signJournalEnvelope(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray): ByteArray {
@@ -179,7 +191,8 @@ internal class DesktopOriginalSigningV2(
                 val canonical = SelfOwnedNativeInstallationWireV2.encodeState(state)
                 try { if (!canonical.contentEquals(plaintext)) selfOwnedFail(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN) }
                 finally { canonical.fill(0) }
-                validateOriginalBinding(state.originalBinding)
+                validateBindingAtPoint(state.originalBinding, original, point)
+                checkedPoint().fill(0) // Fresh postflight of this SAME original journal read.
                 if (guard() !== original) keyFailure()
                 material.assertOriginalPepperKey()
                 return SelfOwnedOriginalJournalState.V2(state)
@@ -319,7 +332,11 @@ internal class DesktopOriginalSigningV2(
         try {
             val raw = try { custody.signP256(alias(original, role), message) }
             catch (failure: SelfOwnedFailureV1) { throw failure } catch (_: Exception) { keyFailure() }
-            try { if (!JvmP256Primitives.verify(point, message, JvmP256Primitives.canonicalize(raw))) keyFailure() }
+            try {
+                val signature = JvmP256Primitives.canonicalize(raw)
+                try { if (!JvmP256Primitives.verifyFresh(point, message, signature)) keyFailure() }
+                finally { signature.fill(0) }
+            }
             finally { raw.fill(0) }
         } finally { message.fill(0) }
     }
@@ -334,16 +351,19 @@ internal class DesktopOriginalSigningV2(
 
     private fun expectedBindingBody(session: SelfOwnedNativeBootSessionV2): SelfOwnedNativeBindingBodyV2 {
         val original = guard()
-        if (!original.complete() || !original.bindingStarted) keyFailure()
-        verifyOriginalSource()
         val point = checkedPoint()
-        return try {
-            val source = original.source
-            SelfOwnedNativeBindingBodyV2(source.coordinates, source.installedTarget, original.namespace, session,
-                source.rootDocumentDigest, source.delegationDigest, source.preparationDigest,
-                SelfOwnedNativeInstallationWireV2.completedIntentDigest(original), SelfOwnedOctetsV1(point),
-                source.protection, original.keys)
-        } finally { point.fill(0) }
+        return try { expectedBindingBody(session, original, point) } finally { point.fill(0) }
+    }
+
+    private fun expectedBindingBody(session: SelfOwnedNativeBootSessionV2, original: SelfOwnedNativeIntentV2,
+        point: ByteArray): SelfOwnedNativeBindingBodyV2 {
+        if (guard() !== original || !original.complete() || !original.bindingStarted) keyFailure()
+        verifyOriginalSource()
+        val source = original.source
+        return SelfOwnedNativeBindingBodyV2(source.coordinates, source.installedTarget, original.namespace, session,
+            source.rootDocumentDigest, source.delegationDigest, source.preparationDigest,
+            SelfOwnedNativeInstallationWireV2.completedIntentDigest(original), SelfOwnedOctetsV1(point),
+            source.protection, original.keys)
     }
 
     private fun requireJournalFrame(aad: ByteArray, nonce: ByteArray, ciphertext: ByteArray) {

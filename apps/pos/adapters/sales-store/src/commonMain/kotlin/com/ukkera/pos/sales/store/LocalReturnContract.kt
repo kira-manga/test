@@ -118,6 +118,13 @@ public interface PreparedSalesReturnPolicy {
      */
     public fun evidence(facts: LocalReturnClaimFactsV1, sale: PaidSale, actorEvidence: CashierEvidence,
         recordedAt: UtcInstant): ReturnClaimEvidence?
+
+    /**
+     * Additive: [submittedAt] is the authoritative Master intake instant, so a timely
+     * submission bound later is not made late. Defaults to the original contract.
+     */
+    public fun evidence(facts: LocalReturnClaimFactsV1, sale: PaidSale, actorEvidence: CashierEvidence,
+        recordedAt: UtcInstant, submittedAt: UtcInstant): ReturnClaimEvidence? = evidence(facts, sale, actorEvidence, recordedAt)
 }
 
 public object UnavailableSalesReturnPolicy : TransactionSalesReturnPolicySource {

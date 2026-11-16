@@ -73,7 +73,7 @@ public object LocalSupplierCashJournalDomain : LocalPhysicalJournalDomain {
     override fun validateResolution(requirement: LocalPhysicalJournalRequirementV1, original: StoredBytes,
         resolverActorId: DomainId, resolverAuthorization: StoredBytes, body: StoredBytes) {
         check(classifyOriginal(requirement, original) == LocalPhysicalOriginalKind.UNKNOWN &&
-            resolverActorId == requirement.originalActorId && LocalSupplierCashCodec.normalize(body) == body)
+            LocalSupplierCashCodec.normalize(body) == body)
         val value = LocalSupplierCashCodec.decode(body) as? LocalSupplierCashRequest.RecordResolution
             ?: error("supplier.cash.resolution_required")
         check(value.target == supplierCashDomain(requirement).target && value.resolverActorId == resolverActorId &&

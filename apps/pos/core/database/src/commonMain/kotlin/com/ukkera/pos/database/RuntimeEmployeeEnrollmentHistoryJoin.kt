@@ -1566,6 +1566,23 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
     fun clear() { session = null; source = null; awaitingCreatedOrigin = false }
 
     companion object {
+        /** Target coordinates only, not authorization. The separate chronological replay
+         * still joins this actor's actual admission, access, policy and whole producer. */
+        private fun additionalOrdinaryDeviceTarget(session: SelfOwnedNativeHistoryReadSession,
+            header: RuntimeHistoryEventHeaderV2, evidence: RuntimeCommandAuthorizationEvidenceV1): Boolean {
+            val coordinates = session.original.record.allocation.coordinates
+            val authorization = evidence.authorization
+            if (!session.hasDeviceAdmissionHistoryTraversal || authorization.actorId == coordinates.firstActorId) return false
+            val origin = session.deviceAdmissions.singleOrNull {
+                it.requested.request.targetId == authorization.deviceId } ?: return false
+            return origin.originalCohostDeviceId == coordinates.deviceId &&
+                origin.requested.request.scope == coordinates.scope && origin.requested.admission.admitted &&
+                origin.requested.admission.revision == Revision(0) && origin.child.historySequence < header.sequence &&
+                origin.child.commandEpoch == header.commandEpoch &&
+                origin.child.installationGenesisDigest == header.installationGenesisDigest &&
+                origin.evidence.images.first().plaintextDigest == authorization.dependencies.admission
+        }
+
         fun create(session: SelfOwnedNativeHistoryReadSession, header: RuntimeHistoryEventHeaderV2,
             eventDigest: PayloadDigest, evidence: RuntimeCommandAuthorizationEvidenceV1): RuntimeEarlierOrdinaryCommandReplayTarget {
             evidence.validate()
@@ -1578,7 +1595,8 @@ internal class RuntimeEarlierOrdinaryCommandReplayTarget private constructor(
                 header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY && evidence.purposeTag == header.purpose.tag &&
                 evidence.actionApprovalId == null && evidence.capturedChanges == header.changeCount &&
                 header.scope == coordinates.scope.storageKey() && header.assignmentId == coordinates.assignmentId &&
-                authorization.scope == coordinates.scope && authorization.deviceId == coordinates.deviceId)
+                authorization.scope == coordinates.scope &&
+                (authorization.deviceId == coordinates.deviceId || additionalOrdinaryDeviceTarget(session, header, evidence)))
             // These are coordinates of the actual original, independent of whether the
             // nonfounding target has a preselected enrollment or a future completed creation.
             historyShapeV2(header.sequence > 1L && header.commandSequence > 0L &&
