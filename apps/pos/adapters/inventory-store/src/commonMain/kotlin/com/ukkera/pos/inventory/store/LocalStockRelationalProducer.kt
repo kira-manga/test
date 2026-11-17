@@ -7,6 +7,8 @@ import com.ukkera.pos.types.*
 
 /** Complete literal producer verification, not an original-envelope hash or favorable row check. */
 internal suspend fun requireStockRelationalTransitions(original: RetainedStreamedCommand, stock: LocalStockRelationalInspection) {
+    // Every traversal below is of this inspection's exact original (verified replay or full core pass).
+    localStockCheck(original === stock.original)
     val activation = stock.before(LocalStockRelationalProfileV2.activationKey(stock.scope.branchId)) ?: unavailableProducer()
     localStockCheck(activation.body is StockRelationalBody.Activation && stockActivationShape(activation.body) &&
         activation.body.sourceProfile == STOCK_FRESH_PROFILE_V2, LocalStockFailure.PRODUCER_UNAVAILABLE)
@@ -21,7 +23,7 @@ internal suspend fun requireStockRelationalTransitions(original: RetainedStreame
             else record.generation == old.generation.next() && record.previous == StockPreviousWire(old.producer.operationId, old.generation, old.digest.value))
         val expected = StockRowEffectV2Wire(record.key.kind, record.key.id, old?.generation, old?.digest?.value, record.digest.value)
         var found = false
-        original.frames { frame ->
+        stock.frames { frame ->
             val effect = (frame as? RetainedCommandFrameV2.Effect)?.value
             if (effect?.kind == LocalStockRelationalProfileV2.EFFECT_KIND && effect.id == rowEffectId(record.key)) {
                 localStockCheck(!found && stockDecode(effect.payload, StockRowEffectV2Wire.serializer()) == expected); found = true
@@ -47,7 +49,7 @@ internal suspend fun requireStockRelationalTransitions(original: RetainedStreame
             is StockRelationalBody.Posting -> inconsistentStock()
         }
     }
-    original.frames { frame -> when (frame) {
+    stock.frames { frame -> when (frame) {
         is RetainedCommandFrameV2.Effect -> when (frame.value.kind) {
             LocalStockRelationalProfileV2.EFFECT_KIND -> {
                 val wire = stockDecode(frame.value.payload, StockRowEffectV2Wire.serializer())
@@ -96,7 +98,7 @@ internal suspend fun requireStockRelationalTransitions(original: RetainedStreame
             is StreamedSourceObservationV2.StockMember -> {
                 // Ensure no orphan favorable member can skip a complete terminal range.
                 var found = false
-                original.frames { candidate ->
+                stock.frames { candidate ->
                     val terminal = (candidate as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange
                     if (terminal?.query == source.query) { localStockCheck(!found && source.ordinal < terminal.count); found = true }
                 }
@@ -116,7 +118,7 @@ internal suspend fun requireStockRelationalTransitions(original: RetainedStreame
             localStockCheck(original.identity.producer.command == LocalStockRelationalProfileV2.FOOD_COMMAND ||
                 original.identity.producer.command == LocalStockRelationalProfileV2.COLLECTION_COMMAND)
             var companion = false
-            original.frames { frame -> when (frame) {
+            stock.frames { frame -> when (frame) {
                 is RetainedCommandFrameV2.Write -> if (frame.value.key.kind !in StockRelationalKindsV2.all) companion = true
                 is RetainedCommandFrameV2.Claim -> {
                     localStockCheck(frame.value.key.namespace !in LocalStockStoreProfile.inventoryClaimNamespaces); companion = true
@@ -554,7 +556,7 @@ private suspend fun verifyLine(stock: LocalStockRelationalInspection, line: Stoc
         for (stamp in list) {
             PayloadDigest(stamp.digest)
             var found = false
-            stock.original.frames { frame ->
+            stock.frames { frame ->
                 val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Current
                 if (source?.key == AggregateKey(stamp.kind, stamp.id)) {
                     localStockCheck(!found && source.generation == stamp.revision && source.payloadHash.value == stamp.digest); found = true
@@ -618,7 +620,7 @@ internal suspend fun stockRequiredClaimSources(stock: LocalStockRelationalInspec
     consume: suspend (StreamedSourceObservationV2.Claim) -> Unit) {
     suspend fun required(key: ClaimKey, owner: DomainId?) {
         var actual: StreamedSourceObservationV2.Claim? = null
-        stock.original.frames { frame ->
+        stock.frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Claim
             if (source?.key == key) { localStockCheck(actual == null && source.ownerId == owner); actual = source }
         }
@@ -672,7 +674,7 @@ internal suspend fun stockRequiredClaimSources(stock: LocalStockRelationalInspec
         required(LocalStockStoreProfile.serialCodeClaim(body.serialCode), id)
     }
     // Only actual validated writes can introduce new permanent claims; compare BEFORE, not after.
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val change = (frame as? RetainedCommandFrameV2.Claim)?.value
         if (change != null && change.key.namespace in stockOwnedClaimNamespaces) {
             localStockCheck(change.action == RetainedClaimAction.ACQUIRE && change.key.namespace in setOf(
@@ -687,7 +689,7 @@ internal suspend fun stockRequiredClaimSources(stock: LocalStockRelationalInspec
     stockTransferClaimRequirements(stock) { key, owner -> required(key, owner) }
     // Every existing header actually loaded by stock has its complete per-ID membership proof.
     // Unrelated claim keys cannot be smuggled in merely by declaring a stock namespace.
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Aggregate ?: return@frames
         when (source.key.kind) {
             StockRelationalKindsV2.RESERVATION -> reservation(source.key.id)
@@ -696,7 +698,7 @@ internal suspend fun stockRequiredClaimSources(stock: LocalStockRelationalInspec
     }
     // Existing allocations observed through a complete position range require their current
     // owner's full membership, even when the owner is RELEASED/ISSUED and retains no quantity.
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange ?: return@frames
         if (source.query is StockQueryV2.PositionMembers) stock.range(source.query) { row ->
             val value = row.body as? StockRelationalBody.Allocation

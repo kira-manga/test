@@ -183,13 +183,14 @@ internal class LocalCollectionInteractiveAuthorization(
 
 /** Same current accepted-return/original-tender obligations; no arbitrary refund action TTL. */
 internal class LocalReturnInteractiveAuthorization(private val stock: LocalStockRepository? = null,
-    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1) : MasterPhysicalInteractiveAuthorizer {
+    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+    private val originalSources: LocalFinancialOriginalSourceServices? = null) : MasterPhysicalInteractiveAuthorizer {
     override val command: CommandKey get() = LocalFinancialJournalProfileV3.RETURN_COMMAND
     override val domainProfile: String get() = LocalFinancialJournalProfileV3.REFUND_PROFILE
 
     override suspend fun prepareRetainedStartAuthorization(borrowed: CommandReadView,
         context: PhysicalRetainedStartContext): PhysicalRetainedStartRequirement? {
-        val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies = tenderPolicies) } ?: borrowed
+        val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies = tenderPolicies, originalSources = originalSources) } ?: borrowed
         val retained = readInteractiveRetailStart(view, context, SalesRecordingKind.REFUND_ATTESTATION) ?: return null
         val request = LocalReturnCommandCodecV3.decode(retained.origin.normalized) as? LocalReturnRequestV3.Start ?: return null
         val target = retained.slot.target

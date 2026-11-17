@@ -22,6 +22,7 @@ import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.CurrentAuthorizationProvider
 import com.ukkera.pos.security.LocalAuthenticatedPeer
 import com.ukkera.pos.security.LocalEmployeePrincipal
+import com.ukkera.pos.security.LocalGatewayCredentials
 import com.ukkera.pos.security.LimitUse
 import com.ukkera.pos.security.NativeCompanyBusinessPublicationSnapshot
 import com.ukkera.pos.security.PayloadDigest
@@ -914,7 +915,20 @@ public class AtomicMasterStore internal constructor(
     }
 
     private class BatchReadSelection(val handler: MasterReadHandler, val request: ReadRequest,
-        val normalized: StoredBytes, val digest: PayloadDigest)
+        val normalized: StoredBytes)
+
+    private class OriginalReadAuthentication(val credentials: LocalGatewayCredentials,
+        val resource: LocalMasterRpcResourceSession, val verifier: RoomLocalAccessPrincipalVerifier)
+
+    private suspend fun authenticateOriginalRead(connection: Transactor, authentication: OriginalReadAuthentication,
+        requestContext: CoroutineContext): RoomLocalAccessPrincipalVerifier.ReadVerification? {
+        if (!authentication.verifier.belongsTo(database, authorizationSource) || !authentication.resource.current()) return null
+        val verified = authentication.verifier.authenticateAtReadWriter(database, connection,
+            authentication.credentials, requestContext) ?: return null
+        val principal = verified.principal
+        return verified.takeIf { principal.scope == scope && principal.authenticationPurpose == AuthenticationPurpose.INTERACTIVE &&
+            authentication.resource.matchesOriginal(principal) }
+    }
 
     private sealed interface AuthorizedReadPreparation {
         class Ready(val prepared: PreparedRead, val grants: List<AuthorizedAction>) : AuthorizedReadPreparation
@@ -947,14 +961,18 @@ public class AtomicMasterStore internal constructor(
 
     /** Whole visible-view replacement; no partial result survives any refusal/finalizer failure. */
     public suspend fun snapshotBatch(principal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
-        selections: List<ReadRequest>): LocalMasterChangesBatchReplyV1 {
+        selections: List<ReadRequest>): LocalMasterChangesBatchReplyV1 =
+        snapshotBatchInternal(principal, profile, selections, null)
+
+    private suspend fun snapshotBatchInternal(requestPrincipal: AuthenticatedPrincipal?, profile: LocalMasterRpcWorkflowProfile,
+        selections: List<ReadRequest>, authentication: OriginalReadAuthentication?): LocalMasterChangesBatchReplyV1 {
         fun refused(reason: LocalMasterChangesFailureV1): LocalMasterChangesBatchReplyV1 {
             if (reason == LocalMasterChangesFailureV1.STORAGE_UNCERTAIN) physicalService.deny()
             return LocalMasterChangesBatchReplyV1.Unavailable(reason)
         }
-        if (principal !is LocalEmployeePrincipal || profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
+        if ((authentication == null && requestPrincipal !is LocalEmployeePrincipal) || profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS)
             return refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
-        if (principal.scope != scope) return refused(LocalMasterChangesFailureV1.WRONG_SCOPE)
+        if (requestPrincipal != null && requestPrincipal.scope != scope) return refused(LocalMasterChangesFailureV1.WRONG_SCOPE)
         if (selections.size !in 1..LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTORS_V1 ||
             selections.sumOf { it.payload.size.toLong() } > LOCAL_MASTER_CHANGES_BATCH_MAX_SELECTION_BYTES_V1)
             return refused(LocalMasterChangesFailureV1.MALFORMED_REQUEST)
@@ -974,14 +992,21 @@ public class AtomicMasterStore internal constructor(
                 !handler.supportsRpcWorkflow(localMasterRpcHandlerProfile(profile, selection.query, normalized, handler), normalized) ||
                 (handler as? MasterLocalDisplayReadHandler)?.requiresDelivery(normalized) == true)
                 return refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
-            normalizedSelections += BatchReadSelection(handler, selection, normalized,
-                queryDigest(scope, principal.actorId, selection.query, normalized))
+            normalizedSelections += BatchReadSelection(handler, selection, normalized)
         }
         return try {
+            val requestContext = currentCoroutineContext()
+            var readVerification: RoomLocalAccessPrincipalVerifier.ReadVerification? = null
             val result = database.runtimeWriterConnection { connection ->
                 requireDurableWriter(connection)
                 connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
                     database.runtimeHistoryOwner?.frameFor(connection)?.enterTransaction(currentCoroutineContext())
+                    val principal = if (authentication == null) requestPrincipal as LocalEmployeePrincipal else {
+                        val verified = authenticateOriginalRead(connection, authentication, requestContext)
+                            ?: rollback(refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED))
+                        readVerification = verified
+                        verified.principal
+                    }
                     val view = transactionView(connection, principal)
                     try {
                         val reply = run batchBody@ {
@@ -1004,7 +1029,8 @@ public class AtomicMasterStore internal constructor(
                             val prepared = mutableListOf<AuthorizedReadPreparation.Ready>()
                             for (selection in normalizedSelections) {
                                 when (val ready = prepareAuthorizedRead(principal, selection.request, selection.handler,
-                                    selection.normalized, selection.digest, view, policy, remaining)) {
+                                    selection.normalized, queryDigest(scope, principal.actorId, selection.request.query, selection.normalized),
+                                    view, policy, remaining)) {
                                     AuthorizedReadPreparation.Denied ->
                                         return@batchBody refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
                                     AuthorizedReadPreparation.CapacityExceeded ->
@@ -1024,7 +1050,9 @@ public class AtomicMasterStore internal constructor(
                                 bytes += payload.size
                                 if (bytes > LOCAL_MASTER_CHANGES_BATCH_MAX_PROJECTION_BYTES_V1)
                                     return@batchBody refused(LocalMasterChangesFailureV1.CAPACITY_EXCEEDED)
-                                val cursor = changeCursor(principal, branch, profile, normalizedSelections[index].digest,
+                                val selection = normalizedSelections[index]
+                                val cursor = changeCursor(principal, branch, profile,
+                                    queryDigest(scope, principal.actorId, selection.request.query, selection.normalized),
                                     sha256(payload.bytes()), ready.grants)
                                 if (index == 0) currentChangeHead(cursor)
                                 else check(sameChangeBinding(snapshots.first().cursor, cursor) &&
@@ -1049,9 +1077,13 @@ public class AtomicMasterStore internal constructor(
                 }
             }
             currentCoroutineContext().ensureActive()
-            result
+            if (readVerification?.currentAfterRelease() == false || authentication?.resource?.current() == false)
+                refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
+            else result
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: RoomCurrentLocalAuthorizationDenied) {
+            refused(LocalMasterChangesFailureV1.AUTHORIZATION_DENIED)
         } catch (failure: Exception) {
             reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_EXECUTION, failure)
             refused(LocalMasterChangesFailureV1.STORAGE_UNCERTAIN)
@@ -1066,9 +1098,25 @@ public class AtomicMasterStore internal constructor(
      */
     internal suspend fun authorizeChangesBusiness(principal: AuthenticatedPrincipal?,
         profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>): LocalMasterChangesRpcAuthorizationV1 =
-        when (val reply = snapshotBatch(principal, profile, selections)) {
+        changesAuthorization(snapshotBatch(principal, profile, selections))
+
+    /** Exact native operational composition supplies its SAME verifier/store/source. Token
+     * authentication and the FULL typed query share one actual writer transaction; every
+     * existing current/final reread and native outer-release check still precedes disclosure. */
+    internal suspend fun authorizeChangesBusinessAtWriter(credentials: LocalGatewayCredentials,
+        profile: LocalMasterRpcWorkflowProfile, selections: List<ReadRequest>, resource: LocalMasterRpcResourceSession,
+        verifier: RoomLocalAccessPrincipalVerifier): LocalMasterChangesRpcAuthorizationV1 {
+        if (!verifier.belongsTo(database, authorizationSource))
+            return LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
+        return changesAuthorization(snapshotBatchInternal(null, profile, selections,
+            OriginalReadAuthentication(credentials, resource, verifier)))
+    }
+
+    private fun changesAuthorization(reply: LocalMasterChangesBatchReplyV1): LocalMasterChangesRpcAuthorizationV1 =
+        when (reply) {
             is LocalMasterChangesBatchReplyV1.Snapshot -> LocalMasterChangesRpcAuthorizationV1(
-                LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(reply.snapshots.map { it.cursor }))
+                LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(reply.snapshots.map { it.cursor }),
+                reply.snapshots.singleOrNull()?.cursor?.let(LocalMasterChangesBindingV1::readProjectionDigest))
             is LocalMasterChangesBatchReplyV1.Unavailable -> LocalMasterChangesRpcAuthorizationV1(when (reply.reason) {
                 LocalMasterChangesFailureV1.AUTHORIZATION_DENIED, LocalMasterChangesFailureV1.WRONG_SCOPE,
                 LocalMasterChangesFailureV1.UNKNOWN_QUERY -> LocalMasterChangesRpcAccessResultV1.DENIED
@@ -1086,7 +1134,19 @@ public class AtomicMasterStore internal constructor(
      * The actual registration fixes [profile]; it is never decoded as caller authority.
      */
     internal suspend fun authorizeChangesCapacity(principal: AuthenticatedPrincipal?,
-        profile: LocalMasterRpcWorkflowProfile): LocalMasterChangesRpcAuthorizationV1 {
+        profile: LocalMasterRpcWorkflowProfile): LocalMasterChangesRpcAuthorizationV1 =
+        authorizeChangesCapacityInternal(principal, profile, null)
+
+    internal suspend fun authorizeChangesCapacityAtWriter(credentials: LocalGatewayCredentials,
+        profile: LocalMasterRpcWorkflowProfile, resource: LocalMasterRpcResourceSession,
+        verifier: RoomLocalAccessPrincipalVerifier): LocalMasterChangesRpcAuthorizationV1 {
+        if (profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS || !verifier.belongsTo(database, authorizationSource))
+            return LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
+        return authorizeChangesCapacityInternal(null, profile, OriginalReadAuthentication(credentials, resource, verifier))
+    }
+
+    private suspend fun authorizeChangesCapacityInternal(requestPrincipal: AuthenticatedPrincipal?,
+        profile: LocalMasterRpcWorkflowProfile, authentication: OriginalReadAuthentication?): LocalMasterChangesRpcAuthorizationV1 {
         // Explicit fixed routes only: a future profile must be reviewed here as well.
         when (profile) {
             LocalMasterRpcWorkflowProfile.SUPPLIERS, LocalMasterRpcWorkflowProfile.WAREHOUSES,
@@ -1097,13 +1157,21 @@ public class AtomicMasterStore internal constructor(
             LocalMasterRpcWorkflowProfile.FOOD_CASH_FINANCIAL, LocalMasterRpcWorkflowProfile.INVOICE_CAPTURE,
             LocalMasterRpcWorkflowProfile.INVOICE_MATCHING, LocalMasterRpcWorkflowProfile.LAN_BUSINESS -> Unit
         }
-        if (principal !is LocalEmployeePrincipal || principal.scope != scope)
+        if (authentication == null && (requestPrincipal !is LocalEmployeePrincipal || requestPrincipal.scope != scope))
             return LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
         return try {
+            val requestContext = currentCoroutineContext()
+            var readVerification: RoomLocalAccessPrincipalVerifier.ReadVerification? = null
             val result = database.runtimeWriterConnection { connection ->
                 requireDurableWriter(connection)
                 connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
                     database.runtimeHistoryOwner?.frameFor(connection)?.enterTransaction(currentCoroutineContext())
+                    val principal = if (authentication == null) requestPrincipal as LocalEmployeePrincipal else {
+                        val verified = authenticateOriginalRead(connection, authentication, requestContext)
+                            ?: rollback(LocalMasterChangesRpcAccessResultV1.DENIED)
+                        readVerification = verified
+                        verified.principal
+                    }
                     val view = transactionView(connection, principal)
                     try {
                         val allowed = run identityBody@ {
@@ -1123,9 +1191,13 @@ public class AtomicMasterStore internal constructor(
                 }
             }
             currentCoroutineContext().ensureActive()
-            LocalMasterChangesRpcAuthorizationV1(result, null)
+            LocalMasterChangesRpcAuthorizationV1(
+                if (readVerification?.currentAfterRelease() == false || authentication?.resource?.current() == false)
+                    LocalMasterChangesRpcAccessResultV1.DENIED else result, null)
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: RoomCurrentLocalAuthorizationDenied) {
+            LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.DENIED, null)
         } catch (_: Exception) {
             physicalService.deny()
             LocalMasterChangesRpcAuthorizationV1(LocalMasterChangesRpcAccessResultV1.UNAVAILABLE, null)
@@ -1153,6 +1225,8 @@ public class AtomicMasterStore internal constructor(
     private suspend fun readInternal(principal: AuthenticatedPrincipal?, request: ReadRequest,
         rpcAudience: RoomLocalDisplayRpcAudience?, changes: ChangesRead? = null): ReadReply {
         fun refused(reason: ReadFailure): ReadReply {
+            if (reason == ReadFailure.AUTHORIZATION_DENIED)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.AUTHORIZATION_CURRENT, IllegalStateException())
             if (reason == ReadFailure.STORAGE_UNCERTAIN) physicalService.deny()
             return ReadReply.Unavailable(reason)
         }
@@ -1246,7 +1320,8 @@ public class AtomicMasterStore internal constructor(
             else result
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (_: Exception) {
+        } catch (failure: Exception) {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_EXECUTION, failure)
             refused(ReadFailure.STORAGE_UNCERTAIN)
         }
     }
@@ -2215,9 +2290,23 @@ public class AtomicMasterStore internal constructor(
      */
     internal suspend fun authorizeRpcBusiness(principal: AuthenticatedPrincipal?,
         access: LocalMasterRpcBusinessAccess, requireRecovery: Boolean,
-        rpcAudience: RoomLocalDisplayRpcAudience? = null): LocalMasterRpcAccessResult {
-        if (principal !is LocalEmployeePrincipal || principal.scope != scope ||
-            principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE) return LocalMasterRpcAccessResult.DENIED
+        rpcAudience: RoomLocalDisplayRpcAudience? = null): LocalMasterRpcAccessResult =
+        authorizeRpcBusinessInternal(principal, access, requireRecovery, rpcAudience, null)
+
+    internal suspend fun authorizeRpcBusinessAtWriter(credentials: LocalGatewayCredentials,
+        access: LocalMasterRpcBusinessAccess, requireRecovery: Boolean, resource: LocalMasterRpcResourceSession,
+        verifier: RoomLocalAccessPrincipalVerifier): LocalMasterRpcAccessResult {
+        if (access.profile != LocalMasterRpcWorkflowProfile.LAN_BUSINESS || !verifier.belongsTo(database, authorizationSource))
+            return LocalMasterRpcAccessResult.DENIED
+        return authorizeRpcBusinessInternal(null, access, requireRecovery, null,
+            OriginalReadAuthentication(credentials, resource, verifier))
+    }
+
+    private suspend fun authorizeRpcBusinessInternal(requestPrincipal: AuthenticatedPrincipal?,
+        access: LocalMasterRpcBusinessAccess, requireRecovery: Boolean, rpcAudience: RoomLocalDisplayRpcAudience?,
+        authentication: OriginalReadAuthentication?): LocalMasterRpcAccessResult {
+        if (authentication == null && (requestPrincipal !is LocalEmployeePrincipal || requestPrincipal.scope != scope ||
+            requestPrincipal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE)) return LocalMasterRpcAccessResult.DENIED
         // Decode untrusted request bodies before entering the writer. A malformed typed
         // request is denied; it must not retire unrelated endpoint/native business work.
         val profile = access.profile
@@ -2307,10 +2396,18 @@ public class AtomicMasterStore internal constructor(
             return LocalMasterRpcAccessResult.DENIED
         }
         return try {
+            val requestContext = currentCoroutineContext()
+            var readVerification: RoomLocalAccessPrincipalVerifier.ReadVerification? = null
             val result = database.runtimeWriterConnection { connection ->
                 requireDurableWriter(connection)
                 connection.withTransaction(Transactor.SQLiteTransactionType.IMMEDIATE) {
                     database.runtimeHistoryOwner?.frameFor(connection)?.enterTransaction(currentCoroutineContext())
+                    val principal = if (authentication == null) requestPrincipal as LocalEmployeePrincipal else {
+                        val verified = authenticateOriginalRead(connection, authentication, requestContext)
+                            ?: rollback(LocalMasterRpcAccessResult.DENIED)
+                        readVerification = verified
+                        verified.principal
+                    }
                     val view = transactionView(connection, principal)
                     try {
                         rpcAudience?.let { view.bindLocalDisplayRpcAudience(it) }
@@ -2598,10 +2695,13 @@ public class AtomicMasterStore internal constructor(
                 }
             }
             currentCoroutineContext().ensureActive()
-            if (result == LocalMasterRpcAccessResult.ALLOWED && rpcAudience != null && !rpcDisplayCurrent(rpcAudience))
+            if (readVerification?.currentAfterRelease() == false || authentication?.resource?.current() == false ||
+                result == LocalMasterRpcAccessResult.ALLOWED && rpcAudience != null && !rpcDisplayCurrent(rpcAudience))
                 LocalMasterRpcAccessResult.DENIED else result
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: RoomCurrentLocalAuthorizationDenied) {
+            LocalMasterRpcAccessResult.DENIED
         } catch (failure: Exception) {
             reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.QUERY_AUTHORIZATION, failure)
             physicalService.deny()
@@ -3588,6 +3688,16 @@ internal class TransactionView private constructor(
         tracedRead(PhysicalReadDependency.Retained(operationId)) {
             writer?.historyFrame?.cashConfigurationOriginalSources(this, operationId)
         }
+
+    override suspend fun <T> withLegacyBusinessSources(rootOperationId: OperationId,
+        use: suspend (RuntimeLegacyBusinessSourceGraph) -> T): T? = tracedRead(PhysicalReadDependency.Retained(rootOperationId)) {
+        writer?.historyFrame?.withLegacyBusinessSources(this, rootOperationId, use)
+    }
+
+    override suspend fun <T> withCurrentLegacyBusinessSources(key: AggregateKey,
+        use: suspend (RuntimeCurrentLegacyBusinessSources) -> T): T? = tracedRead(PhysicalReadDependency.Aggregate(key)) {
+        writer?.historyFrame?.withCurrentLegacyBusinessSources(this, key, use)
+    }
 
     override suspend fun foodCheckRejectedOriginalSources(operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? =
         tracedRead(PhysicalReadDependency.Retained(operationId)) {

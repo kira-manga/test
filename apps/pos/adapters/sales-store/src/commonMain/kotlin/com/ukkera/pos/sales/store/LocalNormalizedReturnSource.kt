@@ -52,6 +52,9 @@ internal suspend fun requireNormalizedReturnEntitlementSource(view: CommandReadV
         return initialReturnEntitlementSourceCut(sale, row, original)
     }
     if (locator != null) return requireLinkedReturnEntitlementSource(view, sale, row, locator)
+    // Explicit old-format compatibility, after whole native writer proof. This is not
+    // an absent source or an invented CASE contribution/append capability.
+    if (requireCurrentLegacyEntitlement(view, sale, row)) return null
     val caseId = selectedCaseId ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
     val dependencies = LocalReturnCaseDependencies()
     val cut = readReturnCase(view, caseId, dependencies)
@@ -101,6 +104,10 @@ internal suspend fun requireNormalizedReturnFinalizeEntitlement(view: CommandRea
 internal suspend fun requireNormalizedAcceptedReturnSource(view: CommandReadView, original: LocalClaimCut,
     accepted: LocalSalesRow<AcceptedReturn>) {
     if (original.original.priceSources?.value?.normalizedStock != true) return // Explicit legacy readers are unchanged.
+    if (original.intake != null) {
+        requireLocalSalesSource(requireCurrentLegacyAccepted(view, original, accepted.stored))
+        return
+    }
     requireLocalSalesSource(original.intake == null)
     val value = accepted.value
     for (attempt in value.attempts) {

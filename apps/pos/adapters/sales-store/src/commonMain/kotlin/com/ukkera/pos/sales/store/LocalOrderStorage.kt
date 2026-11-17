@@ -2,6 +2,8 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.AggregateChange
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.BusinessFactRead
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.pricing.PricingSnapshot
 import com.ukkera.pos.sales.OwnedOrder
@@ -28,6 +30,17 @@ internal data class LocalOrderCut(
 internal suspend fun readOrder(view: CommandReadView, id: DomainId): LocalOrderCut =
     readOrderCut(view, id) { row, normalized -> if (normalized) requireCommerceCurrent(view, row) }
 
+/** Legacy original DATA is independently source-qualified by its native/retained owner.
+ * Normalized commerce still requires its existing exact relational owner and is not
+ * reinterpreted as a legacy order when that owner is absent. */
+internal suspend fun readLegacyOrderBefore(view: BusinessFactRead, id: DomainId): LocalOrderCut =
+    readOrderCut(view, id) { _, normalized -> check(!normalized) { "Original normalized order source required" } }
+
+/** Every row/writer is selected and WHOLE-qualified by this genuine original program.
+ * It cannot be supplied to a live handler in place of current commerce authority. */
+internal suspend fun readOriginalOrderBefore(view: BusinessOriginalProgram, id: DomainId): LocalOrderCut =
+    readOrderCut(view, id, view) { _, _ -> }
+
 /** Both selected current roots must close before any collection cut can return.
  * The private reader never exposes an unchecked normalized order to its callers. */
 internal suspend fun readOrderWithCollectionSource(view: CommandReadView, id: DomainId,
@@ -39,7 +52,7 @@ internal suspend fun readOrderWithCollectionSource(view: CommandReadView, id: Do
     }
 }
 
-private suspend fun readOrderCut(view: CommandReadView, id: DomainId,
+private suspend fun readOrderCut(view: BusinessFactRead, id: DomainId, original: BusinessOriginalProgram? = null,
     requireCurrent: suspend (StoredAggregate, Boolean) -> Unit): LocalOrderCut {
     val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.ORDER_KIND, id))
     val order = SalesSnapshotCodec.decodeOrder(row.text(), SalesSnapshotBinding(SalesSnapshotKind.ORDER, view.scope, id, row.domainRevision()))
@@ -50,10 +63,20 @@ private suspend fun readOrderCut(view: CommandReadView, id: DomainId,
         context.quoteRevision == order.quote.revision) { "sales.order.context.unavailable" }
     validateLocalSalesSource { requireSelectedQuote(context.selection, order.quote, id, context.quoteRevision, order.stockRequirements.normalized) }
     requireCurrent(row, order.stockRequirements.normalized)
-    val priceSources = readPriceSources(view, id, order.quote, order.priceSourceReference,
+    val priceSources = if (original != null && order.stockRequirements.normalized)
+        readOriginalNormalizedPriceSources(original, id, order.quote, order.priceSourceReference,
+            checkNotNull(order.stockRequirements.normalizedLines))
+    else readPriceSources(view, id, order.quote, order.priceSourceReference,
         if (order.stockRequirements.normalized) null else order.stockRequirements.allocations, order.stockRequirements.normalizedLines)
-    val returnPolicyCapture = readReturnPolicyCapture(view, id, order.quote, order.returnPolicySourceReference,
-        priceSources?.value?.sources.orEmpty(), order.stockRequirements.normalizedLines)
+    val returnPolicyCapture = if (original != null) {
+        check(view === original)
+        readOriginalReturnPolicyCapture(original, id, order.quote, order.returnPolicySourceReference,
+            priceSources?.value?.sources.orEmpty(), order.stockRequirements.normalizedLines)
+    } else if (view is CommandReadView) readReturnPolicyCapture(view, id, order.quote, order.returnPolicySourceReference,
+        priceSources?.value?.sources.orEmpty(), order.stockRequirements.normalizedLines) else {
+        check(!order.stockRequirements.normalized && order.returnPolicySourceReference == null)
+        null
+    }
     val work = LocalSalesStorage.work(view, order.ownerId)
     requireLocalSalesSource((id in work.value.orderIds) == (order.paidSaleId == null)) { "sales.work.unavailable" }
     return LocalOrderCut(LocalSalesRow(row, order), LocalSalesRow(contextRow, context), work, priceSources, returnPolicyCapture)

@@ -15,6 +15,10 @@ import com.ukkera.pos.sales.store.*
 import com.ukkera.pos.security.*
 import com.ukkera.pos.types.*
 import dev.p2pkit.rpc.RpcEndpoint
+import dev.p2pkit.rpc.RpcExecutionEvidence
+import dev.p2pkit.rpc.RpcFailure
+import dev.p2pkit.rpc.RpcFailureKind
+import dev.p2pkit.rpc.RpcFailurePhase
 import dev.p2pkit.transport.lan.OrganizationLan
 import java.nio.file.Path
 import java.net.NetworkInterface
@@ -273,12 +277,9 @@ internal object LanRecoverySupportingEndpoint {
                     exchange.await("partition.restored")
                     check(findOriginal(journal, exchange).recorded == null)
                     heldGateway.closeAndAwait(); gateway = null
-                    val before = checkNotNull(heldRpc.original.value)
-                    heldRpc.recoverTransport()
-                    val recovered = checkNotNull(heldRpc.original.value)
-                    check(recovered.identity.copyWireBytes().contentEquals(before.identity.copyWireBytes()) &&
-                        recovered.exactDeviceName == before.exactDeviceName)
-                    heldRpc.connect(RpcEndpoint("10.203.17.1", port))
+                    recordLanConnectExceptions(root, "client1-reconnect.jfr") {
+                        recoverAndConnect(heldRpc, RpcEndpoint("10.203.17.1", port), exchange)
+                    }
                     directory = heldRpc.directoryClient(profile)
                     heldGateway = newGateway().also { gateway = it }
                     session = signIn(role, heldGateway, replaceActive = true)
@@ -317,6 +318,42 @@ internal object LanRecoverySupportingEndpoint {
         } finally { withContext(NonCancellable) {
             try { gateway?.closeAndAwait() } finally { try { journals?.close() } finally { try { rpc?.close() } finally { target?.close() } } }
         } }
+    }
+
+    /**
+     * Mirrors the production LAN Client monitor (LocalSetupCoordinator.startLanClientMonitorLocked):
+     * confirmed whole-role recoverTransport, then the selected connect; after a refused connect wait
+     * 1 s, doubling to at most 30 s, and repeat. Only the official SDK same-peer refusal shape
+     * (NotConnected; Negotiation; NotSent) is retried. A healthy same-identity inbound session
+     * can produce this generic refusal; that mechanism has not been established as the cause
+     * of the historical POS partition failures. Every other failure is final, the identity
+     * must stay exact, and no RPC, session or keepalive deadline is changed.
+     */
+    private suspend fun recoverAndConnect(rpc: LocalOriginalRpcClientOwner, endpoint: RpcEndpoint,
+        exchange: LanFixtureExchange) {
+        val started = System.nanoTime()
+        val attempts = mutableListOf<String>()
+        var wait = 1_000L
+        while (true) {
+            val before = checkNotNull(rpc.original.value)
+            rpc.recoverTransport()
+            val recovered = checkNotNull(rpc.original.value)
+            check(recovered.identity.copyWireBytes().contentEquals(before.identity.copyWireBytes()) &&
+                recovered.exactDeviceName == before.exactDeviceName) { "Recovered Client identity differs" }
+            val refused = try { rpc.connect(endpoint); false } catch (failure: RpcFailure) {
+                if (failure.kind != RpcFailureKind.NotConnected || failure.phase != RpcFailurePhase.Negotiation ||
+                    failure.executionEvidence != RpcExecutionEvidence.NotSent) throw failure
+                true
+            }
+            val elapsed = (System.nanoTime() - started) / 1_000_000
+            attempts += (if (refused) "NotConnected/Negotiation/NotSent" else "Ready") + "@${elapsed}ms"
+            println("Recovery supporting reconnect: attempt=${attempts.size}; ${attempts.last()}")
+            if (!refused) break
+            check(attempts.size < 7) { "Selected reconnect still refused after the production schedule: $attempts" }
+            delay(wait)
+            wait = (wait * 2).coerceAtMost(30_000L)
+        }
+        exchange.putText("client1.reconnect.attempts", attempts.joinToString(";"))
     }
 
     private suspend fun signIn(role: String, gateway: LocalEndpointBranchGateway,

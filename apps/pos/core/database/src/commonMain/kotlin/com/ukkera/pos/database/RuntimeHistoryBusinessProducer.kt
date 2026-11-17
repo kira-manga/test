@@ -193,6 +193,21 @@ public class RuntimeHistoricalCommand internal constructor(
         }
         owner.requireActive(this)
     }
+
+    /** Complete selected stock membership at this exact native BEFORE cut, in the real
+     * guarded query order. Every index is paired to its literal aggregate and fully joined
+     * earlier writer. This is DATA only, not a current stock view or command capability. */
+    public suspend fun forEachRetailStockBefore(query: StockQueryV2,
+        consume: suspend (StockIndexRecordV2, RuntimeHistoricalAggregateSource) -> Unit) {
+        owner.requireActive(this)
+        check(query is StockQueryV2.Positions || query is StockQueryV2.PositionMembers || query is StockQueryV2.ReservationMembers)
+        owner.forEachRetailStockBefore(capture, query) { index, source ->
+            owner.requireActive(this)
+            consume(index, source)
+            owner.requireActive(this)
+        }
+        owner.requireActive(this)
+    }
     /** Complete native completed-output membership observed by THIS original command.
      * The native owner selects/authenticates the signed original child and immutable
      * contents; today's ledger and a caller-supplied manifest cannot supply this cut.
@@ -403,6 +418,26 @@ public class RuntimeHistoricalCommand internal constructor(
             retained.result == expected.result && retained.aggregateWrites.isEmpty() && retained.claimChanges.isEmpty() &&
             retained.jobs.isEmpty() && capture.resources == resources &&
             capture.mutations.size == RuntimeHistoricalOrderReassignmentRejectionProfile.CAPTURED_CHANGES)
+        if (!finalDeadlineChecked) requireFinalDeadlineDecision(null)
+        historyShapeV2(checkedDeadline == null)
+        effectsChecked = true
+    }
+
+    public suspend fun requireNormalizedStockRejection(expected: ProposedOutcome.Reject,
+        resources: Set<RecoveryResourceKey>) {
+        owner.requireActive(this)
+        val profile = capture.normalizedStockRejection ?: unavailable()
+        val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: unavailable()
+        historyShapeV2(!effectsChecked && capture.nativeOriginal == null && capture.supervisorReview == null &&
+            capture.configurationRejection == null && capture.employeeConfigurationRejection == null &&
+            capture.purchasingPolicyRejection == null && capture.branchActivityActivationRejection == null &&
+            capture.floorConfigurationRejection == null &&
+            capture.returnRightsActivationRejection == null && capture.employeeReturnRightsActivationRejection == null &&
+            !retained.committed && retained.nativeOriginalProvenance == null &&
+            retained.command == profile.command && retained.code in profile.rejectionCodes && expected.code == retained.code &&
+            retained.result == expected.result && retained.aggregateWrites.isEmpty() && retained.claimChanges.isEmpty() &&
+            retained.jobs.isEmpty() && capture.resources == resources &&
+            capture.mutations.size == RuntimeHistoricalNormalizedStockRejectionProfile.CAPTURED_CHANGES)
         if (!finalDeadlineChecked) requireFinalDeadlineDecision(null)
         historyShapeV2(checkedDeadline == null)
         effectsChecked = true

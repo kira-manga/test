@@ -28,9 +28,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * is sampled BEFORE the final same-security monotonic callback, never supplied by an employee.
  *
  * The sole bounded synchronous environment is the one used by current protected authorization.
- * Its callback precedes the atomic phase. Normally returned observations are accounted for even
- * if the provider cancelled its caller. Concurrent out-of-order observations conservatively
- * lose continuity; a rollback/cancellation cannot restore an earlier high-water.
+ * Sampling and accounting share one synchronous clock lock, so a later concurrent sample cannot
+ * overtake an earlier one. Revocation/denial still competes independently on the same atom.
+ * Normally returned observations are accounted for even if the provider cancelled its caller;
+ * an actual regression/discontinuity still permanently denies, with no resample or high-water
+ * substitution. A rollback/cancellation cannot restore an earlier high-water.
  *
  * At most 128 ACTIVE request identities are retained. Terminal denial and successful original
  * capture REMOVE the exact entry in the winning CAS. Absence permanently denies the old object;
@@ -73,6 +75,12 @@ internal class PhysicalInstructionPublicationRegistry(
 
     private val atom = MutableStateFlow(Snapshot())
     private val terminal = Snapshot(continuityUnavailable = true, serviceDenied = true)
+    private val observationLock = LocalAuthorizationObservationLock()
+
+    private inline fun <T> orderedObservation(block: () -> T): T {
+        observationLock.lock()
+        try { return block() } finally { observationLock.unlock() }
+    }
 
     internal fun ownsEnvironment(value: RoomLocalAuthorizationEnvironment): Boolean = environment === value
 
@@ -95,13 +103,13 @@ internal class PhysicalInstructionPublicationRegistry(
         return false
     }
 
-    internal fun newLifetime(store: AtomicMasterStore, endpoint: LocalMasterEndpoint): PhysicalInteractiveRequestLifetime {
+    internal fun newLifetime(store: AtomicMasterStore, endpoint: LocalMasterEndpoint): PhysicalInteractiveRequestLifetime = orderedObservation {
         val lifetime = PhysicalInteractiveRequestLifetime(this, store, endpoint, DomainId.random())
         val state = atom.value
-        if (state.serviceDenied || state.continuityUnavailable || state.kernelClock?.store !== store) return lifetime
+        if (state.serviceDenied || state.continuityUnavailable || state.kernelClock?.store !== store) return@orderedObservation lifetime
         // Reclaim genuinely expired entries even if no old handle is polled again. REQUESTED/
         // STARTING/OFFERED owners still MUST explicitly deny abandonment; no invented TTL.
-        if (observeOwnedWall() == null) return lifetime
+        if (observeOwnedWall() == null) return@orderedObservation lifetime
         val observed = sampleEnvironment() // LAST open callback before the bounded atom loop.
         for (attempt in 0 until MAX_CAS_ATTEMPTS) {
             val before = atom.value
@@ -109,10 +117,10 @@ internal class PhysicalInstructionPublicationRegistry(
             val allowed = !sampled.serviceDenied && !sampled.continuityUnavailable &&
                 sampled.kernelClock?.store === store && sampled.entries.size < MAX_ACTIVE_ENTRIES
             val next = if (allowed) replace(sampled, sampled.entries + Entry(lifetime)) else sampled
-            if (atom.compareAndSet(before, next)) return lifetime
+            if (atom.compareAndSet(before, next)) return@orderedObservation lifetime
         }
         failClosed()
-        return lifetime // Unregistered means denied, never a fresh pool.
+        return@orderedObservation lifetime // Unregistered means denied, never a fresh pool.
     }
 
     internal fun beginStart(lifetime: PhysicalInteractiveRequestLifetime, principal: LocalEmployeePrincipal,
@@ -200,11 +208,11 @@ internal class PhysicalInstructionPublicationRegistry(
 
     /** OUTSIDE the fully returned Room loan AND after temporary native release. No later callback. */
     internal fun publishAfterNormalReturn(binding: PhysicalInstructionNativeBinding,
-        context: CoroutineContext): PhysicalPublishedInstruction? {
+        context: CoroutineContext): PhysicalPublishedInstruction? = orderedObservation {
         context.ensureActive()
         var transferred = false
         try {
-            if (observeOwnedWall() == null) return null
+            if (observeOwnedWall() == null) return@orderedObservation null
             val observed = sampleEnvironment()
             val publication = PhysicalPublishedInstruction(binding)
             for (attempt in 0 until MAX_CAS_ATTEMPTS) {
@@ -221,11 +229,11 @@ internal class PhysicalInstructionPublicationRegistry(
                     // actual clean worker. No untransferred object survives the finally denial.
                     context.ensureActive()
                     transferred = allowed
-                    return if (allowed) publication else null
+                    return@orderedObservation if (allowed) publication else null
                 }
             }
             failClosed()
-            return null
+            return@orderedObservation null
         } finally {
             if (!transferred) deny(binding.lifetime)
         }
@@ -243,12 +251,12 @@ internal class PhysicalInstructionPublicationRegistry(
     private enum class Use { ADOPT, SAMPLE, CAPTURE }
 
     private fun observedUse(instruction: PhysicalPublishedInstruction, original: PhysicalInteractiveRequestLifetime,
-        use: Use, digest: PayloadDigest?): Any? {
+        use: Use, digest: PayloadDigest?): Any? = orderedObservation {
         val lifetime = instruction.binding.lifetime
-        if (original !== lifetime) { deny(lifetime); return null }
+        if (original !== lifetime) { deny(lifetime); return@orderedObservation null }
         var accepted = false
         try {
-            if (observeOwnedWall() == null) return null
+            if (observeOwnedWall() == null) return@orderedObservation null
             val observed = sampleEnvironment()
             val capture = if (use == Use.CAPTURE && digest != null) PhysicalOriginalEventCapture(digest) else null
             for (attempt in 0 until MAX_CAS_ATTEMPTS) {
@@ -276,11 +284,11 @@ internal class PhysicalInstructionPublicationRegistry(
                 val next = if (entry == null) sampled else replace(sampled, sampled.entries.replacingOrRetiring(index, nextEntry))
                 if (atom.compareAndSet(before, next)) {
                     accepted = allowed
-                    return if (!allowed) null else capture ?: instruction
+                    return@orderedObservation if (!allowed) null else capture ?: instruction
                 }
             }
             failClosed()
-            return null
+            return@orderedObservation null
         } finally {
             if (!accepted) deny(lifetime)
         }
@@ -453,7 +461,7 @@ internal class PhysicalInstructionPublicationRegistry(
     }
 
     /** Shared by ALL actual current-auth/verifier/admin observations, not just instructions. */
-    internal fun observeCurrent(context: CoroutineContext): RoomLocalAuthorizationObservation {
+    internal fun observeCurrent(context: CoroutineContext): RoomLocalAuthorizationObservation = orderedObservation {
         context.ensureActive()
         if (atom.value.continuityUnavailable) currentLocalAuthorizationDenied()
         val observed = sampleEnvironment()
@@ -466,7 +474,7 @@ internal class PhysicalInstructionPublicationRegistry(
         if (!accepted) failClosed()
         context.ensureActive()
         if (!accepted || observed == null) currentLocalAuthorizationDenied()
-        return observed
+        return@orderedObservation observed
     }
 
     private fun sampleEnvironment(): RoomLocalAuthorizationObservation? = try { environment.observe() }
@@ -487,15 +495,15 @@ internal class PhysicalInstructionPublicationRegistry(
     }
 
     /** Account W immediately, even if the subsequent final environment callback throws. */
-    private fun observeOwnedWall(): UtcInstant? {
+    private fun observeOwnedWall(): UtcInstant? = orderedObservation {
         val wall = sampleOwnedWall()
         for (attempt in 0 until MAX_CAS_ATTEMPTS) {
             val before = atom.value
             val next = accountingWall(before, wall)
-            if (atom.compareAndSet(before, next)) return if (!next.serviceDenied && !next.continuityUnavailable) wall else null
+            if (atom.compareAndSet(before, next)) return@orderedObservation if (!next.serviceDenied && !next.continuityUnavailable) wall else null
         }
         failClosed()
-        return null
+        return@orderedObservation null
     }
 
     private fun sampleOwnedWall(): UtcInstant? {

@@ -118,8 +118,9 @@ internal fun validateStoredCollection(collection: CollectionLock) {
     snapshotCheck(collection.returnPolicySourceReference == null || collection.stockRequirements.normalized && collection.priceSourceReference != null)
     snapshotCheck(collection.lockedOrderRevision > Revision(0))
     snapshotCheck(collection.attempts.map { it.id }.distinct().size == collection.attempts.size)
-    snapshotCheck(collection.attempts.map { it.originalOperationId }.distinct().size == collection.attempts.size)
-    snapshotCheck(collection.revision.value >= collection.attempts.size.toLong())
+    val originalCount = validateStoredAttemptOrigins(collection.attempts.map {
+        StoredAttemptOrigin(it.originalOperationId, it.tender, it.originalActorId, it.originalCashSessionId) })
+    snapshotCheck(collection.revision.value >= originalCount.toLong())
     var collected = collection.quote.payable.zero()
     for ((index, attempt) in collection.attempts.withIndex()) {
         validateStoredPaymentAttempt(attempt)

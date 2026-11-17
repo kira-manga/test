@@ -361,7 +361,7 @@ public class LocalConfigurationHandler(
 public class LocalConfigurationRepository(
     private val signatures: CompanyPublicationSignatureVerifier,
     nativePublications: LocalCompanyBusinessPublications? = null,
-) : LocalStockAuthorityReader, TransactionSalesTenderSource {
+) : LocalStockAuthorityReader, TransactionSalesTenderSource, com.ukkera.pos.inventory.store.LocalLegacyStockHistorySources {
     private val unitAuthority = LocalCatalogUnitAuthority(nativePublications)
     private val productAuthority = LocalCatalogProductAuthority(nativePublications)
     /** Historical receiving uses actual retained literal inputs, not today's mutable catalog.
@@ -418,7 +418,10 @@ public class LocalConfigurationRepository(
     }
 
     /** Complete native BEFORE source and its fully joined original; no historical current view. */
-    internal suspend fun historicalStockItem(command: RuntimeHistoricalCommand, skuId: DomainId): LocalStockItemAuthority? {
+    override suspend fun historicalStockItem(command: RuntimeHistoricalCommand, skuId: DomainId): LocalStockItemAuthority? =
+        historicalStockItem(NativeBusinessOriginalProgram(command), skuId)
+
+    override suspend fun historicalStockItem(command: BusinessOriginalProgram, skuId: DomainId): LocalStockItemAuthority? {
         val source = command.aggregateSource(LocalConfigurationProfile.key(LocalConfigurationProfile.SKU, skuId)) ?: return null
         val signed = verifiedStockSku(command.scope, source.row)
         val sources = mutableListOf(source.row.stamp())
@@ -463,7 +466,10 @@ public class LocalConfigurationRepository(
         return stockWarehouse(view.scope, row)
     }
 
-    internal suspend fun historicalStockWarehouse(command: RuntimeHistoricalCommand, warehouseId: DomainId): LocalStockWarehouseAuthority? {
+    override suspend fun historicalStockWarehouse(command: RuntimeHistoricalCommand, warehouseId: DomainId): LocalStockWarehouseAuthority? =
+        historicalStockWarehouse(NativeBusinessOriginalProgram(command), warehouseId)
+
+    override suspend fun historicalStockWarehouse(command: BusinessOriginalProgram, warehouseId: DomainId): LocalStockWarehouseAuthority? {
         val source = command.aggregateSource(LocalConfigurationProfile.key(LocalConfigurationProfile.WAREHOUSE, warehouseId)) ?: return null
         return stockWarehouse(command.scope, source.row)
     }
@@ -480,6 +486,20 @@ public class LocalConfigurationRepository(
         basis(view, basisId)?.takeIf { it.kind == LocalStockBasisKind.OPENING }
     override suspend fun countSurplusBasis(view: CommandReadView, basisId: DomainId): LocalCountSurplusBasis? =
         readLocalCountSurplusBasis(view, basisId)
+
+    override suspend fun historicalStockBasis(command: RuntimeHistoricalCommand, basisId: DomainId): LocalStockReceivingBasis? =
+        historicalStockBasis(NativeBusinessOriginalProgram(command), basisId)
+
+    override suspend fun historicalStockBasis(command: BusinessOriginalProgram, basisId: DomainId): LocalStockReceivingBasis? {
+        val source = command.aggregateSource(LocalConfigurationProfile.key(LocalConfigurationProfile.BASIS, basisId)) ?: return null
+        val record = decodeRecord(command.scope, source.row)
+        val value = (record.body as? ConfigurationBody.Basis)?.value ?: error("Original receiving basis unavailable")
+        check(value.id == basisId && record.recordedAt <= command.recordedAt)
+        return LocalStockReceivingBasis(command.scope, basisId, record.revision, LocalStockBasisKind.valueOf(value.kind.name), value.supplierId,
+            record.authorizedBy, record.authorizedBy, value.validFrom, value.validUntil,
+            value.lines.map { LocalStockApprovedLine(it.allocationId, it.skuId, it.warehouseId, it.maximumBaseQuantity, it.maximumOwnedValue, it.inspectionRequired) },
+            listOf(source.row.stamp()))
+    }
 
     private suspend fun basis(view: CommandReadView, id: DomainId): LocalStockReceivingBasis? {
         val row = view.aggregate(LocalConfigurationProfile.key(LocalConfigurationProfile.BASIS, id)) ?: return null

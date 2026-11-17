@@ -13,7 +13,8 @@ import kotlinx.serialization.KSerializer
  * Existing normalized unpaid owner handoffs require their exact original authorization and
  * complete installed commerce/stock producer. No paid native original, financial attestation
  * or supervisor read is accepted here; no fake view is used. */
-public class LocalNonphysicalHistoryProducer(private val stock: LocalStockRepository) : RuntimeHistoryBusinessProducer {
+public class LocalNonphysicalHistoryProducer(private val stock: LocalStockRepository,
+    private val originalQuotes: HistoricalNormalizedCommerceSource) : RuntimeHistoryBusinessProducer {
     override public val commands: Set<CommandKey> = setOf(LocalSalesStoreProfile.CASH_COMMAND, LocalCashCloseNoteCodec.COMMAND,
         StockStreamingCommandsV2.COLLECTION)
     override public suspend fun join(command: RuntimeHistoricalCommand): Boolean = when (command.command) {
@@ -124,7 +125,12 @@ public class LocalNonphysicalHistoryProducer(private val stock: LocalStockReposi
     }
 
     private suspend fun collection(command: RuntimeHistoricalCommand): Boolean {
-        if (command.original is RetainedOriginalV2.Legacy) return joinOrderReassignmentRejectionHistory(command)
+        if (command.original is RetainedOriginalV2.Legacy) return when (LocalCollectionStockCodecV2.decode(command.normalized)) {
+            is LocalCollectionStockRequestV2.ReassignOrder -> joinOrderReassignmentRejectionHistory(command)
+            is LocalCollectionStockRequestV2.ReplaceUnlockedOrder, is LocalCollectionStockRequestV2.Begin ->
+                joinNormalizedStockRejectionHistory(command, originalQuotes)
+            else -> false
+        }
         if (command.original !is RetainedOriginalV2.Streamed) return false
         val request = LocalCollectionStockCodecV2.decode(command.normalized)
         check(LocalCollectionStockCodecV2.normalize(command.normalized) == command.normalized)

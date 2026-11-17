@@ -257,9 +257,12 @@ internal object LanGenuineStockSupport {
         exchange.putText("$role.stock.finished", "exact-stock-value-cash-and-original-results")
     }
 
-    private suspend fun readOrder(client: LocalMasterClient, credentials: LocalGatewayCredentials, id: DomainId) =
-        LocalOrderReadCodecV2.decode((client.read(credentials, LocalOrderReadCodecV2.request(LocalOrderQueryV1.Order(id))) as? ReadReply.Data
-            ?: error("Actual own order unavailable")).payload).orders.single().order
+    private suspend fun readOrder(client: LocalMasterClient, credentials: LocalGatewayCredentials, id: DomainId): LocalOrderViewV1 {
+        val reply = client.read(credentials, LocalOrderReadCodecV2.request(LocalOrderQueryV1.Order(id)))
+        val data = reply as? ReadReply.Data
+            ?: error("Actual own order unavailable: ${(reply as? ReadReply.Unavailable)?.reason?.name ?: reply::class.simpleName}")
+        return LocalOrderReadCodecV2.decode(data.payload).orders.single().order
+    }
     private suspend fun readCash(client: LocalMasterClient, credentials: LocalGatewayCredentials, id: DomainId) =
         (LocalCashReadCodec.decode((client.read(credentials, LocalCashReadCodec.request(LocalCashQueryV1.Session(id))) as? ReadReply.Data
             ?: error("Actual own cash unavailable")).payload) as? LocalCashReadResultV1.Session)?.session ?: error("Actual cash projection missing")

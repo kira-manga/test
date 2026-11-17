@@ -105,6 +105,7 @@ public class LocalMasterSecurity internal constructor(
 
     internal val originalStore: RoomLocalSecurityStore get() = store
     internal val originalSource: RoomCurrentLocalAuthorizationSource get() = source
+    internal val originalReadAccess: RoomLocalAccessPrincipalVerifier get() = accessVerifier
     internal fun originalSerialPublications(owner: RoomRuntimeHistoryOwner): RoomSelfOwnedSerialPublications =
         RoomSelfOwnedSerialPublications(owner, store, source, owner.originalCustody)
     internal fun originalEmployeeEnrollments(owner: RoomRuntimeHistoryOwner, native: LocalCompanyEmployeeEnrollments): RoomSelfOwnedEmployeeEnrollments =

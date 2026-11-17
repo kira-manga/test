@@ -178,7 +178,7 @@ private fun validateAcceptedLinks(accepted: AcceptedReturn, entitlement: Receipt
     for (obligation in accepted.tenderObligations) {
         val originalPayment = entitlement.sale.payments.singleOrNull { it.attemptId == obligation.originalPaymentId }
             ?: throw SalesSnapshotRejectedException(SalesSnapshotFailure.INCONSISTENT_STATE)
-        snapshotCheck(originalPayment.tender == obligation.tender)
+        snapshotCheck(originalPayment.tender.refundTender() == obligation.tender)
         var componentCapacity = accepted.originalPayable.zero()
         for (component in accepted.components) {
             val share = rows.getValue(component.key).shares.single { it.paymentId == obligation.originalPaymentId }.amount

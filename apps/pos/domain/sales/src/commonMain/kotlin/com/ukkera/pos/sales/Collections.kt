@@ -17,6 +17,7 @@ import com.ukkera.pos.types.Money
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.types.Revision
 import com.ukkera.pos.types.allocateByLargestRemainder
+import kotlin.time.Instant
 
 public enum class ExternalTenderKind { CARD, EXTERNAL_WALLET, OTHER }
 
@@ -214,6 +215,24 @@ public object Collections {
         reservationPlan: ReservationPlan,
     ): SalesTransition<BegunCollection> {
         val actor = requireOrderActor(command, "payment.begin", order, expectedOrderRevision, order.quote.payable)
+        val begun = begunCollection(actor, command.operationId, command.recordedAt, order, expectedOrderRevision,
+            session, expectedSessionRevision, collectionId, reservationPlan)
+        val after = begun.order
+        val collection = begun.collection
+        val reservation = reservationPlan.proof
+        return SalesTransition(command, BegunCollection(after, collection), listOf(orderVersion(order), cashVersion(session)),
+            listOf(SalesUniqueCheck(SalesUniqueKind.COLLECTION, collectionId)), listOf(OrderChanged(after), CollectionChanged(collection)),
+            listOf(InventoryCommitDependency(InventoryCommitKind.RESERVE, reservationPlan.plan, reservation.reservationId)))
+    }
+
+    /** Pure legacy AFTER from a genuine before-cut plan. No authorization or durable
+     * inventory effect is created; live begin still authorizes before calling it. */
+    public fun begunCollection(actor: DomainId, operationId: OperationId, recordedAt: Instant,
+        order: OwnedOrder, expectedOrderRevision: Revision, session: CashSession,
+        expectedSessionRevision: Revision, collectionId: DomainId,
+        reservationPlan: ReservationPlan): BegunCollection {
+        requireRevision(order.revision, expectedOrderRevision)
+        requireSales(actor == order.ownerId, SalesRule.OWNER_REQUIRED)
         requireRevision(session.revision, expectedSessionRevision)
         requireSessionOwner(session, actor)
         requireSales(session.scope == order.scope, SalesRule.WRONG_BRANCH)
@@ -224,17 +243,15 @@ public object Collections {
         requireSales(reservation.scope == InventoryScope(order.scope.companyId, order.scope.branchId) &&
             reservation.orderId == order.id && reservation.quoteRevision == order.quote.revision &&
             reservation.collectionId == collectionId && reservation.originalActorId == actor &&
-            reservation.operationId == command.operationId &&
-            reservation.validatedAtEpochMillis == command.recordedAt.toEpochMilliseconds() &&
+            reservation.operationId == operationId &&
+            reservation.validatedAtEpochMillis == recordedAt.toEpochMilliseconds() &&
             reservation.exposure == CollectionExposure.UNKNOWN &&
             sameAllocations(reservation.allocations, order.stockRequirements.allocations), SalesRule.STOCK_PROOF_MISMATCH)
         val after = order.update(collectionId = collectionId)
         val collection = CollectionLock(collectionId, order.scope, order.id, after.revision, order.originalCreatorId,
             actor, session.id, order.quote, order.stockRequirements, reservation.reservationId, Revision(0),
             priceSourceReference = order.priceSourceReference, returnPolicySourceReference = order.returnPolicySourceReference)
-        return SalesTransition(command, BegunCollection(after, collection), listOf(orderVersion(order), cashVersion(session)),
-            listOf(SalesUniqueCheck(SalesUniqueKind.COLLECTION, collectionId)), listOf(OrderChanged(after), CollectionChanged(collection)),
-            listOf(InventoryCommitDependency(InventoryCommitKind.RESERVE, reservationPlan.plan, reservation.reservationId)))
+        return BegunCollection(after, collection)
     }
 
     /**
@@ -494,6 +511,28 @@ public object Collections {
     ): SalesTransition<FinalizedSale> {
         val action = if (collection.quote.payable.minor == 0L) "sale.finalizeZero" else "sale.finalize"
         val actor = requireOrderActor(command, action, order, expectedOrderRevision, collection.quote.payable)
+        val finalized = finalizedPaidSale(actor, command.operationId, command.recordedAt, order, expectedOrderRevision,
+            collection, expectedCollectionRevision, saleId, issued)
+        val afterOrder = finalized.order
+        val afterCollection = finalized.collection
+        val sale = finalized.sale
+        val entitlement = finalized.entitlement
+        val issue = issued.proof
+        return SalesTransition(command, FinalizedSale(afterOrder, afterCollection, sale, entitlement),
+            listOf(orderVersion(order), collectionVersion(collection)),
+            listOf(SalesUniqueCheck(SalesUniqueKind.SALE, saleId), SalesUniqueCheck(SalesUniqueKind.SALE_ORDER, order.id),
+                SalesUniqueCheck(SalesUniqueKind.RETURN_ENTITLEMENT, saleId)),
+            listOf(OrderChanged(afterOrder), CollectionChanged(afterCollection), SalePosted(sale), ReceiptEntitlementChanged(entitlement)),
+            listOf(InventoryCommitDependency(InventoryCommitKind.RETAIL_ISSUE, issued.plan, issue.reservationId, issue.issueId)))
+    }
+    /** Pure legacy finalization data; the actual caller separately closes current or
+     * original authority, exact before-state, full stock plan and every literal effect. */
+    public fun finalizedPaidSale(actor: DomainId, operationId: OperationId, recordedAt: Instant,
+        order: OwnedOrder, expectedOrderRevision: Revision, collection: CollectionLock,
+        expectedCollectionRevision: Revision, saleId: DomainId,
+        issued: ReservationIssueResult.Issued): FinalizedSale {
+        requireRevision(order.revision, expectedOrderRevision)
+        requireSales(actor == order.ownerId, SalesRule.OWNER_REQUIRED)
         requireRevision(collection.revision, expectedCollectionRevision)
         requireSales(collection.scope == order.scope && collection.orderId == order.id && collection.collectorId == actor &&
             order.collectionId == collection.id && sameQuote(order.quote, collection.quote) &&
@@ -507,7 +546,7 @@ public object Collections {
         requireSales(issue.scope == InventoryScope(order.scope.companyId, order.scope.branchId) &&
             issue.orderId == order.id && issue.collectionId == collection.id && issue.originalActorId == actor &&
             issue.quoteRevision == collection.quote.revision && issue.reservationId == collection.reservationId &&
-            issue.operationId == command.operationId && issue.validatedAtEpochMillis == command.recordedAt.toEpochMilliseconds() &&
+            issue.operationId == operationId && issue.validatedAtEpochMillis == recordedAt.toEpochMilliseconds() &&
             sameAllocations(issue.costedAllocations.map { it.allocation }, collection.stockRequirements.allocations), SalesRule.STOCK_PROOF_MISMATCH)
         val payments = collection.attempts.mapNotNull { it.payment }
         val sale = PaidSale(saleId, order.scope, order.id, order.originalCreatorId, actor, collection.cashSessionId,
@@ -515,13 +554,9 @@ public object Collections {
         val entitlement = initialEntitlement(sale)
         val afterOrder = order.update(paidSaleId = saleId)
         val afterCollection = collection.update(saleId = saleId)
-        return SalesTransition(command, FinalizedSale(afterOrder, afterCollection, sale, entitlement),
-            listOf(orderVersion(order), collectionVersion(collection)),
-            listOf(SalesUniqueCheck(SalesUniqueKind.SALE, saleId), SalesUniqueCheck(SalesUniqueKind.SALE_ORDER, order.id),
-                SalesUniqueCheck(SalesUniqueKind.RETURN_ENTITLEMENT, saleId)),
-            listOf(OrderChanged(afterOrder), CollectionChanged(afterCollection), SalePosted(sale), ReceiptEntitlementChanged(entitlement)),
-            listOf(InventoryCommitDependency(InventoryCommitKind.RETAIL_ISSUE, issued.plan, issue.reservationId, issue.issueId)))
+        return FinalizedSale(afterOrder, afterCollection, sale, entitlement)
     }
+
 }
 
 internal fun validateExternal(tender: Tender, evidence: ExternalTenderEvidence) {

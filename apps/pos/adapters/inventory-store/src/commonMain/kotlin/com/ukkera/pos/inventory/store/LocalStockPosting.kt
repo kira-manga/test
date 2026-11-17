@@ -43,6 +43,19 @@ internal fun completeStockProposal(
     effects: StoredBytes? = null,
     deadline: UtcInstant? = null,
     observations: List<StockObservedWire> = emptyList(),
+): ProposedOutcome.Apply = completeStockProposal(StockProducerFacts.of(context), changes, claims, result, jobs, effects, deadline, observations)
+
+/** The same proposal from exact producer facts; the live path supplies its kernel context,
+ * a historical producer the genuine retained original identity. Neither is authority. */
+internal fun completeStockProposal(
+    context: StockProducerFacts,
+    changes: List<AggregateChange>,
+    claims: List<ClaimChange>,
+    result: StoredBytes,
+    jobs: List<JobIntent> = emptyList(),
+    effects: StoredBytes? = null,
+    deadline: UtcInstant? = null,
+    observations: List<StockObservedWire> = emptyList(),
 ): ProposedOutcome.Apply {
     localStockCheck(changes.none { it.key.kind == LocalStockStoreProfile.POSTING } && changes.map { it.key }.distinct().size == changes.size &&
         claims.map { it.key }.distinct().size == claims.size, LocalStockFailure.STORAGE_INCONSISTENT)

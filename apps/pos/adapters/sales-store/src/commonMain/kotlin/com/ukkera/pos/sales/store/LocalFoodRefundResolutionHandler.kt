@@ -31,7 +31,7 @@ internal suspend fun prepareFoodRefundResolution(request: LocalFoodRefundRequest
         setOf(RecoveryResourceKind.AUTHORIZATION, RecoveryResourceKind.CASH_CUSTODY, RecoveryResourceKind.ORDER_CUSTODY),
         allowsActionApproval = true, admission = { _, _ ->
             if (context.physicalParticipants?.let { it.authority == slot.domain.authority &&
-                    it.clientDeviceId == requirement.clientDeviceId && it.originalActorId == context.originalActorId } == true) admission else null
+                    it.originalActorId == context.originalActorId } == true) admission else null
         }) { _, at ->
         val native = context.physicalRecording
         if (native == null || !native.matches(admission) || native.sourceChanges.isNotEmpty())

@@ -13,8 +13,8 @@ private class ReturnCaseHistoryEntitlementImage(val generation: Revision, val sc
 
 /** Join every exact current entitlement contribution to its original Finalize. A locator,
  * a selected claim, equal totals or a stale initial commerce link cannot supply rights. */
-internal suspend fun readReturnCaseHistoryLinkedEntitlement(command: RuntimeHistoricalCommand,
-    sale: LocalReturnSaleCut, current: RuntimeHistoricalAggregateSource,
+internal suspend fun readReturnCaseHistoryLinkedEntitlement(command: BusinessOriginalProgram,
+    sale: LocalReturnSaleCut, current: BusinessOriginalAggregate,
     finalized: RetainedOriginalV2.Streamed, sources: LocalReturnCaseHistorySources): LocalReturnEntitlementSourceCut {
     val profile = LocalReturnEntitlementProvenanceProfile
     val currentRow = current.row
@@ -130,7 +130,7 @@ private fun requireReturnCaseHistoryEntitlementOrder(operationId: OperationId, a
         (assignmentId != successor.assignmentId || authorityEpoch != successor.authorityEpoch || sequence < successor.sequence.value))
 }
 
-internal suspend fun prepareReturnCaseHistoryEntitlementAppend(command: RuntimeHistoricalCommand, original: LocalEntitlementCut,
+internal suspend fun prepareReturnCaseHistoryEntitlementAppend(command: BusinessOriginalProgram, original: LocalEntitlementCut,
     identity: LocalReturnCaseProductionIdentity, request: LocalReturnCaseRequestV1.Accept,
     sources: LocalReturnCaseHistorySources): LocalReturnEntitlementAppend? {
     if (original.priceSources?.value?.normalizedStock != true) return null

@@ -71,25 +71,11 @@ public class LocalReturnHandler(
 
     private suspend fun intake(request: LocalReturnRequestV1.RecordClaim, view: CommandReadView, context: CommandContext): PreparedMutation {
         val work = LocalSalesStorage.work(view, context.originalActorId)
-        val claim = LocalSalesStoreProfile.unique("return_intake", request.claimId)
-        val exists = view.aggregate(LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_INTAKE_KIND, request.claimId)) != null ||
-            view.claim(claim) != null ||
-            view.aggregate(LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_CLAIM_KIND, request.claimId)) != null ||
-            view.claim(LocalSalesStoreProfile.unique("return_claim", request.claimId)) != null ||
-            view.aggregate(LocalReturnCaseProfileV1.key(LocalReturnCaseProfileV1.CASE, request.claimId)) != null ||
-            view.claim(LocalReturnCaseProfileV1.source("case", request.claimId)) != null ||
-            view.claim(LocalReturnCaseProfileV1.source("claim", request.claimId)) != null
+        val exists = legacyReturnIntakeExists(view, request.claimId)
         return LocalSalesPrepared(context, SecurityAction.RETURN_CLAIM, request.claimId, Revision(0), context.originalActorId,
             "return.claim.intake", resources = setOf(entitlementResource(request.claimId), orderResource(work.value.id))) { _, now ->
             if (exists) return@LocalSalesPrepared salesRejected(SalesRule.DUPLICATE_SOURCE_ALLOCATION)
-            val value = LocalReturnIntake(LocalSalesScope.from(context.scope), request.claimId, Revision(0),
-                context.originalActorId, context.operationId, now, request.facts)
-            val (afterWork, workWrite) = changedWork(work, pendingClaimIds = work.value.pendingClaimIds + value.claimId)
-            salesApplied(LocalSalesAction.RETURN_CLAIM_PENDING, value.claimId,
-                listOf(LocalSalesRevision(LocalSalesStoreProfile.RETURN_INTAKE_KIND, value.claimId, value.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.WORK_KIND, afterWork.id, afterWork.revision)),
-                listOf(rootWrite(LocalSalesStoreProfile.RETURN_INTAKE_KIND, value.claimId, value, LocalReturnIntake.serializer(), null), workWrite),
-                listOf(ClaimChange.Acquire(claim, value.originalActorId)))
+            legacyReturnIntakeOutcome(context.scope, context.originalActorId, context.operationId, request, work, now)
         }
     }
 
@@ -127,14 +113,7 @@ public class LocalReturnHandler(
                 transition.versions == listOf(entitlementVersion(original)) &&
                 transition.unique == listOf(SalesUniqueCheck(SalesUniqueKind.RETURN_CLAIM, claim.id)) &&
                 transition.effects == listOf(ReturnClaimChanged(claim))) { "sales.transition.invalid" }
-            val afterIntake = intake.value.copy(revision = intake.value.revision.next(), boundSaleId = original.sale.value.id)
-            val (afterWork, workWrite) = changedWork(work, pendingClaimIds = work.value.pendingClaimIds - request.claimId)
-            salesApplied(LocalSalesAction.RETURN_CLAIMED, claim.id,
-                listOf(LocalSalesRevision(LocalSalesStoreProfile.RETURN_INTAKE_KIND, claim.id, afterIntake.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.RETURN_CLAIM_KIND, claim.id, claim.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.WORK_KIND, afterWork.id, afterWork.revision)),
-                listOf(rootWrite(LocalSalesStoreProfile.RETURN_INTAKE_KIND, claim.id, afterIntake, LocalReturnIntake.serializer(), intake.stored),
-                    claimWrite(claim, null), workWrite), listOf(ClaimChange.Acquire(unique, claim.saleId)))
+            legacyReturnBoundOutcome(context.scope, request, intake, work, original, claim)
         }
     }
 
@@ -177,16 +156,7 @@ public class LocalReturnHandler(
                 "sales.transition.invalid"
             }
             SalesSnapshotLinks.requireAcceptedReturn(after.acceptedReturn, after.entitlement, after.claim)
-            val workChange = if (after.acceptedReturn.due.minor == 0L) null else changedWork(work, returnIds = work.value.returnIds + request.returnId)
-            salesApplied(LocalSalesAction.RETURN_ACCEPTED, request.returnId,
-                listOf(LocalSalesRevision(LocalSalesStoreProfile.ENTITLEMENT_KIND, request.saleId, after.entitlement.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.RETURN_CLAIM_KIND, claim.id, after.claim.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.RETURN_KIND, request.returnId, after.acceptedReturn.revision)) +
-                    listOfNotNull(workChange?.first?.let { LocalSalesRevision(LocalSalesStoreProfile.WORK_KIND, it.id, it.revision) }),
-                listOf(entitlementWrite(after.entitlement, cut.original.entitlement.stored), claimWrite(after.claim, cut.claim.stored),
-                    acceptedReturnWrite(after.acceptedReturn, after.entitlement, after.claim, null)) + listOfNotNull(workChange?.second),
-                listOf(ClaimChange.Acquire(uniqueReturn, request.saleId), ClaimChange.Acquire(uniqueClaim, request.returnId),
-                    ClaimChange.Acquire(claimSource, request.claimId)), after.acceptedReturn.originalPayable)
+            legacyReturnAcceptedOutcome(request, cut, work, after)
         }
     }
 

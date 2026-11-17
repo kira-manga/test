@@ -245,22 +245,27 @@ private fun applyExchange(command: com.ukkera.pos.sales.SalesCommand, now: UtcIn
             after.acceptedReturn.attempts.filter { it.id in ids }.all { it.tender is Tender.ExchangeOffset }) { "sales.exchange.transition" }
         SalesSnapshotLinks.requireAcceptedReturn(after.acceptedReturn, returned.original.original.entitlement.value, returned.original.claim.value)
         SalesSnapshotLinks.requireCollection(after.collection, cut.order.order.value, cut.cash.session.value)
-        return exchangeOutcome(context, request, returned, cut, oldLink, after.acceptedReturn, after.collection, after.record, readEvidence, now)
+        return exchangeOutcome(context.scope, context.operationId, context.originalActorId, context.semanticDigest,
+            request, returned, cut, oldLink, after.acceptedReturn, after.collection, after.record, readEvidence, now)
 }
 
-private fun exchangeOutcome(context: CommandContext, request: LocalExchangeRequestV1, returned: LocalReturnCut,
+/** Same literal exchange successor for live and fully qualified original calculations. */
+internal fun exchangeOutcome(branchScope: com.ukkera.pos.security.BranchScope, operationId: OperationId,
+    actorId: DomainId, semanticDigest: com.ukkera.pos.security.PayloadDigest,
+    request: LocalExchangeRequestV1, returned: LocalReturnCut,
     cut: LocalCollectionCut, oldLink: StoredAggregate, acceptedAfter: com.ukkera.pos.sales.AcceptedReturn,
     collectionAfter: com.ukkera.pos.sales.CollectionLock, record: ExchangeOffsetRecorded,
     readEvidence: List<AggregateChange>, now: UtcInstant): ProposedOutcome.Apply {
-    val scope = LocalSalesScope.from(context.scope)
+    val scope = LocalSalesScope.from(branchScope)
     val document = collectionWrite(collectionAfter, cut.collection.stored)
     val changes = mutableListOf(
         acceptedReturnWrite(acceptedAfter, returned.original.original.entitlement.value, returned.original.claim.value, returned.accepted.stored),
-        document, normalizedPaymentLink(context, document, cut.collection.stored, oldLink),
-        rootWrite(LocalExchangeCodec.KIND, request.exchangeId, LocalExchangeRecordV1(scope, request.exchangeId, context.operationId,
-            request.returnId, request.saleId, request.claimId, request.collectionId, context.originalActorId, record.amount,
-            request.slices, LocalCashActorEvidenceV1(request.evidence.evidenceId, context.originalActorId, request.evidence.occurredAt),
-            now, retailBeforeImageV3(context.operationId, scope, "accepted", returned.accepted.stored)),
+        document, normalizedPaymentLink(branchScope, operationId, actorId, LocalExchangeCodec.COMMAND, semanticDigest,
+            document, cut.collection.stored, oldLink),
+        rootWrite(LocalExchangeCodec.KIND, request.exchangeId, LocalExchangeRecordV1(scope, request.exchangeId, operationId,
+            request.returnId, request.saleId, request.claimId, request.collectionId, actorId, record.amount,
+            request.slices, LocalCashActorEvidenceV1(request.evidence.evidenceId, actorId, request.evidence.occurredAt),
+            now, retailBeforeImageV3(operationId, scope, "accepted", returned.accepted.stored)),
             LocalExchangeRecordV1.serializer(), null))
     if (!acceptedAfter.unresolved && acceptedAfter.due.minor == 0L && request.returnId in returned.work.value.returnIds) {
         changes += changedWork(returned.work, returnIds = returned.work.value.returnIds - request.returnId).second

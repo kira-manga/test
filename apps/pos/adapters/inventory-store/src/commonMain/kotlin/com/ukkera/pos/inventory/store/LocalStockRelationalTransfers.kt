@@ -236,14 +236,14 @@ internal suspend fun requireStockTransferValuePair(read: StockPoolHistoryAccess,
  * complete pool range, and both sides are checked by the same literal original reader. */
 internal suspend fun stockTransferClaimRequirements(stock: LocalStockRelationalInspection,
     consume: suspend (ClaimKey, DomainId) -> Unit) {
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Aggregate ?: return@frames
         if (source.key.kind != StockRelationalKindsV2.TRANSFER_EDGE) return@frames
         val edge = stock.before(source.key)?.body as? StockRelationalBody.TransferEdge ?: inconsistentStock()
         val eventRecord = stock.before(AggregateKey(StockRelationalKindsV2.VALUE_EVENT, edge.eventId)) ?: inconsistentStock()
         localStockCheck(requireStockTransferValuePair(RetainedReceiptAccess(stock), eventRecord) == edge)
         var inPoolHistory = false
-        stock.original.frames { candidate ->
+        stock.frames { candidate ->
             val query = ((candidate as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange)?.query
                 as? StockQueryV2.PoolValues
             if (query != null && (query.poolId == LocalStockRelationalProfileV2.poolKey(edge.pool).id ||

@@ -174,7 +174,7 @@ internal class RetainedReceiptAccess(private val stock: LocalStockRelationalInsp
     }
     override suspend fun current(stamp: LocalStockSourceStamp) {
         var actual: StreamedSourceObservationV2.Current? = null
-        stock.original.frames { frame ->
+        stock.frames { frame ->
             val row = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Current
             if (row?.key == stamp.key) { localStockCheck(actual == null); actual = row }
         }
@@ -183,7 +183,7 @@ internal class RetainedReceiptAccess(private val stock: LocalStockRelationalInsp
     }
     override suspend fun absent(key: AggregateKey) {
         var found = false
-        stock.original.frames { frame -> if ((frame as? RetainedCommandFrameV2.Source)?.value == StreamedSourceObservationV2.CurrentAbsent(key)) {
+        stock.frames { frame -> if ((frame as? RetainedCommandFrameV2.Source)?.value == StreamedSourceObservationV2.CurrentAbsent(key)) {
             localStockCheck(!found); found = true
         } }
         localStockCheck(found); observe(StreamedSourceObservationV2.CurrentAbsent(key))
@@ -191,7 +191,7 @@ internal class RetainedReceiptAccess(private val stock: LocalStockRelationalInsp
     override suspend fun arrivalV2NegativeProfile(): Boolean {
         hasArrivalV2NegativeProfile?.let { return it }
         var present = false
-        stock.original.frames { frame ->
+        stock.frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.CurrentAbsent
             if (source != null && source.key.kind in arrivalKindsV2) present = true
         }
@@ -200,13 +200,13 @@ internal class RetainedReceiptAccess(private val stock: LocalStockRelationalInsp
     }
     override suspend fun range(query: StockQueryV2, consume: suspend (StockRelationalRecordV2) -> Unit) {
         var count = 0L
-        stock.original.stockRange(query) { index ->
+        stock.stockRange(query) { index ->
             val row = normal(index.identity.key) ?: inconsistentStock()
             localStockCheck(stockIndexOf(scope, row) == index)
             observe(StreamedSourceObservationV2.StockMember(query, count, index)); count = stockCheckedAdd(count, 1); consume(row)
         }
         var terminal: StreamedSourceObservationV2.StockRange? = null
-        stock.original.frames { frame ->
+        stock.frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange
             if (source?.query == query) { localStockCheck(terminal == null && source.count == count); terminal = source }
         }

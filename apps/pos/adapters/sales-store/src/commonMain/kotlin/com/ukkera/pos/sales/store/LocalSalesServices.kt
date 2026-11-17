@@ -83,22 +83,26 @@ public object LocalSalesHandlers {
         physicalRecordingCapacity: TransactionSalesPhysicalRecordingCapacityV2 = UnavailableSalesPhysicalRecordingCapacityV2,
         returnCaseSource: TransactionSalesReturnCaseSourceV1 = UnavailableSalesReturnCaseSourceV1,
         tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
-        depositTerms: TransactionDepositTermsSource = UnavailableDepositTermsSource): List<MasterCommandHandler> = listOf(
+        depositTerms: TransactionDepositTermsSource = UnavailableDepositTermsSource,
+        originalSources: LocalFinancialOriginalSourceServices? = null): List<MasterCommandHandler> = listOf(
         LocalCashHandler(), LocalCashCloseNoteHandler(), LocalSafeFloatHandler(), LocalOrderHandler(quoteSource), LocalCollectionHandler(stock, tenderSource, recordingCapacity),
-        CommerceCommandHandler(LocalReturnHandler(returnPolicy, recordingCapacity), stock, tenderPolicies),
+        CommerceCommandHandler(LocalReturnHandler(returnPolicy, recordingCapacity), stock, tenderPolicies, originalSources),
         LocalHistoricalCollectionHandler(stock, tenderSource, physicalRecordingCapacity),
-        CommerceCommandHandler(LocalHistoricalReturnHandler(returnPolicy, physicalRecordingCapacity), stock, tenderPolicies),
-        CommerceCommandHandler(LocalReturnCaseHandler(returnCaseSource), stock, tenderPolicies),
-        CommerceCommandHandler(LocalRetailCustomerReceiptHandler(), stock, tenderPolicies), LocalBranchReportExportHandler(),
-        LocalPaymentCorrectionHandler(stock, tenderSource, tenderPolicies), LocalExchangeHandler(stock, tenderPolicies), CommerceCommandHandler(LocalDepositHandler(depositTerms), stock, tenderPolicies))
+        CommerceCommandHandler(LocalHistoricalReturnHandler(returnPolicy, physicalRecordingCapacity), stock, tenderPolicies, originalSources),
+        CommerceCommandHandler(LocalReturnCaseHandler(returnCaseSource), stock, tenderPolicies, originalSources),
+        CommerceCommandHandler(LocalRetailCustomerReceiptHandler(), stock, tenderPolicies, originalSources), LocalBranchReportExportHandler(),
+        LocalPaymentCorrectionHandler(stock, tenderSource, tenderPolicies),
+        CommerceCommandHandler(LocalExchangeHandler(stock, tenderPolicies), stock, tenderPolicies, originalSources),
+        CommerceCommandHandler(LocalDepositHandler(depositTerms), stock, tenderPolicies, originalSources))
 
     public fun reads(stock: LocalStockRepository, foodRecipes: TransactionFoodRecipeSourceV1? = null,
-        tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1): List<MasterReadHandler> =
+        tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+        originalSources: LocalFinancialOriginalSourceServices? = null): List<MasterReadHandler> =
         listOf(LocalCashReadHandler(), LocalCashCloseReadHandler(), LocalCashCountReadHandler(), LocalCashCloseNotesReadHandler(), LocalSafeFloatReadHandler(), LocalOrderReadHandler(), LocalOrderReadHandler.withStockProfile(), LocalManagerOrderReviewReadHandler(), LocalManagerOriginalQuoteReadHandler(), LocalManagerReassignmentReadHandler(), LocalCollectionReadHandler(stock), LocalReturnReadHandler(),
             LocalHistoricalFinancialReadHandler(), LocalCollectionStockReadHandler(stock), LocalReturnStockReadHandler(stock), LocalReturnCaseReadHandler(),
             LocalRetailCustomerReceiptReadHandler(), LocalBranchReportReadHandler(stock, foodRecipes), LocalBranchReportExportReadHandler(),
             LocalPaymentCorrectionReadHandler(stock, tenderPolicies), LocalDepositReadHandler())
-            .map { CommerceReadHandler(it, stock, tenderPolicies) }
+            .map { CommerceReadHandler(it, stock, tenderPolicies, originalSources) }
 }
 
 /**

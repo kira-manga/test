@@ -29,6 +29,9 @@ internal class LanBusinessNativeFixture {
     // A deterministic scheduling seam only. The actual production handler still prepares and
     // evaluates the command in the genuine kernel writer with unchanged authorization/history.
     var beforeCashPrepare: suspend (CommandContext) -> Unit = { }
+    // Negative-only supporting reader seam. The real registry, current authorization,
+    // native original and protected SQL loan remain in use; no result is substituted.
+    var beforeStockRead: suspend (LocalBranchCommerceRegistry, CommandReadView, ReadContext) -> Unit = { _, _, _ -> }
     private val extraTokens = mutableListOf<LocalSessionTokens>()
     val endpoint: LocalMasterClient get() = client
     val administration: LocalMasterAdministrationClient get() = client as LocalMasterAdministrationClient
@@ -139,7 +142,16 @@ internal class LanBusinessNativeFixture {
                         return handler.prepare(normalized, view, context)
                     }
                 }
-            }, registry.reads, UnavailablePhysicalRecordingExecutionGate, registry.nativeOriginalImports,
+            }, registry.reads.map { handler ->
+                if (handler.key != com.ukkera.pos.inventory.store.LocalStockStoreProfile.QUANTITIES) handler
+                else object : MasterReadHandler by handler {
+                    override suspend fun prepare(normalized: StoredBytes, view: CommandReadView,
+                        context: ReadContext): PreparedRead {
+                        beforeStockRead(registry, view, context)
+                        return handler.prepare(normalized, view, context)
+                    }
+                }
+            }, UnavailablePhysicalRecordingExecutionGate, registry.nativeOriginalImports,
             registry.stockProjection, observedHistory)
         if (!requireOperational && opened is AndroidSelfOwnedMasterOpenResult.Unresolved) {
             assertEquals(SelfOwnedInstallationFailureV1.STATE_UNCERTAIN, opened.reason,

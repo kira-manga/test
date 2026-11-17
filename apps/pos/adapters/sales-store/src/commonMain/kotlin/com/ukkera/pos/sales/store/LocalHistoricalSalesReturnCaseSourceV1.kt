@@ -4,6 +4,7 @@ import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.StockStreamingCommandsV2
 import com.ukkera.pos.database.semanticDigest
 import com.ukkera.pos.security.sha256
@@ -23,13 +24,20 @@ public fun interface HistoricalSalesReturnCaseSourceV1 {
         request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1?
 }
 
+/** Same immutable qualification preparation on recursively qualified original DATA.
+ * Implemented by the installed factual source, never by a Client payload or permission. */
+public fun interface FactualSalesReturnCaseSourceV1 {
+    public suspend fun prepare(command: BusinessOriginalProgram,
+        request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1?
+}
+
 public object UnavailableHistoricalSalesReturnCaseSourceV1 : HistoricalSalesReturnCaseSourceV1 {
     override public suspend fun prepare(command: RuntimeHistoricalCommand,
         request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1? = null
 }
 
 /** Exact immutable source rows and their whole originals in this same native scan. */
-internal suspend fun requireReturnCaseHistorySources(command: RuntimeHistoricalCommand,
+internal suspend fun requireReturnCaseHistorySources(command: BusinessOriginalProgram,
     references: List<LocalReturnCaseSourceReferenceV1>) {
     check(references.size <= 17 && references.distinct().size == references.size)
     for (reference in references) {
@@ -70,7 +78,7 @@ internal suspend fun requireReturnCaseHistorySources(command: RuntimeHistoricalC
 }
 
 /** Select only a portion of the already validated whole normalized original capture. */
-internal suspend fun requireReturnCaseHistoryPolicyForSale(command: RuntimeHistoricalCommand,
+internal suspend fun requireReturnCaseHistoryPolicyForSale(command: BusinessOriginalProgram,
     original: LocalReturnSaleEvidence, binding: LocalReturnCaseReceiptBindingV1,
     assessment: LocalReturnCaseAssessmentV1): LocalSalesReturnPortionPromiseV1? {
     val reference = assessment.salePolicyCapture ?: error("sales.return.case_history.capture_missing")

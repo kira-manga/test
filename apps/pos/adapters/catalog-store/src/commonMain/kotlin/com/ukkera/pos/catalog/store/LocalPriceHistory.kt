@@ -73,7 +73,7 @@ internal data class PriceHistoryEventV1(
 internal fun priceResource(id: DomainId): RecoveryResourceKey = RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, id)
 
 internal suspend fun <T> readPricingValue(
-    view: CommandReadView, kind: String, id: DomainId, serializer: KSerializer<T>,
+    view: BusinessFactRead, kind: String, id: DomainId, serializer: KSerializer<T>,
 ): Pair<StoredAggregate, T>? {
     val key = LocalPricingProfile.key(kind, id)
     val row = view.aggregate(key) ?: return null
@@ -89,7 +89,7 @@ internal fun <T> decodePricingValue(row: StoredAggregate, serializer: KSerialize
     return row to value
 }
 
-internal suspend fun readPriceHistoryIndex(view: CommandReadView): Pair<StoredAggregate, PriceHistoryIndexV1>? =
+internal suspend fun readPriceHistoryIndex(view: BusinessFactRead): Pair<StoredAggregate, PriceHistoryIndexV1>? =
     readPricingValue(view, LocalPricingProfile.HISTORY_INDEX, view.scope.branchId, PriceHistoryIndexV1.serializer())?.also { (_, value) ->
         requirePriceHistoryIndex(view.scope, value)
     }
@@ -100,7 +100,7 @@ internal fun requirePriceHistoryIndex(scope: BranchScope, value: PriceHistoryInd
 }
 
 internal suspend fun readSignedSku(
-    view: CommandReadView, kind: String, id: DomainId, signatures: CompanyPublicationSignatureVerifier,
+    view: BusinessFactRead, kind: String, id: DomainId, signatures: CompanyPublicationSignatureVerifier,
 ): Pair<StoredAggregate, ConfigurationRecord>? {
     check(kind == LocalConfigurationProfile.SKU || kind == LocalConfigurationProfile.PUBLICATION)
     val row = view.aggregate(LocalConfigurationProfile.key(kind, id)) ?: return null
@@ -128,7 +128,7 @@ internal class ReadPriceHighWater(val row: StoredAggregate, val value: PriceHigh
 }
 
 internal suspend fun readPriceHighWater(
-    view: CommandReadView, skuId: DomainId, ruleId: DomainId, signatures: CompanyPublicationSignatureVerifier,
+    view: BusinessFactRead, skuId: DomainId, ruleId: DomainId, signatures: CompanyPublicationSignatureVerifier,
 ): ReadPriceHighWater? {
     val id = priceContextId(view.scope.company(), skuId, ruleId)
     val source = readPricingValue(view, LocalPricingProfile.COMPANY_HIGH_WATER, id, PriceHighWaterV1.serializer()) ?: return null
@@ -148,7 +148,7 @@ internal fun resolvePriceHighWater(scope: BranchScope, skuId: DomainId, ruleId: 
     return ReadPriceHighWater(source.first, value, publication)
 }
 
-internal suspend fun readPriceHistoryEvent(view: CommandReadView, skuId: DomainId, id: DomainId): Pair<StoredAggregate, PriceHistoryEventV1>? =
+internal suspend fun readPriceHistoryEvent(view: BusinessFactRead, skuId: DomainId, id: DomainId): Pair<StoredAggregate, PriceHistoryEventV1>? =
     readPricingValue(view, LocalPricingProfile.HISTORY_EVENT, id, PriceHistoryEventV1.serializer())?.also {
         requirePriceHistoryEvent(view.scope, skuId, id, it)
     }
@@ -170,7 +170,7 @@ internal fun requirePriceHistoryEvent(scope: BranchScope, skuId: DomainId, id: D
     }
 }
 
-internal suspend fun readPriceHistoryHead(view: CommandReadView, skuId: DomainId): Pair<StoredAggregate, PriceHistoryHeadV1>? {
+internal suspend fun readPriceHistoryHead(view: BusinessFactRead, skuId: DomainId): Pair<StoredAggregate, PriceHistoryHeadV1>? {
     val result = readPricingValue(view, LocalPricingProfile.HISTORY_HEAD, skuId, PriceHistoryHeadV1.serializer()) ?: return null
     val (row, value) = result
     check(value.scope == view.scope && value.skuId == skuId && value.count == row.revision)

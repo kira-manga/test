@@ -58,6 +58,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     private val supervisorReviews = linkedMapOf<Long, RuntimeEmployeeSupervisorReviewHistoryAuthorization>()
     private val purchasingPolicyRejections = linkedMapOf<Long, RuntimeEmployeePurchasingPolicyRejectionHistoryAuthorization>()
     private val orderReassignmentRejections = linkedMapOf<Long, RuntimeEmployeeOrderReassignmentRejectionHistoryAuthorization>()
+    private val normalizedStockRejections = linkedMapOf<Long, RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization>()
     private val openingSupplierObligationRejections = linkedMapOf<Long, RuntimeEmployeeOpeningSupplierObligationRejectionHistoryAuthorization>()
     private val invoiceCaptureRejections = linkedMapOf<Long, RuntimeEmployeeInvoiceCaptureRejectionHistoryAuthorization>()
     private val capturedInvoiceMatchRejections = linkedMapOf<Long, RuntimeEmployeeCapturedInvoiceMatchRejectionHistoryAuthorization>()
@@ -94,7 +95,9 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
     val purchasingPolicyRejectionCount: Long get() = purchasingPolicyRejections.size.toLong()
     val purchasingPolicyRejectionMutationCount: Long get() = purchasingPolicyRejections.values.sumOf { it.evidence.capturedChanges.toLong() }
     val orderReassignmentRejectionCount: Long get() = orderReassignmentRejections.size.toLong()
+    val normalizedStockRejectionCount: Long get() = normalizedStockRejections.size.toLong()
     val orderReassignmentRejectionMutationCount: Long get() = orderReassignmentRejections.values.sumOf { it.evidence.capturedChanges.toLong() }
+    val normalizedStockRejectionMutationCount: Long get() = normalizedStockRejections.values.sumOf { it.evidence.capturedChanges.toLong() }
     val openingSupplierObligationRejectionCount: Long get() = openingSupplierObligationRejections.size.toLong()
     val openingSupplierObligationRejectionMutationCount: Long get() = openingSupplierObligationRejections.values.sumOf { it.evidence.capturedChanges.toLong() }
     val invoiceCaptureRejectionCount: Long get() = invoiceCaptureRejections.size.toLong()
@@ -521,6 +524,20 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         return proof
     }
 
+    fun normalizedStockRejection(value: RuntimeCommandAuthorizationEvidenceV1, header: RuntimeHistoryEventHeaderV2,
+        eventDigest: PayloadDigest): RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization? {
+        historyShapeV2(enabled)
+        value.validate()
+        val profile = RuntimeHistoricalNormalizedStockRejectionProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
+        if (!profile.matches(header, value) || !ordinaryInteractiveRequirement(value, header)) return null
+        requireCommandCapacity(header.sequence)
+        val proof = RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization(this, source, header, eventDigest, profile, value, policyDigest,
+            additionalCommandAdmissionOrigins[value.authorization.deviceId],
+            digest(ProtectedLocalSecurityCodec.encodeAdmission(authenticationAdmission(value.authorization.deviceId))))
+        normalizedStockRejections[header.sequence] = proof
+        return proof
+    }
+
     /** Separate closed opening-obligation lane with the exact original amount-bound local
      * employee authority. Canonical request/refusal/source and native closure remain pending. */
     fun openingSupplierObligationRejection(value: RuntimeCommandAuthorizationEvidenceV1, header: RuntimeHistoryEventHeaderV2,
@@ -802,7 +819,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
      * dedicated closed refusal and exact ordinary/native cutoff; generic gates stay above. */
     private fun requireCommandRetentionCapacity(sequence: Long) {
         historyCapacityV2(commands.size + supervisorReviews.size + purchasingPolicyRejections.size +
-            orderReassignmentRejections.size + openingSupplierObligationRejections.size + invoiceCaptureRejections.size +
+            orderReassignmentRejections.size + normalizedStockRejections.size + openingSupplierObligationRejections.size + invoiceCaptureRejections.size +
             capturedInvoiceMatchRejections.size +
             branchActivityActivationRejections.size + floorConfigurationRejections.size + configurationRejections.size +
             returnRightsActivationRejections.size + retailCustomerReceiptRejections.size + foodCheckRejections.size + foodPaymentRejections.size +
@@ -812,7 +829,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
 
     private fun requireCommandOrder(sequence: Long) {
         historyShapeV2(sequence > lastIssuedProofSequence && sequence !in commands && sequence !in supervisorReviews && sequence !in purchasingPolicyRejections &&
-            sequence !in orderReassignmentRejections && sequence !in openingSupplierObligationRejections &&
+            sequence !in orderReassignmentRejections && sequence !in normalizedStockRejections && sequence !in openingSupplierObligationRejections &&
             sequence !in invoiceCaptureRejections &&
             sequence !in capturedInvoiceMatchRejections &&
             sequence !in branchActivityActivationRejections && sequence !in floorConfigurationRejections && sequence !in configurationRejections &&
@@ -894,6 +911,10 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         historyShapeV2(enabled && orderReassignmentRejections[proof.sequence] === proof)
     }
 
+    internal fun requireIssuedNormalizedStockRejection(proof: RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization) {
+        historyShapeV2(enabled && normalizedStockRejections[proof.sequence] === proof)
+    }
+
     internal fun requireIssuedPurchasingPolicyRejection(proof: RuntimeEmployeePurchasingPolicyRejectionHistoryAuthorization) {
         historyShapeV2(enabled && purchasingPolicyRejections[proof.sequence] === proof)
     }
@@ -942,7 +963,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         historyShapeV2(issuedCommands == expected && joinedCommands == expected && retiredCommands == expected &&
             (expected != 0L || issuedCommandMutations == 0L) &&
             commands.isEmpty() && supervisorReviews.isEmpty() && purchasingPolicyRejections.isEmpty() &&
-            orderReassignmentRejections.isEmpty() && openingSupplierObligationRejections.isEmpty() &&
+            orderReassignmentRejections.isEmpty() && normalizedStockRejections.isEmpty() && openingSupplierObligationRejections.isEmpty() &&
             invoiceCaptureRejections.isEmpty() && capturedInvoiceMatchRejections.isEmpty() &&
             branchActivityActivationRejections.isEmpty() && floorConfigurationRejections.isEmpty() &&
             configurationRejections.isEmpty() && returnRightsActivationRejections.isEmpty() &&
@@ -968,7 +989,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
             cutoffSequence > 1L && cutoffSequence <= cut.historySequence &&
             issuedCommands == 0L && joinedCommands == 0L && retiredCommands == 0L && issuedCommandMutations == 0L &&
             commands.isEmpty() && supervisorReviews.isEmpty() && purchasingPolicyRejections.isEmpty() &&
-            orderReassignmentRejections.isEmpty() && openingSupplierObligationRejections.isEmpty() &&
+            orderReassignmentRejections.isEmpty() && normalizedStockRejections.isEmpty() && openingSupplierObligationRejections.isEmpty() &&
             invoiceCaptureRejections.isEmpty() && capturedInvoiceMatchRejections.isEmpty() &&
             branchActivityActivationRejections.isEmpty() && floorConfigurationRejections.isEmpty() &&
             configurationRejections.isEmpty() && returnRightsActivationRejections.isEmpty() &&
@@ -1478,7 +1499,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         historyShapeV2(enabled && earlierReplayTarget == null && nativeOriginalPrefixMode == null && issuedCommands == joinedCommands &&
             issuedCommands - retiredCommands == commands.size.toLong() && commands.values.all { it.joined } &&
             supervisorReviews.values.all { it.joined } &&
-            purchasingPolicyRejections.values.all { it.joined } && orderReassignmentRejections.values.all { it.joined } &&
+            purchasingPolicyRejections.values.all { it.joined } && orderReassignmentRejections.values.all { it.joined } && normalizedStockRejections.values.all { it.joined } &&
             openingSupplierObligationRejections.values.all { it.joined } && invoiceCaptureRejections.values.all { it.joined } &&
             capturedInvoiceMatchRejections.values.all { it.joined } &&
             branchActivityActivationRejections.values.all { it.joined } &&
@@ -1500,6 +1521,7 @@ internal class RuntimeEmployeeAuthenticationReplay private constructor(
         supervisorReviews.values.forEach { it.clear() }; supervisorReviews.clear()
         purchasingPolicyRejections.values.forEach { it.clear() }; purchasingPolicyRejections.clear()
         orderReassignmentRejections.values.forEach { it.clear() }; orderReassignmentRejections.clear()
+        normalizedStockRejections.values.forEach { it.clear() }; normalizedStockRejections.clear()
         openingSupplierObligationRejections.values.forEach { it.clear() }; openingSupplierObligationRejections.clear()
         invoiceCaptureRejections.values.forEach { it.clear() }; invoiceCaptureRejections.clear()
         capturedInvoiceMatchRejections.values.forEach { it.clear() }; capturedInvoiceMatchRejections.clear()

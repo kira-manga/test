@@ -1,7 +1,7 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.AggregateKey
-import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.sales.CashSessionStatus
 import com.ukkera.pos.sales.SalesSnapshotBinding
@@ -17,7 +17,7 @@ internal class LocalReturnCaseHistoryAcceptanceWork(val custodian: LocalSalesRow
 
 /** Exact current native BEFORE custody/work, with the same checks as the live reader.
  * Every present source has already completed its strictly earlier whole business join. */
-internal suspend fun readReturnCaseHistoryAcceptanceWork(command: RuntimeHistoricalCommand): LocalReturnCaseHistoryAcceptanceWork {
+internal suspend fun readReturnCaseHistoryAcceptanceWork(command: BusinessOriginalProgram): LocalReturnCaseHistoryAcceptanceWork {
     val custodian = returnCaseHistoryCustodian(command, command.actorId)
     val cash = custodian.value.activeSessionId?.let { id ->
         val source = returnCaseHistoryAcceptanceSource(command, CashNonSaleStoreProfile.sessionKey(id))
@@ -45,13 +45,13 @@ internal suspend fun readReturnCaseHistoryAcceptanceWork(command: RuntimeHistori
     return LocalReturnCaseHistoryAcceptanceWork(custodian, cash, cash?.work ?: returnCaseHistoryCashWork(command, command.actorId))
 }
 
-private suspend fun returnCaseHistoryCustodian(command: RuntimeHistoricalCommand, id: DomainId): LocalSalesRow<LocalCustodianState> =
+private suspend fun returnCaseHistoryCustodian(command: BusinessOriginalProgram, id: DomainId): LocalSalesRow<LocalCustodianState> =
     returnCaseHistoryAcceptanceRoot(command, LocalSalesStoreProfile.CUSTODIAN_KIND, id, LocalCustodianState.serializer()) { value, revision ->
         check(value.scope.value() == command.scope && value.id == id && value.revision == revision &&
             command.claim(LocalSalesStoreProfile.activeCustodian(id)) == value.activeSessionId)
     }
 
-private suspend fun returnCaseHistoryCashWork(command: RuntimeHistoricalCommand, id: DomainId): LocalSalesRow<LocalWorkState> =
+private suspend fun returnCaseHistoryCashWork(command: BusinessOriginalProgram, id: DomainId): LocalSalesRow<LocalWorkState> =
     returnCaseHistoryAcceptanceRoot(command, LocalSalesStoreProfile.WORK_KIND, id, LocalWorkState.serializer()) { value, revision ->
         check(value.scope.value() == command.scope && value.id == id && value.revision == revision &&
             listOf(value.orderIds, value.returnIds, value.pendingClaimIds).all {
@@ -59,7 +59,7 @@ private suspend fun returnCaseHistoryCashWork(command: RuntimeHistoricalCommand,
             })
     }
 
-private suspend fun <T> returnCaseHistoryAcceptanceRoot(command: RuntimeHistoricalCommand, kind: String, id: DomainId,
+private suspend fun <T> returnCaseHistoryAcceptanceRoot(command: BusinessOriginalProgram, kind: String, id: DomainId,
     serializer: KSerializer<T>, validate: suspend (T, Revision) -> Unit): LocalSalesRow<T> {
     val row = returnCaseHistoryAcceptanceSource(command, LocalSalesStoreProfile.key(kind, id)).row
     check(row.schema == LocalSalesStoreProfile.schema(kind))
@@ -68,7 +68,7 @@ private suspend fun <T> returnCaseHistoryAcceptanceRoot(command: RuntimeHistoric
     return LocalSalesRow(row, value)
 }
 
-private suspend fun returnCaseHistoryAcceptanceSource(command: RuntimeHistoricalCommand, key: AggregateKey) =
+private suspend fun returnCaseHistoryAcceptanceSource(command: BusinessOriginalProgram, key: AggregateKey) =
     (command.aggregateSource(key) ?: error("sales.return.case_history.acceptance_source_missing")).also {
         val operationId = when (val original = it.original) {
             is RetainedOriginalV2.Legacy -> original.evidence.operationId

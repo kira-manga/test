@@ -26,6 +26,15 @@ internal class LocalConfigurationHistoryProducer(private val signatures: Company
         val request = LocalConfigurationCodec.decode(command.normalized)
         check(LocalConfigurationCodec.encode(request) == command.normalized)
         if (!original.evidence.committed) return joinRejection(command, original.evidence, request)
+        return joinCommitted(NativeBusinessOriginalProgram(command), request)
+    }
+
+    /** The same positive program for native and fully qualified retained DATA. */
+    internal suspend fun joinCommitted(command: BusinessOriginalProgram,
+        request: LocalConfigurationRequestV1 = LocalConfigurationCodec.decode(command.normalized)): Boolean {
+        check(command.command == LocalConfigurationProfile.COMMAND && command.evidence.committed &&
+            command.evidence.nativeOriginalProvenance == null && LocalConfigurationCodec.encode(request) == command.normalized &&
+            semanticDigest(command.scope, command.actorId, command.command, command.normalized) == command.semanticDigest)
         val resources = mutableSetOf(priceResource(command.actorId))
         fun track(record: ConfigurationRecord): ConfigurationRecord {
             resources += priceResource(record.id); resources += priceResource(record.authorizedBy)
@@ -287,10 +296,10 @@ internal class LocalConfigurationHistoryProducer(private val signatures: Company
             completed.map { it.proposal.publicationId }.distinct().size == completed.size &&
             completed.map { it.signingKeyId }.distinct().size == completed.size)
         val publicationAuthenticated = originalPublicationAuthenticated(command.scope, signed, completed)
-        val units = originalUnits(command, signed, prior, completed)
-        val product = originalProduct(command, signed, prior, completed)
+        val units = originalUnits(NativeBusinessOriginalProgram(command), signed, prior, completed)
+        val product = originalProduct(NativeBusinessOriginalProgram(command), signed, prior, completed)
         resources += product.resources
-        val prices = priceHistory.prepareOriginal(command, signed, prior?.definition)
+        val prices = priceHistory.prepareOriginal(NativeBusinessOriginalProgram(command), signed, prior?.definition)
         resources += prices.resources
         val publicationKey = LocalConfigurationProfile.key(LocalConfigurationProfile.PUBLICATION, sku.publicationId)
         val alreadyInstalled = command.aggregateSource(publicationKey) != null
@@ -349,7 +358,7 @@ internal class LocalConfigurationHistoryProducer(private val signatures: Company
         return try { bytes.contentEquals(originalBytes) } finally { bytes.fill(0); originalBytes.fill(0) }
     }
 
-    private suspend fun originalUnits(command: RuntimeHistoricalCommand, signed: LocalSignedSkuV1,
+    private suspend fun originalUnits(command: BusinessOriginalProgram, signed: LocalSignedSkuV1,
         previous: LocalSignedSkuV1?, completed: List<CompanyBusinessPublicationOutput>): LocalCatalogUnitResolution {
         val sku = signed.definition
         localCatalogUnitShapeRejection(sku)?.let { return LocalCatalogUnitResolution(null, it) }
@@ -390,7 +399,7 @@ internal class LocalConfigurationHistoryProducer(private val signatures: Company
         return LocalCatalogUnitResolution(sku.unitDefinitions.toList(), null)
     }
 
-    private suspend fun originalMember(command: RuntimeHistoricalCommand, row: StoredAggregate): ConfigurationRecord {
+    private suspend fun originalMember(command: BusinessOriginalProgram, row: StoredAggregate): ConfigurationRecord {
         val source = command.aggregateSource(row.key) ?: error("Original catalog membership source unavailable")
         check(source.row.key == row.key && source.row.revision == row.revision && source.row.digest == row.digest &&
             source.row.schema == row.schema && source.row.payload == row.payload)
@@ -398,7 +407,7 @@ internal class LocalConfigurationHistoryProducer(private val signatures: Company
     }
 
     /** Complete original membership and exact earlier AFTER sources; no current owner registry. */
-    private suspend fun originalProduct(command: RuntimeHistoricalCommand, signed: LocalSignedSkuV1,
+    private suspend fun originalProduct(command: BusinessOriginalProgram, signed: LocalSignedSkuV1,
         previous: LocalSignedSkuV1?, completed: List<CompanyBusinessPublicationOutput>): LocalCatalogProductResolution {
         val sku = signed.definition
         fun unavailable(): LocalCatalogProductResolution =

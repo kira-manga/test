@@ -28,7 +28,7 @@ import kotlinx.serialization.json.*
  * on recovery. Unknown outcomes and all failed inputs remain retained for diagnosis. */
 internal object LanGenuinePaymentSupport {
     const val ENABLE_PROPERTY = "ukkera.lan.paymentSupporting"
-    const val MAPPING_VERSION = "lan-payment-supporting-v1.0.7"
+    const val MAPPING_VERSION = "lan-payment-supporting-v1.0.9"
     val clientActions = setOf(SecurityAction.CASH_READ, SecurityAction.CASH_OPEN,
         SecurityAction.PURCHASING_READ, SecurityAction.INVENTORY_COST_READ, SecurityAction.SUPPLIER_CASH_SETTLE,
         SecurityAction.SUPPLIER_CASH_RESOLVE, SecurityAction.OPERATION_RESULT_RECOVERY)
@@ -37,6 +37,24 @@ internal object LanGenuinePaymentSupport {
     private val payout = Money(Currency.EGP, 22_800)
     private val finalCash = Money(Currency.EGP, 77_200)
     private val roles = listOf("client1", "client2")
+
+    /** v1.0.8 automatic live observable (self-authored, NOT independent). After the genuine
+     * CASH_OPEN, Client1's production CASH root page is its own OPEN session page, which by
+     * design never lists Drawers; v1.0.7 waited for a DRAWER record that page cannot contain.
+     * The existing `safes` destination-metadata browse is rendered on BOTH the open-session
+     * page (Client1) and the no-session page (Client2), exposing only safe id/label/currency
+     * metadata, never balances. Default/stock/business/stability fixtures are unchanged. */
+    const val LIVE_SEARCH = "safes"
+    fun liveQuery(): LocalWorkflowQuery = LocalWorkflowQuery(LocalWorkflow.CASH, search = LIVE_SEARCH)
+    val liveRecordKind: LocalRecordKind = LocalRecordKind.SAFE
+    fun liveKey(suffix: String): String = "master.new-safe$suffix"
+
+    /** Genuine Master CASH_CONFIGURE write performed AFTER both real subscriptions mount.
+     * The named custodian (Client1) was already explicitly provisioned; no balance is seeded. */
+    fun liveSafeRequest(safe: DomainId, actors: Map<String, DomainId>): LocalCashRequestV1 {
+        check(java.lang.Boolean.getBoolean(ENABLE_PROPERTY) && actors.keys == roles.toSet())
+        return LocalCashRequestV1.ConfigureSafe(safe, actors.getValue("client1"), "Synthetic LAN shared safe metadata", Currency.EGP)
+    }
 
     /** Hook AFTER both genuine custodian configurations. Supplier administration must be
      * explicitly enrolled with ADMINISTER; this object cannot add permissions or seed rows. */
@@ -64,8 +82,28 @@ internal object LanGenuinePaymentSupport {
     suspend fun runMaster(exchange: LanFixtureExchange, root: Path, scope: BranchScope,
         actors: Map<String, DomainId>) {
         check(java.lang.Boolean.getBoolean(ENABLE_PROPERTY))
-        roles.forEach { exchange.await("$it.payment.finished") }
-        verifyNativeLedger(exchange, root, scope, actors.getValue("client1"))
+        if (LanForeignCatalogueSupport.interrupted()) {
+            exchange.await("client2.killed")
+            exchange.await("client1.payment.finished")
+        } else roles.forEach { exchange.await("$it.payment.finished") }
+        check(actors.keys == roles.toSet())
+        exchange.putText("payment.scope.coordinates", listOf(scope.organizationId, scope.companyId, scope.branchId)
+            .joinToString("\n") { it.value })
+        // Phase ordering only. The independent ledger verdict must wait for actual
+        // native close; a second raw connection may correctly be BUSY during a writer.
+        exchange.putText("payment.operations-complete", "client-outcomes-observed;independent-ledger-verdict-pending-close")
+    }
+
+    /** Same independent SQL assertions, after all real role owners certainly closed.
+     * This cannot release a Client phase or turn a failed process into a pass. */
+    suspend fun verifyAfterClosed(exchange: LanFixtureExchange, root: Path) {
+        check(java.lang.Boolean.getBoolean(ENABLE_PROPERTY))
+        for (role in listOf("master", "client1", "client2")) check(exchange.awaitText("$role.closed") == "confirmed")
+        val coordinates = exchange.awaitText("payment.scope.coordinates").lines().map(::DomainId)
+        check(coordinates.size == 3)
+        val scope = BranchScope(coordinates[0], coordinates[1], coordinates[2])
+        check(scope.storageKey() == exchange.awaitText("master.scope"))
+        verifyNativeLedger(exchange, root.resolve("master"), scope, DomainId(exchange.awaitText("client1.actor")))
         exchange.putText("payment.verified", "actual-native-cash77200-one-payout-one-original-per-operation")
     }
 
@@ -73,7 +111,8 @@ internal object LanGenuinePaymentSupport {
      * It must install heldJournals.remotePhysicalBinding(heldRpc, directory) on its real
      * LocalRemoteBusinessClientConnection, never construct a physical owner from DATA. */
     suspend fun runClient(role: String, root: Path, exchange: LanFixtureExchange,
-        initial: BranchUiSession, reopen: suspend () -> BranchUiSession): BranchUiSession {
+        initial: BranchUiSession, foreignRoot: LanForeignCatalogueClientRoot? = null,
+        reopen: suspend () -> BranchUiSession): BranchUiSession {
         check(java.lang.Boolean.getBoolean(ENABLE_PROPERTY) && role in roles)
         check(exchange.awaitText("payment.provisioned") == MAPPING_VERSION)
         if (role == "client2") {
@@ -85,8 +124,12 @@ internal object LanGenuinePaymentSupport {
                 LocalRetailObservation.CashPaid(LocalRetailEvidence(DomainId.random(), UtcInstant(Clock.System.now())),
                     literalSupplierAmount = LocalSupplierObservedAmount("EGP", "228"))))
             check(attempted is LocalRetailPhysicalReply.Unavailable) { "Foreign actor cannot acquire the original native resolution custody" }
+            if (LanForeignCatalogueSupport.enabled()) {
+                exchange.putText("client2.payment.foreign-denied", "ordinary-foreign-original-and-resolution-denied")
+                return LanForeignCatalogueSupport.resolverClient(exchange, initial, foreignRoot)
+            }
             exchange.putText("client2.payment.finished", "foreign-original-and-resolution-denied")
-            exchange.await("payment.verified")
+            exchange.await("payment.operations-complete")
             return initial
         }
         val evidence = LanPersistentTestFiles(Path.of(checkNotNull(System.getProperty("ukkera.lan.paymentEvidence")))
@@ -166,8 +209,10 @@ internal object LanGenuinePaymentSupport {
             observe("UNKNOWN_APPLY_REPLAY_$index")
         }
         exchange.putText("payment.original", original.value)
-        exchange.await("client2.payment.finished")
+        exchange.await(if (LanForeignCatalogueSupport.enabled()) "client2.payment.foreign-denied" else "client2.payment.finished")
         observe("AFTER_FOREIGN_DENIAL")
+        if (LanForeignCatalogueSupport.enabled()) return LanForeignCatalogueSupport.originalClient(
+            exchange, session, reopen, start, original, apply, openingOperation)
         val resolution = staged(LocalRetailPhysicalRequest.SupplierCashResolve(original,
             LocalRetailObservation.CashPaid(LocalRetailEvidence(DomainId.random(), UtcInstant(Clock.System.now())),
                 literalSupplierAmount = LocalSupplierObservedAmount("EGP", "228"))))
@@ -199,13 +244,13 @@ internal object LanGenuinePaymentSupport {
         exchange.putText("payment.resolution-apply", applyResolution.value)
         exchange.putText("payment.opening", openingOperation.value)
         exchange.putText("client1.payment.finished", "native-paired-unknown-recovery-and-one-resolved-payout")
-        exchange.await("payment.verified")
+        exchange.await("payment.operations-complete")
         return session
     }
 
     /** Fresh read-only native SQLite connection; no row injection, fake current state or
      * force proof. Literal raw/application linkage and actual cash arithmetic are checked. */
-    private suspend fun verifyNativeLedger(exchange: LanFixtureExchange, root: Path, scope: BranchScope, actor: DomainId) {
+    internal suspend fun verifyNativeLedger(exchange: LanFixtureExchange, root: Path, scope: BranchScope, actor: DomainId) {
         val databases = Files.walk(root).use { files -> files.filter { it.fileName.toString() == "master.db" }.toList() }
         check(databases.size == 1)
         val path = databases.single().toRealPath(); check(path.startsWith(root.toRealPath()))

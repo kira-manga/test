@@ -37,7 +37,9 @@ public object LocalFinancialJournalProfileV3 {
     public const val MAX_PENDING_APPLICATION_BYTES: Int = 8_192
     public const val MAX_APPLICATION_BYTES: Int = 65_536
     public const val MAX_BEFORE_BYTES: Int = 65_536
-    public const val MAX_FINANCIAL_RESOURCES: Int = 48
+    // A qualified CASE refund can exceed 48 actual aliases. Keep them all: the
+    // unchanged domain and total requirement byte limits still bound every cut.
+    public const val MAX_FINANCIAL_RESOURCES: Int = 64
     public const val MAX_FINANCIAL_WRITES: Int = 6
     public const val MAX_FINANCIAL_CLAIMS: Int = 2
     public const val MAX_FINANCIAL_APPLY_BYTES: Int = 196_608

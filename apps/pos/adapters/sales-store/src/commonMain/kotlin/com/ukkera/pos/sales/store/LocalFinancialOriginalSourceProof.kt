@@ -11,6 +11,8 @@ import kotlin.coroutines.cancellation.CancellationException
  * receives actual native originals only and must discharge the complete source proof.
  * There is no accepting default, handler call, authority result or caller reply port. */
 public interface LocalFinancialOriginalCatalogProof {
+    public suspend fun requireLegacyBusinessOriginal(program: BusinessOriginalProgram)
+    public suspend fun originalPublicationContents(proof: NativeHistoryBusinessPublicationObservationProof): List<CompanyBusinessPublicationOutput>
     public suspend fun requireSupplierOriginal(scope: LocalFinancialOriginalProofScope, original: RetainedCommandEvidence)
     public suspend fun requireSupplierConfiguration(scope: LocalFinancialOriginalProofScope,
         sources: RuntimeHistoricalCashConfigurationSources)
@@ -31,10 +33,72 @@ public class LocalFinancialOriginalSourceServices(
         val scope = LocalFinancialOriginalProofScope(this, view, original)
         return scope.withRoot { use(scope.view) }
     }
+
+    /** Qualify the native-selected CURRENT writer on its own genuine BEFORE graph.
+     * It is never disguised as an ancestor of a different historical result. The same
+     * request retains cumulative budgets; current disclosure authority is still separate. */
+    internal suspend fun currentLegacyOriginal(view: CommandReadView, row: StoredAggregate,
+        expectedCommand: CommandKey): RetainedCommandEvidence? = currentLegacyOriginal(view, row, setOf(expectedCommand))
+
+    internal suspend fun currentLegacyOriginal(view: CommandReadView, row: StoredAggregate,
+        expectedCommands: Set<CommandKey>): RetainedCommandEvidence? {
+        val parent = (view as? FinancialOriginalProofCarrier)?.financialOriginalProof
+        val borrowed = parent?.currentSourceBorrowed(this) ?: view
+        return borrowed.withCurrentLegacyBusinessSources(row.key) { selected ->
+            val actual = selected.row
+            if (actual.key != row.key || actual.revision != row.revision || actual.schema != row.schema ||
+                actual.payload != row.payload || actual.digest != row.digest) return@withCurrentLegacyBusinessSources null
+            val original = selected.graph.root.evidence
+            if (original.command !in expectedCommands) return@withCurrentLegacyBusinessSources null
+            val subject = LocalFinancialOriginalProofScope(this, borrowed, original, parent?.sourceBudget)
+            subject.withRoot {
+                subject.charge(row.payload.size.toLong() + 512L)
+                subject.requireCurrentSubject(selected.graph)
+                original
+            }
+        }
+    }
 }
 
 internal interface FinancialOriginalProofCarrier {
     val financialOriginalProof: LocalFinancialOriginalProofScope?
+}
+
+/** Request-local accounting only; it never retains a grant or a successful proof. */
+internal interface OriginalSourceBudgetCarrier {
+    val originalSourceBudget: FinancialOriginalSourceBudget? get() = null
+}
+
+internal class FinancialOriginalSourceBudget {
+    // Each admitted subject tightens to its existing family envelope. Starting at
+    // the largest installed profile must not reduce FOOD's pre-existing allowance.
+    private var maximumBytes = FoodReadLimits.REQUEST_BYTES
+    private var maximumOriginals = FoodReadLimits.REQUEST_PRODUCERS
+    private var bytes = 0L
+    private var calls = 0
+    private var healthy = true
+    private val originals = mutableMapOf<OperationId, PayloadDigest>()
+    fun tighten(bytes: Long, originals: Int) {
+        requireBudget(bytes >= 0 && originals > 0)
+        maximumBytes = minOf(maximumBytes, bytes)
+        maximumOriginals = minOf(maximumOriginals, originals)
+        requireBudget(this.bytes <= maximumBytes && this.originals.size <= maximumOriginals)
+    }
+    fun charge(amount: Long) {
+        requireBudget(amount >= 0 && amount <= maximumBytes - bytes && ++calls <= FoodReadLimits.REQUEST_CALLS)
+        bytes += amount
+    }
+    fun original(operationId: OperationId, hash: PayloadDigest) {
+        originals[operationId]?.let { requireBudget(it == hash); return }
+        requireBudget(originals.size < maximumOriginals)
+        originals[operationId] = hash
+    }
+    private fun requireBudget(condition: Boolean) {
+        if (!healthy || !condition) {
+            healthy = false
+            error("financial.original_source_capacity_required")
+        }
+    }
 }
 
 /** One actual writer-loan-confined proof graph. Completed immutable originals may be
@@ -44,15 +108,18 @@ public class LocalFinancialOriginalProofScope internal constructor(
     private val services: LocalFinancialOriginalSourceServices,
     private val borrowed: CommandReadView,
     private val root: RetainedCommandEvidence,
+    inheritedBudget: FinancialOriginalSourceBudget? = null,
 ) {
     private val food = root.command in foodPaymentCommands || root.command in foodRefundCommands
     private val maximumBytes = if (food) FoodReadLimits.REQUEST_BYTES else 16_777_216L
     private val maximumOriginals = if (food) FoodReadLimits.REQUEST_PRODUCERS else 256
-    private var bytes = 0L
-    private var calls = 0
+    internal val sourceBudget: FinancialOriginalSourceBudget =
+        (inheritedBudget ?: (borrowed as? OriginalSourceBudgetCarrier)?.originalSourceBudget ?: FinancialOriginalSourceBudget())
+            .also { it.tighten(maximumBytes, maximumOriginals) }
     private var open = true
     private val active = mutableListOf<Identity>()
     private val completed = mutableMapOf<OperationId, PayloadDigest>()
+    private var legacyGraph: RuntimeLegacyBusinessSourceGraph? = null
     public val view: CommandReadView = FinancialOriginalProofView(borrowed, this, services)
     private val immutableFood = FoodReadView(view)
     public val stock: LocalStockRepository get() = services.stock
@@ -62,6 +129,7 @@ public class LocalFinancialOriginalProofScope internal constructor(
 
     internal suspend fun <T> withRoot(use: suspend () -> T): T {
         check(active.isEmpty() && open)
+        sourceBudget.original(root.operationId, root.journalHash)
         active += identity(root)
         try { charge(foodProducerReadBytes(root)); return use() }
         finally { active.clear(); completed.clear(); open = false }
@@ -72,10 +140,20 @@ public class LocalFinancialOriginalProofScope internal constructor(
     }
 
     internal fun charge(amount: Long) {
-        check(open && amount >= 0 && amount <= maximumBytes - bytes && ++calls <= FoodReadLimits.REQUEST_CALLS) {
-            "financial.original_source_capacity_required"
-        }
-        bytes += amount
+        check(open)
+        sourceBudget.charge(amount)
+    }
+
+    internal fun currentSourceBorrowed(services: LocalFinancialOriginalSourceServices): CommandReadView {
+        check(open && this.services === services)
+        return borrowed
+    }
+
+    internal suspend fun requireCurrentSubject(graph: RuntimeLegacyBusinessSourceGraph) {
+        check(open && active.singleOrNull() == identity(root) && legacyGraph == null)
+        requireSameFinancialRpcOriginal(root, graph.root.evidence)
+        legacyGraph = graph
+        try { requireLegacy(root) } finally { legacyGraph = null }
     }
 
     /** Qualification is extra source work. Its failure cannot become a live handler's
@@ -97,6 +175,7 @@ public class LocalFinancialOriginalProofScope internal constructor(
             is RetainedOriginalV2.Legacy -> foodProducerReadBytes(original.evidence)
             is RetainedOriginalV2.Streamed -> original.evidence.normalized.size.toLong() + original.evidence.result.size + 4_096L
         })
+        sourceBudget.original(identity.operationId, identity.journalHash)
         completed[identity.operationId]?.let { check(it == identity.journalHash); return }
         check(completed.size + active.size < maximumOriginals && active.none { it.operationId == identity.operationId }) {
             "financial.original_source_cycle_or_capacity"
@@ -124,11 +203,13 @@ public class LocalFinancialOriginalProofScope internal constructor(
             }
             CommandKey("local.configuration.write", 1) -> {
                 val sources = view.cashConfigurationOriginalSources(original.operationId)
-                    ?: error("financial.ordinary_configuration_before_required")
-                requireSameFinancialRpcOriginal(sources.evidence, original)
-                check(sources.kind == RuntimeCashConfigurationSourceKind.CONFIGURE_SUPPLIER)
-                (services.catalog ?: error("financial.catalog_source_composition_required"))
-                    .requireSupplierConfiguration(this, sources)
+                if (sources == null) requireLegacyBusinessOriginal(original)
+                else {
+                    requireSameFinancialRpcOriginal(sources.evidence, original)
+                    check(sources.kind == RuntimeCashConfigurationSourceKind.CONFIGURE_SUPPLIER)
+                    (services.catalog ?: error("financial.catalog_source_composition_required"))
+                        .requireSupplierConfiguration(this, sources)
+                }
             }
             LocalFinancialJournalProfileV3.COLLECTION_COMMAND, LocalFinancialJournalProfileV3.RETURN_COMMAND,
             LocalRetailSupervisorCodecV1.COMMAND -> RetailJournalOriginalProof(view, services.tenderPolicies).require(original)
@@ -144,8 +225,26 @@ public class LocalFinancialOriginalProofScope internal constructor(
                 requireSameFinancialRpcOriginal(actual, original)
                 immutableFood.requireFoodPredecessors(actual)
             }
-            else -> error("financial.original_source_command_unsupported")
+            else -> requireLegacyBusinessOriginal(original)
         }
+    }
+
+    private suspend fun requireLegacyBusinessOriginal(original: RetainedCommandEvidence) {
+        val catalog = services.catalog ?: error("financial.catalog_source_composition_required")
+        suspend fun selected(graph: RuntimeLegacyBusinessSourceGraph) {
+            val sources = graph.source(original.operationId) ?: error("financial.legacy_before_required")
+            requireSameFinancialRpcOriginal(sources.evidence, original)
+            val program = FinancialLegacyOriginalProgram(this, catalog, sources)
+            catalog.requireLegacyBusinessOriginal(program)
+            program.requireComplete()
+        }
+        val held = legacyGraph
+        if (held != null) selected(held)
+        else check(borrowed.withLegacyBusinessSources(root.operationId) { graph ->
+            check(legacyGraph == null)
+            legacyGraph = graph
+            try { selected(graph); true } finally { legacyGraph = null }
+        } == true) { "financial.legacy_native_source_graph_required" }
     }
 
     internal suspend fun aggregate(sources: RuntimeHistoricalFinancialSources, key: AggregateKey): StoredAggregate? =
@@ -210,6 +309,8 @@ private class FinancialOriginalProofView(private val borrowed: CommandReadView,
     private val services: LocalFinancialOriginalSourceServices,
 ) : CommandReadView by borrowed, CommerceStockView, FinancialOriginalProofCarrier {
     override val commerceStock: LocalStockRepository get() = services.stock
+    override val commerceOriginalSources: LocalFinancialOriginalSourceServices get() = services
+    override val originalSourceBudget: FinancialOriginalSourceBudget get() = financialOriginalProof.sourceBudget
     override val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1 get() = services.tenderPolicies
     override suspend fun stockRelationalAccess(): StockRelationalAccess = borrowed.requireStockRelational()
     override suspend fun recordCommerceOriginal(row: StoredAggregate, original: RetainedStreamedCommand) =

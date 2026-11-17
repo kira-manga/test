@@ -49,7 +49,7 @@ internal data class PreparedRetailReturnPublication(
 )
 
 /** Genuine existing event -> install-operation join. ConfigurationRecord has NO operation ID. */
-internal suspend fun prepareRetailReturnPublication(view: CommandReadView, current: ConfigurationRecord,
+internal suspend fun prepareRetailReturnPublication(view: BusinessFactRead, current: ConfigurationRecord,
     signatures: CompanyPublicationSignatureVerifier): PreparedRetailReturnPublication {
     val signed = current.signedSku(); val sku = signed.definition
     val (row, published) = readSignedSku(view, LocalConfigurationProfile.PUBLICATION, sku.publicationId, signatures)

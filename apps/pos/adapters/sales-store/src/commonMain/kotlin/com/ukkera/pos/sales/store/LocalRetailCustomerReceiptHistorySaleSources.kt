@@ -2,7 +2,7 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.RetainedOriginalV2
-import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.StockStreamingCommandsV2
 import com.ukkera.pos.database.StreamedProducerIdentityV2
 import com.ukkera.pos.sales.SalesSnapshotBinding
@@ -17,7 +17,7 @@ import com.ukkera.pos.types.Revision
  * Today's remaining entitlement never supplies sold quantities or a receipt instant. Null
  * means this original profile cannot be joined, not proof of an absent sale or non-delivery.
  */
-internal suspend fun readRetailCustomerReceiptHistoryOriginal(command: RuntimeHistoricalCommand,
+internal suspend fun readRetailCustomerReceiptHistoryOriginal(command: BusinessOriginalProgram,
     saleId: DomainId): LocalRetailCustomerReceiptOriginalSource? {
     val saleKey = LocalSalesStoreProfile.key(LocalSalesStoreProfile.SALE_KIND, saleId)
     val source = command.aggregateSource(saleKey) ?: return null

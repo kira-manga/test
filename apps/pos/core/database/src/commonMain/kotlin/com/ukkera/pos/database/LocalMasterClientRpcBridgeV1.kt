@@ -1047,7 +1047,8 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         val capturedActor = requestingActorId
         val owned = LocalMasterRpcReadRequestV1.capture(credentials, request)
         try {
-            val result = invoke(readProcedure, owned, accept = { true }) { delivered ->
+            val result = invoke(readProcedure, owned, accept = { true },
+                recaptureRead = { LocalMasterRpcReadRequestV1.capture(it, owned.request) }) { delivered ->
                 when (delivered) {
                     is RpcReply.Success -> {
                         requireResponseBinding(delivered.value.requestingActorId == capturedActor)
@@ -1079,7 +1080,8 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         val owned = LocalMasterRpcChangesRequestV1.capture(credentials, selection, cursor)
         val procedures = LocalMasterChangesRpcProtocolV1.procedures(profile)
         try {
-            val result = invoke(if (pull) procedures.PULL else procedures.SNAPSHOT, owned, accept = { true }) { delivered ->
+            val result = invoke(if (pull) procedures.PULL else procedures.SNAPSHOT, owned, accept = { true },
+                recaptureRead = { LocalMasterRpcChangesRequestV1.capture(it, owned.selection, owned.cursor) }) { delivered ->
                 when (delivered) {
                     is RpcReply.Success -> {
                         requireResponseBinding(delivered.value.requestingActorId == requestingActorId)
@@ -1118,7 +1120,8 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         require(profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) { "Changes batch profile differs" }
         val owned = LocalMasterRpcChangesBatchRequestV1.capture(credentials, selections)
         try {
-            return invoke(LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT, owned, accept = { true }) { delivered ->
+            return invoke(LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT, owned, accept = { true },
+                recaptureRead = { LocalMasterRpcChangesBatchRequestV1.capture(it, owned.selections) }) { delivered ->
                 when (delivered) {
                     is RpcReply.Success -> {
                         requireResponseBinding(delivered.value.requestingActorId == requestingActorId)
@@ -1273,6 +1276,7 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
         procedure: RpcProcedure<Q, R, E>,
         request: Q,
         accept: suspend (T) -> Boolean,
+        recaptureRead: ((LocalGatewayCredentials) -> Q)? = null,
         decode: (RpcReply<R, E>) -> T,
     ): T {
         val readOnly = profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS && procedure.name in setOf(
@@ -1281,7 +1285,9 @@ public class LocalMasterClientRpcBridgeV1 private constructor(
             LocalMasterChangesRpcProtocolV1.procedures(LocalMasterRpcWorkflowProfile.LAN_BUSINESS).PULL.name,
             LocalMasterChangesBatchRpcProtocolV1.SNAPSHOT.name)
         return if (readOnly) recoverUndeliveredRpcRead(::requireCurrentCaller) { attempt ->
-            invokeOnce(procedure, request, accept, decode, attempt)
+            val fresh = freshRpcReadRequest(request, connectionId, checkNotNull(recaptureRead))
+            try { invokeOnce(procedure, fresh, accept, decode, attempt) }
+            finally { fresh.destroy() }
         } else invokeOnce(procedure, request, accept, decode, null)
     }
 

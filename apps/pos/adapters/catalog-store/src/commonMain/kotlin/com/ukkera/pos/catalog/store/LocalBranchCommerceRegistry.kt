@@ -27,6 +27,7 @@ import com.ukkera.pos.catalog.store.setup.LocalSetupCheckpointServices
 import com.ukkera.pos.inventory.store.LocalStockHandlers
 import com.ukkera.pos.inventory.store.LocalStockRepository
 import com.ukkera.pos.inventory.store.LocalStockHistoryProducer
+import com.ukkera.pos.inventory.store.LocalLegacyStockReceiptHistoryProducer
 import com.ukkera.pos.inventory.store.LocalStockRelationalCodecV2
 import com.ukkera.pos.inventory.store.LocalStockRelationalServices
 import com.ukkera.pos.inventory.store.LocalUnpricedArrivalServices
@@ -136,7 +137,7 @@ public class LocalBranchCommerceRegistry(
     private val returnRightsPolicies = LocalReturnRightsActivationServices(signatures)
     private val purchasingAuthority = LocalPurchasingReceivingAuthority(configuration)
     private val stockAuthority = LocalStockRelationalAuthority(configuration, purchasingAuthority)
-    private val normalizedQuotes = LocalCatalogNormalizedSalesQuoteSource(signatures)
+    private val normalizedQuotes = LocalCatalogNormalizedSalesQuoteSource(signatures, nativePublications, configuration)
     private val foodSource = LocalCatalogFoodStockSource(signatures)
     private val foodCheckRefusals = LocalFoodCheckRefusalSupport(LocalCatalogFoodCheckRefusalSupport(signatures))
     private val foodTableDirectory = LocalRegisteredFoodTableAssignmentDirectorySourceV1()
@@ -157,7 +158,9 @@ public class LocalBranchCommerceRegistry(
     private val setupCheckpoints = LocalSetupCheckpointServices(signatures, stock)
     private val setupResults = LocalSetupAcknowledgementServices(setupCheckpoints.prerequisites)
     private val financialOriginalSources = LocalFinancialOriginalSourceServices(stock, foodSource, tenderPolicies,
-        LocalCatalogFinancialOriginalProof(stock))
+        LocalCatalogFinancialOriginalProof(stock, signatures, configuration, nativePublications,
+            returnCaseSource as? com.ukkera.pos.sales.store.HistoricalSalesReturnCaseSourceV1,
+            returnPolicy as? com.ukkera.pos.sales.store.FactualSalesReturnPolicySourceV1))
     private val supplierSettlement = LocalSupplierSettlementServices(stock, retailParticipants, financialOriginalSources)
     // Retains only actual native-issued policy envelopes. Activation does not qualify
     // documentary receipt/product selectors or supply the separate arrival authority.
@@ -169,7 +172,12 @@ public class LocalBranchCommerceRegistry(
     private val normalizedPaymentHistory = LocalNormalizedPaymentHistoryProducer(tenderPolicies)
     private val historyProducers = listOf(LocalConfigurationHistoryProducer(signatures), LocalSupplierHistoryProducerV2(), LocalPricingHistoryProducer(), LocalFoodConfigurationHistoryProducer(signatures),
         LocalFoodFloorHistoryProducer(), LocalFoodTableAssignmentHistoryProducer(foodTableDirectory),
-        LocalStockHistoryProducer(stock), LocalNonphysicalHistoryProducer(stock), LocalReturnStockHistoryProducer(stock),
+        LocalStockHistoryProducer(stock), LocalLegacyStockReceiptHistoryProducer(stock, configuration),
+        com.ukkera.pos.sales.store.LocalLegacyOrderHistoryProducer(LocalCatalogSalesQuoteSource(signatures, stock)),
+        com.ukkera.pos.sales.store.LocalLegacyCollectionHistoryProducer(stock),
+        com.ukkera.pos.sales.store.LocalLegacyReturnHistoryProducer(
+            returnPolicy as? com.ukkera.pos.sales.store.FactualSalesReturnPolicySourceV1),
+        com.ukkera.pos.sales.store.LocalExchangeHistoryProducer(), LocalNonphysicalHistoryProducer(stock, normalizedQuotes), LocalReturnStockHistoryProducer(stock),
         normalizedPaymentHistory, LocalPaymentCorrectionHistoryProducer(tenderPolicies), LocalRetailRefundHistoryProducer(),
         LocalReturnCaseHistoryProducer(returnCaseSource as? com.ukkera.pos.sales.store.HistoricalSalesReturnCaseSourceV1
             ?: com.ukkera.pos.sales.store.UnavailableHistoricalSalesReturnCaseSourceV1), retailCustomerReceiptHistory,
@@ -235,7 +243,7 @@ public class LocalBranchCommerceRegistry(
             purchasing.commands + documentaryIntake.commands + supplierSettlement.commands + purchasingPolicies.commands + catalogReleases.commands + serialRegistrations.commands + openingSupplierObligations.commands +
             branchActivities.commands + returnRightsPolicies.commands + arrivals.commands + arrivalsV2.commands +
             setupCheckpoints.commands + setupResults.commands + LocalSalesHandlers.commands(stock, quoteSource, configuration, returnPolicy,
-                recordingCapacity, physicalRecordingCapacity, returnCaseSource, tenderPolicies, LocalCatalogDepositTermsSource(signatures))
+                recordingCapacity, physicalRecordingCapacity, returnCaseSource, tenderPolicies, LocalCatalogDepositTermsSource(signatures), financialOriginalSources)
     private val queryHandlers: List<MasterReadHandler> =
         listOf(configuration.readHandler(), LocalSupplierReadHandlerV2(), LocalPricingReadHandler(signatures), LocalCountSurplusApprovalReadHandler(stock),
             LocalFoodConfigurationReadHandler(signatures), LocalFoodFloorReadHandler(),
@@ -252,7 +260,7 @@ public class LocalBranchCommerceRegistry(
             LocalSalesHandlers.foodHandoffReads(stock, tenderPolicies) + stockHandlers.reads + normalizedStock.reads +
             purchasing.reads + documentaryIntake.reads + supplierSettlement.reads + purchasingPolicies.reads + catalogReleases.reads + serialRegistrations.reads + openingSupplierObligations.reads +
             branchActivities.reads + returnRightsPolicies.reads + arrivals.reads + arrivalsV2.reads +
-            setupCheckpoints.reads + setupResults.reads + LocalSalesHandlers.reads(stock, foodSource, tenderPolicies)
+            setupCheckpoints.reads + setupResults.reads + LocalSalesHandlers.reads(stock, foodSource, tenderPolicies, financialOriginalSources)
 
     // R2 discovery/review and v2 handoff effects use the real same-loan protected recipient
     // source and genuine full preparation/financial proof. Registration is not independent

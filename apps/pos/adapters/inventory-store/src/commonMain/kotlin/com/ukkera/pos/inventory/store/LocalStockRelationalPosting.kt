@@ -201,6 +201,90 @@ public class LocalStockRelationalInspection internal constructor(
 ) {
     internal var resourceClosureChecked: Boolean = false
         private set
+
+    /*
+     * Inspection-scoped verified replay (bounded optimization, never an authority source).
+     * The FIRST frames access is a complete genuine core traversal of THIS exact original on its
+     * own active loan (fragment SQL, per-payload hashes, fragment-chain commitment, canonical
+     * frame decode/re-encode, section order, result hash, EOF). Only after that traversal ends
+     * normally are its already immutable frames (StoredBytes copies) retained. Every later access
+     * first re-runs the owning reader's exact currentness check (active loan/session and the
+     * byte-identical stored root envelope whose commitment binds every fragment) before replaying
+     * the complete ordered stream, so no consumer can stop at a favorable prefix. Acceptance still
+     * requires a FRESH complete core traversal after all replays (repository requireOneComplete and
+     * read-proof reuse). Unknown/corrupt state therefore still denies before any acceptance.
+     * Nothing crosses inspections, originals, traversals or loans; incomplete traversals, failed
+     * builds and exceptions are never retained. Over the byte envelope it falls back to the
+     * original per-access full traversal; it never introduces a row/stock capacity refusal.
+     */
+    private var replay: List<RetainedCommandFrameV2>? = null
+    private var replayCharge = 0L
+    private var replayUnavailable = false
+    private var decodedRecords: List<StockRelationalRecordV2>? = null
+    private var decodedIntents: List<StockIntentV2Wire>? = null
+    private val decodedBefore = HashMap<AggregateKey, StockRelationalRecordV2?>()
+    private val ranges = HashMap<StockQueryV2, List<StockIndexRecordV2>>()
+
+    /** Complete ordered frame stream of [original]; see the replay invariant above. */
+    internal suspend fun frames(consume: suspend (RetainedCommandFrameV2) -> Unit) {
+        val retained = replay
+        if (retained != null) {
+            replayChecked { for (frame in retained) consume(frame) }
+            return
+        }
+        if (replayUnavailable || !traversal.replayOpen) { original.frames(consume); return }
+        val copy = ArrayList<RetainedCommandFrameV2>()
+        var charge = 0L
+        var fits = true
+        original.frames { frame ->
+            if (fits) {
+                charge += stockReplayCharge(frame)
+                if (charge <= STOCK_INSPECTION_REPLAY_BYTES) copy += frame else {
+                    fits = false; copy.clear(); replayUnavailable = true
+                }
+            }
+            consume(frame)
+        }
+        // Normal EOF only. A nested access may already have installed the same complete stream.
+        if (!fits) { replayUnavailable = true; return }
+        if (replay == null && !replayUnavailable) {
+            if (traversal.reserveReplay(this, charge)) { replay = copy; replayCharge = charge } else replayUnavailable = true
+        }
+    }
+
+    /** Keep the normal reader's active-exit and failed-consumer semantics. A caller may
+     * catch its own callback failure, but that must not make the failed loan reusable.
+     * The failure-only traversal routes it through the real reader's existing poison
+     * path; it supplies no substitute rows or successful producer evidence. */
+    private suspend fun <T> replayChecked(block: suspend () -> T): T {
+        original.requireCurrent()
+        try {
+            val result = block()
+            original.requireCurrent()
+            return result
+        } catch (failure: Throwable) {
+            try { original.frames { throw failure } }
+            catch (checked: Throwable) {
+                if (checked !== failure) checked.addSuppressed(failure)
+                throw checked
+            }
+            throw failure
+        }
+    }
+
+    /** Drops this inspection's retained stream and derived decodes and refunds its envelope. */
+    internal fun releaseReplay() {
+        val charge = replayCharge
+        replay = null; replayCharge = 0L; replayUnavailable = true
+        decodedRecords = null; decodedIntents = null; decodedBefore.clear(); ranges.clear()
+        if (charge > 0) traversal.releaseReplay(charge)
+    }
+    internal val replayBytes: Long get() = replayCharge
+    private val replayCollecting: Boolean get() = replay != null || (!replayUnavailable && traversal.replayOpen)
+
+    /** One fresh complete core traversal (fragments/EOF) of the exact original, ignoring any replay. */
+    internal suspend fun requireFreshTraversal() { original.frames { } }
+
     public val scope: com.ukkera.pos.security.BranchScope get() = original.identity.scope
     public val operationId: OperationId get() = original.identity.producer.operationId
     public val recordedAt: UtcInstant get() = original.identity.recordedAt
@@ -247,7 +331,7 @@ public class LocalStockRelationalInspection internal constructor(
             localStockCheck(found == selected, LocalStockFailure.STORAGE_INCONSISTENT)
             selected.clear()
         }
-        original.frames { frame ->
+        frames { frame ->
             val resource = (frame as? RetainedCommandFrameV2.Resource)?.value ?: return@frames
             if (resource !in supplied) {
                 selected += resource
@@ -266,7 +350,7 @@ public class LocalStockRelationalInspection internal constructor(
      */
     public suspend fun stockAuthoritySources(consume: suspend (StreamedSourceObservationV2.Current) -> Unit) {
         stockRequiredAuthoritySources(this) { /* Complete required-stamp-to-literal crosswalk. */ }
-        original.frames { frame ->
+        frames { frame ->
             val actual = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Current ?: return@frames
             var required = false
             intents { intent -> if (intent is StockIntentV2Wire.Line) {
@@ -290,7 +374,7 @@ public class LocalStockRelationalInspection internal constructor(
      */
     public suspend fun stockClaimSources(consume: suspend (StreamedSourceObservationV2.Claim) -> Unit) {
         stockRequiredClaimSources(this) { /* Every required before-state observation must exist. */ }
-        original.frames { frame ->
+        frames { frame ->
             val actual = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Claim ?: return@frames
             val required = stockClaimSourceRequired(this, actual)
             localStockCheck(required || actual.key.namespace !in stockOwnedClaimNamespaces, LocalStockFailure.STORAGE_INCONSISTENT)
@@ -441,11 +525,27 @@ public class LocalStockRelationalInspection internal constructor(
     }
 
     internal suspend fun records(consume: suspend (StockRelationalRecordV2) -> Unit) {
-        original.frames { frame ->
-            val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
-            if (write.key.kind in StockRelationalKindsV2.all) consume(LocalStockRelationalCodecV2.decode(scope, write.key,
-                write.storageGeneration, write.schema, write.payload, write.payloadDigest))
+        decodedRecords?.let { decoded ->
+            replayChecked { for (record in decoded) consume(record) }
+            return
         }
+        var decoded = if (replayCollecting) ArrayList<StockRelationalRecordV2>() else null
+        var bytes = 0L
+        frames { frame ->
+            val write = (frame as? RetainedCommandFrameV2.Write)?.value ?: return@frames
+            if (write.key.kind in StockRelationalKindsV2.all) {
+                val record = LocalStockRelationalCodecV2.decode(scope, write.key,
+                    write.storageGeneration, write.schema, write.payload, write.payloadDigest)
+                if (decoded != null) {
+                    bytes += stockReplayCharge(frame)
+                    if (!replayCollecting || bytes > STOCK_INSPECTION_REPLAY_BYTES) decoded = null
+                    else decoded?.add(record)
+                }
+                consume(record)
+            }
+        }
+        // Derived from the same complete stream; kept only while that verified stream is retained.
+        if (decoded != null && replay != null && decodedRecords == null) decodedRecords = decoded
     }
     internal suspend fun write(key: AggregateKey): StockRelationalRecordV2? {
         var found: StockRelationalRecordV2? = null
@@ -453,12 +553,19 @@ public class LocalStockRelationalInspection internal constructor(
         return found
     }
     internal suspend fun before(key: AggregateKey): StockRelationalRecordV2? {
-        val source = source(key) ?: return null
-        return LocalStockRelationalCodecV2.decode(scope, source.key, source.generation, source.schema, source.payload, source.payloadHash)
+        if (replay != null && decodedBefore.containsKey(key)) {
+            original.requireCurrent()
+            return decodedBefore[key]
+        }
+        val source = source(key)
+        val decoded = source?.let { LocalStockRelationalCodecV2.decode(scope, it.key, it.generation, it.schema, it.payload, it.payloadHash) }
+        // One entry per looked-up key of THIS original, only beside its retained verified stream.
+        if (replay != null && decodedBefore.size < STOCK_INSPECTION_REPLAY_ENTRIES) decodedBefore[key] = decoded
+        return decoded
     }
     internal suspend fun source(key: AggregateKey): StreamedSourceObservationV2.Aggregate? {
         var found: StreamedSourceObservationV2.Aggregate? = null
-        original.frames { frame ->
+        frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Aggregate
             if (source?.key == key) { localStockCheck(found == null); found = source }
         }
@@ -466,7 +573,7 @@ public class LocalStockRelationalInspection internal constructor(
     }
     internal suspend fun claim(key: ClaimKey): RetainedClaimChange? {
         var found: RetainedClaimChange? = null
-        original.frames { frame ->
+        frames { frame ->
             val value = (frame as? RetainedCommandFrameV2.Claim)?.value
             if (value?.key == key) { localStockCheck(found == null); found = value }
         }
@@ -474,7 +581,7 @@ public class LocalStockRelationalInspection internal constructor(
     }
     internal suspend fun observedClaim(key: ClaimKey): DomainId? {
         var found = false; var owner: DomainId? = null
-        original.frames { frame ->
+        frames { frame ->
             val value = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Claim
             if (value?.key == key) { localStockCheck(!found); found = true; owner = value.ownerId }
         }
@@ -482,13 +589,26 @@ public class LocalStockRelationalInspection internal constructor(
         return owner
     }
     internal suspend fun intents(consume: suspend (StockIntentV2Wire) -> Unit) {
-        original.frames { frame ->
+        decodedIntents?.let { decoded ->
+            replayChecked { for (intent in decoded) consume(intent) }
+            return
+        }
+        var decoded = if (replayCollecting) ArrayList<StockIntentV2Wire>() else null
+        var bytes = 0L
+        frames { frame ->
             val value = (frame as? RetainedCommandFrameV2.Effect)?.value ?: return@frames
             if (value.kind == STOCK_ACTION_EFFECT_V2) {
                 val intent = stockDecode(value.payload, StockIntentV2Wire.serializer())
-                localStockCheck(value.id == stockIntentId(intent)); consume(intent)
+                localStockCheck(value.id == stockIntentId(intent))
+                if (decoded != null) {
+                    bytes += stockReplayCharge(frame)
+                    if (!replayCollecting || bytes > STOCK_INSPECTION_REPLAY_BYTES) decoded = null
+                    else decoded?.add(intent)
+                }
+                consume(intent)
             }
         }
+        if (decoded != null && replay != null && decodedIntents == null) decodedIntents = decoded
     }
     internal suspend fun intent(id: DomainId): StockIntentV2Wire? {
         var found: StockIntentV2Wire? = null
@@ -496,17 +616,62 @@ public class LocalStockRelationalInspection internal constructor(
         return found
     }
     internal suspend fun range(query: StockQueryV2, consume: suspend (StockRelationalRecordV2) -> Unit) {
-        original.stockRange(query) { index ->
+        stockRange(query) { index ->
             val record = before(index.identity.key) ?: inconsistentStock()
             val projected = stockIndexOf(scope, record)
             localStockCheck(projected == index, LocalStockFailure.STORAGE_INCONSISTENT)
             consume(record)
         }
     }
+    /** The COMPLETE literal owner-observed range of [original]: core stockRange recomputes the
+     * per-member chain and terminal over a full traversal. Its complete member list is replayed
+     * only beside this inspection's retained verified stream, after the same currentness check. */
+    internal suspend fun stockRange(query: StockQueryV2, consume: suspend (StockIndexRecordV2) -> Unit) {
+        if (replay != null) ranges[query]?.let { members ->
+            replayChecked { for (member in members) consume(member) }
+            return
+        }
+        var members = if (replay != null) ArrayList<StockIndexRecordV2>() else null
+        var bytes = 0L
+        original.stockRange(query) { index ->
+            if (members != null) {
+                bytes += 2_048L
+                if (bytes > STOCK_INSPECTION_REPLAY_BYTES) members = null else members?.add(index)
+            }
+            consume(index)
+        }
+        members?.let { complete ->
+            if (replay != null && ranges.size < STOCK_INSPECTION_REPLAY_ENTRIES) ranges[query] = complete
+        }
+    }
 }
 
 internal fun stockIndexOf(scope: com.ukkera.pos.security.BranchScope, record: StockRelationalRecordV2): StockIndexRecordV2? =
     LocalStockRelationalCodecV2.projectRecord(scope, record)
+
+/** Per-inspection retained replay envelope (frames plus derived decodes); larger originals keep
+ * the per-access full traversal. This is a memory envelope only, never a stock/row refusal. */
+internal const val STOCK_INSPECTION_REPLAY_BYTES: Long = 4L * 1_024 * 1_024
+internal const val STOCK_INSPECTION_REPLAY_ENTRIES: Int = 4_096
+
+/** Conservative retained-memory charge: the immutable frame itself plus room for the derived
+ * decoded records/intents/before rows/range members that may sit beside it. */
+internal fun stockReplayCharge(frame: RetainedCommandFrameV2): Long = 2 * when (frame) {
+    is RetainedCommandFrameV2.Normalized -> frame.body.size + 256L
+    is RetainedCommandFrameV2.Result -> frame.body.size + 256L
+    is RetainedCommandFrameV2.Write -> frame.value.payload.size + 512L + frame.value.schema.length
+    is RetainedCommandFrameV2.Claim -> 256L + frame.value.key.namespace.length + frame.value.key.key.length
+    is RetainedCommandFrameV2.Job -> frame.value.body.size + 256L + frame.value.kind.length
+    is RetainedCommandFrameV2.Effect -> frame.value.payload.size + 256L + frame.value.kind.length
+    is RetainedCommandFrameV2.Resource -> 256L
+    is RetainedCommandFrameV2.Source -> when (val source = frame.value) {
+        is StreamedSourceObservationV2.Aggregate -> source.payload.size + 512L + source.schema.length
+        is StreamedSourceObservationV2.Current -> source.payload.size + 512L + source.schema.length
+        is StreamedSourceObservationV2.StockMember -> 2_048L
+        is StreamedSourceObservationV2.EstateMember -> 2_048L
+        else -> 512L
+    }
+}
 
 internal suspend fun requireStockRelationalPosting(original: RetainedStreamedCommand,
     repository: LocalStockRelationalRepository, traversal: StockOriginalTraversal): LocalStockRelationalInspection {
@@ -521,7 +686,7 @@ internal suspend fun requireStockRelationalPosting(original: RetainedStreamedCom
         posting.effectCount == effects.count && posting.effectBytes == effects.bytes && posting.effectCommitment == effects.commitment &&
         posting.resultHash == original.identity.resultHash, LocalStockFailure.STORAGE_INCONSISTENT)
     // The descriptor hashes named sections, not the envelope/write which contains itself.
-    original.frames { frame ->
+    inspection.frames { frame ->
         val range = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange
         if (range != null)
             inspection.range(range.query) { /* Complete literal crosswalk, including unused unfavorable candidates. */ }
@@ -571,7 +736,7 @@ private suspend fun requireStockResourceMembers(stock: LocalStockRelationalInspe
     if (selected.isEmpty()) return
     localStockCheck(selected.size <= 16)
     val counts = selected.associateWith { 0 }.toMutableMap()
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val resource = (frame as? RetainedCommandFrameV2.Resource)?.value ?: return@frames
         val count = counts[resource] ?: return@frames
         if (count < 2) counts[resource] = count + 1
@@ -606,7 +771,7 @@ internal suspend fun stockInspectionResourceAliases(stock: LocalStockRelationalI
         com.ukkera.pos.recovery.RecoveryResourceKind.AUTHORIZATION, id)) }
     authorization(stock.original.identity.producer.originalActorId)
     stock.records { stockResourceAliases(it.key, it.body, consume) }
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Aggregate ?: return@frames
         if (source.key.kind in StockRelationalKindsV2.all) {
             val row = LocalStockRelationalCodecV2.decode(stock.scope, source.key, source.generation, source.schema, source.payload, source.payloadHash)
@@ -647,7 +812,7 @@ internal suspend fun stockRequiredAuthoritySources(stock: LocalStockRelationalIn
                     val key = AggregateKey(stamp.kind, stamp.id)
                     localStockCheck(key.kind !in StockRelationalKindsV2.all)
                     var source: StreamedSourceObservationV2.Current? = null
-                    stock.original.frames { frame ->
+                    stock.frames { frame ->
                         val actual = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Current
                         if (actual?.key == key) {
                             localStockCheck(source == null && actual.generation == stamp.revision && actual.payloadHash == PayloadDigest(stamp.digest))

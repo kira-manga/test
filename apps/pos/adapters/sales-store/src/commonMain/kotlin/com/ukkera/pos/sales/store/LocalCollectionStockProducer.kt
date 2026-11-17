@@ -23,8 +23,9 @@ internal fun commerceLinkSchema(): String = "$COMMERCE_STOCK_LINK_KIND_V2/v2"
     val beforeGeneration: Revision?, val beforeDigest: PayloadDigest?, val afterDigest: PayloadDigest)
 
 /** Real view decoration only; an original is never converted to a fake current CommandReadView. */
-internal interface CommerceStockView : StockRelationalReadView, LocalCommerceResourceCollector {
+internal interface CommerceStockView : StockRelationalReadView, LocalCommerceResourceCollector, OriginalSourceBudgetCarrier {
     val commerceStock: LocalStockRepository
+    val commerceOriginalSources: LocalFinancialOriginalSourceServices? get() = null
     val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1
         get() = UnavailableHistoricalSalesTenderPolicySourceV1
     suspend fun recordCommerceOriginal(row: StoredAggregate, original: RetainedStreamedCommand)
@@ -33,7 +34,11 @@ internal interface CommerceStockView : StockRelationalReadView, LocalCommerceRes
 internal class CommerceLoan(private val borrowed: CommandReadView, override val commerceStock: LocalStockRepository,
     private val sink: StreamedCommandSink? = null,
     override val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1 = commerceTenderPolicies(borrowed),
+    override val commerceOriginalSources: LocalFinancialOriginalSourceServices? = (borrowed as? CommerceStockView)?.commerceOriginalSources,
 ) : CommerceStockView, FinancialOriginalProofCarrier {
+    private val currentSourceBudget by lazy { FinancialOriginalSourceBudget() }
+    override val originalSourceBudget: FinancialOriginalSourceBudget
+        get() = financialOriginalProof?.sourceBudget ?: (borrowed as? OriginalSourceBudgetCarrier)?.originalSourceBudget ?: currentSourceBudget
     override val financialOriginalProof: LocalFinancialOriginalProofScope?
         get() = (borrowed as? FinancialOriginalProofCarrier)?.financialOriginalProof
     override val scope: BranchScope get() = borrowed.scope
@@ -61,6 +66,12 @@ internal class CommerceLoan(private val borrowed: CommandReadView, override val 
     }
     override suspend fun aggregateKeys(kind: String, after: DomainId?, limit: Int): AggregateKeyPage = borrowed.aggregateKeys(kind, after, limit)
     override suspend fun claimKeys(namespace: String, prefix: String, after: String?, limit: Int): ClaimKeyPage = borrowed.claimKeys(namespace, prefix, after, limit)
+    override suspend fun retailCustomerReceiptEventMembership(saleId: DomainId): List<RuntimeRetailCustomerReceiptEventLocator>? =
+        borrowed.retailCustomerReceiptEventMembership(saleId)
+    override suspend fun <T> withLegacyBusinessSources(operationId: OperationId,
+        use: suspend (RuntimeLegacyBusinessSourceGraph) -> T): T? = borrowed.withLegacyBusinessSources(operationId, use)
+    override suspend fun <T> withCurrentLegacyBusinessSources(key: AggregateKey,
+        use: suspend (RuntimeCurrentLegacyBusinessSources) -> T): T? = borrowed.withCurrentLegacyBusinessSources(key, use)
     override suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence? = borrowed.retainedCommand(operationId)
     override suspend fun financialOriginalSources(operationId: OperationId): RuntimeHistoricalFinancialSources? =
         borrowed.financialOriginalSources(operationId)
@@ -84,9 +95,13 @@ internal class CommerceLoan(private val borrowed: CommandReadView, override val 
     }
 }
 internal fun commerceLoan(view: CommandReadView, stock: LocalStockRepository,
-    tenderPolicies: HistoricalSalesTenderPolicySourceV1 = commerceTenderPolicies(view)): CommandReadView =
-    if (view is CommerceStockView && view.commerceStock === stock && view.commerceTenderPolicies === tenderPolicies) view
-    else CommerceLoan(view, stock, commerceTenderPolicies = tenderPolicies)
+    tenderPolicies: HistoricalSalesTenderPolicySourceV1 = commerceTenderPolicies(view),
+    originalSources: LocalFinancialOriginalSourceServices? = null): CommandReadView {
+    val sources = originalSources ?: (view as? CommerceStockView)?.commerceOriginalSources
+    return if (view is CommerceStockView && view.commerceStock === stock && view.commerceTenderPolicies === tenderPolicies &&
+        view.commerceOriginalSources === sources) view
+    else CommerceLoan(view, stock, commerceTenderPolicies = tenderPolicies, commerceOriginalSources = sources)
+}
 internal fun commerceTenderPolicies(view: CommandReadView): HistoricalSalesTenderPolicySourceV1 =
     (view as? CommerceStockView)?.commerceTenderPolicies ?: UnavailableHistoricalSalesTenderPolicySourceV1
 internal fun commerceRepository(view: CommandReadView): LocalStockRepository =
@@ -112,23 +127,25 @@ private fun normalizedCommerceRow(scope: BranchScope, row: StoredAggregate): Boo
 
 /** Attach the installed repository to ordinary production readers without changing their auth. */
 internal class CommerceReadHandler(private val delegate: MasterReadHandler, private val stock: LocalStockRepository,
-    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1) : MasterReadHandler {
+    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+    private val originals: LocalFinancialOriginalSourceServices? = null) : MasterReadHandler {
     override val key: ReadKey get() = delegate.key
     override fun normalize(input: StoredBytes): StoredBytes = delegate.normalize(input)
     override fun supportsRpcWorkflow(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes): Boolean =
         delegate.supportsRpcWorkflow(profile, normalized)
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: ReadContext): PreparedRead =
-        delegate.prepare(normalized, commerceLoan(view, stock, tenderPolicies), context)
+        delegate.prepare(normalized, commerceLoan(view, stock, tenderPolicies, originals), context)
 }
 
 /** Attach the SAME installed repository to real return/CASE/counter-receipt command reads. The original
  * handler retains every key, gate, result, normalization and authorization requirement. */
 internal class CommerceCommandHandler(private val delegate: MasterCommandHandler,
     private val stock: LocalStockRepository,
-    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1) :
+    private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
+    private val originals: LocalFinancialOriginalSourceServices? = null) :
     MasterCommandHandler by delegate, LocalMasterRpcRetainedResultSourceAccessProvider {
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation =
-        delegate.prepare(normalized, commerceLoan(view, stock, tenderPolicies), context)
+        delegate.prepare(normalized, commerceLoan(view, stock, tenderPolicies, originals), context)
 
     /** Only the installed counter-receipt provider gets this same repository/source loan. */
     override suspend fun rpcRetainedResultRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
@@ -136,7 +153,7 @@ internal class CommerceCommandHandler(private val delegate: MasterCommandHandler
         if (profile != LocalMasterRpcWorkflowProfile.CUSTOMER_RECEIPTS ||
             key != LocalRetailCustomerReceiptCodec.COMMAND) return null
         val provider = delegate as? LocalMasterRpcRetainedResultSourceAccessProvider ?: return null
-        return provider.rpcRetainedResultRequirements(profile, normalized, commerceLoan(view, stock, tenderPolicies), context)
+        return provider.rpcRetainedResultRequirements(profile, normalized, commerceLoan(view, stock, tenderPolicies, originals), context)
     }
 }
 
@@ -379,6 +396,12 @@ public class LocalCollectionStockProducer(private val quoteSource: TransactionSa
             check(observation.key.kind == LocalSalesStoreProfile.COLLECTION_KIND)
             requireNormalizedPaymentOrigin(commerceLoan(view, commerceRepository(view), tenderPolicies), original.evidence)
         } else requireOriginalSource(original, observation)
+    }
+    override suspend fun requireOriginalSource(repository: LocalStockRepository, view: CommandReadView,
+        original: RetainedOriginalV2, observation: StreamedSourceObservationV2.Aggregate) {
+        if (original !is RetainedOriginalV2.Legacy) return requireOriginalSource(original, observation)
+        check(view !is CommerceStockView || view.commerceStock === repository)
+        requireOriginalSource(commerceLoan(view, repository, tenderPolicies), original, observation)
     }
 }
 

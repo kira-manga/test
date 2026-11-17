@@ -102,6 +102,8 @@ internal class RuntimeBusinessHistoryJoin(
         captures.values.filter { it.nativeEmployeeStart != null }.sumOf { it.mutations.size.toLong() } else coldEmployeeNativeOriginalMutations
     val supervisorReviewEvents: Long get() = captures.values.count { it.supervisorReview != null }.toLong()
     val supervisorReviewMutations: Long get() = captures.values.filter { it.supervisorReview != null }.sumOf { it.mutations.size.toLong() }
+    val foundingAdditionalSupervisorReviewEvents: Long get() = captures.values.count { it.foundingAdditionalSupervisorReview != null }.toLong()
+    val foundingAdditionalSupervisorReviewMutations: Long get() = captures.values.filter { it.foundingAdditionalSupervisorReview != null }.sumOf { it.mutations.size.toLong() }
     val employeeSupervisorReviewEvents: Long get() = captures.values.count { it.employeeSupervisorReview != null }.toLong()
     val employeeSupervisorReviewMutations: Long get() = captures.values.filter { it.employeeSupervisorReview != null }.sumOf { it.mutations.size.toLong() }
     val purchasingPolicyRejectionEvents: Long get() = captures.values.count { it.purchasingPolicyRejection != null }.toLong()
@@ -109,9 +111,13 @@ internal class RuntimeBusinessHistoryJoin(
     val employeePurchasingPolicyRejectionEvents: Long get() = captures.values.count { it.employeePurchasingPolicyRejection != null }.toLong()
     val employeePurchasingPolicyRejectionMutations: Long get() = captures.values.filter { it.employeePurchasingPolicyRejection != null }.sumOf { it.mutations.size.toLong() }
     val orderReassignmentRejectionEvents: Long get() = captures.values.count { it.orderReassignmentRejection != null }.toLong()
+    val normalizedStockRejectionEvents: Long get() = captures.values.count { it.normalizedStockRejection != null }.toLong()
     val orderReassignmentRejectionMutations: Long get() = captures.values.filter { it.orderReassignmentRejection != null }.sumOf { it.mutations.size.toLong() }
+    val normalizedStockRejectionMutations: Long get() = captures.values.filter { it.normalizedStockRejection != null }.sumOf { it.mutations.size.toLong() }
     val employeeOrderReassignmentRejectionEvents: Long get() = captures.values.count { it.employeeOrderReassignmentRejection != null }.toLong()
+    val employeeNormalizedStockRejectionEvents: Long get() = captures.values.count { it.employeeNormalizedStockRejection != null }.toLong()
     val employeeOrderReassignmentRejectionMutations: Long get() = captures.values.filter { it.employeeOrderReassignmentRejection != null }.sumOf { it.mutations.size.toLong() }
+    val employeeNormalizedStockRejectionMutations: Long get() = captures.values.filter { it.employeeNormalizedStockRejection != null }.sumOf { it.mutations.size.toLong() }
     val openingSupplierObligationRejectionEvents: Long get() = captures.values.count { it.openingSupplierObligationRejection != null }.toLong()
     val openingSupplierObligationRejectionMutations: Long get() = captures.values.filter { it.openingSupplierObligationRejection != null }.sumOf { it.mutations.size.toLong() }
     val employeeOpeningSupplierObligationRejectionEvents: Long get() = captures.values.count { it.employeeOpeningSupplierObligationRejection != null }.toLong()
@@ -192,6 +198,8 @@ internal class RuntimeBusinessHistoryJoin(
         val employeePurchasingPolicyRejection: RuntimeEmployeePurchasingPolicyRejectionHistoryAuthorization?,
         val orderReassignmentRejection: RuntimeHistoricalOrderReassignmentRejectionProfile?,
         val employeeOrderReassignmentRejection: RuntimeEmployeeOrderReassignmentRejectionHistoryAuthorization?,
+        val normalizedStockRejection: RuntimeHistoricalNormalizedStockRejectionProfile?,
+        val employeeNormalizedStockRejection: RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization?,
         val openingSupplierObligationRejection: RuntimeHistoricalOpeningSupplierObligationRejectionProfile?,
         val employeeOpeningSupplierObligationRejection: RuntimeEmployeeOpeningSupplierObligationRejectionHistoryAuthorization?,
         val invoiceCaptureRejection: RuntimeHistoricalInvoiceCaptureRejectionProfile?,
@@ -217,6 +225,7 @@ internal class RuntimeBusinessHistoryJoin(
         val foodPaymentRejection: RuntimeHistoricalFoodPaymentRejectionProfile?,
         val employeeFoodPaymentRejection: RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization?,
         val approvalHistory: RuntimeActionApprovalHistoryAuthorization? = null,
+        val foundingAdditionalSupervisorReview: RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization? = null,
     ) {
         init {
             historyShapeV2((employee == null) != (nativeOriginal == null) &&
@@ -226,6 +235,9 @@ internal class RuntimeBusinessHistoryJoin(
                 (supervisorReview == null || employee != null && nativeOriginal == null && employeeHistory == null &&
                     nativeEmployeeStart == null && (supervisorReview.matches(header, employee) ||
                         supervisorReview.matchesApplicationRefusal(header, employee))) &&
+                (foundingAdditionalSupervisorReview == null || supervisorReview != null && employee != null &&
+                    employeeSupervisorReview == null && foundingAdditionalSupervisorReview.profile == supervisorReview &&
+                    foundingAdditionalSupervisorReview.evidence === employee) &&
                 (employeeSupervisorReview == null || supervisorReview != null && employee != null &&
                     employeeSupervisorReview.profile == supervisorReview && employeeSupervisorReview.evidence === employee) &&
                 (purchasingPolicyRejection == null || employee != null && nativeOriginal == null && employeeHistory == null &&
@@ -239,10 +251,18 @@ internal class RuntimeBusinessHistoryJoin(
                     orderReassignmentRejection.matches(header, employee)) &&
                 (employeeOrderReassignmentRejection == null || orderReassignmentRejection != null && employee != null &&
                     employeeOrderReassignmentRejection.profile == orderReassignmentRejection && employeeOrderReassignmentRejection.evidence === employee) &&
+                (normalizedStockRejection == null || employee != null && nativeOriginal == null && employeeHistory == null &&
+                    nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
+                    purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
+                    orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection.matches(header, employee)) &&
+                (employeeNormalizedStockRejection == null || normalizedStockRejection != null && employee != null &&
+                    employeeNormalizedStockRejection.profile == normalizedStockRejection && employeeNormalizedStockRejection.evidence === employee) &&
                 (openingSupplierObligationRejection == null || employee != null && nativeOriginal == null && employeeHistory == null &&
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection.matches(header, employee)) &&
                 (employeeOpeningSupplierObligationRejection == null || openingSupplierObligationRejection != null && employee != null &&
                     employeeOpeningSupplierObligationRejection.profile == openingSupplierObligationRejection &&
@@ -251,6 +271,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -268,6 +289,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     invoiceCaptureRejection == null && employeeInvoiceCaptureRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
@@ -286,6 +308,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection.matches(header, employee)) &&
                 (employeeBranchActivityActivationRejection == null || branchActivityActivationRejection != null && employee != null &&
@@ -295,6 +318,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection.matches(header, employee)) &&
@@ -305,6 +329,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -320,6 +345,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -334,6 +360,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -349,6 +376,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -364,6 +392,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -390,6 +419,7 @@ internal class RuntimeBusinessHistoryJoin(
                     nativeEmployeeStart == null && supervisorReview == null && employeeSupervisorReview == null &&
                     purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                     orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                     openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                     branchActivityActivationRejection == null && employeeBranchActivityActivationRejection == null &&
                     floorConfigurationRejection == null && employeeFloorConfigurationRejection == null &&
@@ -406,6 +436,7 @@ internal class RuntimeBusinessHistoryJoin(
                 supervisorReview == null && employeeSupervisorReview == null &&
                 purchasingPolicyRejection == null && employeePurchasingPolicyRejection == null &&
                 orderReassignmentRejection == null && employeeOrderReassignmentRejection == null &&
+                    normalizedStockRejection == null && employeeNormalizedStockRejection == null &&
                 openingSupplierObligationRejection == null && employeeOpeningSupplierObligationRejection == null &&
                 invoiceCaptureRejection == null && employeeInvoiceCaptureRejection == null &&
                 capturedInvoiceMatchRejection == null && employeeCapturedInvoiceMatchRejection == null &&
@@ -434,8 +465,10 @@ internal class RuntimeBusinessHistoryJoin(
         val businessGeneration: SessionGeneration get() = approvalHistory?.businessGeneration ?: checkNotNull(employee).authorization.generation
         val policyRevision get() = nativeOriginal?.provenance?.historicalStart?.policyRevision ?: checkNotNull(employee).authorization.policyRevision
         var joined: Boolean = false
-        fun clear() { employeeHistory?.clear(); employeeSupervisorReview?.clear(); employeePurchasingPolicyRejection?.clear()
+        fun clear() { employeeHistory?.clear(); employeeSupervisorReview?.clear(); foundingAdditionalSupervisorReview?.clear()
+            employeePurchasingPolicyRejection?.clear()
             employeeOrderReassignmentRejection?.clear()
+            employeeNormalizedStockRejection?.clear()
             employeeOpeningSupplierObligationRejection?.clear()
             employeeInvoiceCaptureRejection?.clear()
             employeeCapturedInvoiceMatchRejection?.clear()
@@ -584,6 +617,28 @@ internal class RuntimeBusinessHistoryJoin(
             supervisorReview = profile, employeeSupervisorReview = proof)
     }
 
+    /** Distinct founding/additional-device Review proof. Cohost, enrolled ordinary
+     * command, native Start and positive Apply authorization remain separate. */
+    fun captureFoundingAdditionalDeviceSupervisorReview(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        proof: RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization, intent: NativeHistoryOriginalIntentV2,
+        dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
+        val evidence = proof.evidence; val profile = proof.profile
+        if (!enabled || !(profile.matches(header, evidence) || profile.matchesApplicationRefusal(header, evidence)) ||
+            profile.command !in supportedCommands ||
+            mutations.size != RuntimeHistoricalSupervisorReviewProfile.CAPTURED_CHANGES ||
+            mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
+        historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
+            evidence.authorization.actorId == coordinates.firstActorId &&
+            evidence.authorization.deviceId != coordinates.deviceId &&
+            header.sequence !in captures && evidence.operationId !in byOperation)
+        evidence.validate()
+        proof.bind(session, header, eventDigest)
+        return captureBound(header, eventDigest, evidence, null, StreamedProducerIdentityV2(evidence.operationId,
+            profile.command, evidence.authorization.actorId, evidence.semanticDigest), evidence.authorization.scope,
+            evidence.purposeTag, evidence.capturedChanges, intent, dependencies, mutations,
+            supervisorReview = profile, foundingAdditionalSupervisorReview = proof)
+    }
+
     /** Exact founding-actor policy rejection capture, after original interactive replay.
      * Only this command/requirement and five non-domain mutations can enter the lane. */
     fun capturePurchasingPolicyRejection(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
@@ -659,6 +714,42 @@ internal class RuntimeBusinessHistoryJoin(
             profile.command, evidence.authorization.actorId, evidence.semanticDigest), evidence.authorization.scope,
             evidence.purposeTag, evidence.capturedChanges, intent, dependencies, mutations,
             orderReassignmentRejection = profile, employeeOrderReassignmentRejection = proof)
+    }
+
+    fun captureNormalizedStockRejection(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        evidence: RuntimeCommandAuthorizationEvidenceV1, intent: NativeHistoryOriginalIntentV2,
+        dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
+        val profile = RuntimeHistoricalNormalizedStockRejectionProfile.fromCommand(CommandKey(evidence.commandName, evidence.commandVersion)) ?: return false
+        if (!enabled || !profile.matches(header, evidence) || profile.command !in supportedCommands ||
+            mutations.size != RuntimeHistoricalNormalizedStockRejectionProfile.CAPTURED_CHANGES ||
+            mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
+        historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
+            evidence.authorization.actorId == coordinates.firstActorId && evidence.authorization.deviceId == coordinates.deviceId &&
+            header.sequence !in captures && evidence.operationId !in byOperation)
+        evidence.validate()
+        return captureBound(header, eventDigest, evidence, null, StreamedProducerIdentityV2(evidence.operationId,
+            profile.command, evidence.authorization.actorId, evidence.semanticDigest), evidence.authorization.scope,
+            evidence.purposeTag, evidence.capturedChanges, intent, dependencies, mutations, normalizedStockRejection = profile)
+    }
+
+    /** Distinct native-enrolled rejection proof, never the Apply-only command proof or a
+     * current/recipient grant. Registration and all final native joins remain mandatory. */
+    fun captureEmployeeNormalizedStockRejection(header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        proof: RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization, intent: NativeHistoryOriginalIntentV2,
+        dependencies: ByteArray, mutations: List<RuntimeHistoryRowVersionRowV2>): Boolean {
+        val evidence = proof.evidence; val profile = proof.profile
+        if (!enabled || !profile.matches(header, evidence) || profile.command !in supportedCommands ||
+            mutations.size != RuntimeHistoricalNormalizedStockRejectionProfile.CAPTURED_CHANGES ||
+            mutations.map { RuntimeHistoryTableV2.fromTag(it.tableTag) }.toSet() != REJECTION_TABLES) return false
+        historyShapeV2(header.commandEpoch == epoch.value && header.assignmentId == coordinates.assignmentId &&
+            evidence.authorization.actorId != coordinates.firstActorId &&
+            header.sequence !in captures && evidence.operationId !in byOperation)
+        evidence.validate()
+        proof.bind(session, header, eventDigest)
+        return captureBound(header, eventDigest, evidence, null, StreamedProducerIdentityV2(evidence.operationId,
+            profile.command, evidence.authorization.actorId, evidence.semanticDigest), evidence.authorization.scope,
+            evidence.purposeTag, evidence.capturedChanges, intent, dependencies, mutations,
+            normalizedStockRejection = profile, employeeNormalizedStockRejection = proof)
     }
 
     /** CLOSED founding-actor opening-obligation refusal after unchanged original interactive
@@ -1298,7 +1389,10 @@ internal class RuntimeBusinessHistoryJoin(
                 captured.producer.originalActorId == historical.originalActorId && captured.producer.command == historical.command &&
                 captured.producer.semanticDigest == historical.intentSemanticDigest && captured.authenticationId == historical.authenticationId &&
                 captured.policyRevision == historical.policyRevision && captured.header.commandSequence == historical.sequence.value &&
-                captured.header.commandDigest == historical.journalHash && originalAuthorization.authorization.deviceId == historical.masterDeviceId)
+                captured.header.commandDigest == historical.journalHash && historical.masterDeviceId == coordinates.deviceId)
+            // The historical Master owner is distinct from the employee's admitted Client.
+            // This exact registered proof below checks the real Start session/device and,
+            // when remote, its chronologically joined native admission and captured digest.
             proof.requireCaptured(session, captured.header, captured.eventDigest, originalAuthorization)
             captured
         } else null
@@ -1325,6 +1419,8 @@ internal class RuntimeBusinessHistoryJoin(
         employeePurchasingPolicyRejection: RuntimeEmployeePurchasingPolicyRejectionHistoryAuthorization? = null,
         orderReassignmentRejection: RuntimeHistoricalOrderReassignmentRejectionProfile? = null,
         employeeOrderReassignmentRejection: RuntimeEmployeeOrderReassignmentRejectionHistoryAuthorization? = null,
+        normalizedStockRejection: RuntimeHistoricalNormalizedStockRejectionProfile? = null,
+        employeeNormalizedStockRejection: RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization? = null,
         openingSupplierObligationRejection: RuntimeHistoricalOpeningSupplierObligationRejectionProfile? = null,
         employeeOpeningSupplierObligationRejection: RuntimeEmployeeOpeningSupplierObligationRejectionHistoryAuthorization? = null,
         invoiceCaptureRejection: RuntimeHistoricalInvoiceCaptureRejectionProfile? = null,
@@ -1349,11 +1445,13 @@ internal class RuntimeBusinessHistoryJoin(
         employeeFoodCheckRejection: RuntimeEmployeeFoodCheckRejectionHistoryAuthorization? = null,
         foodPaymentRejection: RuntimeHistoricalFoodPaymentRejectionProfile? = null,
         employeeFoodPaymentRejection: RuntimeEmployeeFoodPaymentRejectionHistoryAuthorization? = null,
-        approvalHistory: RuntimeActionApprovalHistoryAuthorization? = null): Boolean {
+        approvalHistory: RuntimeActionApprovalHistoryAuthorization? = null,
+        foundingAdditionalSupervisorReview: RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization? = null): Boolean {
         if (coldStore != null && (nativeOriginal != null && !supportsColdNativeOriginal(nativeOriginal) ||
                 nativeEmployeeStart != null || supervisorReview != null ||
                 employeeSupervisorReview != null || purchasingPolicyRejection != null || employeePurchasingPolicyRejection != null ||
                 orderReassignmentRejection != null || employeeOrderReassignmentRejection != null ||
+                normalizedStockRejection != null || employeeNormalizedStockRejection != null ||
                 openingSupplierObligationRejection != null || employeeOpeningSupplierObligationRejection != null ||
                 invoiceCaptureRejection != null || employeeInvoiceCaptureRejection != null ||
                 capturedInvoiceMatchRejection != null || employeeCapturedInvoiceMatchRejection != null ||
@@ -1447,6 +1545,7 @@ internal class RuntimeBusinessHistoryJoin(
             val captured = CommandCapture(header, eventDigest, employee, nativeCopy ?: nativeOriginal, intentDigest, resources, owned, copied.toList(),
                 employeeHistory, nativeEmployeeStart, supervisorReview, employeeSupervisorReview,
                 purchasingPolicyRejection, employeePurchasingPolicyRejection, orderReassignmentRejection, employeeOrderReassignmentRejection,
+                normalizedStockRejection, employeeNormalizedStockRejection,
                 openingSupplierObligationRejection, employeeOpeningSupplierObligationRejection,
                 invoiceCaptureRejection, employeeInvoiceCaptureRejection,
                 capturedInvoiceMatchRejection, employeeCapturedInvoiceMatchRejection,
@@ -1457,7 +1556,7 @@ internal class RuntimeBusinessHistoryJoin(
                 retailCustomerReceiptRejection, employeeRetailCustomerReceiptRejection,
                 returnCaseQualificationRejection, employeeReturnCaseQualificationRejection,
                 returnStockDispositionRejection, employeeReturnStockDispositionRejection,
-                foodCheckRejection, employeeFoodCheckRejection, foodPaymentRejection, employeeFoodPaymentRejection, approvalHistory)
+                foodCheckRejection, employeeFoodCheckRejection, foodPaymentRejection, employeeFoodPaymentRejection, approvalHistory, foundingAdditionalSupervisorReview)
             ownedCapture = captured
             captures[header.sequence] = captured; byOperation[producer.operationId] = captured
             // All ordinals/counts remain complete. Protected siblings have their own native
@@ -1653,6 +1752,7 @@ internal class RuntimeBusinessHistoryJoin(
             // malformed native history. No rejection proof or joined count is issued for it.
             if (captured.purchasingPolicyRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
             if (captured.orderReassignmentRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
+            if (captured.normalizedStockRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
             if (captured.openingSupplierObligationRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
             if (captured.invoiceCaptureRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
             if (captured.capturedInvoiceMatchRejection?.let { nativeOperation.outcome !in it.rejectionCodes } == true) return false
@@ -1670,8 +1770,10 @@ internal class RuntimeBusinessHistoryJoin(
             captured.approvalHistory?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeHistory?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeSupervisorReview?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
+            captured.foundingAdditionalSupervisorReview?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeePurchasingPolicyRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeOrderReassignmentRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
+            captured.employeeNormalizedStockRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeOpeningSupplierObligationRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeInvoiceCaptureRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
             captured.employeeCapturedInvoiceMatchRejection?.requireCaptured(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
@@ -1690,7 +1792,7 @@ internal class RuntimeBusinessHistoryJoin(
             charge(originalBytes * (if (coldStore == null) 1L else 4L))
             val original = if (RetainedCommandFramesV2.isRoot(nativeJournal.envelope)) {
                 historyShapeV2(captured.nativeOriginal == null && captured.supervisorReview == null && captured.purchasingPolicyRejection == null &&
-                    captured.orderReassignmentRejection == null && captured.openingSupplierObligationRejection == null &&
+                    captured.orderReassignmentRejection == null && captured.normalizedStockRejection == null && captured.openingSupplierObligationRejection == null &&
                     captured.invoiceCaptureRejection == null && captured.employeeInvoiceCaptureRejection == null &&
                     captured.capturedInvoiceMatchRejection == null && captured.employeeCapturedInvoiceMatchRejection == null &&
                     captured.branchActivityActivationRejection == null && captured.floorConfigurationRejection == null &&
@@ -1753,8 +1855,10 @@ internal class RuntimeBusinessHistoryJoin(
                     historyShapeV2(!captured.joined)
                     captured.employeeHistory?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeeSupervisorReview?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
+                    captured.foundingAdditionalSupervisorReview?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeePurchasingPolicyRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeeOrderReassignmentRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
+                    captured.employeeNormalizedStockRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeeOpeningSupplierObligationRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeeInvoiceCaptureRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
                     captured.employeeCapturedInvoiceMatchRejection?.markJoined(session, captured.header, captured.eventDigest, checkNotNull(captured.employee))
@@ -1935,8 +2039,12 @@ internal class RuntimeBusinessHistoryJoin(
             captured.header.assignmentId == coordinates.assignmentId && captured.nativeOriginal == null &&
             (profile.matches(captured.header, evidence) || profile.matchesApplicationRefusal(captured.header, evidence)) &&
             (captured.employeeSupervisorReview != null) == (evidence.authorization.actorId != coordinates.firstActorId) &&
-            (captured.employeeSupervisorReview != null || evidence.authorization.deviceId == coordinates.deviceId))
+            (captured.foundingAdditionalSupervisorReview != null) ==
+                (evidence.authorization.actorId == coordinates.firstActorId && evidence.authorization.deviceId != coordinates.deviceId) &&
+            (captured.employeeSupervisorReview != null || captured.foundingAdditionalSupervisorReview != null ||
+                evidence.authorization.deviceId == coordinates.deviceId))
         captured.employeeSupervisorReview?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
+        captured.foundingAdditionalSupervisorReview?.requireCaptured(session, captured.header, captured.eventDigest, evidence)
     }
 
     /** Exact active original ownership for the closed configuration/pricing refusal ports. A
@@ -2474,6 +2582,7 @@ internal class RuntimeBusinessHistoryJoin(
         val outcomeMatches = if (captured.approvalRejected) operation.outcome != "committed"
             else captured.purchasingPolicyRejection?.let { operation.outcome in it.rejectionCodes }
             ?: captured.orderReassignmentRejection?.let { operation.outcome in it.rejectionCodes }
+            ?: captured.normalizedStockRejection?.let { operation.outcome in it.rejectionCodes }
             ?: captured.openingSupplierObligationRejection?.let { operation.outcome in it.rejectionCodes }
             ?: captured.branchActivityActivationRejection?.let { operation.outcome in it.rejectionCodes }
             ?: captured.floorConfigurationRejection?.let { operation.outcome in it.rejectionCodes }
@@ -2504,6 +2613,10 @@ internal class RuntimeBusinessHistoryJoin(
             historyShapeV2(retained.code in profile.rejectionCodes)
             retained.code
         } ?: captured.orderReassignmentRejection?.let { profile ->
+            val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: malformed()
+            historyShapeV2(retained.code in profile.rejectionCodes)
+            retained.code
+        } ?: captured.normalizedStockRejection?.let { profile ->
             val retained = (original as? RetainedOriginalV2.Legacy)?.evidence ?: malformed()
             historyShapeV2(retained.code in profile.rejectionCodes)
             retained.code
@@ -2642,6 +2755,11 @@ internal class RuntimeBusinessHistoryJoin(
                     captured.nativeOriginal == null && retained.nativeOriginalProvenance == null && retained.aggregateWrites.isEmpty() &&
                     retained.claimChanges.isEmpty() && retained.jobs.isEmpty() &&
                     captured.mutations.size == RuntimeHistoricalOrderReassignmentRejectionProfile.CAPTURED_CHANGES)
+                else if (captured.normalizedStockRejection != null) historyShapeV2(!retained.committed &&
+                    retained.code in captured.normalizedStockRejection.rejectionCodes && retained.command == captured.normalizedStockRejection.command &&
+                    captured.nativeOriginal == null && retained.nativeOriginalProvenance == null && retained.aggregateWrites.isEmpty() &&
+                    retained.claimChanges.isEmpty() && retained.jobs.isEmpty() &&
+                    captured.mutations.size == RuntimeHistoricalNormalizedStockRejectionProfile.CAPTURED_CHANGES)
                 else if (captured.openingSupplierObligationRejection != null) historyShapeV2(!retained.committed &&
                     retained.code in captured.openingSupplierObligationRejection.rejectionCodes &&
                     retained.command == captured.openingSupplierObligationRejection.command &&
@@ -2800,7 +2918,8 @@ internal class RuntimeBusinessHistoryJoin(
             start.command == h.command && start.semanticDigest == h.intentSemanticDigest && start.authenticationId == h.authenticationId &&
             start.policyRevision == h.policyRevision && start.assignmentId == h.assignmentId && start.authorityEpoch == h.epoch &&
             start.sequence == h.sequence && start.journalHash == h.journalHash && start.resultHash == h.resultDigest && start.recordedAt == h.recordedAt &&
-            startCapture.employee.authorization.deviceId == h.masterDeviceId && h.masterDeviceId == coordinates.deviceId)
+            h.masterDeviceId == coordinates.deviceId &&
+            (h.originalActorId != coordinates.firstActorId || startCapture.employee.authorization.deviceId == coordinates.deviceId))
         val certificate = PhysicalCommittedStartProjectionV1.parse(evidence.certificate)
         val sources = listOf(p.nativeOriginal.masterSource, p.nativeOriginal.clientSource)
         historyShapeV2(certificate.sourceStamps.map { it.key }.toSet() == sources.map {
@@ -2941,6 +3060,22 @@ internal class RuntimeBusinessHistoryJoin(
         val cursor = coldStore?.openStockRangeBefore(query, captured.header.sequence) ?: ListCursor(indexesBefore(captured, query))
         return RangeClosure(query, cursor)
     }
+    internal suspend fun forEachRetailStockBefore(captured: CommandCapture, query: StockQueryV2,
+        consume: suspend (StockIndexRecordV2, RuntimeHistoricalAggregateSource) -> Unit) {
+        historyShapeV2(active?.capture === captured && lineageClosed && captured.normalizedStockRejection != null &&
+            (query is StockQueryV2.Positions || query is StockQueryV2.PositionMembers || query is StockQueryV2.ReservationMembers))
+        val cursor = coldStore?.openStockRangeBefore(query, captured.header.sequence) ?: ListCursor(indexesBefore(captured, query))
+        var failure: Throwable? = null
+        try {
+            while (true) {
+                val index = cursor.next() ?: break
+                val source = aggregateSourceBefore(captured, index.identity.key) ?: malformed()
+                historyShapeV2(projection.project(scope, source.row) == index)
+                consume(index, source)
+            }
+        } catch (caught: Throwable) { failure = caught; throw caught }
+        finally { cleanupAfter(failure) { cursor.close() } }
+    }
     private suspend fun indexesBefore(captured: CommandCapture, query: StockQueryV2): List<StockIndexRecordV2> {
         historyShapeV2(coldStore == null)
         val indexes = mutableListOf<StockIndexRecordV2>()
@@ -3046,7 +3181,7 @@ internal class RuntimeBusinessHistoryJoin(
         var command = false; var stock = false; var native = false; var businessPublication = false; var foodCheckRefusal = false
         val publicationSource = businessPublicationSourceBefore(captured)
         val joinedRejectionSources = captured.supervisorReview != null || captured.purchasingPolicyRejection != null ||
-            captured.orderReassignmentRejection != null || captured.openingSupplierObligationRejection != null ||
+            captured.orderReassignmentRejection != null || captured.normalizedStockRejection != null || captured.openingSupplierObligationRejection != null ||
             captured.capturedInvoiceMatchRejection != null ||
             captured.branchActivityActivationRejection != null || captured.floorConfigurationRejection != null ||
             captured.configurationRejection != null ||
@@ -3134,7 +3269,7 @@ internal class RuntimeBusinessHistoryJoin(
         val header = captured.header
         historyShapeV2(enabled && lineageClosed && observation.size == 5 && captured.employee != null &&
             captured.nativeOriginal == null && captured.supervisorReview == null && captured.purchasingPolicyRejection == null &&
-            captured.orderReassignmentRejection == null && captured.openingSupplierObligationRejection == null &&
+            captured.orderReassignmentRejection == null && captured.normalizedStockRejection == null && captured.openingSupplierObligationRejection == null &&
             captured.branchActivityActivationRejection == null && captured.floorConfigurationRejection == null &&
             captured.configurationRejection == null && captured.employeeConfigurationRejection == null &&
             captured.returnRightsActivationRejection == null && captured.employeeReturnRightsActivationRejection == null &&

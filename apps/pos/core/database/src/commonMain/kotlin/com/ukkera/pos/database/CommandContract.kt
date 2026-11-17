@@ -68,10 +68,10 @@ public class StoredAggregate internal constructor(
 )
 
 /** All reads are branch-bound and confined to the borrowed writer transaction. */
-public interface CommandReadView {
-    public val scope: BranchScope
-    public suspend fun aggregate(key: AggregateKey): StoredAggregate?
-    public suspend fun claim(key: ClaimKey): DomainId?
+public interface CommandReadView : BusinessFactRead {
+    override public val scope: BranchScope
+    override public suspend fun aggregate(key: AggregateKey): StoredAggregate?
+    override public suspend fun claim(key: ClaimKey): DomainId?
     /** Complete same-sale EVENT membership at this actual native writer's original cut.
      * Every returned point still requires aggregate() and exact row/source validation.
      * Null is unavailable, never empty membership or permission to trust claims alone. */
@@ -94,6 +94,17 @@ public interface CommandReadView {
      * This separately selects finite installed ordinary subtypes; it never changes the
      * financial selector or supplies a business pass, current view, grant or empty cut. */
     public suspend fun cashConfigurationOriginalSources(operationId: OperationId): RuntimeHistoricalCashConfigurationSources? = null
+    /** One real native BEFORE source graph for legacy business ancestors. The actual
+     * authenticated immutable tail is shared within this callback only. Sources remain
+     * unqualified DATA; exact typed business proofs and current disclosure checks are separate.
+     * Missing native custody/support returns unavailable, never an empty graph. */
+    public suspend fun <T> withLegacyBusinessSources(rootOperationId: OperationId,
+        use: suspend (RuntimeLegacyBusinessSourceGraph) -> T): T? = null
+    /** Complete native selection of an exact current literal's writer, not a supplied
+     * operation hint. Whole original proof and current read authority are still mandatory.
+     * Unavailable never means absent or permission to use current-row-only evidence. */
+    public suspend fun <T> withCurrentLegacyBusinessSources(key: AggregateKey,
+        use: suspend (RuntimeCurrentLegacyBusinessSources) -> T): T? = null
     /** CLOSED FOOD scalar-refusal sources from the actual native owner's complete original
      * parent/tail join. Original capture and BEFORE pairing are inert DATA, not current rights.
      * Null is unavailable (including incompatible originals), never an invented empty cut. */
@@ -118,10 +129,10 @@ public interface CommandReadView {
      * and validated with aggregate(), and the handler must enforce its own projection policy.
      * Legacy/test views do not silently become a complete empty collection.
      */
-    public suspend fun aggregateKeys(kind: String, after: DomainId? = null, limit: Int = 50): AggregateKeyPage =
+    override public suspend fun aggregateKeys(kind: String, after: DomainId?, limit: Int): AggregateKeyPage =
         throw UnsupportedOperationException("Aggregate key pagination unavailable")
     /** Current native claim locators; trusted adapters still validate full sources and project permissions. */
-    public suspend fun claimKeys(namespace: String, prefix: String, after: String? = null, limit: Int = 50): ClaimKeyPage =
+    override public suspend fun claimKeys(namespace: String, prefix: String, after: String?, limit: Int): ClaimKeyPage =
         throw UnsupportedOperationException("Claim key pagination unavailable")
     /**
      * Original retained operation/journal facts, not a current projection or an
@@ -129,7 +140,7 @@ public interface CommandReadView {
      * Null means only that neither member of the retained pair exists here.
      * Partial, unsupported or invalid pairs fail closed as storage uncertainty.
      */
-    public suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence?
+    override public suspend fun retainedCommand(operationId: OperationId): RetainedCommandEvidence?
     /**
      * Exact durable LIVE original installation binding observed on this borrowed writer, never a
      * request-supplied original, caller readiness, cached projection or accepting default.

@@ -110,15 +110,19 @@ internal fun validateStoredReturn(accepted: AcceptedReturn) {
         total + obligation.amount.requirePositive()
     } == accepted.originalPayable)
     snapshotCheck(accepted.attempts.map { it.id }.distinct().size == accepted.attempts.size)
-    snapshotCheck(accepted.attempts.map { it.originalOperationId }.distinct().size == accepted.attempts.size)
-    snapshotCheck(accepted.revision.value >= accepted.attempts.size.toLong())
+    val originalCount = validateStoredAttemptOrigins(accepted.attempts.map {
+        StoredAttemptOrigin(it.originalOperationId, it.tender, it.originalActorId, it.originalCashSessionId, it.originalPaymentId) })
+    snapshotCheck(accepted.revision.value >= originalCount.toLong())
     val remaining = accepted.tenderObligations.associate { it.originalPaymentId to it.amount }.toMutableMap()
     for ((index, attempt) in accepted.attempts.withIndex()) {
         validateStoredRefundAttempt(attempt)
         val obligation = accepted.tenderObligations.singleOrNull { it.originalPaymentId == attempt.originalPaymentId }
             ?: throw SalesSnapshotRejectedException(SalesSnapshotFailure.INCONSISTENT_STATE)
         sameCurrency(accepted.originalPayable, attempt.amount)
-        snapshotCheck(attempt.tender == obligation.tender && attempt.amount.minor <= remaining.getValue(attempt.originalPaymentId).minor)
+        val offset = attempt.tender as? Tender.ExchangeOffset
+        snapshotCheck((if (offset == null) attempt.tender == obligation.tender
+            else offset.returnId == accepted.id && offset.source == obligation.tender.refundTender()) &&
+            attempt.amount.minor <= remaining.getValue(attempt.originalPaymentId).minor)
         snapshotCheck(!attempt.status.isUnresolved() || index == accepted.attempts.lastIndex)
         attempt.refund?.let { refund ->
             snapshotCheck(refund.returnId == accepted.id)

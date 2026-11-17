@@ -40,18 +40,21 @@ internal data class LocalPreparedPriceSources(val reference: SalesPriceSourceRef
     val revision: LocalSalesRevision get() = LocalSalesRevision(LocalSalesStoreProfile.PRICE_SOURCES_KIND, reference.id, Revision(0))
 }
 
-internal fun preparePriceSources(context: CommandContext, priced: LocalSalesQuotedOrder): LocalPreparedPriceSources? {
+internal fun preparePriceSources(context: CommandContext, priced: LocalSalesQuotedOrder): LocalPreparedPriceSources? =
+    preparePriceSources(context.scope, context.operationId, priced)
+
+internal fun preparePriceSources(scope: com.ukkera.pos.security.BranchScope, operationId: com.ukkera.pos.types.OperationId, priced: LocalSalesQuotedOrder): LocalPreparedPriceSources? {
     if (priced.priceSourceProfile == LocalSalesPriceSourceProfile.HISTORICAL_COMPANY_ONLY_V1) {
         check(priced.priceSources.isEmpty()) { "sales.price_sources.legacy" }
         return null
     }
-    val id = DomainId(context.operationId.value)
-    val value = LocalSalesPriceSourcesV2(LocalSalesScope.from(context.scope), id, priced.quote.snapshotId,
-        priced.quote.revision, priceQuoteDigest(priced.quote), context.operationId, priced.priceSourceProfile,
+    val id = DomainId(operationId.value)
+    val value = LocalSalesPriceSourcesV2(LocalSalesScope.from(scope), id, priced.quote.snapshotId,
+        priced.quote.revision, priceQuoteDigest(priced.quote), operationId, priced.priceSourceProfile,
         priced.priceSources.sortedBy { it.portionId.value }, priced.stockRequirements.normalized)
     val payload = localSalesEncode(value, LocalSalesPriceSourcesV2.serializer())
     val reference = SalesPriceSourceReference(id, sha256(payload.copyBytes()))
-    requirePriceSources(payload, context.scope, value.orderId, priced.quote, reference, if (priced.stockRequirements.normalized) null else priced.stockRequirements.allocations, priced.stockRequirements.normalizedLines)
+    requirePriceSources(payload, scope, value.orderId, priced.quote, reference, if (priced.stockRequirements.normalized) null else priced.stockRequirements.allocations, priced.stockRequirements.normalizedLines)
     return LocalPreparedPriceSources(reference, AggregateChange(
         LocalSalesStoreProfile.key(LocalSalesStoreProfile.PRICE_SOURCES_KIND, id), null,
         LocalSalesStoreProfile.PRICE_SOURCES_SCHEMA, payload))
@@ -87,7 +90,7 @@ internal fun requirePriceSources(payload: StoredBytes, scope: BranchScope, order
  * Hash/provenance consistency is not historical authorization or recovery frontier proof.
  * Never wrap transaction IO exceptions as a clean missing/corrupt source.
  */
-internal suspend fun readPriceSources(view: CommandReadView, orderId: DomainId, quote: PricingSnapshot,
+internal suspend fun readPriceSources(view: com.ukkera.pos.database.BusinessFactRead, orderId: DomainId, quote: PricingSnapshot,
     reference: SalesPriceSourceReference?, allocations: List<StockAllocation>? = null,
     normalizedLines: List<RetailStockDemandV2>? = null): LocalSalesRow<LocalSalesPriceSourcesV2>? {
     if (reference == null) return null // Explicit historical snapshot profile, not inferred v2 authority.
@@ -96,9 +99,10 @@ internal suspend fun readPriceSources(view: CommandReadView, orderId: DomainId, 
     requireLocalSalesSource(row.revision == Revision(1))
     val value = requirePriceSources(row.payload, view.scope, orderId, quote, reference, allocations, normalizedLines)
     if (value.normalizedStock) {
-        val original = (view.requireStockRelational().originals.read(value.originalQuoteOperationId) as? RetainedOriginalV2.Streamed)?.evidence
+        val current = view as? CommandReadView ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
+        val original = (current.requireStockRelational().originals.read(value.originalQuoteOperationId) as? RetainedOriginalV2.Streamed)?.evidence
             ?: error("sales.stock.quote_original_missing")
-        commerceRepository(view).requireRelationalProducer(view, original)
+        commerceRepository(current).requireRelationalProducer(current, original)
         requireCommerceWrite(original, row)
         check(original.identity.producer.command == StockStreamingCommandsV2.COLLECTION)
         when (val request = LocalCollectionStockCodecV2.decode(original.normalized)) {
@@ -114,13 +118,33 @@ internal suspend fun readPriceSources(view: CommandReadView, orderId: DomainId, 
             val saleRow = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.SALE_KIND, saleId))
             val sale = SalesSnapshotCodec.decodePaidSale(saleRow.text(), SalesSnapshotBinding(SalesSnapshotKind.PAID_SALE, view.scope, saleId, saleRow.domainRevision()))
             check(sale.orderId == orderId && sale.priceSourceReference == reference && priceQuoteDigest(sale.quote) == value.quoteDigest)
-            requireNormalizedReturnSaleSource(view, saleRow, sale, value)
+            requireNormalizedReturnSaleSource(current, saleRow, sale, value)
         }
         return LocalSalesRow(row, value)
     }
     val producer = view.retainedCommand(value.originalQuoteOperationId)
         ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
     validateLocalSalesSource { requirePriceSourcesProducer(producer, row.payload, reference, value, quote) }
+    return LocalSalesRow(row, value)
+}
+
+/** Normalized quote DATA at a genuine original BEFORE cut. The program qualifies
+ * the entire earlier writer before exposing its row; neither today's quote nor a
+ * reconstructed current command view can stand in for that original. */
+internal suspend fun readOriginalNormalizedPriceSources(view: BusinessOriginalProgram, orderId: DomainId,
+    quote: PricingSnapshot, reference: SalesPriceSourceReference?, normalizedLines: List<RetailStockDemandV2>):
+    LocalSalesRow<LocalSalesPriceSourcesV2>? {
+    if (reference == null) return null
+    val source = checkNotNull(view.aggregateSource(LocalSalesStoreProfile.key(LocalSalesStoreProfile.PRICE_SOURCES_KIND, reference.id)))
+    val row = source.row
+    requireLocalSalesSource(row.schema == LocalSalesStoreProfile.PRICE_SOURCES_SCHEMA && row.revision == Revision(1))
+    val value = requirePriceSources(row.payload, view.scope, orderId, quote, reference, normalizedLines = normalizedLines)
+    requireLocalSalesSource(value.normalizedStock)
+    val original = view.earlierOriginal(value.originalQuoteOperationId) as? RetainedOriginalV2.Streamed
+        ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
+    requireLocalSalesSource(source.original === original)
+    requireNormalizedPaymentQuoteRequest(original.evidence, orderId, quote.revision)
+    requireCommerceWrite(original.evidence, row)
     return LocalSalesRow(row, value)
 }
 

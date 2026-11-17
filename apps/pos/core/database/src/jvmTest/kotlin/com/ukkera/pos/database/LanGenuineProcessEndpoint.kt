@@ -187,6 +187,11 @@ internal object LanGenuineProcessEndpoint {
             exchange.putText("clients.gateway-phase", "fresh-sign-in-native-encrypted-actor-journals")
             if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
                 LanGenuinePaymentSupport.runMaster(exchange, root.resolve("master"), master.coordinates.scope, actors)
+            if (LanForeignCatalogueSupport.interrupted()) {
+                exchange.putText("clients.release", "first-UNKNOWN-phase-no-resolution-before-native-ACK")
+                exchange.await("client1.closed") // B was really killed, never called certainly closed.
+                return
+            }
             exchange.await("client1.gateway-ready")
             exchange.await("client2.gateway-ready")
             // Self-authored, NOT independent: optional three-commit stability observation
@@ -194,10 +199,18 @@ internal object LanGenuineProcessEndpoint {
             // next commit waits for BOTH automatic observations. Default is unchanged.
             repeat(stabilityRounds()) { round ->
                 val suffix = roundSuffix(round)
-                val drawer = DomainId.random()
-                exchange.putText("master.new-drawer$suffix", drawer.value)
-                master.withOwner { endpoint, credentials -> master.cash(endpoint, credentials,
-                    LocalCashRequestV1.ConfigureDrawer(drawer, "Synthetic LAN shared metadata", Currency.EGP)) }
+                if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY)) {
+                    // Payment-only v1.0.8 observable: see LanGenuinePaymentSupport.liveQuery.
+                    val safe = DomainId.random()
+                    exchange.putText(LanGenuinePaymentSupport.liveKey(suffix), safe.value)
+                    master.withOwner { endpoint, credentials -> master.cash(endpoint, credentials,
+                        LanGenuinePaymentSupport.liveSafeRequest(safe, actors)) }
+                } else {
+                    val drawer = DomainId.random()
+                    exchange.putText("master.new-drawer$suffix", drawer.value)
+                    master.withOwner { endpoint, credentials -> master.cash(endpoint, credentials,
+                        LocalCashRequestV1.ConfigureDrawer(drawer, "Synthetic LAN shared metadata", Currency.EGP)) }
+                }
                 exchange.await("client1.live-update$suffix")
                 exchange.await("client2.live-update$suffix")
             }
@@ -348,11 +361,18 @@ internal object LanGenuineProcessEndpoint {
                 "$role native-journal remote UI session is not current"
             }
             if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
-                session = LanGenuinePaymentSupport.runClient(role, root, exchange, session) {
+                session = LanGenuinePaymentSupport.runClient(role, root, exchange, session,
+                    if (LanForeignCatalogueSupport.interrupted()) LanForeignCatalogueClientRoot(heldJournals, intents,
+                        checkNotNull(connection.retailPhysicalBinding), LocalClientIdentity(scope, actor, approved.targetDeviceId)) else null) {
                     val reopened = heldGateway.signIn(login, CLIENT_PASSWORD.toCharArray(), true)
                     check(reopened is SignInResult.Authenticated) { "Fresh protected payment recovery sign-in unavailable" }
                     reopened.session
                 }
+            if (LanForeignCatalogueSupport.interrupted()) {
+                check(session.logout() == LocalSessionEndResult.REVOKED)
+                exchange.await("clients.release")
+                return
+            }
             val live = session.workflows as? LocalWorkflowLiveViews
                 ?: error("$role production remote workflow has no protected live-view capability")
             // One subscription remains open while the actual Master commits. The fixture never
@@ -364,12 +384,14 @@ internal object LanGenuineProcessEndpoint {
                     var ready = false
                     var observedRounds = 0
                     val rounds = stabilityRounds()
-                    val query = LocalWorkflowQuery(LocalWorkflow.CASH)
+                    val payment = java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY)
+                    val query = if (payment) LanGenuinePaymentSupport.liveQuery() else LocalWorkflowQuery(LocalWorkflow.CASH)
+                    val expectedKind = if (payment) LanGenuinePaymentSupport.liveRecordKind else LocalRecordKind.DRAWER
                     val updates = live.readUpdates(query)
                     // The payment helper has already read CASH. An updates-only stream
                     // need not repeat that unchanged page. Wire the normal UI initial read
                     // at subscription start; all later Master updates remain automatic.
-                    val mounted = if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
+                    val mounted = if (payment)
                         updates.onStart {
                             val initial = session.workflows.read(query)
                             check(initial is LocalReadResult.Available)
@@ -380,11 +402,14 @@ internal object LanGenuineProcessEndpoint {
                             is LocalWorkflowReadUpdate.Available -> {
                                 if (!ready) { exchange.putText("$role.gateway-ready", "encrypted-coherent-initial-page"); ready = true }
                                 val suffix = roundSuffix(observedRounds)
-                                val expected = exchange.read("master.new-drawer$suffix")?.toString(Charsets.UTF_8)
+                                val expected = exchange.read(if (payment) LanGenuinePaymentSupport.liveKey(suffix)
+                                    else "master.new-drawer$suffix")?.toString(Charsets.UTF_8)
                                 if (expected != null && update.page.records.any {
-                                    it.reference.kind == LocalRecordKind.DRAWER && it.reference.id.value == expected
+                                    it.reference.kind == expectedKind && it.reference.id.value == expected
                                 }) {
-                                    exchange.putText("$role.live-update$suffix", "actual-master-drawer-visible-through-production-ui-subscription")
+                                    exchange.putText("$role.live-update$suffix", if (payment)
+                                        "actual-master-safe-metadata-visible-through-production-ui-subscription"
+                                        else "actual-master-drawer-visible-through-production-ui-subscription")
                                     observedRounds++
                                     if (observedRounds == rounds) throw LanObservationComplete()
                                 }
@@ -478,7 +503,10 @@ internal object LanGenuineProcessEndpoint {
                     java.lang.Boolean.getBoolean(LanGenuineStockSupport.ENABLE_PROPERTY) && action in LanGenuineStockSupport.masterAdminActions)
                     PermissionVerb.ADMINISTER else PermissionVerb.PERFORM),
                 coordinates.scope, GrantEffect.ALLOW, PermissionLimits(Money(Currency.EGP, 1_000_000), 10_000),
-                OwnerAccess.OWN_ONLY, actor) }
+                if (java.lang.Boolean.getBoolean(LanFoundingSupervisorSupport.ENABLE_PROPERTY) &&
+                    actor == coordinates.firstActorId && action == SecurityAction.SUPPLIER_CASH_RESOLVE ||
+                    LanForeignCatalogueSupport.enabled() && login == "cashier.b" && action == SecurityAction.SUPPLIER_CASH_RESOLVE)
+                    OwnerAccess.ANY_OWNER else OwnerAccess.OWN_ONLY, actor) }
             return LocalAccountProvisioning(actor, LocalLoginIdentifier(login), ActivatedLocalPolicy(coordinates.scope,
                 actor, Revision(0), grants, LocalSessionPolicy(1), ThrottlePolicy(), approvalPolicy = null),
                 LocalTokenPolicy(30L * 60_000L, 8L * 3_600_000L), devices)

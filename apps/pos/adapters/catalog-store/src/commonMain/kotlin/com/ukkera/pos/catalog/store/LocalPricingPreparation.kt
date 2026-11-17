@@ -18,7 +18,8 @@ internal data class LocalPricingIdentity(
             check(context.key == LocalPricingProfile.COMMAND)
             return LocalPricingIdentity(context.scope, context.originalActorId, context.operationId, context.semanticDigest)
         }
-        fun original(command: RuntimeHistoricalCommand): LocalPricingIdentity =
+        fun original(command: RuntimeHistoricalCommand): LocalPricingIdentity = original(NativeBusinessOriginalProgram(command))
+        fun original(command: BusinessOriginalProgram): LocalPricingIdentity =
             LocalPricingIdentity(command.scope, command.actorId, command.operationId, command.semanticDigest)
     }
 }

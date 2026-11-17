@@ -31,11 +31,31 @@ internal object LanGenuineProcessExecutor {
         val repository = mapping.parent.parent.parent
         val frozen = Json.parseToJsonElement(Files.readString(mapping)).jsonObject
         check(frozen.getValue("status").jsonPrimitive.content == "FROZEN_BEFORE_FIRST_EXECUTION")
+        val foundingSupporting = java.lang.Boolean.getBoolean(LanFoundingSupervisorSupport.ENABLE_PROPERTY)
+        val foundingMapping = frozen["mapping_version"]?.jsonPrimitive?.content == LanFoundingSupervisorSupport.MAPPING_VERSION
+        check(foundingSupporting == foundingMapping) { "Founding support requires its exact new frozen mapping and opt-in" }
+        val foreignSupporting = LanForeignCatalogueSupport.enabled()
+        val foreignMapping = frozen["mapping_version"]?.jsonPrimitive?.content == LanForeignCatalogueSupport.mappingVersion()
+        check(foreignSupporting == foreignMapping && !(foreignSupporting && foundingSupporting)) {
+            "Foreign catalogue support requires its exact separate frozen mapping and opt-in"
+        }
+        val foreignKill = LanForeignCatalogueSupport.interrupted()
+        check(!foreignKill || foreignSupporting)
+        val existingFoundingRoot = LanFoundingSupervisorSupport.existingRoot()
+        check(existingFoundingRoot == null || foundingSupporting)
+        val existingForeignRoot = LanForeignCatalogueSupport.existingRoot()
+        check(existingForeignRoot == null || foreignSupporting)
+        val existingRoot = existingFoundingRoot ?: existingForeignRoot
         val paymentSupporting = java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY)
-        val paymentMapping = frozen["mapping_version"]?.jsonPrimitive?.content == LanGenuinePaymentSupport.MAPPING_VERSION
+        val paymentMapping = frozen["mapping_version"]?.jsonPrimitive?.content == LanGenuinePaymentSupport.MAPPING_VERSION || foundingMapping || foreignMapping
         check(paymentSupporting == paymentMapping) { "Payment support requires its exact separately versioned input mapping and explicit opt-in" }
         val extension = frozen["supporting_extension"]?.jsonPrimitive?.content
-        require(extension == null || extension == LanGenuineBusinessSupport.MAPPING_VERSION || extension == LanGenuineStockSupport.MAPPING_VERSION)
+        check(foundingSupporting == (extension == LanFoundingSupervisorSupport.MAPPING_VERSION)) {
+            "Founding support requires its separately declared supporting extension"
+        }
+        check(foreignSupporting == (extension == LanForeignCatalogueSupport.mappingVersion()))
+        require(extension == null || extension == LanGenuineBusinessSupport.MAPPING_VERSION || extension == LanGenuineStockSupport.MAPPING_VERSION ||
+            extension == LanFoundingSupervisorSupport.MAPPING_VERSION || extension == LanForeignCatalogueSupport.mappingVersion())
         val stockSupporting = java.lang.Boolean.getBoolean(LanGenuineStockSupport.ENABLE_PROPERTY)
         check(stockSupporting == (extension == LanGenuineStockSupport.MAPPING_VERSION)) {
             "Stock support requires its exact separately versioned input mapping and explicit opt-in"
@@ -61,15 +81,18 @@ internal object LanGenuineProcessExecutor {
             Files.readAllBytes(repository.resolve(relative))).value == digest.jsonPrimitive.content) {
             "Frozen original input changed: $relative; preserve and investigate, never silently replace expectations"
         }
-        val root = Files.createTempDirectory(if (paymentSupporting) Path.of(System.getProperty("user.home")) else Path.of("/var/tmp"), "pos-lan-",
+        val root = existingRoot ?: Files.createTempDirectory(if (paymentSupporting) Path.of(System.getProperty("user.home")) else Path.of("/var/tmp"), "pos-lan-",
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
         val observations = if (paymentSupporting) Files.createTempDirectory(Path.of("/var/tmp"), "pos-lan-payment-evidence-",
             PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------"))) else root
         if (paymentSupporting) Files.writeString(observations.resolve("native-root.txt"), root.toString())
         val roles = listOf("master", "client1", "client2")
+        if (existingRoot != null) for (role in roles)
+            check(Files.isDirectory(root.resolve(role), java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "Original role root missing" }
         roles.forEach { LanProcessNativeSupport.privateDirectory(root.resolve(it)) }
         if (paymentSupporting) roles.forEach { LanProcessNativeSupport.privateDirectory(observations.resolve(it)) }
-        val exchange = LanFixtureExchange(root.resolve("exchange"))
+        val exchange = LanFixtureExchange(if (existingForeignRoot != null) LanForeignCatalogueSupport.coldExchange(root)
+            else root.resolve(if (existingFoundingRoot != null) "founding-exchange" else "exchange"))
         exchange.put("executor.frozen-input-mapping", Files.readAllBytes(mapping))
         val java = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = System.getProperty("ukkera.test.runtime.classpath") ?: System.getProperty("java.class.path")
@@ -106,11 +129,19 @@ internal object LanGenuineProcessExecutor {
             "-D" + LanGenuineBusinessSupport.ENABLE_PROPERTY + "=" + businessSupporting,
             "-D" + LanGenuinePaymentSupport.ENABLE_PROPERTY + "=" + paymentSupporting,
             "-D" + LanGenuineStockSupport.ENABLE_PROPERTY + "=" + stockSupporting,
+            "-D" + LanFoundingSupervisorSupport.ENABLE_PROPERTY + "=" + foundingSupporting,
+            "-D" + LanForeignCatalogueSupport.ENABLE_PROPERTY + "=" + foreignSupporting,
+            "-D" + LanForeignCatalogueSupport.KILL_PROPERTY + "=" + foreignKill,
+            "-D" + LanForeignCatalogueSupport.EXISTING_PROPERTY + "=" + (existingForeignRoot?.toString() ?: ""),
+            "-D" + LanForeignCatalogueSupport.OBSERVATION_PROPERTY + "=" + System.getProperty(LanForeignCatalogueSupport.OBSERVATION_PROPERTY, ""),
+            "-D" + LanFoundingSupervisorSupport.EXISTING_PROPERTY + "=" + (existingFoundingRoot?.toString() ?: ""),
             "-Dukkera.lan.stockProfile=" + System.getProperty("ukkera.lan.stockProfile", "false"),
             "-Dukkera.lan.paymentEvidence=$observations",
             "-XX:FlightRecorderOptions=stackdepth=256",
             "-Dukkera.lan.profile=" + System.getProperty("ukkera.lan.profile", "false"), "-cp", classpath,
-            LanGenuineProcessEndpoint::class.java.name, role, root.toString(), iface, address, processWatchdog.toString(), barrierWatchdog.toString())
+            (if (existingForeignRoot != null) LanForeignCatalogueColdEndpoint::class.java.name
+                else if (existingFoundingRoot != null) LanFoundingSupervisorEndpoint::class.java.name else LanGenuineProcessEndpoint::class.java.name),
+            role, root.toString(), iface, address, processWatchdog.toString(), barrierWatchdog.toString())
             .redirectErrorStream(true).redirectOutput(observations.resolve("$role.log").toFile()).start()
 
         try {
@@ -129,7 +160,7 @@ internal object LanGenuineProcessExecutor {
                 // slaves. Each genuine application namespace has exactly one LAN NIC,
                 // satisfying the official SDK selector without disabling its strict checks.
                 val switch = ProcessBuilder("unshare", "--net", "--", "sleep", "660")
-                    .redirectErrorStream(true).redirectOutput(root.resolve("switch.log").toFile()).start()
+                    .redirectErrorStream(true).redirectOutput((if (existingFoundingRoot == null) root else observations).resolve("switch.log").toFile()).start()
                 switchProcess = switch
                 val ownNamespace = Files.readSymbolicLink(Path.of("/proc/self/ns/net"))
                 withTimeout(5_000L) {
@@ -175,19 +206,110 @@ internal object LanGenuineProcessExecutor {
                 network(host, "link", "set", "lo", "up")
             }
             exchange.putText("network.ready", "isolated-three-process-lan-no-wan-route")
+            var killedForeign = false
             withTimeout(executorWatchdog) {
                 while (children.values.any(Process::isAlive)) {
+                    if (foreignKill && existingForeignRoot == null && !killedForeign && exchange.read("client2.native.killable") != null) {
+                        val victim = children.getValue("client2")
+                        check(victim.isAlive && exchange.read("client2.closed") == null)
+                        command("kill", "-KILL", victim.pid().toString())
+                        check(victim.waitFor(5, TimeUnit.SECONDS) && victim.exitValue() == 137)
+                        killedForeign = true
+                        exchange.putText("client2.killed", "sigkill-exit-137")
+                    }
                     for ((role, child) in children) if (!child.isAlive)
-                        check(child.exitValue() == 0) { "$role failed with exit ${child.exitValue()}; exact original/log retained at $root" }
+                        check(child.exitValue() == if (role == "client2" && killedForeign) 137 else 0) {
+                            "$role failed with exit ${child.exitValue()}; exact original/log retained at $root" }
                     delay(100)
                 }
             }
             for ((role, child) in children) {
+                if (role == "client2" && killedForeign) {
+                    check(child.exitValue() == 137 && exchange.read("client2.closed") == null)
+                    continue
+                }
                 check(child.exitValue() == 0 && exchange.read("$role.closed") != null) {
                     "$role did not confirm native/resource close; original/log retained at $root"
                 }
             }
+            if (existingFoundingRoot != null) LanFoundingSupervisorSupport.verifyAfterClosed(exchange, root)
+            else if (foreignSupporting) {
+                val base = if (existingForeignRoot == null) exchange else LanFixtureExchange(root.resolve("exchange"))
+                // Base verdict already exists in a cold follow-up; do not rewrite its history.
+                if (existingForeignRoot == null) {
+                    if (foreignKill) LanForeignCatalogueInterruption.verifyBeforeResume(base, root)
+                    else LanForeignCatalogueSupport.verifyAfterClosed(base, root)
+                }
+                else {
+                    check(exchange.read("master.operational") != null && exchange.read("client2.native-reopened") != null &&
+                        exchange.read("client2.originals-recovered") != null)
+                    LanForeignCatalogueSupport.verifyAfterClosed(base, root,
+                        "${LanForeignCatalogueSupport.coldExchange(root).fileName}.ledger.verified")
+                    exchange.putText("foreign.cold.verified", "actual-existing-native-Master-and-B-catalogue-exact-originals-current-auth-close")
+                }
+            }
+            else if (paymentSupporting) LanGenuinePaymentSupport.verifyAfterClosed(exchange, root)
             exchange.putText("executor.completed", "supporting-slice-only;full-frozen-cases-not-run;owner-devices-not-run")
+            if (foreignKill && existingForeignRoot == null) {
+                val extra = ProcessBuilder(java, "-Xmx256m", "-XX:ActiveProcessorCount=2", "-Djava.io.tmpdir=/var/tmp",
+                    "-Dukkera.lan.verifierDiagnostics=true", "-Dukkera.lan.singleNic=true",
+                    "-D${LanGenuinePaymentSupport.ENABLE_PROPERTY}=true", "-D${LanForeignCatalogueSupport.ENABLE_PROPERTY}=true",
+                    "-D${LanForeignCatalogueSupport.KILL_PROPERTY}=true", "-D${LanForeignCatalogueSupport.EXISTING_PROPERTY}=$root",
+                    "-D${LanForeignCatalogueSupport.OBSERVATION_PROPERTY}=" + System.getProperty(LanForeignCatalogueSupport.OBSERVATION_PROPERTY, ""),
+                    "-cp", classpath, LanGenuineProcessExecutor::class.java.name, mapping.toString()).inheritIO().start()
+                if (!extra.waitFor(660, TimeUnit.SECONDS)) {
+                    extra.destroyForcibly(); extra.waitFor(5, TimeUnit.SECONDS)
+                    error("Foreign native interruption recovery phase watchdog; originals retained at $root")
+                }
+                check(extra.exitValue() == 0) { "Foreign interrupted native recovery failed; retained at $root" }
+                val cold = ProcessBuilder(java, "-Xmx384m", "-XX:ActiveProcessorCount=2", "-Djava.io.tmpdir=/var/tmp",
+                    "-Dukkera.lan.verifierDiagnostics=true", "-D${LanForeignCatalogueSupport.ENABLE_PROPERTY}=true",
+                    "-D${LanForeignCatalogueSupport.KILL_PROPERTY}=true",
+                    "-D${LanForeignCatalogueSupport.OBSERVATION_PROPERTY}=" + System.getProperty(LanForeignCatalogueSupport.OBSERVATION_PROPERTY, ""),
+                    "-cp", classpath,
+                    LanForeignCatalogueFinalCold::class.java.name, root.toString()).inheritIO().start()
+                if (!cold.waitFor(660, TimeUnit.SECONDS)) {
+                    cold.destroyForcibly(); cold.waitFor(5, TimeUnit.SECONDS)
+                    error("Foreign resumed whole native cold watchdog; original retained at $root")
+                }
+                check(cold.exitValue() == 0 && LanFixtureExchange(LanForeignCatalogueSupport.coldExchange(root)).read("foreign.final-cold.verified") != null)
+            }
+            if (foundingSupporting && existingFoundingRoot == null) {
+                val extra = ProcessBuilder(java, "-Xmx256m", "-XX:ActiveProcessorCount=2", "-Djava.io.tmpdir=/var/tmp",
+                    "-Dukkera.lan.verifierDiagnostics=true", "-Dukkera.lan.singleNic=true",
+                    "-D${LanGenuinePaymentSupport.ENABLE_PROPERTY}=true", "-D${LanFoundingSupervisorSupport.ENABLE_PROPERTY}=true",
+                    "-D${LanFoundingSupervisorSupport.EXISTING_PROPERTY}=$root", "-cp", classpath,
+                    LanGenuineProcessExecutor::class.java.name, mapping.toString()).inheritIO().start()
+                if (!extra.waitFor(660, TimeUnit.SECONDS)) {
+                    extra.destroyForcibly(); extra.waitFor(5, TimeUnit.SECONDS)
+                    error("Existing-only founding phase watchdog; originals retained at $root")
+                }
+                check(extra.exitValue() == 0) { "Founding additional-device phase failed; original root retained at $root" }
+                val cold = ProcessBuilder(java, "-Xmx384m", "-XX:ActiveProcessorCount=2", "-Djava.io.tmpdir=/var/tmp",
+                    "-Dukkera.lan.verifierDiagnostics=true", "-cp", classpath,
+                    LanFoundingSupervisorCold::class.java.name, root.toString()).inheritIO().start()
+                if (!cold.waitFor(660, TimeUnit.SECONDS)) {
+                    cold.destroyForcibly(); cold.waitFor(5, TimeUnit.SECONDS)
+                    error("Founding cold proof watchdog; original root retained at $root")
+                }
+                check(cold.exitValue() == 0 && LanFixtureExchange(root.resolve("founding-exchange")).read("founding.cold.verified") != null) {
+                    "Founding cold proof failed; original TCP/native evidence retained at $root"
+                }
+            }
+            if (stockSupporting && System.getProperty("ukkera.lan.stockColdSupporting", "false").toBoolean()) {
+                // Separate frozen supporting follow-up, after ALL original assertions and
+                // three actual process/native closes. Use the SAME retained roots in a new JVM.
+                val cold = ProcessBuilder(java, "-Xmx384m", "-XX:ActiveProcessorCount=2", "-Djava.io.tmpdir=/var/tmp",
+                    "-Dukkera.lan.verifierDiagnostics=true", "-D${LanGenuineStockSupport.ENABLE_PROPERTY}=true", "-cp", classpath,
+                    LanStockColdSupporting::class.java.name, root.toString()).inheritIO().start()
+                if (!cold.waitFor(660, TimeUnit.SECONDS)) {
+                    cold.destroyForcibly(); cold.waitFor(5, TimeUnit.SECONDS)
+                    error("Cold stock verification watchdog; originals retained at $root")
+                }
+                check(cold.exitValue() == 0 && exchange.read("stock.cold.verified") != null) {
+                    "Cold stock verification failed; original TCP outcome and native root retained at $root"
+                }
+            }
             println("Supporting genuine admission/auth/typed-read process executor completed. Full frozen LAN cases and physical-device acceptance remain NOT RUN.")
         } catch (failure: Throwable) {
             // Observational diagnostics only AFTER an already failed supporting run.

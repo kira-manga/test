@@ -121,7 +121,8 @@ internal sealed class LocalPricingSourceReader(val scope: BranchScope) {
     companion object {
         fun current(view: CommandReadView, signatures: CompanyPublicationSignatureVerifier): LocalPricingSourceReader =
             CurrentPricingSources(view, signatures)
-        fun original(command: RuntimeHistoricalCommand): LocalPricingSourceReader = OriginalPricingSources(command)
+        fun original(command: RuntimeHistoricalCommand): LocalPricingSourceReader = original(NativeBusinessOriginalProgram(command))
+        fun original(command: BusinessOriginalProgram): LocalPricingSourceReader = OriginalPricingSources(command)
     }
 }
 
@@ -169,7 +170,7 @@ private class CurrentPricingSources(
 
 /** Each positive signed source is closed by its exact, already fully joined earlier
  * producer and literal AFTER row. Today's trust/ledger is never used as a substitute. */
-private class OriginalPricingSources(private val command: RuntimeHistoricalCommand) : LocalPricingSourceReader(command.scope) {
+private class OriginalPricingSources(private val command: BusinessOriginalProgram) : LocalPricingSourceReader(command.scope) {
     override suspend fun select(key: AggregateKey): Selected? = command.aggregateSource(key)?.let { Selected(it.row, it.original) }
     override suspend fun claim(key: ClaimKey): DomainId? = command.claim(key)
 

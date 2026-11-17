@@ -142,7 +142,9 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
     val purchasingPolicyRejectionCount: Long get() = entries.sumOf { it.replay?.purchasingPolicyRejectionCount ?: 0L }
     val purchasingPolicyRejectionMutationCount: Long get() = entries.sumOf { it.replay?.purchasingPolicyRejectionMutationCount ?: 0L }
     val orderReassignmentRejectionCount: Long get() = entries.sumOf { it.replay?.orderReassignmentRejectionCount ?: 0L }
+    val normalizedStockRejectionCount: Long get() = entries.sumOf { it.replay?.normalizedStockRejectionCount ?: 0L }
     val orderReassignmentRejectionMutationCount: Long get() = entries.sumOf { it.replay?.orderReassignmentRejectionMutationCount ?: 0L }
+    val normalizedStockRejectionMutationCount: Long get() = entries.sumOf { it.replay?.normalizedStockRejectionMutationCount ?: 0L }
     val openingSupplierObligationRejectionCount: Long get() = entries.sumOf { it.replay?.openingSupplierObligationRejectionCount ?: 0L }
     val openingSupplierObligationRejectionMutationCount: Long get() = entries.sumOf { it.replay?.openingSupplierObligationRejectionMutationCount ?: 0L }
     val invoiceCaptureRejectionCount: Long get() = entries.sumOf { it.replay?.invoiceCaptureRejectionCount ?: 0L }
@@ -1060,6 +1062,13 @@ internal class RuntimeEmployeeEnrollmentHistoryJoin private constructor(
         val entry = active(value.authorization.actorId) ?: return null
         historyShapeV2(prepassEnded && entry.eventJoined && entry.source.child.historySequence < header.sequence)
         return checkNotNull(entry.replay).orderReassignmentRejection(value, header, eventDigest)
+    }
+
+    fun normalizedStockRejection(value: RuntimeCommandAuthorizationEvidenceV1, header: RuntimeHistoryEventHeaderV2,
+        eventDigest: PayloadDigest): RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization? {
+        val entry = active(value.authorization.actorId) ?: return null
+        historyShapeV2(prepassEnded && entry.eventJoined && entry.source.child.historySequence < header.sequence)
+        return checkNotNull(entry.replay).normalizedStockRejection(value, header, eventDigest)
     }
 
     /** The same original enrollment/event cut, with a distinct opening-obligation proof. */

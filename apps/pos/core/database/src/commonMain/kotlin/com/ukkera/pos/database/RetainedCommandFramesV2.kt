@@ -153,6 +153,12 @@ public class RetainedStreamedCommand internal constructor(
     public val result: StoredBytes,
 ) {
     public val identity: RetainedCommandIdentityV2 get() = root.identity
+    /** The owning reader's exact currentness check only: active owning loan/session and the
+     * byte-identical stored root envelope (whose commitment binds every fragment). It reads
+     * no frame and is NOT a fragment/EOF traversal or producer pass. A caller replaying frames
+     * observed by an earlier COMPLETE [frames] traversal of this same instance must still run
+     * a fresh complete [frames] traversal before it accepts or hands out its verification. */
+    public suspend fun requireCurrent() { reader.requireCurrent(this) }
     public suspend fun frames(consume: suspend (RetainedCommandFrameV2) -> Unit) {
         reader.requireCurrent(this)
         reader.frames(this, consume)

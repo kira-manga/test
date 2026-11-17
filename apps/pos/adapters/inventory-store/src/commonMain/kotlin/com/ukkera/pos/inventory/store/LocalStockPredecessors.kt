@@ -1,5 +1,6 @@
 package com.ukkera.pos.inventory.store
 
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.database.RetainedAggregateWrite
@@ -35,7 +36,7 @@ internal class StockHistoricalRecord(val row: RetainedAggregateWrite, val envelo
  * an INDEPENDENT mandatory runtime obligation; hashes alone do not establish that frontier.
  */
 internal suspend fun requireStockSourceCrosswalk(
-    view: CommandReadView,
+    view: BusinessFactRead,
     evidence: RetainedCommandEvidence,
     budget: StockLoadBudget,
     producer: suspend (OperationId) -> RetainedCommandEvidence,
@@ -227,7 +228,7 @@ private fun historicalIssue(record: StockHistoricalRecord, scope: InventoryScope
     return InventoryRecordCodec.decodeIssue(body.encoded, scope, record.row.key.id, body.revision)
 }
 
-private class HistoricalPoolReader(private val view: CommandReadView, private val budget: StockLoadBudget) {
+private class HistoricalPoolReader(private val view: BusinessFactRead, private val budget: StockLoadBudget) {
     private var totalBytes = 0L
     private val cache = mutableMapOf<Pair<AggregateKey, String>, OwnedValuationPool>()
     suspend fun pool(record: StockHistoricalRecord, evidence: RetainedCommandEvidence): OwnedValuationPool {

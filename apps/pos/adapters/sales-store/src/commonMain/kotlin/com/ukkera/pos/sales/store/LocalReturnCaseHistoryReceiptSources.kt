@@ -3,8 +3,10 @@ package com.ukkera.pos.sales.store
 import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.CommandKey
 import com.ukkera.pos.database.RetainedOriginalV2
-import com.ukkera.pos.database.RuntimeHistoricalAggregateSource
+import com.ukkera.pos.database.BusinessOriginalAggregate
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.database.StreamedProducerIdentityV2
 import com.ukkera.pos.database.StockStreamingCommandsV2
 import com.ukkera.pos.sales.SalesSnapshotBinding
@@ -19,6 +21,10 @@ import com.ukkera.pos.types.Revision
  * no historical CommandReadView, copied producer, current-policy default or rights source
  * is constructed. Advanced normalized sources require every appended contribution. */
 internal suspend fun findReturnCaseHistoryEntitlement(command: RuntimeHistoricalCommand,
+    saleId: DomainId, sources: LocalReturnCaseHistorySources = LocalReturnCaseHistorySources(command)): LocalEntitlementCut? =
+    findReturnCaseHistoryEntitlement(NativeBusinessOriginalProgram(command), saleId, sources)
+
+internal suspend fun findReturnCaseHistoryEntitlement(command: BusinessOriginalProgram,
     saleId: DomainId, sources: LocalReturnCaseHistorySources = LocalReturnCaseHistorySources(command)): LocalEntitlementCut? {
     val saleKey = LocalSalesStoreProfile.key(LocalSalesStoreProfile.SALE_KIND, saleId)
     if (command.aggregate(saleKey) == null) {
@@ -34,6 +40,7 @@ internal suspend fun findReturnCaseHistoryEntitlement(command: RuntimeHistorical
     val entitlementSource = returnCaseHistoryReceiptRequired(command,
         LocalSalesStoreProfile.key(LocalSalesStoreProfile.ENTITLEMENT_KIND, saleId))
     val row = entitlementSource.row
+    val entitlementOriginal = entitlementSource.original
     check(row.schema == LocalSalesStoreProfile.schema(row.key.kind))
     val entitlement = SalesSnapshotCodec.decodeReceiptEntitlement(row.text(),
         SalesSnapshotBinding(SalesSnapshotKind.RECEIPT_ENTITLEMENT, command.scope, saleId, row.domainRevision()))
@@ -44,6 +51,25 @@ internal suspend fun findReturnCaseHistoryEntitlement(command: RuntimeHistorical
             command.claim(LocalReturnEntitlementProvenanceProfile.locatorClaim(saleId)) == null)
         returnCaseHistoryReceiptCommerceLink(command, entitlementSource)
         initialReturnEntitlementSourceCut(sale, row, finalized.evidence)
+    } else if (entitlementOriginal is RetainedOriginalV2.Legacy &&
+        entitlementOriginal.evidence.command == LocalSalesStoreProfile.RETURN_COMMAND) {
+        // aggregateSource supplied this exact earlier WHOLE-joined writer. Old ordinary
+        // acceptance never wrote a CASE locator/contribution; do not invent one from it.
+        val original = entitlementOriginal.evidence
+        val request = LocalReturnCommandCodec.decode(original.normalized) as? LocalReturnRequestV1.Accept
+            ?: returnCaseHistoryReceiptUnavailable()
+        check(original.scope == command.scope && original.committed && original.nativeOriginalProvenance == null &&
+            request.saleId == saleId && request.expectedEntitlementRevision.next() == entitlement.revision &&
+            original.aggregateWrites.singleOrNull { it.key == row.key }?.let {
+                it.storageGeneration == row.revision && it.schema == row.schema &&
+                    it.payload == row.payload && it.payloadDigest == row.digest
+            } == true && command.aggregate(LocalReturnEntitlementProvenanceProfile.locator(saleId)) == null &&
+            command.claim(LocalReturnEntitlementProvenanceProfile.locatorClaim(saleId)) == null &&
+            command.claim(LocalSalesStoreProfile.unique("return_claim", request.claimId)) == saleId &&
+            command.claim(LocalSalesStoreProfile.unique("accepted_return", request.returnId)) == saleId &&
+            command.claim(LocalSalesStoreProfile.unique("return_claim_source", request.returnId)) == request.claimId &&
+            command.claim(LocalSalesStoreProfile.unique("claim_acceptance", request.claimId)) == request.returnId)
+        null // Proven old-format remaining rights, never a new appendable CASE chain.
     } else readReturnCaseHistoryLinkedEntitlement(command, sale, entitlementSource, finalized, sources)
     return LocalEntitlementCut(sale.sale, LocalSalesRow(row, entitlement), sale.returnPolicyCapture, sale.priceSources, normalized)
 }
@@ -51,9 +77,12 @@ internal suspend fun findReturnCaseHistoryEntitlement(command: RuntimeHistorical
 /** A prior pending qualification's immutable witness is compared to the real SALE source,
  * independently of today's entitlement. It is not requalified against a later rights row. */
 internal suspend fun readReturnCaseHistorySaleSource(command: RuntimeHistoricalCommand,
+    saleId: DomainId): LocalReturnSaleCut = readReturnCaseHistorySaleSource(NativeBusinessOriginalProgram(command), saleId)
+
+internal suspend fun readReturnCaseHistorySaleSource(command: BusinessOriginalProgram,
     saleId: DomainId): LocalReturnSaleCut = returnCaseHistorySaleSources(command, saleId).first
 
-private suspend fun returnCaseHistorySaleSources(command: RuntimeHistoricalCommand,
+private suspend fun returnCaseHistorySaleSources(command: BusinessOriginalProgram,
     saleId: DomainId): Pair<LocalReturnSaleCut, RetainedOriginalV2.Streamed> {
     val saleSource = returnCaseHistoryReceiptRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.SALE_KIND, saleId))
     val saleRow = saleSource.row
@@ -99,8 +128,8 @@ private suspend fun returnCaseHistorySaleSources(command: RuntimeHistoricalComma
 }
 
 /** Exact immutable sale OR initial-entitlement link from the SAME genuine Finalize. */
-private suspend fun returnCaseHistoryReceiptCommerceLink(command: RuntimeHistoricalCommand,
-    source: RuntimeHistoricalAggregateSource) {
+private suspend fun returnCaseHistoryReceiptCommerceLink(command: BusinessOriginalProgram,
+    source: BusinessOriginalAggregate) {
     val paired = returnCaseHistoryReceiptRequired(command, commerceLinkKey(source.row.key))
     check(paired.row.revision == Revision(1) && paired.row.schema == commerceLinkSchema() &&
         paired.original === source.original && sha256(paired.row.payload.copyBytes()) == paired.row.digest)
@@ -115,7 +144,7 @@ private suspend fun returnCaseHistoryReceiptCommerceLink(command: RuntimeHistori
     requireCommerceWrite(original, paired.row)
 }
 
-private suspend fun returnCaseHistoryReceiptRequired(command: RuntimeHistoricalCommand,
-    key: AggregateKey): RuntimeHistoricalAggregateSource = command.aggregateSource(key) ?: returnCaseHistoryReceiptUnavailable()
+private suspend fun returnCaseHistoryReceiptRequired(command: BusinessOriginalProgram,
+    key: AggregateKey): BusinessOriginalAggregate = command.aggregateSource(key) ?: returnCaseHistoryReceiptUnavailable()
 
 private fun returnCaseHistoryReceiptUnavailable(): Nothing = error("sales.return.case_history.receipt_source_unavailable")

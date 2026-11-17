@@ -3,6 +3,7 @@ package com.ukkera.pos.database
 import com.ukkera.pos.security.*
 import com.ukkera.pos.types.DomainId
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.TimeSource
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
@@ -27,6 +28,10 @@ internal class RoomLocalAuthenticationService(
 
     override suspend fun signIn(connectionId: DomainId, login: LocalLoginIdentifier, password: CharArray,
         explicitDeviceMove: Boolean): LocalAuthenticationResult = bounded(LocalAuthenticationResult.Unavailable, LocalAuthenticationResult.StorageUncertain, busy()) {
+        fun unavailableResult(): LocalAuthenticationResult {
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, IllegalStateException())
+            return LocalAuthenticationResult.Unavailable
+        }
         if (password.size !in 4..1024) return@bounded refused()
         val ownedPassword = password.copyOf()
         var material: LocalAuthenticationTokenMaterial? = null
@@ -48,7 +53,7 @@ internal class RoomLocalAuthenticationService(
                 ?: return@bounded if ((captured.reservation as ThrottleReservation.Denied).reason in setOf(
                     ThrottleDenial.DELAYED, ThrottleDenial.ATTEMPT_IN_PROGRESS)) {
                     LocalAuthenticationResult.Denied(LocalAuthenticationDenial.THROTTLED)
-                } else LocalAuthenticationResult.Unavailable
+                } else unavailableResult()
             val verified = captured.throttle.verifyPassword(passwords, ownedPassword)
             if (verified !is PasswordVerificationResult.Match) {
                 val outcome = if (verified is PasswordVerificationResult.Mismatch) CredentialAttemptOutcome.MISMATCH
@@ -59,7 +64,7 @@ internal class RoomLocalAuthenticationService(
                         verified.reason == PasswordFailure.HASHER_BUSY) busy()
                     else if (completed is ThrottleCompletion.Persisted && verified is PasswordVerificationResult.Unavailable &&
                         verified.reason == PasswordFailure.INVALID_INPUT) refused()
-                    else LocalAuthenticationResult.Unavailable
+                    else unavailableResult()
             }
             val generated = LocalAuthenticationTokenMaterial(entropy)
             material = generated
@@ -92,7 +97,7 @@ internal class RoomLocalAuthenticationService(
             when (committed) {
                 is AuthenticationCommit.Issued -> publish(generated, committed.value)
                 is AuthenticationCommit.Denied -> LocalAuthenticationResult.Denied(committed.reason)
-                null -> LocalAuthenticationResult.Unavailable
+                null -> unavailableResult()
             }
         } finally {
             ownedPassword.fill('\u0000')
@@ -136,11 +141,49 @@ internal class RoomLocalAuthenticationService(
     }
 
     override suspend fun current(credentials: LocalGatewayCredentials): LocalSessionViewResult = bounded(LocalSessionViewResult.Unavailable, LocalSessionViewResult.StorageUncertain, LocalSessionViewResult.Busy) {
-        val bearer = credentials.bearer.useBytes(LocalAuthenticationBearer::parse) ?: return@bounded LocalSessionViewResult.Denied
+        val current = readCurrentAuthentication(credentials) ?: return@bounded LocalSessionViewResult.Denied
+        LocalSessionViewResult.Current(current.issued.view())
+    }
+
+    /** Same actual token/session operation as current(), with a sealed identity and its
+     * original access/work ceiling from that ONE protected read. No identity is inferred
+     * from a display DTO, and no earlier authentication is reused. */
+    internal suspend fun authenticateRpcBinding(credentials: LocalGatewayCredentials): RoomRpcBindingResult =
+        bounded(RoomRpcBindingResult.Unavailable, RoomRpcBindingResult.StorageUncertain, RoomRpcBindingResult.Busy) {
+            var captured: CurrentAuthentication? = null
+            val factory = TrustedPrincipalFactory(object : PrincipalVerifier by DenyAllPrincipalVerifier {
+                override suspend fun verifyLocal(actual: LocalGatewayCredentials): VerifiedLocalIdentity? {
+                    check(actual === credentials)
+                    val current = readCurrentAuthentication(actual) ?: return null
+                    captured = current
+                    val access = current.issued.access
+                    return VerifiedLocalIdentity(access.actorId, access.scope, access.deviceId, access.sessionId,
+                        access.generation, access.admissionRevisionAtIssue, access.authenticationPurpose)
+                }
+            })
+            val principal = factory.authenticateLocal(credentials) ?: return@bounded RoomRpcBindingResult.Denied
+            val current = checkNotNull(captured)
+            currentCoroutineContext().ensureActive()
+            // Native outer cleanup has returned. Check the exact peer and qualified
+            // clock again before publishing even this identity-only, one-use DATA.
+            val began = TimeSource.Monotonic.markNow()
+            val observed = observe()
+            if (!current.peer.isCurrent() || !current.issued.eligible(observed)) return@bounded RoomRpcBindingResult.Denied
+            val access = current.issued.access
+            val refresh = current.issued.refresh
+            if (access.issuedAt.bootId != observed.moment.bootId || refresh.workStartedAt.bootId != observed.moment.bootId)
+                return@bounded RoomRpcBindingResult.Denied
+            val remaining = minOf(access.expiresAtElapsedMillis, refresh.expiresAtElapsedMillis) - observed.moment.elapsedMillis
+            if (remaining <= 0) RoomRpcBindingResult.Denied
+            else RoomRpcBindingResult.Authenticated(RoomRpcBindingIdentity(principal, remaining, began))
+        }
+
+    private suspend fun readCurrentAuthentication(credentials: LocalGatewayCredentials): CurrentAuthentication? {
+        val bearer = credentials.bearer.useBytes(LocalAuthenticationBearer::parse) ?: return null
         try {
-            if (bearer.refresh) return@bounded LocalSessionViewResult.Denied
-            val peer = capturePeer(credentials.connectionId) ?: return@bounded LocalSessionViewResult.Denied
-            val result = writer {
+            if (bearer.refresh) return null
+            val peer = capturePeer(credentials.connectionId) ?: return null
+            return writer {
                 val value = store.transaction { transaction ->
                     val current = readSession(transaction, bearer, peer) ?: return@transaction null
                     val issued = current.projection() ?: return@transaction null
@@ -150,9 +193,8 @@ internal class RoomLocalAuthenticationService(
                     issued
                 } ?: return@writer null
                 if (!finish(peer, value)) return@writer null
-                value.view()
+                CurrentAuthentication(value, peer)
             }
-            if (result == null) LocalSessionViewResult.Denied else LocalSessionViewResult.Current(result)
         } finally { bearer.close() }
     }
 
@@ -280,8 +322,16 @@ internal class RoomLocalAuthenticationService(
         if (!slots.tryAcquire()) return busy
         return try { block() }
         catch (cancelled: CancellationException) { throw cancelled }
-        catch (_: RoomLocalStorageUncertain) { currentCoroutineContext().ensureActive(); uncertain }
-        catch (_: Exception) { currentCoroutineContext().ensureActive(); unavailable }
+        catch (failure: RoomLocalStorageUncertain) {
+            currentCoroutineContext().ensureActive()
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, failure)
+            uncertain
+        }
+        catch (failure: Exception) {
+            currentCoroutineContext().ensureActive()
+            reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, failure)
+            unavailable
+        }
         finally { slots.release() }
     }
 }
@@ -289,6 +339,7 @@ internal class RoomLocalAuthenticationService(
 private fun refused(): LocalAuthenticationResult = LocalAuthenticationResult.Denied(LocalAuthenticationDenial.AUTHENTICATION_REFUSED)
 private fun busy(): LocalAuthenticationResult = LocalAuthenticationResult.Denied(LocalAuthenticationDenial.SERVICE_BUSY)
 private class PasswordAttempt(val configuration: LocalAuthConfiguration, val throttle: RoomPersistentThrottleStore, val reservation: ThrottleReservation)
+private class CurrentAuthentication(val issued: IssuedAuthentication, val peer: RoomLocalAccessPeerBinding)
 private sealed interface AuthenticationCommit {
     class Issued(val value: IssuedAuthentication) : AuthenticationCommit
     class Denied(val reason: LocalAuthenticationDenial) : AuthenticationCommit

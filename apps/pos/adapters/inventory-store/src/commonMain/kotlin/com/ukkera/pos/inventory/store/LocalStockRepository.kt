@@ -1,5 +1,6 @@
 package com.ukkera.pos.inventory.store
 
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.AggregateChange
 import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.ClaimChange
@@ -270,7 +271,7 @@ public class LocalStockRepository(
      * A null item is only an indexed/claim-checked absence for a subsequently authorized first receipt.
      */
     public suspend fun observe(
-        view: CommandReadView,
+        view: BusinessFactRead,
         skuIds: List<DomainId>,
         reservationIds: List<DomainId> = emptyList(),
         issueIds: List<DomainId> = emptyList(),
@@ -353,7 +354,20 @@ public class LocalStockRepository(
 
     /** Exact-source live plan projection, not a permission or a complete sales proposal. */
     public fun project(cut: LocalStockReadCut, context: CommandContext, plan: InventoryPlan, now: UtcInstant): LocalStockContribution =
+        projectLocalStock(cut.state, StockProducerFacts.of(context), plan, now)
+    internal fun project(cut: LocalStockReadCut, context: StockProducerFacts, plan: InventoryPlan, now: UtcInstant): LocalStockContribution =
         projectLocalStock(cut.state, context, plan, now)
+
+    /** Literal original projection from immutable producer DATA. This grants no stock
+     * mutation or employee authority; the native/retained business owner must compare the
+     * complete proposal. It shares the exact live projection implementation. */
+    public fun projectOriginal(cut: LocalStockReadCut, original: RetainedCommandEvidence,
+        plan: InventoryPlan, now: UtcInstant): LocalStockContribution {
+        localStockCheck(original.committed &&
+            original.nativeOriginalProvenance == null && original.recordedAt == now, LocalStockFailure.STORAGE_INCONSISTENT)
+        return project(cut, StockProducerFacts(original.scope, original.operationId, original.originalActorId,
+            original.command, original.semanticDigest), plan, now)
+    }
 
     /**
      * Composes the inventory contribution, typed caller's other effects and one full posting
@@ -362,6 +376,27 @@ public class LocalStockRepository(
      */
     public fun compose(
         context: CommandContext,
+        contribution: LocalStockContribution,
+        result: StoredBytes,
+        additionalChanges: List<AggregateChange> = emptyList(),
+        additionalClaims: List<ClaimChange> = emptyList(),
+        jobs: List<JobIntent> = emptyList(),
+        mustCommitBefore: UtcInstant? = null,
+    ): ProposedOutcome.Apply = compose(StockProducerFacts.of(context), contribution, result, additionalChanges, additionalClaims, jobs, mustCommitBefore)
+
+    /** Same pure composition for exact original producer DATA; no command context or
+     * native/employee capability is reconstructed. Only the kernel can commit effects. */
+    public fun composeOriginal(original: RetainedCommandEvidence, contribution: LocalStockContribution,
+        result: StoredBytes, additionalChanges: List<AggregateChange> = emptyList(),
+        additionalClaims: List<ClaimChange> = emptyList(), jobs: List<JobIntent> = emptyList(),
+        mustCommitBefore: UtcInstant? = null): ProposedOutcome.Apply {
+        localStockCheck(original.committed && original.nativeOriginalProvenance == null, LocalStockFailure.STORAGE_INCONSISTENT)
+        return compose(StockProducerFacts(original.scope, original.operationId, original.originalActorId,
+            original.command, original.semanticDigest), contribution, result, additionalChanges, additionalClaims, jobs, mustCommitBefore)
+    }
+
+    internal fun compose(
+        context: StockProducerFacts,
         contribution: LocalStockContribution,
         result: StoredBytes,
         additionalChanges: List<AggregateChange> = emptyList(),
@@ -480,7 +515,7 @@ public class LocalStockRepository(
     }
 
     internal suspend fun requireProducer(
-        view: CommandReadView, evidence: RetainedCommandEvidence,
+        view: BusinessFactRead, evidence: RetainedCommandEvidence,
         budget: StockLoadBudget = StockLoadBudget(),
         purchaseSources: MutableMap<OperationId, LocalStockApprovedPurchaseOrderV1> = mutableMapOf(),
     ) {
@@ -492,7 +527,7 @@ public class LocalStockRepository(
             val receipt = retainedBody(evidence, AggregateKey(LocalStockStoreProfile.RECEIPT_DOCUMENT, request.receiptId), StockReceiptWire.serializer())
             val proof = receipt.poValuation ?: throw LocalStockRejected(LocalStockFailure.STORAGE_INCONSISTENT)
             val approvalId = proof.orderSource.approvalOperationId
-            val source = purchaseSources[approvalId] ?: (approvedPurchaseOrder(view, request.orderId)
+            val source = purchaseSources[approvalId] ?: (approvedPurchaseOrder(view as? CommandReadView ?: throw LocalStockRejected(LocalStockFailure.PRODUCER_UNAVAILABLE), request.orderId)
                 ?: throw LocalStockRejected(LocalStockFailure.PRODUCER_UNAVAILABLE)).also {
                 // Charge the actual whole predecessor approval to the SAME bounded stock read session.
                 budget.producer(it.approval)
@@ -503,14 +538,14 @@ public class LocalStockRepository(
         }
     }
 
-    internal suspend fun <T> record(view: CommandReadView, key: AggregateKey, serializer: KSerializer<T>): LocalStockRecord<T>? {
+    internal suspend fun <T> record(view: BusinessFactRead, key: AggregateKey, serializer: KSerializer<T>): LocalStockRecord<T>? {
         // Only the existing scalar receiving document/allowance/serial families can have the
         // explicit new stock producer. No old item/list-root is reinterpreted as normalized.
         if (key.kind in stockDocumentKinds) {
             val row = view.aggregate(key) ?: return null
             val envelope = stockRecord(row, view.scope)
             if (envelope.producer.commandKey() == LocalStockRelationalProfileV2.COMMAND) {
-                val read = relational.open(view, active = false)
+                val read = relational.open(view as? CommandReadView ?: throw LocalStockRejected(LocalStockFailure.PRODUCER_UNAVAILABLE), active = false)
                 val original = read.original(envelope.producer.operationId)
                 localStockCheck(original.identity.producer == com.ukkera.pos.database.StreamedProducerIdentityV2(
                     envelope.producer.operationId, envelope.producer.commandKey(), envelope.producer.actorId, PayloadDigest(envelope.producer.digest)))
@@ -554,7 +589,7 @@ internal val stockCommands: Set<CommandKey> = setOf(LocalStockStoreProfile.OPENI
     LocalStockStoreProfile.COUNT_CAPTURE_SERIAL, LocalStockStoreProfile.COUNT_POST_SERIAL,
     LocalStockStoreProfile.RECALL_SERIAL, LocalStockStoreProfile.TRANSFER_SERIAL, LocalStockStoreProfile.TRANSFER_OWNED)
 
-private class StockLoader(private val view: CommandReadView, private val repository: LocalStockRepository) {
+private class StockLoader(private val view: BusinessFactRead, private val repository: LocalStockRepository) {
     private val budget = StockLoadBudget()
     private val producers = mutableMapOf<OperationId, RetainedCommandEvidence>()
     private val purchaseSources = mutableMapOf<OperationId, LocalStockApprovedPurchaseOrderV1>()
@@ -730,7 +765,7 @@ private class StockLoader(private val view: CommandReadView, private val reposit
     }
 }
 
-private fun projectLocalStock(current: LocalStockLoaded, context: CommandContext, plan: InventoryPlan, now: UtcInstant): LocalStockContribution {
+private fun projectLocalStock(current: LocalStockLoaded, context: StockProducerFacts, plan: InventoryPlan, now: UtcInstant): LocalStockContribution {
     localStockCheck(current.scope == context.scope && plan.sourceSnapshot === current.snapshot && plan.operationId == context.operationId,
         LocalStockFailure.STORAGE_INCONSISTENT)
     val encodedEffects = InventoryRecordCodec.encodeEffects(current.snapshot, plan, now.value.toEpochMilliseconds())

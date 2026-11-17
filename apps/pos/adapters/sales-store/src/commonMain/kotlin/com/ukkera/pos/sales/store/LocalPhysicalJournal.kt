@@ -182,6 +182,50 @@ public class LocalPhysicalJournal internal constructor(
         PhysicalSpoolAccess.Held -> LocalPhysicalOriginalRead.Held
     }
 
+    /** A distinct, critical B retention record, never a new Start or A original. */
+    internal fun readForeignResolution(): LocalForeignResolutionRead = when (val result = owned.file.access {
+        check(published)
+        val body = readForeignResolutionBody()
+        verifyHeader()
+        body
+    }) {
+        is PhysicalSpoolAccess.Value -> LocalForeignResolutionRead.Read(result.value)
+        PhysicalSpoolAccess.Busy -> LocalForeignResolutionRead.Busy
+        PhysicalSpoolAccess.Held -> LocalForeignResolutionRead.Held
+    }
+
+    internal fun retainForeignResolution(body: StoredBytes): LocalPhysicalJournalWrite {
+        if (!validJournalInput {
+            val domain = checkNotNull(LocalPhysicalForeignResolutionDomain.fromRequirement(receipt.binding.requirement))
+            val refs = domain.references(receipt.binding.requirement)
+            require(receipt.binding.owner == refs.resolver && receipt.binding.owner.role == LocalPhysicalSpoolRole.CLIENT)
+            refs.validateResolution(receipt.binding.requirement, body)
+        }) return LocalPhysicalJournalWrite.INVALID_INPUT
+        return write {
+            val previous = readForeignResolutionBody()
+            when {
+                previous != null -> if (previous == body) LocalPhysicalJournalWrite.ALREADY_RETAINED else LocalPhysicalJournalWrite.IDENTITY_CONFLICT
+                else -> {
+                    writeCell(PhysicalJournalCellV1.LINKED_RESOLUTION, foreignResolutionRecord(receipt.binding.requirement, body))
+                    check(readForeignResolutionBody() == body)
+                    LocalPhysicalJournalWrite.RETAINED
+                }
+            }
+        }
+    }
+
+    private fun readForeignResolutionBody(): StoredBytes? {
+        val requirement = receipt.binding.requirement
+        val refs = checkNotNull(LocalPhysicalForeignResolutionDomain.fromRequirement(requirement)).references(requirement)
+        check(receipt.binding.owner == refs.resolver && receipt.binding.owner.role == LocalPhysicalSpoolRole.CLIENT)
+        verifyHeader()
+        check(readCell(PhysicalJournalCellV1.TRUE_START_CERT) == null &&
+            readCell(PhysicalJournalCellV1.ACTION_MAY_HAVE_STARTED) == null && readCell(PhysicalJournalCellV1.ORIGINAL) == null)
+        // Unlike an ordinary optional resolution tail, this purpose's sole retained
+        // record is critical. Damage/unknown write must never become vacancy.
+        return readCell(PhysicalJournalCellV1.LINKED_RESOLUTION)?.let { readForeignResolutionRecord(requirement, it) }
+    }
+
     /** The core type has no public constructor and can only come from a real nonreplayed start. */
     internal fun persistTrueStart(start: PhysicalRecordingCommittedStart): LocalPhysicalStartWrite {
         if (!validJournalInput {
@@ -407,14 +451,22 @@ public class LocalPhysicalJournal internal constructor(
     internal fun captureNewAction(allocatedOnly: Boolean = false, onRetirement: () -> Unit): PhysicalSpoolLease? =
         captureNative(newAction = true, allocatedOnly = allocatedOnly, onRetirement = onRetirement)
 
-    private fun captureNative(newAction: Boolean, allocatedOnly: Boolean, onRetirement: () -> Unit): PhysicalSpoolLease? {
+    internal fun captureForeignResolution(onRetirement: () -> Unit): PhysicalSpoolLease? =
+        captureNative(newAction = false, allocatedOnly = false, onRetirement = onRetirement, foreignResolution = true)
+
+    private fun captureNative(newAction: Boolean, allocatedOnly: Boolean, onRetirement: () -> Unit,
+        foreignResolution: Boolean = false): PhysicalSpoolLease? {
         var captured: PhysicalSpoolLease? = null
         var transferred = false
         var failure: Throwable? = null
         try {
             val result = owned.file.access {
                 check(published)
-                if (newAction) {
+                if (foreignResolution) {
+                    readForeignResolutionBody()
+                    owned.file.force()
+                    verifyHeader()
+                } else if (newAction) {
                     val snapshot = readNewActionCapacity() ?: return@access false
                     if (allocatedOnly && snapshot.state != LocalPhysicalJournalState.ALLOCATED) return@access false
                 } else {

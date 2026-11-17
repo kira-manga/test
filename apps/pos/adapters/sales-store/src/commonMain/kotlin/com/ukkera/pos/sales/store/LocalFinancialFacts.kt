@@ -46,7 +46,7 @@ internal suspend fun prepareRetailFact(target: LocalJournalTargetV3, phase: Loca
         "financial.journal.retain", slot.value.domain.amount, retailJournalAuthorityResources(requirement),
         admission = { _, _ ->
             if (context.physicalParticipants?.let { it.authority.deviceId == requirement.masterDeviceId &&
-                    it.clientDeviceId == requirement.clientDeviceId } == true) admission else null
+                    (phase == LocalJournalFactPhaseV3.RESOLUTION || it.clientDeviceId == requirement.clientDeviceId) } == true) admission else null
         }) { _, now ->
         val physical = context.physicalRecording
         if (physical == null || !physical.matches(admission) || physical.sourceChanges.isNotEmpty()) {

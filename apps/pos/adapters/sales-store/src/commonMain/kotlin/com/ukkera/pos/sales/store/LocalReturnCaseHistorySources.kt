@@ -4,8 +4,10 @@ import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.RetainedAggregateWrite
 import com.ukkera.pos.database.RetainedCommandEvidence
 import com.ukkera.pos.database.RetainedOriginalV2
-import com.ukkera.pos.database.RuntimeHistoricalAggregateSource
+import com.ukkera.pos.database.BusinessOriginalAggregate
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.database.semanticDigest
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.sales.SalesSnapshotBinding
@@ -21,7 +23,8 @@ import com.ukkera.pos.types.Revision
  * Immediate predecessor images come from earlierOriginal in the same active native scan;
  * no SQL/current-view adapter, supplied retained reader or pointer-only proof is accepted.
  * These inert rows retain the existing bounded CASE/work reader profile and dependencies. */
-internal class LocalReturnCaseHistorySources(private val command: RuntimeHistoricalCommand) {
+internal class LocalReturnCaseHistorySources(private val command: BusinessOriginalProgram) {
+    constructor(command: RuntimeHistoricalCommand) : this(NativeBusinessOriginalProgram(command))
     private val originals = linkedMapOf<OperationId, RetainedCommandEvidence>()
     private val events = linkedMapOf<OperationId, EventSource>()
 
@@ -361,7 +364,7 @@ internal class LocalReturnCaseHistorySources(private val command: RuntimeHistori
         requireReturnCaseBinding(state.facts, binding)
     }
 
-    private suspend fun sourceOriginal(source: RuntimeHistoricalAggregateSource): RetainedCommandEvidence {
+    private suspend fun sourceOriginal(source: BusinessOriginalAggregate): RetainedCommandEvidence {
         val evidence = (source.original as? RetainedOriginalV2.Legacy)?.evidence ?: error("sales.return.case_history.original_unavailable")
         check(evidence === original(evidence.operationId))
         return evidence

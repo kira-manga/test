@@ -46,6 +46,12 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
     private var deviceThrottle: PersistentThrottleState? = null
     private val additionalAdmissions = linkedMapOf<DomainId, LocalDeviceAdmission>()
     private val additionalDeviceThrottles = linkedMapOf<DomainId, PersistentThrottleState>()
+    private val additionalSupervisorAdmissionOrigins = linkedMapOf<DomainId, NativeDeviceAdmissionHistorySource>()
+    private val additionalSupervisorReviews = linkedMapOf<Long, RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization>()
+    private var additionalSupervisorSession: SelfOwnedNativeHistoryReadSession? = null
+    private var lastAdditionalSupervisorSequence = 0L
+    val additionalSupervisorReviewCount: Long get() = additionalSupervisorReviews.size.toLong()
+    val additionalSupervisorReviewMutationCount: Long get() = additionalSupervisorReviews.values.sumOf { it.evidence.capturedChanges.toLong() }
     private val rows = LongArray(RuntimeHistoryTableV2.entries.size).also { counts ->
         for (table in ORIGINAL_TABLES) counts[table.ordinal] = if (table == RuntimeHistoryTableV2.THROTTLE) 2L else 1L
     }
@@ -79,6 +85,7 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
             digest(ProtectedLocalSecurityCodec.encodeThrottle(fresh)))
         additionalAdmissions[next.deviceId] = next
         additionalDeviceThrottles[next.deviceId] = fresh
+        historyShapeV2(additionalSupervisorAdmissionOrigins.put(next.deviceId, source) == null)
     }
 
     /** Receiving projection only for the actual native C1 seed lane. The older census
@@ -315,6 +322,73 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
             account.credentialRevision, account.credential != null, admission, supplied.access.issuerContextId,
             supplied.access.observedAt))
         return AuthorizationEvaluator.permitsHistoricalInteractiveLocalRequirement(policy, actor, scope, value.requirement.value())
+    }
+
+    /** Separate registered founding/additional-device Review/refusal purpose only.
+     * Existing cohost command() is deliberately unchanged. No positive command or
+     * current action receives authority from these original replay facts. */
+    internal fun additionalDeviceSupervisorReview(value: RuntimeCommandAuthorizationEvidenceV1,
+        header: RuntimeHistoryEventHeaderV2, eventDigest: PayloadDigest,
+        session: SelfOwnedNativeHistoryReadSession): RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization? {
+        if (nativeAccountSeedDigest != seeds.account) return null
+        value.validate()
+        if (value.actionApprovalId != null) return null
+        val profile = RuntimeHistoricalSupervisorReviewProfile.fromCommand(CommandKey(value.commandName, value.commandVersion)) ?: return null
+        when (profile) {
+            RuntimeHistoricalSupervisorReviewProfile.RETAIL, RuntimeHistoricalSupervisorReviewProfile.FOOD,
+            RuntimeHistoricalSupervisorReviewProfile.FOOD_REFUND, RuntimeHistoricalSupervisorReviewProfile.SUPPLIER_CASH -> Unit
+        }
+        if (!(profile.matches(header, value) || profile.matchesApplicationRefusal(header, value))) return null
+        val supplied = value.authorization
+        if (supplied.actorId != actor || supplied.scope != scope || supplied.deviceId == coordinates.deviceId ||
+            supplied.principalKind != PrincipalKind.LOCAL_EMPLOYEE || supplied.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
+            value.requirement.scope != scope || value.requirement.operationId != value.operationId ||
+            value.requirement.payloadDigest != value.semanticDigest) return null
+        val device = additionalAdmissions[supplied.deviceId] ?: return null
+        val origin = additionalSupervisorAdmissionOrigins[supplied.deviceId] ?: return null
+        val originalAccess = issuances[supplied.sessionId]?.access ?: return null
+        if (!device.admitted || device.revision != Revision(0)) return null
+        val admissionDigest = digest(ProtectedLocalSecurityCodec.encodeAdmission(device))
+        historyShapeV2(session.original === original && session.hasChronologicalAccountImageTraversal &&
+            session.hasDeviceAdmissionHistoryTraversal && session.deviceAdmissions.any { it === origin } &&
+            origin.originalCohostDeviceId == coordinates.deviceId && origin.requested.request.scope == scope &&
+            origin.requested.request.targetId == device.deviceId && origin.child.historySequence > 1L &&
+            origin.child.historySequence < header.sequence && origin.child.commandSequence < header.commandSequence &&
+            origin.child.commandEpoch == header.commandEpoch &&
+            origin.child.installationGenesisDigest == checkNotNull(original.record.firstChild).installationGenesisDigest &&
+            header.installationGenesisDigest == origin.child.installationGenesisDigest &&
+            header.assignmentId == coordinates.assignmentId && header.scope == scope.storageKey() &&
+            header.commandEpoch == checkNotNull(original.record.definition).definition.authorityEpoch.value &&
+            origin.evidence.images.first().plaintextDigest == admissionDigest &&
+            supplied.accountRevision == account.state.revision && supplied.credentialRevision == account.credentialRevision &&
+            supplied.policyRevision == policy.revision && supplied.admissionRevision == device.revision &&
+            supplied.dependencies == RuntimeCommandAuthorizationDependenciesV1(
+                digest(ProtectedLocalSecurityCodec.encodeAccount(account)), verifiedPolicyDigest, admissionDigest,
+                digest(ProtectedLocalSecurityCodec.encodeIssuance(originalAccess))) &&
+            supplied.access.issuerContextId == originalAccess.issuerContextId && supplied.access.issuedAt == originalAccess.issuedAt &&
+            supplied.access.expiresAtElapsedMillis == originalAccess.expiresAtElapsedMillis &&
+            supplied.access.credentialRevisionAtIssue == originalAccess.credentialRevisionAtIssue &&
+            supplied.access.admissionRevisionAtIssue == originalAccess.admissionRevisionAtIssue)
+        val identity = VerifiedLocalIdentity(actor, scope, device.deviceId, supplied.sessionId,
+            supplied.generation, supplied.admissionRevision, AuthenticationPurpose.INTERACTIVE)
+        historyShapeV2(LocalAccessEligibility.matchesCurrentFacts(identity, originalAccess, account.state,
+            account.credentialRevision, account.credential != null, device, supplied.access.issuerContextId, supplied.access.observedAt))
+        if (!AuthorizationEvaluator.permitsHistoricalInteractiveLocalRequirement(policy, actor, scope, value.requirement.value())) return null
+        historyCapacityV2(additionalSupervisorReviews.size.toLong() < RuntimeHistoryProfileV2.MAX_EVENTS)
+        historyShapeV2(header.sequence > lastAdditionalSupervisorSequence && header.sequence !in additionalSupervisorReviews &&
+            (additionalSupervisorSession == null || additionalSupervisorSession === session))
+        additionalSupervisorSession = session
+        val proof = RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization(this, original, session, origin,
+            header, eventDigest, profile, value, verifiedPolicyDigest, admissionDigest)
+        additionalSupervisorReviews[header.sequence] = proof
+        lastAdditionalSupervisorSequence = header.sequence
+        return proof
+    }
+
+    internal fun requireIssuedAdditionalDeviceSupervisorReview(
+        proof: RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization, session: SelfOwnedNativeHistoryReadSession) {
+        historyShapeV2(nativeAccountSeedDigest == seeds.account && additionalSupervisorSession === session && session.original === original &&
+            additionalSupervisorReviews[proof.sequence] === proof)
     }
 
     /** Closed historical self-revocation. No policy/credential/admission change or second
@@ -790,6 +864,7 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
             rows[image.table.ordinal] = historyAddV2(rows[image.table.ordinal], 1L, RuntimeHistoryProfileV2.MAX_MUTATIONS)
     }
     fun finish() {
+        historyShapeV2(additionalSupervisorReviews.values.all { it.joined })
         historyShapeV2(digest(ProtectedLocalSecurityCodec.encodeAccount(account)) == currentAccountDigest &&
             digest(LocalEffectivePolicyCodec.encodePolicy(policy)) == verifiedPolicyDigest && verifiedPolicyDigest == currentPolicyDigest &&
             digest(ProtectedLocalSecurityCodec.encodeAdmission(admission)) == currentAdmissionDigest &&
@@ -800,7 +875,9 @@ internal class RuntimeOriginalAuthenticationReplay private constructor(
                 (deviceThrottle?.let { digest(ProtectedLocalSecurityCodec.encodeThrottle(it)) } ?: seeds.deviceThrottle))
     }
     fun clear() { issuances.clear(); accountThrottle = null; deviceThrottle = null; nativeAccountSeedDigest = null
-        additionalAdmissions.clear(); additionalDeviceThrottles.clear() }
+        additionalAdmissions.clear(); additionalDeviceThrottles.clear()
+        additionalSupervisorReviews.values.forEach { it.clear() }; additionalSupervisorReviews.clear()
+        additionalSupervisorAdmissionOrigins.clear(); additionalSupervisorSession = null }
 
     companion object {
         private val ORIGINAL_TABLES = setOf(RuntimeHistoryTableV2.BRANCH, RuntimeHistoryTableV2.ACCOUNT, RuntimeHistoryTableV2.POLICY,

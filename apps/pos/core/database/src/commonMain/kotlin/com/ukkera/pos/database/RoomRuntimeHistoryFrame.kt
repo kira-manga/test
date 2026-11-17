@@ -315,6 +315,40 @@ internal class RoomRuntimeHistoryFrame internal constructor(
         finally { reader.clear(); requireClosedRejectedSourceRead(caller) }
     }
 
+    internal suspend fun <T> withLegacyBusinessSources(caller: TransactionView, rootOperationId: OperationId,
+        use: suspend (RuntimeLegacyBusinessSourceGraph) -> T): T? {
+        requireClosedRejectedSourceRead(caller)
+        val reader = RoomClosedRejectedOriginalSources(this, caller, rootOperationId)
+        val loan = RuntimeLegacySourceLoan { requireClosedRejectedSourceRead(caller) }
+        return try {
+            loan.read {
+                val graph = reader.legacyBusinessGraph(loan) ?: return@read null
+                use(graph)
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            try { if (runtimeHistoryCaptureDiagnosticsEnabled()) reportRuntimeHistoryLoanFailure(failure) } catch (_: Throwable) { }
+            null
+        } finally { loan.close(); reader.clear(); requireClosedRejectedSourceRead(caller) }
+    }
+
+    internal suspend fun <T> withCurrentLegacyBusinessSources(caller: TransactionView, key: AggregateKey,
+        use: suspend (RuntimeCurrentLegacyBusinessSources) -> T): T? {
+        requireClosedRejectedSourceRead(caller)
+        val reader = RoomClosedRejectedOriginalSources(this, caller, null)
+        val loan = RuntimeLegacySourceLoan { requireClosedRejectedSourceRead(caller) }
+        return try {
+            loan.read {
+                val selected = reader.currentLegacyBusinessGraph(loan, key) ?: return@read null
+                use(selected)
+            }
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (failure: Exception) {
+            try { if (runtimeHistoryCaptureDiagnosticsEnabled()) reportRuntimeHistoryLoanFailure(failure) } catch (_: Throwable) { }
+            null
+        } finally { loan.close(); reader.clear(); requireClosedRejectedSourceRead(caller) }
+    }
+
     internal suspend fun foodCheckRejectedOriginalSources(caller: TransactionView,
         operationId: OperationId): RuntimeHistoricalFoodCheckRejectedSources? {
         requireClosedRejectedSourceRead(caller)

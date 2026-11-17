@@ -56,7 +56,7 @@ internal class LocalStockRelationalRepository(
     }
     suspend fun requireNonstockSource(view: CommandReadView, owner: RetainedStreamedCommand, original: RetainedOriginalV2,
         source: StreamedSourceObservationV2.Aggregate) {
-        (producers[owner.identity.producer.command] ?: unavailableProducer()).requireOriginalSource(view, original, source)
+        (producers[owner.identity.producer.command] ?: unavailableProducer()).requireOriginalSource(facade, view, original, source)
     }
     /** Register an actual required original, never a reconstructed historical read facade. */
     suspend fun requireCompleteOriginal(owner: RetainedStreamedCommand,
@@ -67,18 +67,18 @@ internal class LocalStockRelationalRepository(
         traversal.requireComplete(owner, previous)
     }
     suspend fun requireComplete(original: RetainedStreamedCommand): LocalStockRelationalInspection =
-        inspectComplete(original, retainCompleted = false).first
+        inspectComplete(original, retainCompleted = false, StockReplayBudget()).first
 
     /** Literal inspections escape only after the normally CLOSED entire graph. The private
      * read scope may retain them alongside their exact immutable originals, never a pass
      * supplied by the caller or data from an incompletely qualified ancestor. */
-    suspend fun requireCompleteRetainingInspections(original: RetainedStreamedCommand):
+    suspend fun requireCompleteRetainingInspections(original: RetainedStreamedCommand, replay: StockReplayBudget):
         Pair<LocalStockRelationalInspection, List<LocalStockRelationalInspection>> =
-        inspectComplete(original, retainCompleted = true)
+        inspectComplete(original, retainCompleted = true, replay)
 
-    private suspend fun inspectComplete(original: RetainedStreamedCommand, retainCompleted: Boolean):
+    private suspend fun inspectComplete(original: RetainedStreamedCommand, retainCompleted: Boolean, replay: StockReplayBudget):
         Pair<LocalStockRelationalInspection, List<LocalStockRelationalInspection>> {
-        val traversal = StockOriginalTraversal(original)
+        val traversal = StockOriginalTraversal(original, replay)
         var result: LocalStockRelationalInspection? = null
         val completed = mutableListOf<LocalStockRelationalInspection>()
         try {
@@ -89,10 +89,15 @@ internal class LocalStockRelationalRepository(
                 if (required === original) result = inspection
                 traversal.complete(required)
                 if (retainCompleted) completed += inspection
+                else if (required !== original) inspection.releaseReplay()
             }
             // No inspection may be reused while any queued ancestor, cycle or resource
             // closure remains unchecked. Closing invalidates the traversal's lookup API.
             traversal.close()
+            // Only an explicit read proof owns retained replay beyond this traversal.
+            // An unretained root may still expose literal inspection methods, which
+            // continue through their original complete core scans on the active loan.
+            if (!retainCompleted) result?.releaseReplay()
             return (result ?: inconsistentStock()) to completed
         } catch (failure: Throwable) {
             completed.clear()
@@ -125,6 +130,9 @@ internal class LocalStockRelationalRepository(
                 .requireComplete(original, inspection)
         }
         localStockCheck(inspection.resourceClosureChecked, LocalStockFailure.STORAGE_INCONSISTENT)
+        // Replays only skipped repeated fragment work; acceptance re-establishes the exact
+        // stored fragments, chain commitment, decode and EOF with one fresh core traversal.
+        inspection.requireFreshTraversal()
         return inspection
     }
 }
@@ -138,7 +146,8 @@ internal class LocalStockRelationalRepository(
  * over the whole mixed legacy/normalized subtree, not freshly available at each handoff.
  * Physical stock frames remain streamed and are not converted into a lot/holder/row cap.
  */
-internal class StockOriginalTraversal(root: RetainedStreamedCommand) {
+internal class StockOriginalTraversal(root: RetainedStreamedCommand,
+    private val replay: StockReplayBudget = StockReplayBudget()) {
     private val scope = root.identity.scope
     // Only begin needs the root handle. Closed ancestor inspections must not keep
     // a different, potentially unretained root alive outside the read-scope budget.
@@ -154,6 +163,17 @@ internal class StockOriginalTraversal(root: RetainedStreamedCommand) {
     private var closed = false
     private var calls = 0
     private var bytes = 0L
+    private val replayHolders = mutableListOf<LocalStockRelationalInspection>()
+
+    /** Inspection replays are only established while THIS traversal is open; a closed or failed
+     * traversal's inspections keep (or fall back to) per-access full core traversals. */
+    val replayOpen: Boolean get() = open && !closed
+    fun reserveReplay(inspection: LocalStockRelationalInspection, amount: Long): Boolean {
+        if (!replayOpen || !replay.reserve(amount)) return false
+        replayHolders += inspection
+        return true
+    }
+    fun releaseReplay(amount: Long) { replay.release(amount) }
 
     suspend fun begin() {
         localStockCheck(!open && !closed && required.isEmpty())
@@ -181,9 +201,17 @@ internal class StockOriginalTraversal(root: RetainedStreamedCommand) {
     }
     fun close() {
         localStockCheck(open && !closed && current == null && pending.isEmpty() && required.values.all { it.complete })
+        // Retained (closed-graph) inspections now belong to the caller's read scope budget.
+        replayHolders.clear()
         clear()
     }
-    fun fail() { clear() }
+    fun fail() {
+        // No replay of an unaccepted graph survives the failure.
+        val holders = replayHolders.toList()
+        replayHolders.clear()
+        clear()
+        for (holder in holders) holder.releaseReplay()
+    }
     private fun clear() {
         open = false; closed = true; initialRoot = null; current = null; required.clear(); pending.clear()
     }
@@ -291,6 +319,8 @@ internal class StockOriginalTraversal(root: RetainedStreamedCommand) {
  * same active loan. This is private bookkeeping, never a supplied producer pass.
  * The bounded optimization falls back to full proof rather than adding a row cap. */
 private class StockReadProducerProof(private val repository: LocalStockRelationalRepository) {
+    private val replay = StockReplayBudget()
+    private val unretainedReplays = mutableSetOf<LocalStockRelationalInspection>()
     private val completed = linkedMapOf<OperationId, RetainedStreamedCommand>()
     private val inspections = linkedMapOf<OperationId, LocalStockRelationalInspection>()
     private var bytes = 0L
@@ -316,13 +346,17 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
             localStockCheck(previous.identity == original.identity && previous.journalHash == original.journalHash &&
                 previous.normalized == original.normalized && previous.result == original.result,
                 LocalStockFailure.STORAGE_INCONSISTENT)
-            inspections[id]?.let { return it }
+            inspections[id]?.let { retained ->
+                // Reuse re-establishes the exact stored fragments/EOF before handing it out.
+                retained.requireFreshTraversal()
+                return retained
+            }
         }
         // Keep every eligible literal inspection from this normally CLOSED graph. A
         // later ancestor request otherwise has a completed identity but repeats the full
         // graph just to obtain the inspection. Actual lookups/direct sources stay below
         // in the read facade, regardless of which closed inspection is retained here.
-        val (inspection, closed) = repository.requireCompleteRetainingInspections(original)
+        val (inspection, closed) = repository.requireCompleteRetainingInspections(original, replay)
         localStockCheck(open)
         for (value in closed) {
             val evidence = value.original
@@ -332,20 +366,38 @@ private class StockReadProducerProof(private val repository: LocalStockRelationa
                 localStockCheck(previous.identity == evidence.identity && previous.journalHash == evidence.journalHash &&
                     previous.normalized == evidence.normalized && previous.result == evidence.result,
                     LocalStockFailure.STORAGE_INCONSISTENT)
-                inspections[operationId] = value
+                inspections.put(operationId, value)?.takeIf { it !== value && it !== inspection }?.releaseReplay()
             } else {
                 val size = 512L + evidence.normalized.size + evidence.result.size
                 if (completed.size < 128 && size <= 8L * 1_024 * 1_024 - bytes) {
                     completed[operationId] = evidence
                     inspections[operationId] = value
                     bytes += size
-                }
+                } else if (value !== inspection) value.releaseReplay()
+                else if (value.replayBytes > 0L) unretainedReplays += value
             }
         }
         return inspection
     }
 
-    fun close() { open = false; inspections.clear(); completed.clear(); bytes = 0L }
+    fun close() {
+        open = false
+        for (value in inspections.values) value.releaseReplay()
+        for (value in unretainedReplays) value.releaseReplay()
+        unretainedReplays.clear(); inspections.clear(); completed.clear(); bytes = 0L
+    }
+}
+
+/** Retained inspection-replay memory envelope shared by one traversal or one protected read
+ * scope. Exhaustion only selects the original per-access full traversal; it never refuses. */
+internal class StockReplayBudget(private var remaining: Long = 16L * 1_024 * 1_024) {
+    fun reserve(amount: Long): Boolean {
+        localStockCheck(amount >= 0)
+        if (amount > remaining) return false
+        remaining -= amount
+        return true
+    }
+    fun release(amount: Long) { localStockCheck(amount >= 0); remaining += amount }
 }
 
 /** Original-only facade for one protected scope, never a current-stock reader or grant. */

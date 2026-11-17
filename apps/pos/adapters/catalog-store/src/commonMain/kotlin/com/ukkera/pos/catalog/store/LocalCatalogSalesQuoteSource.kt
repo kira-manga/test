@@ -5,6 +5,9 @@ import com.ukkera.pos.sales.store.*
 import com.ukkera.pos.types.OperationId
 import com.ukkera.pos.sales.store.TransactionSalesStockQuoteSource
 import com.ukkera.pos.sales.store.LocalCommerceOriginalSources
+import com.ukkera.pos.sales.store.LocalCommerceOriginalRead
+import com.ukkera.pos.sales.store.HistoricalNormalizedCommerceSource
+import com.ukkera.pos.sales.store.nativeCommerceBeforeSources
 import com.ukkera.pos.sales.store.LocalCommerceOriginalRow
 import com.ukkera.pos.sales.store.LocalSalesPriceSourceV2
 import com.ukkera.pos.sales.RetailStockDemandV2
@@ -49,7 +52,7 @@ import com.ukkera.pos.types.UtcInstant
 public class LocalCatalogSalesQuoteSource(
     private val signatures: CompanyPublicationSignatureVerifier,
     private val stock: LocalStockRepository,
-) : TransactionSalesQuoteSource, TransactionSalesStockQuoteSource {
+) : TransactionSalesQuoteSource, TransactionSalesStockQuoteSource, com.ukkera.pos.sales.store.LegacySalesOriginalQuoteSource {
     override suspend fun observeReservationAuthority(view: CommandReadView, lines: List<LocalStockAllocationRequest>): Set<RecoveryResourceKey> =
         observeCommerceReservationAuthority(view, lines, signatures)
     override suspend fun requireOriginalReservationAuthority(sources: LocalCommerceOriginalSources,
@@ -57,6 +60,8 @@ public class LocalCatalogSalesQuoteSource(
         originalCommerceReservationAuthority(sources, line, signatures)
     override suspend fun current(view: CommandReadView, selection: LocalOrderSelectionV1): PreparedSalesQuote? =
         selectedRetailCurrent(view, selection, signatures, stock, false)
+    override suspend fun quoteBefore(read: BusinessFactRead, selection: LocalOrderSelectionV1): PreparedSalesQuote? =
+        selectedRetailCurrent(read, selection, signatures, stock, false)
     override suspend fun currentNormalized(view: CommandReadView, selection: LocalOrderSelectionV1): PreparedSalesQuote? =
         selectedRetailCurrent(view, selection, signatures, stock, true)
     override suspend fun requireOriginalNormalized(sources: LocalCommerceOriginalSources,
@@ -70,7 +75,36 @@ public class LocalCatalogSalesQuoteSource(
  * or implement a rejecting legacy inventory provider. Construct this before the SAME immutable
  * LocalStockRepository's composite verifiers, then give both to the actual handlers/readers.
  */
-public class LocalCatalogNormalizedSalesQuoteSource(private val signatures: CompanyPublicationSignatureVerifier) : TransactionSalesStockQuoteSource {
+public class LocalCatalogNormalizedSalesQuoteSource(private val signatures: CompanyPublicationSignatureVerifier,
+    nativePublications: com.ukkera.pos.security.LocalCompanyBusinessPublications? = null,
+    private val historicalConfiguration: LocalConfigurationRepository = LocalConfigurationRepository(signatures, nativePublications),
+) : TransactionSalesStockQuoteSource, HistoricalNormalizedCommerceSource {
+    override suspend fun quoteBefore(command: com.ukkera.pos.database.RuntimeHistoricalCommand, selection: LocalOrderSelectionV1,
+        quoteId: DomainId, quoteRevision: Revision): LocalSalesQuotedOrder =
+        originalRetailQuote(nativeCommerceBeforeSources(command), selection, quoteId, quoteRevision, signatures, null).first
+
+    override suspend fun reservationBefore(command: com.ukkera.pos.database.RuntimeHistoricalCommand,
+        lines: List<LocalStockAllocationRequest>): List<com.ukkera.pos.inventory.store.LocalStockHistoricalAllocationDefinition> {
+        check(lines.size in 1..256)
+        return lines.map { line ->
+            // Reuse the installed historical stock authority: the real native BEFORE
+            // SKU, its fully joined activation/publication and warehouse. This is the
+            // same original-only contract used by receiving and purchasing replay.
+            // A rejection has no command-specific native publication observation;
+            // neither a missing observation nor today's unit ledger is its source.
+            val item = checkNotNull(historicalConfiguration.historicalStockItem(command, line.skuId))
+            val warehouse = checkNotNull(historicalConfiguration.historicalStockWarehouse(command, line.warehouseId))
+            check(item.scope == command.scope && item.skuId == line.skuId && item.active &&
+                item.tracking in setOf(com.ukkera.pos.catalog.StockTracking.QUANTITY,
+                    com.ukkera.pos.catalog.StockTracking.LOT) &&
+                item.baseUnitId == line.baseQuantity.unitId && item.quantityScale == line.baseQuantity.scale &&
+                line.baseQuantity.scaled > 0 && warehouse.scope == command.scope &&
+                warehouse.warehouseId == line.warehouseId && warehouse.active)
+            com.ukkera.pos.inventory.store.LocalStockHistoricalAllocationDefinition(line.skuId, line.warehouseId,
+                item.baseUnitId, item.quantityScale,
+                item.tracking == com.ukkera.pos.catalog.StockTracking.LOT, item.requiresExpiry)
+        }
+    }
     override suspend fun currentNormalized(view: CommandReadView, selection: LocalOrderSelectionV1): PreparedSalesQuote? =
         selectedRetailCurrent(view, selection, signatures, null, true)
     override suspend fun requireOriginalNormalized(sources: LocalCommerceOriginalSources, selection: LocalOrderSelectionV1,
@@ -82,7 +116,7 @@ public class LocalCatalogNormalizedSalesQuoteSource(private val signatures: Comp
         originalCommerceReservationAuthority(sources, line, signatures)
 }
 
-private suspend fun selectedRetailCurrent(view: CommandReadView, selection: LocalOrderSelectionV1,
+private suspend fun selectedRetailCurrent(view: BusinessFactRead, selection: LocalOrderSelectionV1,
     signatures: CompanyPublicationSignatureVerifier, stock: LocalStockRepository?, normalized: Boolean): PreparedSalesQuote? {
         if (selection.currency != Currency.EGP || selection.serviceContextId != null ||
             selection.lines.isEmpty() || selection.lines.size > (if (normalized) 256 else LocalStockStoreProfile.MAX_LINES_PER_COMMAND) ||
@@ -271,7 +305,7 @@ internal fun selectedRetailPrice(prices: List<LocalPriceV1>, channel: String, qu
 }
 
 /** Literal catalogue decoding, never a fabricated current view or a grant reconstructed from history. */
-private class OriginalRetailCatalogue(private val source: LocalCommerceOriginalSources,
+private class OriginalRetailCatalogue(private val source: LocalCommerceOriginalRead,
     private val signatures: CompanyPublicationSignatureVerifier) {
     val resources: MutableSet<RecoveryResourceKey> = mutableSetOf()
     suspend fun configuration(kind: String, id: DomainId): ConfigurationRecord? {
@@ -427,8 +461,17 @@ private data class OriginalPriceContext(val activation: PricePolicyActivationV1?
 
 private suspend fun requireOriginalRetailQuote(source: LocalCommerceOriginalSources, selection: LocalOrderSelectionV1,
     actual: LocalSalesQuotedOrder, signatures: CompanyPublicationSignatureVerifier): Set<RecoveryResourceKey> {
+    check(actual.stockRequirements.normalized)
+    return originalRetailQuote(source, selection, actual.quote.snapshotId, actual.quote.revision, signatures, actual).second
+}
+
+/** Same complete catalogue/price/promise program for retained equality and native BEFORE
+ * reconstruction. The latter has no retained proposal spool and never substitutes today's rows. */
+private suspend fun originalRetailQuote(source: LocalCommerceOriginalRead, selection: LocalOrderSelectionV1,
+    quoteId: DomainId, quoteRevision: Revision, signatures: CompanyPublicationSignatureVerifier,
+    actual: LocalSalesQuotedOrder?): Pair<LocalSalesQuotedOrder, Set<RecoveryResourceKey>> {
     check(selection.lines.size in 1..256 && selection.lines.map { it.portionId }.distinct().size == selection.lines.size &&
-        selection.currency == Currency.EGP && selection.serviceContextId == null && actual.stockRequirements.normalized)
+        selection.currency == Currency.EGP && selection.serviceContextId == null)
     val catalogue = OriginalRetailCatalogue(source, signatures)
     val cursor = checkNotNull(catalogue.configuration(LocalConfigurationProfile.CATALOG_CURSOR, source.scope.branchId))
     check(cursor.body is ConfigurationBody.CatalogCursor && cursor.revision == selection.expectedCatalogRevision)
@@ -477,13 +520,16 @@ private suspend fun requireOriginalRetailQuote(source: LocalCommerceOriginalSour
             LocalSalesReturnPortionCaptureV2(line.lineId, line.portionId, definitions.getValue(line.itemId).publicationId)
         }.sortedBy { it.portionId.value }, captured.map { it.publication }.sortedBy { it.publicationId.value })
     }
-    check(actual.returnPolicyCapture == expectedCapture) { "sales.return.original_quote_capture_mismatch" }
-    val quote = OperationalPricingEngine.calculate(PricingRequest(actual.quote.snapshotId, actual.quote.revision, Currency.EGP, resolved))
-    check(StoredPricingSnapshotCodec.encode(quote) == StoredPricingSnapshotCodec.encode(actual.quote) &&
+    if (actual != null) check(actual.returnPolicyCapture == expectedCapture) { "sales.return.original_quote_capture_mismatch" }
+    val quote = OperationalPricingEngine.calculate(PricingRequest(quoteId, quoteRevision, Currency.EGP, resolved))
+    val quoted = LocalSalesQuotedOrder(quote, RetailStockRequirements.normalized(selection.lines.map {
+        RetailStockDemandV2(it.portionId, it.itemId, route.warehouseId, it.quantity)
+    }), LocalSalesPriceSourceProfile.LOCAL_RETAIL_COMPANY_BRANCH_V2, provenance, expectedCapture)
+    if (actual != null) check(StoredPricingSnapshotCodec.encode(quote) == StoredPricingSnapshotCodec.encode(actual.quote) &&
         actual.priceSourceProfile == LocalSalesPriceSourceProfile.LOCAL_RETAIL_COMPANY_BRANCH_V2 &&
         actual.priceSources.sortedBy { it.portionId.value } == provenance.sortedBy { it.portionId.value } &&
-        actual.stockRequirements.normalizedLines == selection.lines.map { RetailStockDemandV2(it.portionId, it.itemId, route.warehouseId, it.quantity) })
-    return resources.toSet()
+        actual.stockRequirements.normalizedLines == quoted.stockRequirements.normalizedLines)
+    return quoted to resources.toSet()
 }
 
 /**

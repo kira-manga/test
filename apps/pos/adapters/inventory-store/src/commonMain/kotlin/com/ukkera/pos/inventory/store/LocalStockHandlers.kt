@@ -77,6 +77,27 @@ internal abstract class StockCommandHandler(
     protected abstract suspend fun prepareStock(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation
 }
 
+/** Exact producer identity of one stock command: the live kernel context or the genuine
+ * retained original's identity. This is DATA only, never a context, grant or authorization. */
+internal class StockProducerFacts(
+    val scope: com.ukkera.pos.security.BranchScope,
+    val operationId: com.ukkera.pos.types.OperationId,
+    val originalActorId: DomainId,
+    val key: CommandKey,
+    val semanticDigest: com.ukkera.pos.security.PayloadDigest,
+) {
+    companion object {
+        fun of(context: CommandContext): StockProducerFacts = StockProducerFacts(context.scope, context.operationId,
+            context.originalActorId, context.key, context.semanticDigest)
+        fun of(command: com.ukkera.pos.database.RuntimeHistoricalCommand): StockProducerFacts = StockProducerFacts(command.scope,
+            command.operationId, command.actorId, command.command, command.semanticDigest)
+    }
+}
+
+internal fun stockRequirement(context: StockProducerFacts, documentId: DomainId, revision: Revision, reasonCode: String): AuthorizationRequirement =
+    AuthorizationRequirement(Permission(SecurityAction.INVENTORY_ADJUST, PermissionVerb.PERFORM), context.scope,
+        ActionBinding(documentId, revision, context.semanticDigest, context.operationId, reasonCode))
+
 /** All failures, including a missing document, are evaluated only after exact live authorization. */
 internal fun preparedStock(
     context: CommandContext,
@@ -87,9 +108,7 @@ internal fun preparedStock(
     barrierKinds: Set<RecoveryResourceKind> = setOf(RecoveryResourceKind.STOCK),
     action: (UtcInstant) -> ProposedOutcome,
 ): PreparedMutation = object : PreparedMutation() {
-    override val requirement: AuthorizationRequirement = AuthorizationRequirement(
-        Permission(SecurityAction.INVENTORY_ADJUST, PermissionVerb.PERFORM), context.scope,
-        ActionBinding(documentId, revision, context.semanticDigest, context.operationId, reasonCode))
+    override val requirement: AuthorizationRequirement = stockRequirement(StockProducerFacts.of(context), documentId, revision, reasonCode)
     private val resources = (resources + RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, context.originalActorId)).toSet()
     private val barriers = barrierKinds.toSet()
     override val affectedResources: Set<RecoveryResourceKey> get() = resources.toSet()
@@ -135,12 +154,15 @@ internal fun requireItemVersions(cut: LocalStockReadCut, expected: List<LocalSto
 }
 
 internal fun <T> stockChange(context: CommandContext, key: AggregateKey, previous: LocalStockRecord<T>?, value: T, serializer: KSerializer<T>): AggregateChange =
+    stockChange(StockProducerFacts.of(context), key, previous, value, serializer)
+
+internal fun <T> stockChange(context: StockProducerFacts, key: AggregateKey, previous: LocalStockRecord<T>?, value: T, serializer: KSerializer<T>): AggregateChange =
     AggregateChange(key, previous?.row?.revision, stockSchema(key.kind, stockBody(value, serializer)), stockRecord(context.scope, key,
         previous?.row?.revision, StockProducerWire.from(context), stockBody(value, serializer), previous?.row))
 
 /** Authoritative absence of both row and permanent ID is required before an insert. */
 internal suspend fun <T> stockDocument(
-    repository: LocalStockRepository, view: CommandReadView, kind: String, id: DomainId, serializer: KSerializer<T>,
+    repository: LocalStockRepository, view: com.ukkera.pos.database.BusinessFactRead, kind: String, id: DomainId, serializer: KSerializer<T>,
 ): LocalStockRecord<T>? {
     val record = repository.record(view, AggregateKey(kind, id), serializer)
     val claim = view.claim(LocalStockStoreProfile.documentClaim(id))
@@ -149,7 +171,7 @@ internal suspend fun <T> stockDocument(
 }
 
 /** Re-read every source digest/generation under the same borrowed transaction. No cache is trusted. */
-internal suspend fun requireStockAuthorityStamps(view: CommandReadView, sources: List<LocalStockSourceStamp>): List<LocalStockSourceStamp> {
+internal suspend fun requireStockAuthorityStamps(view: com.ukkera.pos.database.BusinessFactRead, sources: List<LocalStockSourceStamp>): List<LocalStockSourceStamp> {
     localStockCheck(sources.isNotEmpty(), LocalStockFailure.STORAGE_INCONSISTENT)
     val grouped = sources.groupBy { it.key }
     localStockCheck(grouped.size <= 128 && grouped.values.all { it.distinct().size == 1 }, LocalStockFailure.STORAGE_INCONSISTENT)

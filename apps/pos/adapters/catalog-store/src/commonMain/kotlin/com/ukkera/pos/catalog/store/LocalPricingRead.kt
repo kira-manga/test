@@ -54,7 +54,7 @@ internal class SelectedLocalPrice(
 }
 
 internal suspend fun prepareLocalSkuPricing(
-    view: CommandReadView, sku: LocalPublishedSkuV1, signatures: CompanyPublicationSignatureVerifier,
+    view: BusinessFactRead, sku: LocalPublishedSkuV1, signatures: CompanyPublicationSignatureVerifier,
     requestedRuleIds: List<DomainId> = sku.prices.map { it.ruleId },
 ): PreparedLocalSkuPricing {
     check(sku.company == view.scope.company() && requestedRuleIds.size <= 64 && requestedRuleIds.distinct().size == requestedRuleIds.size)

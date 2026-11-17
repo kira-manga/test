@@ -1,5 +1,6 @@
 package com.ukkera.pos.sales.store
 
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.AggregateChange
 import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.ClaimChange
@@ -108,7 +109,7 @@ internal data class LocalCashCut(
 }
 
 internal object LocalSalesStorage {
-    suspend fun drawer(view: CommandReadView, id: DomainId): LocalSalesRow<LocalDrawerState> =
+    suspend fun drawer(view: BusinessFactRead, id: DomainId): LocalSalesRow<LocalDrawerState> =
         root(view, LocalSalesStoreProfile.DRAWER_KIND, id, LocalDrawerState.serializer()) { value, revision ->
             requireLocalSalesSource(value.scope.value() == view.scope && value.id == id && value.revision == revision)
             localLabel(value.label)
@@ -117,14 +118,14 @@ internal object LocalSalesStorage {
             requireLocalSalesSource(view.claim(LocalSalesStoreProfile.activeDrawer(id)) == row.value.activeSessionId) { "sales.custody.unavailable" }
         }
 
-    suspend fun custodian(view: CommandReadView, id: DomainId): LocalSalesRow<LocalCustodianState> =
+    suspend fun custodian(view: BusinessFactRead, id: DomainId): LocalSalesRow<LocalCustodianState> =
         root(view, LocalSalesStoreProfile.CUSTODIAN_KIND, id, LocalCustodianState.serializer()) { value, revision ->
             requireLocalSalesSource(value.scope.value() == view.scope && value.id == id && value.revision == revision)
         }.also { row ->
             requireLocalSalesSource(view.claim(LocalSalesStoreProfile.activeCustodian(id)) == row.value.activeSessionId) { "sales.custody.unavailable" }
         }
 
-    suspend fun work(view: CommandReadView, id: DomainId): LocalSalesRow<LocalWorkState> =
+    suspend fun work(view: BusinessFactRead, id: DomainId): LocalSalesRow<LocalWorkState> =
         root(view, LocalSalesStoreProfile.WORK_KIND, id, LocalWorkState.serializer()) { value, revision ->
             requireLocalSalesSource(value.scope.value() == view.scope && value.id == id && value.revision == revision)
             requireLocalSalesSource(listOf(value.orderIds, value.returnIds, value.pendingClaimIds).all {
@@ -132,13 +133,13 @@ internal object LocalSalesStorage {
             })
         }
 
-    suspend fun safe(view: CommandReadView, id: DomainId): LocalSalesRow<LocalSafeState> =
+    suspend fun safe(view: BusinessFactRead, id: DomainId): LocalSalesRow<LocalSafeState> =
         root(view, LocalSalesStoreProfile.SAFE_KIND, id, LocalSafeState.serializer()) { value, revision ->
             requireLocalSalesSource(value.scope.value() == view.scope && value.id == id && value.revision == revision && value.received.minor >= 0)
             localLabel(value.label)
         }
 
-    suspend fun session(view: CommandReadView, id: DomainId): LocalSalesRow<CashSession> {
+    suspend fun session(view: BusinessFactRead, id: DomainId): LocalSalesRow<CashSession> {
         val row = required(view, CashNonSaleStoreProfile.sessionKey(id), CashNonSaleStoreProfile.SESSION_SCHEMA)
         val value = SalesSnapshotCodec.decodeCashSession(row.text(),
             SalesSnapshotBinding(SalesSnapshotKind.CASH_SESSION, view.scope, id, row.domainRevision()))
@@ -147,7 +148,7 @@ internal object LocalSalesStorage {
         return LocalSalesRow(row, value)
     }
 
-    suspend fun cash(view: CommandReadView, id: DomainId): LocalCashCut {
+    suspend fun cash(view: BusinessFactRead, id: DomainId): LocalCashCut {
         val session = session(view, id)
         val drawer = drawer(view, session.value.drawerId)
         val custodian = custodian(view, session.value.custodianId)
@@ -164,7 +165,7 @@ internal object LocalSalesStorage {
         return LocalCashCut(session, drawer, custodian, work)
     }
 
-    suspend fun transfer(view: CommandReadView, id: DomainId): LocalSalesRow<SafeTransfer> {
+    suspend fun transfer(view: BusinessFactRead, id: DomainId): LocalSalesRow<SafeTransfer> {
         val row = required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.TRANSFER_KIND, id))
         val value = SalesSnapshotCodec.decodeSafeTransfer(row.text(),
             SalesSnapshotBinding(SalesSnapshotKind.SAFE_TRANSFER, view.scope, id, row.domainRevision()))
@@ -172,14 +173,14 @@ internal object LocalSalesStorage {
         return LocalSalesRow(row, value)
     }
 
-    suspend fun required(view: CommandReadView, key: AggregateKey, schema: String = LocalSalesStoreProfile.schema(key.kind)): StoredAggregate {
+    suspend fun required(view: BusinessFactRead, key: AggregateKey, schema: String = LocalSalesStoreProfile.schema(key.kind)): StoredAggregate {
         val row = view.aggregate(key) ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
         requireLocalSalesSource(row.key == key && row.schema == schema && row.revision.value > 0)
         return row
     }
 
     private suspend fun <T> root(
-        view: CommandReadView, kind: String, id: DomainId, serializer: KSerializer<T>, validate: (T, Revision) -> Unit,
+        view: BusinessFactRead, kind: String, id: DomainId, serializer: KSerializer<T>, validate: (T, Revision) -> Unit,
     ): LocalSalesRow<T> {
         val row = required(view, LocalSalesStoreProfile.key(kind, id))
         val value = decodeLocalSalesSource(row.payload, serializer)
@@ -205,14 +206,14 @@ internal fun StoredAggregate.text(): String = try {
  * be presented as unavailable; a surviving source claim/companion is a broken cut,
  * not a clean miss. This never proves historical absence or creates a default row.
  */
-internal suspend fun localSalesSourcePresent(view: CommandReadView, key: AggregateKey,
+internal suspend fun localSalesSourcePresent(view: BusinessFactRead, key: AggregateKey,
     sourceClaims: List<ClaimKey>, companionKeys: List<AggregateKey> = emptyList()): Boolean {
     if (view.aggregate(key) != null) return true
     check(sourceClaims.all { view.claim(it) == null } && companionKeys.all { view.aggregate(it) == null }) { "sales.source.incomplete" }
     return false
 }
 
-internal suspend fun localCustodianSourcePresent(view: CommandReadView, id: DomainId): Boolean =
+internal suspend fun localCustodianSourcePresent(view: BusinessFactRead, id: DomainId): Boolean =
     localSalesSourcePresent(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.CUSTODIAN_KIND, id),
         listOf(configuredClaim(LocalSalesStoreProfile.CUSTODIAN_KIND, id), LocalSalesStoreProfile.activeCustodian(id)),
         listOf(LocalSalesStoreProfile.key(LocalSalesStoreProfile.WORK_KIND, id)))
@@ -220,7 +221,7 @@ internal suspend fun localCustodianSourcePresent(view: CommandReadView, id: Doma
 internal fun LocalCashEvidenceV1.domain(actorId: DomainId): CashierEvidence = CashierEvidence(evidenceId, actorId, occurredAt.value)
 
 /** Reserve a physical money source identity at intent time, even before its cash fact exists. */
-internal suspend fun financialSourceAllocated(view: CommandReadView, id: DomainId): Boolean =
+internal suspend fun financialSourceAllocated(view: BusinessFactRead, id: DomainId): Boolean =
     view.claim(LocalSalesStoreProfile.unique("payment_attempt", id)) != null ||
         view.claim(LocalSalesStoreProfile.unique("refund_attempt", id)) != null ||
         view.claim(CashNonSaleStoreProfile.cashSourceClaim(id)) != null ||

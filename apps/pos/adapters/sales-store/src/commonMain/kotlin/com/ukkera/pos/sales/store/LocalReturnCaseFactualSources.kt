@@ -5,6 +5,8 @@ import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.database.RetainedCommandIdentityV2
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.database.StoredBytes
 import com.ukkera.pos.database.requireStockRelational
@@ -125,6 +127,9 @@ public object LocalReturnCaseFactualSourcesV1 {
      * nor non-delivery. Incomplete event membership/chronology still throws and remains held.
      */
     public suspend fun readHistory(command: RuntimeHistoricalCommand,
+        saleId: DomainId): LocalReturnCaseFactualCutV1? = readHistory(NativeBusinessOriginalProgram(command), saleId)
+
+    public suspend fun readHistory(command: BusinessOriginalProgram,
         saleId: DomainId): LocalReturnCaseFactualCutV1? {
         val original = readRetailCustomerReceiptHistoryOriginal(command, saleId) ?: return null
         val sale = readReturnCaseHistorySaleSource(command, saleId)

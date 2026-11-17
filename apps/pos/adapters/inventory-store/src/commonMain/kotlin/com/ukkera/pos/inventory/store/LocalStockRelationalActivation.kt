@@ -1,5 +1,6 @@
 package com.ukkera.pos.inventory.store
 
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.database.StockRelationalKindsV2
 
@@ -8,7 +9,7 @@ import com.ukkera.pos.database.StockRelationalKindsV2
  * this gate itself cannot initialize, import, approve native coverage or reinterpret old commands.
  * Legacy migration and every broader writer/read-route join remain separate required work.
  */
-internal suspend fun requireLegacyStockCurrent(view: CommandReadView) {
+internal suspend fun requireLegacyStockCurrent(view: BusinessFactRead) {
     // Any marker (including an invalid one) prohibits a new legacy mutation/current read. Old
     // retained-original decoding never calls this gate, so historical bytes/replay remain exact.
     if (view.aggregate(LocalStockRelationalProfileV2.activationKey(view.scope.branchId)) != null)

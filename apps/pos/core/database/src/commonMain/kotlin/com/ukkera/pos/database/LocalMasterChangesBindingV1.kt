@@ -3,6 +3,8 @@ package com.ukkera.pos.database
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.security.sha256
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 
 /** Pure bounded DATA fingerprint, never an authentication or disclosure capability. */
 public object LocalMasterChangesBindingV1 {
@@ -26,4 +28,18 @@ public object LocalMasterChangesBindingV1 {
         }
         return sha256(frame(fields))
     }
+
+    /** Ordinary READ returns no catch-up cursor. Keep its exact current authority,
+     * identity, selector and payload binding while allowing unrelated committed writes.
+     * Snapshot/Pull/Batch use [digest] and still bind EVERY journal-cut field.
+     * This fingerprint grants nothing; each SDK disclosure recomputes the protected read.
+     */
+    public fun readProjectionDigest(cursor: LocalMasterChangeCursorV1): PayloadDigest {
+        val fields = json.encodeToJsonElement(LocalMasterChangeCursorV1.serializer(), cursor).jsonObject
+        val projection = JsonObject(fields.filterKeys { it !in setOf("branchRevision", "sequence", "journalHash") })
+        val encoded = json.encodeToString(JsonObject.serializer(), projection).encodeToByteArray(throwOnInvalidSequence = true)
+        require(encoded.size in 1..MAX_CURSOR_BYTES)
+        return sha256(frame(listOf("ukkera.lan.read-projection-binding/v1".encodeToByteArray(), encoded)))
+    }
+
 }

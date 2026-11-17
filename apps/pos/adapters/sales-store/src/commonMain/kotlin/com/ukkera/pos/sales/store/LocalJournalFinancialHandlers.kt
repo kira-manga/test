@@ -104,7 +104,7 @@ public class LocalJournalReturnHandler(
     private val tenderPolicies: HistoricalSalesTenderPolicySourceV1 = UnavailableHistoricalSalesTenderPolicySourceV1,
     private val originalSources: LocalFinancialOriginalSourceServices? = null,
 ) : MasterCommandHandler, LocalMasterRpcRetainedOriginalAccessProvider, LocalMasterRpcPhysicalRetainedResultAccessProvider {
-    override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalReturnInteractiveAuthorization(stock, tenderPolicies)
+    override val physicalInteractiveAuthorizer: MasterPhysicalInteractiveAuthorizer = LocalReturnInteractiveAuthorization(stock, tenderPolicies, originalSources)
     override val key: CommandKey get() = LocalFinancialJournalProfileV3.RETURN_COMMAND
     override val writableKinds: Set<String> = retailFinancialKinds + setOf(LocalSalesStoreProfile.RETURN_KIND,
         LocalFinancialJournalProfileV3.BEFORE_KIND)
@@ -121,7 +121,7 @@ public class LocalJournalReturnHandler(
     override suspend fun rpcRetainedOriginalRequirements(profile: LocalMasterRpcWorkflowProfile, normalized: StoredBytes,
         original: RetainedOriginalV2, view: CommandReadView, context: CommandContext): List<AuthorizationRequirement>? {
         if ((!supportsRpcWorkflow(profile, normalized) && !supportsRpcPhysicalRetainedResult(profile, normalized)) || context.key != key) return null
-        val loan = stock?.let { commerceLoan(view, it, tenderPolicies) } ?: view
+        val loan = stock?.let { commerceLoan(view, it, tenderPolicies, originalSources) } ?: view
         return financialOriginalRead(loan, context, normalized, originalSources, stock, tenderPolicies = tenderPolicies) { owned ->
             retailJournalRpcOriginalRequirements(normalized, original, owned, context, tenderPolicies)
         }
@@ -143,7 +143,7 @@ public class LocalJournalReturnHandler(
 
     override suspend fun prepare(normalized: StoredBytes, view: CommandReadView, context: CommandContext): PreparedMutation {
         requireRetailContext(normalized, view, context, key)
-        val loan = stock?.let { commerceLoan(view, it, tenderPolicies) } ?: view
+        val loan = stock?.let { commerceLoan(view, it, tenderPolicies, originalSources) } ?: view
         return when (val request = LocalReturnCommandCodecV3.decode(normalized)) {
             is LocalReturnRequestV3.Start -> prepareRetailRefundStart(request, loan, context, participantsSource)
             is LocalReturnRequestV3.RecordOriginal -> prepareRetailFact(request.target, LocalJournalFactPhaseV3.ORIGINAL, normalized, loan, context)

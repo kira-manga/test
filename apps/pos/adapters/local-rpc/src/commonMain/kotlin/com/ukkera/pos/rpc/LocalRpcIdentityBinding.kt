@@ -1,6 +1,7 @@
 package com.ukkera.pos.rpc
 
 import com.ukkera.pos.database.LocalMasterRpcPeerAssociation
+import com.ukkera.pos.database.LocalMasterRpcBindingAuthentication
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.LocalAuthenticatedPeer
 import com.ukkera.pos.security.LocalEmployeePrincipal
@@ -24,6 +25,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -168,9 +170,9 @@ public class LocalRpcIdentityBinding private constructor(
     internal fun originalIdentityFor(scope: RpcAuthorizationScope): LocalEmployeePrincipal? =
         originalPrincipal.takeIf { scope.session === applicationSession }
 
-    /** Immutable SDK resource DATA after the protected endpoint has freshly joined the
-     * exact retained original. This performs no employee verification and grants nothing:
-     * the operation and every SDK authorization still require their current protected checks.
+    /** Immutable SDK resource DATA for a protected endpoint that must freshly join the
+     * exact retained original before publication. This performs no employee verification
+     * and grants nothing: the operation and every SDK authorization require their current protected checks.
      * Neither an SDK twin nor a different physical callback can borrow this binding. */
     internal suspend fun retainedOperationScope(context: RpcAuthenticationContext,
         originalScope: RpcAuthorizationScope, resource: String): RpcAuthorizationScope? {
@@ -411,6 +413,7 @@ public class LocalRpcIdentityBinding private constructor(
             principalFactory: TrustedPrincipalFactory,
             provenance: LocalRpcAssociatedPhysicalPeerProvenance,
             lifetime: Duration,
+            authenticated: LocalMasterRpcBindingAuthentication? = null,
         ): LocalRpcIdentityBinding? {
             try {
                 currentCoroutineContext().ensureActive()
@@ -430,7 +433,7 @@ public class LocalRpcIdentityBinding private constructor(
                                 current.association !== original.association || !current.matches(peer) ||
                                 !physical.isConnected) null else current.nativePeer
                         }
-                    }, lifetime, physical, original.association, context)
+                    }, lifetime, physical, original.association, context, authenticated)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
@@ -448,6 +451,7 @@ public class LocalRpcIdentityBinding private constructor(
             rpcPhysicalSession: RpcPhysicalSession?,
             association: LocalMasterRpcPeerAssociation? = null,
             initialAssociatedContext: RpcAuthenticationContext? = null,
+            authenticated: LocalMasterRpcBindingAuthentication? = null,
         ): LocalRpcIdentityBinding? {
             var retainedBearer: OpaqueCredential? = null
             var unownedSession: RpcApplicationSession? = null
@@ -470,9 +474,12 @@ public class LocalRpcIdentityBinding private constructor(
 
                 val bearer = credentials.bearer.useBytes(::OpaqueCredential)
                 retainedBearer = bearer
-                val principal = authenticateDisposable(
+                // The owned Host may supply the one-use proof from the SAME Master's
+                // actual current-session operation, which also read the work/access cap.
+                // Public binding paths still perform their original fresh factory check.
+                val principal = if (authenticated == null) authenticateDisposable(
                     principalFactory, LocalGatewayCredentials(physicalPeer.connectionId, bearer),
-                )
+                ) else authenticated.consume(credentials)?.first
                 currentCoroutineContext().ensureActive()
                 if (principal == null) return null
                 if (principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
@@ -484,12 +491,14 @@ public class LocalRpcIdentityBinding private constructor(
                 if (currentPeer == null) return null
                 if (!sameCurrentPhysicalPeer(physicalPeer, currentPeer) || rpcPhysicalSession?.isConnected == false) return null
 
+                val actualLifetime = if (authenticated == null) lifetime else minOf(lifetime,
+                    (authenticated.remainingLifetimeMillis() ?: return null).milliseconds)
                 val resourceBegan = TimeSource.Monotonic.markNow()
                 val session = RpcApplicationSession(
                     peer = fingerprint,
                     principal = principal.actorId.value,
                     sessionId = principal.sessionId.value,
-                    lifetime = lifetime,
+                    lifetime = actualLifetime,
                 )
                 unownedSession = session
                 currentCoroutineContext().ensureActive()
@@ -498,7 +507,7 @@ public class LocalRpcIdentityBinding private constructor(
 
                 val binding = LocalRpcIdentityBinding(
                     peer, physicalPeer, principal, bearer, principalFactory, provenance, session, rpcPhysicalSession,
-                    association, lifetime, resourceBegan, initialAssociatedContext,
+                    association, actualLifetime, resourceBegan, initialAssociatedContext,
                 )
                 retainedBearer = null
                 unownedSession = null

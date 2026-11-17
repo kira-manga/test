@@ -116,15 +116,18 @@ internal data class LocalPreparedReturnPolicyCapture(
     val revision: LocalSalesRevision get() = LocalSalesRevision(LocalSalesReturnPolicyCaptureCodecV2.KIND, reference.id, Revision(0))
 }
 
-internal fun prepareReturnPolicyCapture(context: CommandContext, quoted: LocalSalesQuotedOrder): LocalPreparedReturnPolicyCapture? {
+internal fun prepareReturnPolicyCapture(context: CommandContext, quoted: LocalSalesQuotedOrder): LocalPreparedReturnPolicyCapture? =
+    prepareReturnPolicyCapture(context.scope, context.operationId, quoted)
+
+internal fun prepareReturnPolicyCapture(scope: com.ukkera.pos.security.BranchScope, operationId: com.ukkera.pos.types.OperationId, quoted: LocalSalesQuotedOrder): LocalPreparedReturnPolicyCapture? {
     val input = quoted.returnPolicyCapture ?: return null
     check(quoted.stockRequirements.normalized && quoted.priceSourceProfile == LocalSalesPriceSourceProfile.LOCAL_RETAIL_COMPANY_BRANCH_V2)
-    val id = DomainId(context.operationId.value)
-    val value = LocalSalesReturnPolicyCaptureV2(context.scope, id, quoted.quote.snapshotId, quoted.quote.revision,
-        returnPolicyQuoteDigest(quoted.quote), context.operationId, input)
+    val id = DomainId(operationId.value)
+    val value = LocalSalesReturnPolicyCaptureV2(scope, id, quoted.quote.snapshotId, quoted.quote.revision,
+        returnPolicyQuoteDigest(quoted.quote), operationId, input)
     val payload = LocalSalesReturnPolicyCaptureCodecV2.encode(value)
     val reference = SalesReturnPolicySourceReference(id, sha256(payload.copyBytes()))
-    requireReturnPolicyCapture(payload, context.scope, value.orderId, quoted.quote, reference,
+    requireReturnPolicyCapture(payload, scope, value.orderId, quoted.quote, reference,
         quoted.priceSources, quoted.stockRequirements.normalizedLines)
     return LocalPreparedReturnPolicyCapture(reference, AggregateChange(AggregateKey(LocalSalesReturnPolicyCaptureCodecV2.KIND, id),
         null, LocalSalesReturnPolicyCaptureCodecV2.SCHEMA, payload))
@@ -173,6 +176,24 @@ internal suspend fun readReturnPolicyCapture(view: CommandReadView, orderId: Dom
         else -> throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.INVALID)
     }
     commerceRecordOriginal(view, row, original)
+    return LocalSalesRow(row, value)
+}
+
+/** Same immutable quote companion on a genuine original BEFORE. Its writer was
+ * whole-qualified before aggregateSource returned; no current policy is substituted. */
+internal suspend fun readOriginalReturnPolicyCapture(command: BusinessOriginalProgram, orderId: DomainId,
+    quote: PricingSnapshot, reference: SalesReturnPolicySourceReference?, prices: List<LocalSalesPriceSourceV2>,
+    normalizedLines: List<RetailStockDemandV2>?): LocalSalesRow<LocalSalesReturnPolicyCaptureV2>? {
+    if (reference == null) return null
+    val source = checkNotNull(command.aggregateSource(AggregateKey(LocalSalesReturnPolicyCaptureCodecV2.KIND, reference.id)))
+    val row = source.row
+    requireLocalSalesSource(row.revision == Revision(1) && row.schema == LocalSalesReturnPolicyCaptureCodecV2.SCHEMA)
+    val value = requireReturnPolicyCapture(row.payload, command.scope, orderId, quote, reference, prices, normalizedLines)
+    val original = command.earlierOriginal(value.originalQuoteOperationId) as? RetainedOriginalV2.Streamed
+        ?: throw LocalSalesSourceUnavailable(LocalSalesSourceFailure.MISSING)
+    requireLocalSalesSource(source.original === original)
+    requireNormalizedPaymentQuoteRequest(original.evidence, orderId, quote.revision)
+    requireCommerceWrite(original.evidence, row)
     return LocalSalesRow(row, value)
 }
 

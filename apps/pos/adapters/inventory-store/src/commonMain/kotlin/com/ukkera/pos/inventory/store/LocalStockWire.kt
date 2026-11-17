@@ -222,8 +222,11 @@ private fun requireSerialCommandVersion(key: CommandKey, serial: Boolean) {
 @Serializable internal data class StockProducerWire(val operationId: OperationId, val command: String, val version: Int,
     val actorId: DomainId, val digest: String) {
     fun commandKey(): CommandKey = CommandKey(command, version)
-    companion object { fun from(v: CommandContext): StockProducerWire = StockProducerWire(v.operationId, v.key.name, v.key.version,
-        v.originalActorId, v.semanticDigest.value) }
+    companion object {
+        fun from(v: CommandContext): StockProducerWire = from(StockProducerFacts.of(v))
+        fun from(v: StockProducerFacts): StockProducerWire = StockProducerWire(v.operationId, v.key.name, v.key.version,
+            v.originalActorId, v.semanticDigest.value)
+    }
 }
 
 @Serializable internal data class StockRecordWire(val version: Int, val scope: StockScopeWire, val kind: String, val id: DomainId,

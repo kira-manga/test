@@ -110,7 +110,7 @@ private fun orderReassignmentRuleRefusal(rule: SalesRule): ProposedOutcome.Rejec
 
 /** Inert direct native source reader, confined to the active command. It implements no
  * CommandReadView and never re-prepares a handler, replays current policy or writes a row. */
-private class OrderReassignmentRejectionSources(private val command: RuntimeHistoricalCommand) {
+internal class OrderReassignmentRejectionSources(private val command: RuntimeHistoricalCommand) {
     suspend fun source(key: AggregateKey, schema: String = LocalSalesStoreProfile.schema(key.kind)): RuntimeHistoricalAggregateSource? {
         val selected = command.aggregateSource(key) ?: return null
         val row = selected.row
@@ -296,6 +296,21 @@ private class OrderReassignmentRejectionSources(private val command: RuntimeHist
             (value.activeSessionId == null || value.closingTransferId == null))
         localLabel(value.label)
     }.also { check(command.claim(LocalSalesStoreProfile.activeDrawer(id)) == it.value.activeSessionId) }
+
+    suspend fun openCash(id: DomainId): CashSession? {
+        val row = required(CashNonSaleStoreProfile.sessionKey(id), CashNonSaleStoreProfile.SESSION_SCHEMA).row
+        val session = SalesSnapshotCodec.decodeCashSession(row.text(),
+            SalesSnapshotBinding(SalesSnapshotKind.CASH_SESSION, command.scope, id, row.domainRevision()))
+        check(command.claim(LocalSalesStoreProfile.unique("cash_session", id)) == id &&
+            command.claim(LocalSalesStoreProfile.unique("opening_source", session.openingSourceId)) == id)
+        val drawer = drawer(session.drawerId).value
+        val custodian = custodian(session.custodianId).value
+        work(session.custodianId)
+        check(drawer.currency == session.expectedCash.currency)
+        if (session.status != CashSessionStatus.OPEN) return null
+        check(drawer.activeSessionId == id && custodian.activeSessionId == id && drawer.closingTransferId == null)
+        return session
+    }
 
     suspend fun acceptsNewWork(id: DomainId): Boolean {
         val assignment = custodian(id).value

@@ -1,6 +1,8 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandKey
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.database.ProposedOutcome
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalAuthority
@@ -44,18 +46,7 @@ public class LocalRetailCustomerReceiptHistoryProducer : RuntimeHistoryBusinessP
             LocalRetailCustomerReceiptCodec.normalize(command.normalized) == command.normalized &&
             semanticDigest(command.scope, command.actorId, command.command, command.normalized) == command.semanticDigest)
 
-        val request = LocalRetailCustomerReceiptCodec.decode(command.normalized)
-        val sale = readRetailCustomerReceiptHistoryOriginal(command, request.saleId) ?: return false
-        val sources = LocalRetailCustomerReceiptHistorySources(command)
-        val before = sources.findHead(sale)
-        sources.requireNewEvent(request.saleId)
-        val identity = LocalRetailCustomerReceiptProductionIdentity(command.scope, command.actorId,
-            command.operationId, command.semanticDigest)
-        val production = retailCustomerReceiptProduction(identity, request, sale, before?.head, before?.lastEventDigest)
-        // These literal fields come from the actual native certificate, not an event DTO.
-        val authorization = LocalRetailCustomerReceiptAuthorizationV1(command.actorId, command.authenticationId,
-            command.authorizationGeneration, command.policyRevision)
-        val expected = production.propose(command.recordedAt, authorization)
+        val (production, expected) = prepareOriginal(NativeBusinessOriginalProgram(command)) ?: return false
         command.requireRequirement(production.requirement)
         when (result) {
             is LocalRetailCustomerReceiptResultV1.Applied -> {
@@ -71,4 +62,32 @@ public class LocalRetailCustomerReceiptHistoryProducer : RuntimeHistoryBusinessP
         }
         return true
     }
+    public suspend fun requireOriginal(command: BusinessOriginalProgram) {
+        val original = command.evidence
+        check(command.command in commands && original.committed && original.code == "committed" &&
+            original.nativeOriginalProvenance == null && original.jobs.isEmpty() &&
+            LocalRetailCustomerReceiptCodec.normalize(command.normalized) == command.normalized &&
+            semanticDigest(command.scope, command.actorId, command.command, command.normalized) == command.semanticDigest)
+        val (production, expected) = prepareOriginal(command) ?: error("Original customer receipt sources required")
+        command.requireRequirement(production.requirement)
+        command.requireLegacyEffects(expected as? ProposedOutcome.Apply ?: error("Original customer receipt effects required"),
+            production.affectedResources)
+    }
+
+    private suspend fun prepareOriginal(command: BusinessOriginalProgram): Pair<LocalRetailCustomerReceiptProduction, ProposedOutcome>? {
+        val request = LocalRetailCustomerReceiptCodec.decode(command.normalized)
+        val sale = readRetailCustomerReceiptHistoryOriginal(command, request.saleId) ?: return null
+        val sources = LocalRetailCustomerReceiptHistorySources(command)
+        val before = sources.findHead(sale)
+        sources.requireNewEvent(request.saleId)
+        val identity = LocalRetailCustomerReceiptProductionIdentity(command.scope, command.actorId,
+            command.operationId, command.semanticDigest)
+        val production = retailCustomerReceiptProduction(identity, request, sale, before?.head, before?.lastEventDigest)
+        // These literal fields come from the actual native certificate, not an event DTO.
+        val authorization = LocalRetailCustomerReceiptAuthorizationV1(command.actorId, command.authenticationId,
+            command.authorizationGeneration, command.policyRevision)
+        val expected = production.propose(command.recordedAt, authorization)
+        return production to expected
+    }
+
 }

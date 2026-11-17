@@ -5,10 +5,13 @@ import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.database.RetainedCommandEvidence
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.sales.SalesSnapshotCodec
 import com.ukkera.pos.sales.store.HistoricalSalesReturnCaseSourceV1
+import com.ukkera.pos.sales.store.FactualSalesReturnCaseSourceV1
 import com.ukkera.pos.sales.store.LocalReturnCaseAssessmentV1
 import com.ukkera.pos.sales.store.LocalReturnCaseFactualCutV1
 import com.ukkera.pos.sales.store.LocalReturnCaseFactualReceiptEventV1
@@ -42,7 +45,7 @@ import com.ukkera.pos.types.UtcInstant
  */
 public class LocalCatalogReturnCaseSource(
     private val signatures: CompanyPublicationSignatureVerifier,
-) : TransactionSalesReturnCaseSourceV1, HistoricalSalesReturnCaseSourceV1 {
+) : TransactionSalesReturnCaseSourceV1, HistoricalSalesReturnCaseSourceV1, FactualSalesReturnCaseSourceV1 {
     override public suspend fun prepare(view: CommandReadView,
         request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1? {
         check(view.scope == request.scope)
@@ -53,6 +56,10 @@ public class LocalCatalogReturnCaseSource(
     }
 
     override public suspend fun prepare(command: RuntimeHistoricalCommand,
+        request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1? =
+        prepare(NativeBusinessOriginalProgram(command), request)
+
+    override public suspend fun prepare(command: BusinessOriginalProgram,
         request: SalesReturnCaseQualificationRequestV1): PreparedSalesReturnCaseSourceV1? {
         check(command.scope == request.scope)
         val facts = LocalReturnCaseFactualSourcesV1.readHistory(command, request.binding.saleId) ?: return null

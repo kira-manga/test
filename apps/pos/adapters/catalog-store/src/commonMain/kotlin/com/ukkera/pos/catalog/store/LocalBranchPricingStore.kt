@@ -43,7 +43,7 @@ internal class ReadBranchPrice(val row: StoredAggregate, val head: BranchPriceHe
 }
 
 internal suspend fun readPricePolicyPublication(
-    view: CommandReadView, id: DomainId, signatures: CompanyPublicationSignatureVerifier,
+    view: BusinessFactRead, id: DomainId, signatures: CompanyPublicationSignatureVerifier,
 ): Pair<StoredAggregate, PricePolicyPublicationV1>? =
     readPricingValue(view, LocalPricingProfile.POLICY_PUBLICATION, id, PricePolicyPublicationV1.serializer())?.also { publication ->
         requirePricePolicyPublication(view.scope, id, publication)
@@ -63,7 +63,7 @@ internal fun requirePricePolicyPublication(scope: BranchScope, id: DomainId,
 }
 
 internal suspend fun readPricePolicy(
-    view: CommandReadView, skuId: DomainId, ruleId: DomainId, signatures: CompanyPublicationSignatureVerifier,
+    view: BusinessFactRead, skuId: DomainId, ruleId: DomainId, signatures: CompanyPublicationSignatureVerifier,
 ): ReadPricePolicy? {
     val id = priceContextId(view.scope.company(), skuId, ruleId)
     val (row, value) = readPricingValue(view, LocalPricingProfile.POLICY_CURRENT, id, PricePolicyActivationV1.serializer()) ?: return null
@@ -89,7 +89,7 @@ internal fun resolvePricePolicy(scope: BranchScope, skuId: DomainId, ruleId: Dom
     return ReadPricePolicy(row, value, publication)
 }
 
-internal suspend fun readBranchPrice(view: CommandReadView, skuId: DomainId, ruleId: DomainId): ReadBranchPrice? {
+internal suspend fun readBranchPrice(view: BusinessFactRead, skuId: DomainId, ruleId: DomainId): ReadBranchPrice? {
     val id = priceContextId(view.scope.company(), skuId, ruleId)
     val (row, value) = readPricingValue(view, LocalPricingProfile.OVERRIDE_CURRENT, id, BranchPriceHeadV1.serializer()) ?: return null
     val event = readPriceHistoryEvent(view, skuId, value.eventId) ?: error("Branch price head lost its history")

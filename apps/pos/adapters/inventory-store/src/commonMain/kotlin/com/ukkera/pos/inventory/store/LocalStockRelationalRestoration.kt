@@ -494,7 +494,7 @@ internal suspend fun requireStockRestoredSliceHistory(read: StockPoolHistoryAcce
 /** Exact before-state source claim owner, only from an actual complete value/member range. */
 internal suspend fun stockRestorationClaimSource(stock: LocalStockRelationalInspection, sourceId: DomainId): Boolean {
     var found = false
-    stock.original.frames { frame ->
+    stock.frames { frame ->
         val range = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.StockRange ?: return@frames
         if (range.query is StockQueryV2.PoolValues || range.query is StockQueryV2.IssueValues) stock.range(range.query) { row ->
             val event = row.body as? StockRelationalBody.ValueEvent

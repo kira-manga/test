@@ -98,12 +98,47 @@ public data class LocalCommerceOriginalRow(public val key: AggregateKey, public 
  * every query traverses the owner's retained stream to EOF and requires explicit presence or
  * absence. This does not reread today's catalogue or mint a substitute original transaction.
  */
-public class LocalCommerceOriginalSources internal constructor(public val original: RetainedStreamedCommand) {
-    public val scope: com.ukkera.pos.security.BranchScope get() = original.identity.scope
-    public val recordedAt: UtcInstant get() = original.identity.recordedAt
+/** Read-only original DATA from an actual retained stream or active core-native BEFORE.
+ * It cannot prepare a command, mint authority, accept callbacks or substitute current rows. */
+public interface LocalCommerceOriginalRead {
+    public val scope: com.ukkera.pos.security.BranchScope
+    public val recordedAt: UtcInstant
+    public suspend fun aggregate(key: AggregateKey): LocalCommerceOriginalRow?
+    public suspend fun claim(key: ClaimKey): DomainId?
+    public suspend fun original(operationId: OperationId): RetainedOriginalV2?
+}
+
+/** Only an active core-created historical command can supply this source. Every present
+ * row is matched to its already whole-joined earlier native original by the core owner. */
+public fun nativeCommerceBeforeSources(command: RuntimeHistoricalCommand): LocalCommerceOriginalRead =
+    object : LocalCommerceOriginalRead {
+        override val scope get() = command.scope
+        override val recordedAt get() = command.recordedAt
+        override suspend fun aggregate(key: AggregateKey): LocalCommerceOriginalRow? {
+            check(key.kind !in StockRelationalKindsV2.all)
+            val source = command.aggregateSource(key) ?: return null
+            val row = source.row
+            check(row.key == key && row.revision.value >= 1 && com.ukkera.pos.security.sha256(row.payload.copyBytes()) == row.digest)
+            return LocalCommerceOriginalRow(row.key, row.revision, row.schema, row.payload, row.digest)
+        }
+        override suspend fun claim(key: ClaimKey): DomainId? = command.claim(key)
+        override suspend fun original(operationId: OperationId): RetainedOriginalV2? = command.earlierOriginal(operationId)
+    }
+
+/** Separate closed native-source port. No current quote or accepting unavailable default. */
+public interface HistoricalNormalizedCommerceSource {
+    public suspend fun quoteBefore(command: RuntimeHistoricalCommand, selection: LocalOrderSelectionV1,
+        quoteId: DomainId, quoteRevision: Revision): LocalSalesQuotedOrder
+    public suspend fun reservationBefore(command: RuntimeHistoricalCommand,
+        lines: List<com.ukkera.pos.inventory.store.LocalStockAllocationRequest>): List<com.ukkera.pos.inventory.store.LocalStockHistoricalAllocationDefinition>
+}
+
+public class LocalCommerceOriginalSources internal constructor(public val original: RetainedStreamedCommand)  : LocalCommerceOriginalRead {
+    override public val scope: com.ukkera.pos.security.BranchScope get() = original.identity.scope
+    override public val recordedAt: UtcInstant get() = original.identity.recordedAt
     internal val consumed: MutableSet<AggregateKey> = mutableSetOf()
     internal val consumedClaims: MutableSet<ClaimKey> = mutableSetOf()
-    public suspend fun aggregate(key: AggregateKey): LocalCommerceOriginalRow? {
+    override public suspend fun aggregate(key: AggregateKey): LocalCommerceOriginalRow? {
         check(key.kind !in StockRelationalKindsV2.all)
         var found = false; var row: LocalCommerceOriginalRow? = null
         original.frames { frame ->
@@ -138,7 +173,7 @@ public class LocalCommerceOriginalSources internal constructor(public val origin
         check(found) { "sales.stock.commerce_original_source_required" }
         return row
     }
-    public suspend fun claim(key: ClaimKey): DomainId? {
+    override public suspend fun claim(key: ClaimKey): DomainId? {
         var found = false; var owner: DomainId? = null
         original.frames { frame ->
             val source = (frame as? RetainedCommandFrameV2.Source)?.value as? StreamedSourceObservationV2.Claim
@@ -147,7 +182,7 @@ public class LocalCommerceOriginalSources internal constructor(public val origin
         check(found) { "sales.stock.original_claim_missing" }; consumedClaims += key
         return owner
     }
-    public suspend fun original(operationId: OperationId): RetainedOriginalV2? = original.original(operationId)
+    override public suspend fun original(operationId: OperationId): RetainedOriginalV2? = original.original(operationId)
 }
 
 /** Trusted current source adapters may contribute aliases; the whole producer verifies exact union. */

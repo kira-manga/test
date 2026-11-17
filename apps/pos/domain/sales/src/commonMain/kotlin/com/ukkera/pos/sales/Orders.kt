@@ -151,11 +151,26 @@ public object Orders {
         returnPolicySourceReference: SalesReturnPolicySourceReference? = null,
     ): SalesTransition<OwnedOrder> {
         val actor = authorize(command, "order.create", scope, orderId, Revision(0))
+        val order = createdOrder(scope, orderId, actor, quote, stockRequirements, priceSourceReference, returnPolicySourceReference)
+        return SalesTransition(command, order, emptyList(), listOf(SalesUniqueCheck(SalesUniqueKind.ORDER, orderId)), listOf(OrderChanged(order)))
+    }
+
+    /** Fact-only AFTER of [create] once its actor is established. The live path first binds an
+     * actual authorization; a historical producer supplies only the original actor whose
+     * captured requirement core compares separately. This creates no command or authority. */
+    public fun createdOrder(
+        scope: BranchScope,
+        orderId: DomainId,
+        actorId: DomainId,
+        quote: PricingSnapshot,
+        stockRequirements: RetailStockRequirements,
+        priceSourceReference: SalesPriceSourceReference? = null,
+        returnPolicySourceReference: SalesReturnPolicySourceReference? = null,
+    ): OwnedOrder {
         stockRequirements.validate(scope, quote)
         requireSales(returnPolicySourceReference == null || stockRequirements.normalized && priceSourceReference != null, SalesRule.INVALID_STATE)
-        val order = OwnedOrder(orderId, scope, actor, actor, Revision(0), quote, stockRequirements,
+        return OwnedOrder(orderId, scope, actorId, actorId, Revision(0), quote, stockRequirements,
             priceSourceReference = priceSourceReference, returnPolicySourceReference = returnPolicySourceReference)
-        return SalesTransition(command, order, emptyList(), listOf(SalesUniqueCheck(SalesUniqueKind.ORDER, orderId)), listOf(OrderChanged(order)))
     }
 
     /** Direct-ID check only. Indexed lists/subscriptions/cache invalidation remain gateway work. */
@@ -175,14 +190,9 @@ public object Orders {
         priceSourceReference: SalesPriceSourceReference? = null,
         returnPolicySourceReference: SalesReturnPolicySourceReference? = null,
     ): SalesTransition<OwnedOrder> {
-        requireOrderActor(command, "order.edit", order, expectedRevision)
-        requireEditable(order)
-        requireSales(order.handoff == null, SalesRule.HANDOFF_CONFLICT)
-        stockRequirements.validate(order.scope, quote)
-        requireSales(order.priceSourceReference == null || priceSourceReference != null, SalesRule.INVALID_STATE)
-        requireSales(returnPolicySourceReference == null || stockRequirements.normalized && priceSourceReference != null, SalesRule.INVALID_STATE)
-        val after = order.update(quote = quote, stockRequirements = stockRequirements, priceSourceReference = priceSourceReference,
-            returnPolicySourceReference = returnPolicySourceReference)
+        val actor = requireOrderActor(command, "order.edit", order, expectedRevision)
+        val after = replacedOrder(actor, order, expectedRevision, quote, stockRequirements,
+            priceSourceReference, returnPolicySourceReference)
         return orderTransition(command, order, after)
     }
 
@@ -195,11 +205,8 @@ public object Orders {
         evidence: CashierEvidence,
     ): SalesTransition<OwnedOrder> {
         val actor = requireOrderActor(command, "order.handoff", order, expectedRevision)
-        requireEditable(order)
-        evidence.requireActor(actor)
-        requireSales(order.handoff == null && intendedRecipientId != actor, SalesRule.HANDOFF_CONFLICT)
-        val offer = HandoffOffer(handoffId, order.id, actor, intendedRecipientId, order.revision.next(), evidence)
-        val after = order.update(handoff = offer)
+        val after = offeredHandoffOrder(actor, order, expectedRevision, handoffId, intendedRecipientId, evidence)
+        val offer = checkNotNull(after.handoff)
         return SalesTransition(command, after, listOf(orderVersion(order)), listOf(SalesUniqueCheck(SalesUniqueKind.HANDOFF_OFFER, handoffId)),
             listOf(OrderChanged(after), HandoffOffered(offer)))
     }
@@ -213,23 +220,64 @@ public object Orders {
     ): SalesTransition<OwnedOrder> {
         requireRevision(order.revision, expectedRevision)
         val actor = authorize(command, "order.handoff", order.scope, order.id, expectedRevision)
-        requireEditable(order)
-        val offer = order.handoff ?: throw SalesRuleViolation(SalesRule.HANDOFF_CONFLICT)
-        requireSales(offer.id == handoffId && offer.intendedRecipientId == actor && offer.previousOwnerId == order.ownerId &&
-            offer.offeredAtRevision == expectedRevision, SalesRule.HANDOFF_CONFLICT)
-        evidence.requireActor(actor)
-        val after = order.update(ownerId = actor, handoff = null)
+        val after = acceptedHandoffOrder(actor, order, expectedRevision, handoffId, evidence)
+        val offer = checkNotNull(order.handoff)
         return SalesTransition(command, after, listOf(orderVersion(order)),
             listOf(SalesUniqueCheck(SalesUniqueKind.HANDOFF_ACCEPTANCE, handoffId)), listOf(OrderChanged(after), HandoffAccepted(offer, evidence)))
     }
 
     public fun cancelHandoff(command: SalesCommand, order: OwnedOrder, expectedRevision: Revision, handoffId: DomainId): SalesTransition<OwnedOrder> {
         val actor = requireOrderActor(command, "order.handoff", order, expectedRevision)
-        requireEditable(order)
-        requireSales(order.handoff?.id == handoffId, SalesRule.HANDOFF_CONFLICT)
-        val after = order.update(handoff = null)
+        val after = cancelledHandoffOrder(actor, order, expectedRevision, handoffId)
         return SalesTransition(command, after, listOf(orderVersion(order)), emptyList(),
             listOf(OrderChanged(after), HandoffCancelled(checkNotNull(order.handoff), actor)))
+    }
+
+    /** Fact-only reducers shared by authorized live transitions and original replay.
+     * They create immutable AFTER data, never a command, grant or durable success. */
+    public fun replacedOrder(actorId: DomainId, order: OwnedOrder, expectedRevision: Revision,
+        quote: PricingSnapshot, stockRequirements: RetailStockRequirements,
+        priceSourceReference: SalesPriceSourceReference? = null,
+        returnPolicySourceReference: SalesReturnPolicySourceReference? = null): OwnedOrder {
+        requireRevision(order.revision, expectedRevision)
+        requireSales(actorId == order.ownerId, SalesRule.OWNER_REQUIRED)
+        requireEditable(order)
+        requireSales(order.handoff == null, SalesRule.HANDOFF_CONFLICT)
+        stockRequirements.validate(order.scope, quote)
+        requireSales(order.priceSourceReference == null || priceSourceReference != null, SalesRule.INVALID_STATE)
+        requireSales(returnPolicySourceReference == null || stockRequirements.normalized && priceSourceReference != null, SalesRule.INVALID_STATE)
+        return order.update(quote = quote, stockRequirements = stockRequirements, priceSourceReference = priceSourceReference,
+            returnPolicySourceReference = returnPolicySourceReference)
+    }
+
+    public fun offeredHandoffOrder(actorId: DomainId, order: OwnedOrder, expectedRevision: Revision,
+        handoffId: DomainId, intendedRecipientId: DomainId, evidence: CashierEvidence): OwnedOrder {
+        requireRevision(order.revision, expectedRevision)
+        requireSales(actorId == order.ownerId, SalesRule.OWNER_REQUIRED)
+        requireEditable(order)
+        evidence.requireActor(actorId)
+        requireSales(order.handoff == null && intendedRecipientId != actorId, SalesRule.HANDOFF_CONFLICT)
+        return order.update(handoff = HandoffOffer(handoffId, order.id, actorId, intendedRecipientId, order.revision.next(), evidence))
+    }
+
+    public fun acceptedHandoffOrder(actorId: DomainId, order: OwnedOrder, expectedRevision: Revision,
+        handoffId: DomainId, evidence: CashierEvidence): OwnedOrder {
+        requireRevision(order.revision, expectedRevision)
+        requireEditable(order)
+        val offer = order.handoff ?: throw SalesRuleViolation(SalesRule.HANDOFF_CONFLICT)
+        requireSales(offer.id == handoffId && offer.intendedRecipientId == actorId && offer.previousOwnerId == order.ownerId &&
+            offer.offeredAtRevision == expectedRevision, SalesRule.HANDOFF_CONFLICT)
+        evidence.requireActor(actorId)
+        return order.update(ownerId = actorId, handoff = null)
+    }
+
+    public fun cancelledHandoffOrder(actorId: DomainId, order: OwnedOrder, expectedRevision: Revision,
+        handoffId: DomainId): OwnedOrder {
+        requireRevision(order.revision, expectedRevision)
+        requireSales(actorId == order.ownerId, SalesRule.OWNER_REQUIRED)
+        requireEditable(order)
+        requireSales(order.handoff?.id == handoffId, SalesRule.HANDOFF_CONFLICT)
+        return order.update(handoff = null)
     }
 
     /**

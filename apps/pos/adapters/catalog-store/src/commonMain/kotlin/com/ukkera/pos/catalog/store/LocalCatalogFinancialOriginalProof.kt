@@ -8,7 +8,44 @@ import com.ukkera.pos.types.*
 
 /** Installed catalog source services only. Whole ordinary configuration replay remains
  * separate from financial producers and from current employee/result disclosure policy. */
-internal class LocalCatalogFinancialOriginalProof(private val stock: LocalStockRepository) : LocalFinancialOriginalCatalogProof {
+internal class LocalCatalogFinancialOriginalProof(private val stock: LocalStockRepository,
+    signatures: CompanyPublicationSignatureVerifier? = null, configuration: LocalConfigurationRepository? = null,
+    private val publications: LocalCompanyBusinessPublications? = null,
+    caseSource: HistoricalSalesReturnCaseSourceV1? = null,
+    returnPolicy: FactualSalesReturnPolicySourceV1? = null,
+) : LocalFinancialOriginalCatalogProof {
+    private val configurationHistory = signatures?.let(::LocalConfigurationHistoryProducer)
+    private val pricingHistory = LocalPricingHistoryProducer()
+    private val collectionHistory = LocalLegacyCollectionHistoryProducer(stock)
+    private val returnHistory = LocalLegacyReturnHistoryProducer(returnPolicy)
+    private val exchangeHistory = LocalExchangeHistoryProducer()
+    private val caseHistory = LocalReturnCaseHistoryProducer(caseSource ?: UnavailableHistoricalSalesReturnCaseSourceV1)
+    private val receiptEventHistory = LocalRetailCustomerReceiptHistoryProducer()
+    private val rightsHistory = signatures?.let(::LocalReturnRightsActivationHistoryProducer)
+    private val orderHistory = signatures?.let { LocalLegacyOrderHistoryProducer(LocalCatalogSalesQuoteSource(it, stock)) }
+    private val receiptHistory = configuration?.let { com.ukkera.pos.inventory.store.LocalLegacyStockReceiptHistoryProducer(stock, it) }
+
+    override suspend fun originalPublicationContents(proof: NativeHistoryBusinessPublicationObservationProof): List<CompanyBusinessPublicationOutput> =
+        publications?.originalCompletedContents(proof) ?: error("financial.original_publication_contents_required")
+
+    override suspend fun requireLegacyBusinessOriginal(program: BusinessOriginalProgram) {
+        when (program.command) {
+            LocalConfigurationProfile.COMMAND -> check(checkNotNull(configurationHistory) { "Original configuration services required" }.joinCommitted(program))
+            LocalPricingProfile.COMMAND -> check(pricingHistory.joinCommitted(program))
+            LocalReturnCaseProfileV1.COMMAND -> caseHistory.requireOriginal(program)
+            LocalRetailCustomerReceiptCodec.COMMAND -> receiptEventHistory.requireOriginal(program)
+            LocalReturnRightsActivationProfileV1.ACTIVATE -> check(checkNotNull(rightsHistory) {
+                "Original return-rights source services required" }.joinCommitted(program))
+            LocalSalesStoreProfile.COLLECTION_COMMAND -> collectionHistory.requireOriginal(program)
+            LocalSalesStoreProfile.RETURN_COMMAND -> returnHistory.requireOriginal(program)
+            LocalExchangeCodec.COMMAND -> exchangeHistory.requireOriginal(program)
+            LocalSalesStoreProfile.ORDER_COMMAND -> checkNotNull(orderHistory) { "Original quotation services required" }.requireOriginal(program)
+            com.ukkera.pos.inventory.store.LocalStockStoreProfile.OPENING,
+            com.ukkera.pos.inventory.store.LocalStockStoreProfile.RECEIVE -> checkNotNull(receiptHistory) { "Original receipt services required" }.requireOriginal(program)
+            else -> error("financial.original_source_command_unsupported")
+        }
+    }
+
     override suspend fun requireSupplierOriginal(scope: LocalFinancialOriginalProofScope, original: RetainedCommandEvidence) {
         check(original.command in setOf(LocalSupplierCashProfile.COMMAND, LocalSupplierCashSupervisorCodec.COMMAND))
         SupplierCashRpcOriginalProof(scope.view, stock).require(original)

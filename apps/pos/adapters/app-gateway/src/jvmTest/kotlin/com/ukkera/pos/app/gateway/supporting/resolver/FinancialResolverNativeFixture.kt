@@ -28,7 +28,11 @@ import kotlin.test.*
  * Linux software OS support only; not a TCP/distributed Client-root or platform qualification.
  * Bound to blueprint section5.3 and frozen LAN-A07/D04/D06; no original expectations changed.
  */
-internal class FinancialResolverNativeFixture {
+internal class FinancialResolverNativeFixture(private val supportingReads: List<MasterReadHandler> = emptyList(),
+    private val extraOwnerActions: Set<SecurityAction> = emptySet(),
+    private val extraSupervisorActions: Set<SecurityAction> = emptySet(),
+    private val supportingReadFactory: (LocalBranchCommerceRegistry) -> List<MasterReadHandler> = { emptyList() },
+) {
     val base = Files.createTempDirectory(Path.of(System.getProperty("user.home")), ".financial-resolver-native-test-",
         PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")))
     private val os = LinuxTestOs(base, N.binding(N.macIdentity)) { System.err.println("Desktop native fixture $it") }
@@ -90,7 +94,7 @@ internal class FinancialResolverNativeFixture {
             SecurityAction.REFUND_RECORD, SecurityAction.RETURN_RECEIPT_LOOKUP, SecurityAction.ORDER_EDIT,
             SecurityAction.ORDER_READ, SecurityAction.INVENTORY_QUANTITY_READ, SecurityAction.INVENTORY_COST_READ,
             SecurityAction.CASH_CLOSE, SecurityAction.COLLECTION_ATTEST, SecurityAction.SUPPLIER_ADMINISTRATION,
-            SecurityAction.PURCHASING_READ, SecurityAction.SUPPLIER_CASH_SETTLE)
+            SecurityAction.PURCHASING_READ, SecurityAction.SUPPLIER_CASH_SETTLE) + extraOwnerActions
         val grants = actions.flatMap { action -> listOf(PermissionVerb.PERFORM, PermissionVerb.ADMINISTER).map { verb ->
             PermissionGrant(Permission(action, verb), scope, GrantEffect.ALLOW,
                 PermissionLimits(Money(Currency.EGP, 1_000_000), 10_000), OwnerAccess.OWN_ONLY, actor)
@@ -119,7 +123,8 @@ internal class FinancialResolverNativeFixture {
         val registry = LocalBranchCommerceRegistry(signatureSource, LocalCatalogReturnPolicySource(signatureSource),
             UnavailableSalesRecordingCapacity, UnavailableSalesPhysicalRecordingCapacityV2,
             retailParticipants = physical, nativePublications = publications)
-        val opened = factory.fromOriginalContext(reopened.context, registry.commands, registry.reads, physical,
+        val opened = factory.fromOriginalContext(reopened.context, registry.commands,
+            registry.reads + supportingReads + supportingReadFactory(registry), physical,
             registry.nativeOriginalImports, registry.stockProjection, registry.historyProducer)
         val operational = assertIs<AndroidSelfOwnedMasterOpenResult.Opened>(opened, "Operational open: $opened")
         service = operational.service
@@ -159,7 +164,7 @@ internal class FinancialResolverNativeFixture {
 
     suspend fun enrollSupervisor() {
         val grants = setOf(SecurityAction.COLLECTION_RESOLVE, SecurityAction.REFUND_RESOLVE, SecurityAction.SUPPLIER_CASH_RESOLVE,
-            SecurityAction.OPERATION_RESULT_RECOVERY).map { action -> PermissionGrant(Permission(action, PermissionVerb.PERFORM),
+            SecurityAction.OPERATION_RESULT_RECOVERY).plus(extraSupervisorActions).map { action -> PermissionGrant(Permission(action, PermissionVerb.PERFORM),
                 scope, GrantEffect.ALLOW, PermissionLimits(Money(Currency.EGP, 1_000_000), 10_000),
                 if (action == SecurityAction.OPERATION_RESULT_RECOVERY) OwnerAccess.OWN_ONLY else OwnerAccess.ANY_OWNER, supervisor) }
         val definition = LocalAccountProvisioning(supervisor, LocalLoginIdentifier("supervisor.two"),
@@ -181,9 +186,9 @@ internal class FinancialResolverNativeFixture {
         val signed = checkNotNull(runtime).branchGateway.signIn("supervisor.two", "synthetic-supervisor-pass-2026".toCharArray(), true)
         return assertIs<SignInResult.Authenticated<*>>(signed, "Current supervisor sign-in: $signed").session as BranchUiSession
     }
-    suspend fun supervisorCredentials(): LocalGatewayCredentials {
+    suspend fun supervisorCredentials(explicitDeviceMove: Boolean = false): LocalGatewayCredentials {
         val result = assertIs<LocalAuthenticationResult.Authenticated>(client.signIn(checkNotNull(connection),
-            LocalLoginIdentifier("supervisor.two"), "synthetic-supervisor-pass-2026".toCharArray(), false))
+            LocalLoginIdentifier("supervisor.two"), "synthetic-supervisor-pass-2026".toCharArray(), explicitDeviceMove))
         extraSupervisorTokens += result.tokens
         return LocalGatewayCredentials(checkNotNull(connection), result.tokens.access)
     }

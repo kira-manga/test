@@ -128,6 +128,13 @@ public interface LocalStockRelationalCompositeVerifier {
     public suspend fun requireOriginalSource(view: com.ukkera.pos.database.CommandReadView,
         original: com.ukkera.pos.database.RetainedOriginalV2,
         observation: com.ukkera.pos.database.StreamedSourceObservationV2.Aggregate): Unit = requireOriginalSource(original, observation)
+    /** The repository that owns this actual read supplies its own facade. Ordinary
+     * inventory readers need not already carry a commerce-specific view decoration.
+     * Existing verifiers still run their complete original-source check. */
+    public suspend fun requireOriginalSource(repository: LocalStockRepository,
+        view: com.ukkera.pos.database.CommandReadView, original: com.ukkera.pos.database.RetainedOriginalV2,
+        observation: com.ukkera.pos.database.StreamedSourceObservationV2.Aggregate): Unit =
+        requireOriginalSource(view, original, observation)
 }
 
 /** Source-linked frontier input, not a whole pool history or a digest-only correction authority. */

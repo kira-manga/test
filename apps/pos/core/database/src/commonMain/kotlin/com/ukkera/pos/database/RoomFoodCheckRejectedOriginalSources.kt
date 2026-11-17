@@ -18,8 +18,9 @@ internal class RoomFoodCheckNativeCensus(val heads: Long, val events: Long, val 
 internal class RoomClosedRejectedOriginalSources(
     private val frame: RoomRuntimeHistoryFrame,
     private val caller: TransactionView,
-    private val operationId: OperationId,
+    private val requestedOperationId: OperationId?,
 ) {
+    private val operationId: OperationId get() = checkNotNull(requestedOperationId)
     private val native = frame.native.original.record
     private val coordinates = native.allocation.coordinates
     private val scope = coordinates.scope
@@ -34,6 +35,7 @@ internal class RoomClosedRejectedOriginalSources(
     private var versions = 0L
     private var chunks = 0L
     private var branch: BranchRow? = null
+    private var legacyGraphCommandCut: Long? = null
 
     private class Event(val header: RuntimeHistoryEventHeaderV2, val digest: PayloadDigest,
         val intent: NativeHistoryOriginalIntentV2, val command: RuntimeCommandAuthorizationEvidenceV1?,
@@ -287,6 +289,204 @@ internal class RoomClosedRejectedOriginalSources(
             cut.aggregateSources, cut.claimSources, cut.absentAggregates, cut.absentClaims)
     }
 
+    /** One complete native DATA traversal for an original-source graph. The graph itself
+     * never qualifies a writer; its installed consumer must prove every typed ancestor. */
+    suspend fun legacyBusinessGraph(loan: RuntimeLegacySourceLoan): RuntimeLegacyBusinessSourceGraph? {
+        frame.requireClosedRejectedSourceRead(caller)
+        reserve(4L * RuntimeHistoryProfileV2.MAX_HEADER_BYTES + 4L * RuntimeHistoryProfileV2.MAX_CHUNK_BYTES + 8_192L)
+        val requested = (caller.originalForKernel(operationId) as? RetainedOriginalV2.Legacy)?.evidence ?: return null
+        if (requested.scope != scope || requested.assignmentId != coordinates.assignmentId ||
+            requested.authorityEpoch.value != parent.commandEpoch || requested.nativeOriginalProvenance != null) return null
+        legacyGraphCommandCut = requested.sequence.value
+        authenticateTail()
+        return legacyGraphFor(requested, loan)
+    }
+
+    /** No dummy operation: authenticate the complete actual parent, then select the last
+     * live native version and match its literal AFTER and writer to actual current SQL. */
+    suspend fun currentLegacyBusinessGraph(loan: RuntimeLegacySourceLoan,
+        key: AggregateKey): RuntimeCurrentLegacyBusinessSources? {
+        check(requestedOperationId == null)
+        frame.requireClosedRejectedSourceRead(caller)
+        reserve(4L * RuntimeHistoryProfileV2.MAX_HEADER_BYTES + 4L * RuntimeHistoryProfileV2.MAX_CHUNK_BYTES + 8_192L)
+        legacyGraphCommandCut = parent.commandSequence
+        authenticateTail()
+        val packed = physicalKey(RuntimeHistoryTableV2.AGGREGATE, scopeKey, key.kind, key.id.value)
+        val version = try { histories[token(RuntimeHistoryTableV2.AGGREGATE, packed)]?.lastOrNull() }
+            finally { packed.fill(0) } ?: return null
+        if (version.afterKind == RuntimeHistoryAfterKindV2.TOMBSTONE.tag) return null
+        val event = events[version.sequence] ?: return null
+        val id = event.operationId ?: return null
+        if (event.header.purpose != RuntimeWritePurposeV2.COMMAND_APPLY || event.approved || event.imported != null ||
+            event.command == null || event.header.assignmentId != coordinates.assignmentId ||
+            event.header.commandEpoch != parent.commandEpoch) return null
+        val requested = (caller.originalForKernel(id) as? RetainedOriginalV2.Legacy)?.evidence ?: return null
+        if (!requested.committed || requested.code != "committed" || requested.nativeOriginalProvenance != null ||
+            requested.scope != scope || requested.assignmentId != coordinates.assignmentId ||
+            requested.authorityEpoch.value != parent.commandEpoch ||
+            requested.command !in RuntimeHistoricalLegacySources.currentWriterCommands) return null
+        val row = withAfter(version) { value ->
+            val aggregate = value.aggregate()
+            try {
+                historyShapeV2(aggregate.scope == scopeKey && aggregate.kind == key.kind && aggregate.id == key.id.value &&
+                    aggregate.payloadHash == sha256(aggregate.payload).value)
+                reserve(aggregate.payload.size.toLong() * 2L + 512L)
+                StoredAggregate(key, Revision(aggregate.revision), aggregate.schema, StoredBytes(aggregate.payload), PayloadDigest(aggregate.payloadHash))
+            } finally { aggregate.payload.fill(0) }
+        }
+        val current = caller.aggregate(key) ?: return null
+        historyShapeV2(current.key == row.key && current.revision == row.revision && current.schema == row.schema &&
+            current.payload == row.payload && current.digest == row.digest)
+        val declared = requested.aggregateWrites.single { it.key == key }
+        historyShapeV2(declared.storageGeneration == row.revision && declared.schema == row.schema &&
+            declared.payload == row.payload && declared.payloadDigest == row.digest)
+        val graph = legacyGraphFor(requested, loan) ?: return null
+        return RuntimeCurrentLegacyBusinessSources(row, graph)
+    }
+
+    private suspend fun legacyGraphFor(requested: RetainedCommandEvidence,
+        loan: RuntimeLegacySourceLoan): RuntimeLegacyBusinessSourceGraph? {
+        val event = byOperation[requested.operationId] ?: return null
+        val root = readOriginal(event) as? RetainedOriginalV2.Legacy ?: return null
+        val actual = root.evidence
+        historyShapeV2(actual.scope == requested.scope && actual.assignmentId == requested.assignmentId &&
+            actual.operationId == requested.operationId && actual.authorityEpoch == requested.authorityEpoch &&
+            actual.sequence == requested.sequence && actual.journalHash == requested.journalHash &&
+            actual.command == requested.command && actual.originalActorId == requested.originalActorId &&
+            actual.authenticationId == requested.authenticationId && actual.policyRevision == requested.policyRevision &&
+            actual.normalized == requested.normalized && actual.semanticDigest == requested.semanticDigest &&
+            actual.result == requested.result && actual.resultHash == requested.resultHash && actual.committed == requested.committed &&
+            actual.code == requested.code && actual.nativeOriginalProvenance == null)
+        return RuntimeLegacyBusinessSourceGraph(root, loan) { id -> legacyBusinessSource(id, event, loan) }
+    }
+
+    private suspend fun legacyBusinessSource(id: OperationId, root: Event,
+        loan: RuntimeLegacySourceLoan): RuntimeHistoricalLegacySources? {
+        val selected = byOperation[id] ?: return null
+        val capture = selected.command ?: return null
+        if (selected.header.sequence > root.header.sequence || selected.header.commandEpoch != root.header.commandEpoch ||
+            selected.header.assignmentId != root.header.assignmentId || selected.approved || selected.imported != null ||
+            selected.dependencies == null || selected.header.purpose != RuntimeWritePurposeV2.COMMAND_APPLY) return null
+        val original = readOriginal(selected) as? RetainedOriginalV2.Legacy ?: return null
+        val retained = original.evidence
+        if (retained.command !in RuntimeHistoricalLegacySources.commands || !retained.committed || retained.code != "committed" ||
+            retained.nativeOriginalProvenance != null || retained.jobs.isNotEmpty()) return null
+        historyShapeV2(capture.commandName == retained.command.name && capture.commandVersion == retained.command.version &&
+            capture.operationId.value == retained.operationId.value && capture.semanticDigest == retained.semanticDigest &&
+            capture.authorization.scope == scope && capture.authorization.actorId == retained.originalActorId &&
+            capture.authorization.sessionId == retained.authenticationId && capture.authorization.policyRevision == retained.policyRevision &&
+            capture.capturedChanges == selected.header.changeCount && capture.purposeTag == selected.header.purpose.tag &&
+            capture.requirement.value().binding?.operationId == retained.operationId &&
+            capture.requirement.value().binding?.payloadDigest == retained.semanticDigest &&
+            native.protectedFinalDecisions.none { it.child.historySequence == selected.header.sequence })
+        requireFinancialMutations(selected, retained)
+        val deadline = legacyDeadline(selected, retained)
+        val publication = legacyPublication(selected, capture, retained)
+        // Recheck ALL actual original dependencies, not only subsequent requested points.
+        observedSources(selected, capture, retained, null, publication)
+        reserve(2_048L + selected.intent.resources.size * 256L)
+        return RuntimeHistoricalLegacySources(original, capture.requirement.value(), selected.intent.resources,
+            deadline, capture.authorization.generation, publication, loan,
+            { key -> aggregateBefore(selected, key) }, { key -> claimBefore(selected, key) },
+            { earlierId -> byOperation[earlierId]?.takeIf { it.header.sequence < selected.header.sequence &&
+                it.header.commandEpoch == selected.header.commandEpoch && it.header.assignmentId == selected.header.assignmentId }
+                ?.let { readOriginal(it) } },
+            { kind, after, limit -> legacyAggregatePage(selected, kind, after, limit) },
+            { namespace, prefix, after, limit -> legacyClaimPage(selected, namespace, prefix, after, limit) })
+    }
+
+    private fun legacyDeadline(event: Event, retained: RetainedCommandEvidence): com.ukkera.pos.types.UtcInstant? {
+        val decisions = native.finalDeadlineDecisions.filter { it.child.historySequence == event.header.sequence }
+        historyShapeV2(decisions.size <= 1)
+        return decisions.singleOrNull()?.let { value ->
+            val header = event.header
+            val bytes = SelfOwnedNativeHistoryWireV2.encodeIntent(event.intent)
+            val digest = try { sha256(bytes) } finally { bytes.fill(0) }
+            historyShapeV2(value.scope == scope && value.originalAllocationDigest == header.originalAllocationDigest &&
+                value.child == NativeHistoryRecordedHeadV2(header.sequence, event.digest, header.installationGenesisDigest,
+                    header.commandEpoch, header.commandSequence, header.commandDigest, header.roleCommitment, header.recoveryCommitment) &&
+                value.originalIntentDigest == digest && value.declaration.originalRequestId.value == retained.operationId.value &&
+                value.declaration.originalOperationId.value == retained.operationId.value &&
+                value.declaration.originalRequestDigest == retained.semanticDigest && value.finalWall < value.declaration.mustCommitBefore)
+            value.declaration.mustCommitBefore
+        }
+    }
+
+    private fun legacyPublication(event: Event, capture: RuntimeCommandAuthorizationEvidenceV1,
+        retained: RetainedCommandEvidence): NativeHistoryBusinessPublicationObservationProof? {
+        val values = native.businessPublicationObservations.filter { it.child.historySequence == event.header.sequence }
+        historyShapeV2(values.size <= 1)
+        return values.singleOrNull()?.also { proof ->
+            val header = event.header
+            historyShapeV2((retained.command == CommandKey("local.configuration.write", 1) &&
+                capture.requirement.action == SecurityAction.CATALOG_ACTIVATE ||
+                RuntimeHistoricalConfigurationRejectionProfile.PRICING.matchesPricingReceiptRequirement(capture) &&
+                    proof.originalAnchorDigest == capture.nativeRecordDigest) &&
+                proof.scope == scope && proof.originalAllocationDigest == native.allocation.digest &&
+                proof.originalAllocationDigest == header.originalAllocationDigest &&
+                proof.frameId == header.transactionId && proof.child == NativeHistoryRecordedHeadV2(header.sequence, event.digest,
+                    header.installationGenesisDigest, header.commandEpoch, header.commandSequence, header.commandDigest,
+                    header.roleCommitment, header.recoveryCommitment) &&
+                proof.preparationParent.historySequence == header.parentSequence && proof.preparationParent.historyDigest == header.parentDigest &&
+                proof.preparationParent.installationGenesisDigest == header.installationGenesisDigest &&
+                proof.originalRequestId.value == retained.operationId.value && proof.originalOperationId == proof.originalRequestId &&
+                proof.originalActorId == retained.originalActorId && proof.semanticDigest == retained.semanticDigest &&
+                proof.purposeTag == header.purpose.tag && proof.originalIntentDigest == header.intentDigest &&
+                proof.dependenciesDigest == header.dependencyDigest && proof.originalFactsDigest == header.factDigest)
+        }
+    }
+
+    private suspend fun legacyAggregatePage(event: Event, kind: String, after: DomainId?, limit: Int): AggregateKeyPage {
+        requireProtocolName(kind); require(limit in 1..100)
+        // A legacy-stock exclusion cannot infer empty normalized stock from AGGREGATE
+        // alone: normalized physical rows have their own native tables. Any prior such
+        // estate is unavailable here, never an invented empty legacy profile.
+        if (kind in StockRelationalKindsV2.all) {
+            val physical = setOf(RuntimeHistoryTableV2.STOCK_POSITION.tag, RuntimeHistoryTableV2.STOCK_ALLOCATION.tag,
+                RuntimeHistoryTableV2.STOCK_RESERVATION.tag, RuntimeHistoryTableV2.STOCK_VALUE.tag)
+            historyShapeV2(histories.values.none { versions -> versions.any { it.tableTag in physical && it.sequence < event.header.sequence } })
+        }
+        val selected = mutableListOf<AggregateKey>()
+        for (history in histories.values) {
+            currentCoroutineContext().ensureActive()
+            if (history.first().tableTag != RuntimeHistoryTableV2.AGGREGATE.tag) continue
+            val version = history.lastOrNull { it.sequence < event.header.sequence } ?: continue
+            if (version.afterKind == RuntimeHistoryAfterKindV2.TOMBSTONE.tag) continue
+            val key = withAfter(version) { row ->
+                if (row.text("kind") != kind) null else AggregateKey(kind, DomainId(row.text("id")))
+            } ?: continue
+            if (after != null && key.id.value <= after.value) continue
+            historyShapeV2(key !in selected)
+            selected += key; selected.sortBy { it.id.value }
+            if (selected.size > limit + 1) selected.removeAt(selected.lastIndex)
+        }
+        val more = selected.size > limit; val keys = selected.take(limit)
+        reserve(256L * keys.size)
+        return AggregateKeyPage(keys, if (more) keys.last().id else null)
+    }
+
+    private suspend fun legacyClaimPage(event: Event, namespace: String, prefix: String, after: String?, limit: Int): ClaimKeyPage {
+        requireProtocolName(namespace); require(limit in 1..100 && prefix.length in 1..255 && prefix.all { it.code in 0x21..0x7e })
+        val selected = mutableListOf<ClaimKeyEntry>()
+        for (history in histories.values) {
+            currentCoroutineContext().ensureActive()
+            if (history.first().tableTag != RuntimeHistoryTableV2.CLAIM.tag) continue
+            val version = history.lastOrNull { it.sequence < event.header.sequence } ?: continue
+            if (version.afterKind == RuntimeHistoryAfterKindV2.TOMBSTONE.tag) continue
+            val entry = withAfter(version) { row ->
+                val key = row.text("key")
+                if (row.text("namespace") != namespace || !key.startsWith(prefix) || after != null && key <= after) null
+                else ClaimKeyEntry(ClaimKey(namespace, key), DomainId(row.text("ownerId")))
+            } ?: continue
+            historyShapeV2(selected.none { it.key == entry.key })
+            selected += entry; selected.sortBy { it.key.key }
+            if (selected.size > limit + 1) selected.removeAt(selected.lastIndex)
+        }
+        val more = selected.size > limit; val entries = selected.take(limit)
+        reserve(256L * entries.size)
+        return ClaimKeyPage(entries, if (more) entries.last().key.key else null)
+    }
+
     /** Fixed first-origin source locations only; exact null/control flow is unchanged. */
     private fun <T> sourceSelectionUnavailable(): T? {
         try { if (runtimeHistoryCaptureDiagnosticsEnabled()) reportRuntimeHistoryLoanFailure(IllegalStateException()) }
@@ -295,13 +495,14 @@ internal class RoomClosedRejectedOriginalSources(
     }
 
     private suspend fun observedSources(selected: Event, capture: RuntimeCommandAuthorizationEvidenceV1,
-        retained: RetainedCommandEvidence, marker: List<String>?): ObservationCut {
+        retained: RetainedCommandEvidence, marker: List<String>?,
+        publication: NativeHistoryBusinessPublicationObservationProof? = null): ObservationCut {
         val aggregateSources = linkedMapOf<AggregateKey, RuntimeNativeLiteralAggregateSource>()
         val claimSources = linkedMapOf<ClaimKey, RuntimeNativeLiteralClaimSource>()
         val absentAggregates = linkedSetOf<AggregateKey>()
         val absentClaims = linkedSetOf<ClaimKey>()
         val futureOperations = linkedSetOf<OperationId>()
-        var commandSeen = false; var markerSeen = false
+        var commandSeen = false; var markerSeen = false; var publicationSeen = false
         for (observation in checkNotNull(selected.dependencies)) {
             when (observation.firstOrNull()) {
                 "aggregate" -> {
@@ -329,6 +530,11 @@ internal class RoomClosedRejectedOriginalSources(
                 RuntimeHistoricalFoodCheckRejectionProfile.MARKER -> {
                     historyShapeV2(marker != null && !markerSeen && observation == marker); markerSeen = true
                 }
+                "native-business-publications/v1" -> {
+                    historyShapeV2(publication != null && !publicationSeen && observation == listOf(
+                        "native-business-publications/v1", publication.frameId.value, publication.observationDigest.value))
+                    publicationSeen = true
+                }
                 "future-operation-absence" -> historyShapeV2(futureOperations.add(
                     requireFutureOperationAbsence(selected, capture, retained, observation)))
                 else -> unavailable()
@@ -336,7 +542,7 @@ internal class RoomClosedRejectedOriginalSources(
         }
         val reservations = retained.aggregateWrites.filter { it.key.kind == ReservedOperations.KIND }
             .map { OperationId(it.key.id.value) }.toSet()
-        historyShapeV2(commandSeen && markerSeen == (marker != null) && futureOperations == reservations)
+        historyShapeV2(commandSeen && markerSeen == (marker != null) && publicationSeen == (publication != null) && futureOperations == reservations)
         val resources = selected.intent.resources
         // Escaping source DATA copies list/set metadata and the captured resource values.
         // The rows and complete originals themselves were charged before hydration.
@@ -472,7 +678,11 @@ internal class RoomClosedRejectedOriginalSources(
                         it.capturedChanges == header.changeCount && it.producer.operationId.value == intent.originalOperationId?.value &&
                         it.producer.originalActorId == intent.originalActorId && it.producer.semanticDigest == intent.originalRequestDigest) }
                 } else historyShapeV2(command == null && imported == null && intent.originalOperationId == null)
-                val dependencies = if (intent.originalOperationId?.value == operationId.value) {
+                val graphAncestor = legacyGraphCommandCut?.let { cut ->
+                    command != null && !approved && imported == null && header.purpose == RuntimeWritePurposeV2.COMMAND_APPLY &&
+                        header.commandSequence <= cut && CommandKey(command.commandName, command.commandVersion) in RuntimeHistoricalLegacySources.commands
+                } == true
+                val dependencies = if ((requestedOperationId != null && intent.originalOperationId?.value == requestedOperationId.value) || graphAncestor) {
                     // Includes bounded slice/UTF-8/list metadata, even many short fields.
                     // Reserve before the unchanged strict dependency decoder allocates.
                     reserve(header.dependencyBytes.toLong() * 16L + 8_192L)
@@ -841,7 +1051,7 @@ internal class RoomClosedRejectedOriginalSources(
 
     fun clear() {
         histories.values.forEach { history -> history.forEach { it.key.fill(0) } }; histories.clear()
-        events.clear(); byOperation.clear(); originals.clear(); branch = null
+        events.clear(); byOperation.clear(); originals.clear(); branch = null; legacyGraphCommandCut = null
     }
     private fun reserve(bytes: Long) { retainedBytes = historyAddV2(retainedBytes, bytes, RuntimeBusinessHistoryJoin.MAX_RETAINED_BYTES) }
     private fun release(bytes: Long) { historyShapeV2(bytes >= 0L && bytes <= retainedBytes); retainedBytes -= bytes }

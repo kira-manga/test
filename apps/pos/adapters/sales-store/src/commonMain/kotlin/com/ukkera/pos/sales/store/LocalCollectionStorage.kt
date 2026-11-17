@@ -4,6 +4,8 @@ import com.ukkera.pos.database.AggregateChange
 import com.ukkera.pos.database.AggregateKey
 import com.ukkera.pos.database.CommandContext
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.BusinessFactRead
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.inventory.CollectionExposure
 import com.ukkera.pos.inventory.StockReservation
@@ -38,6 +40,42 @@ internal suspend fun readCollection(view: CommandReadView, id: DomainId): LocalC
     return LocalCollectionCut(LocalSalesRow(row, collection), order, cash)
 }
 
+/** Exact legacy BEFORE read. The owning program qualifies every source; normalized
+ * rows remain on their actual relational owner rather than this DATA-only reader. */
+internal suspend fun readLegacyCollectionBefore(view: BusinessFactRead, id: DomainId): LocalCollectionCut {
+    val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.COLLECTION_KIND, id))
+    val collection = SalesSnapshotCodec.decodeHistoricalCollection(row.text(),
+        SalesSnapshotBinding(SalesSnapshotKind.COLLECTION, view.scope, id, row.domainRevision()))
+    check(!collection.stockRequirements.normalized)
+    val order = readLegacyOrderBefore(view, collection.orderId)
+    val cash = LocalSalesStorage.cash(view, collection.cashSessionId)
+    SalesSnapshotLinks.requireCollection(collection, order.order.value, cash.session.value)
+    requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("collection", id)) == collection.orderId)
+    for (attempt in collection.attempts) {
+        requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("payment_attempt", attempt.id)) == id)
+        if (attempt.payment != null) requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("payment_record", attempt.id)) == id)
+    }
+    return LocalCollectionCut(LocalSalesRow(row, collection), order, cash)
+}
+
+/** Normalized original DATA whose every row/writer has already been whole-qualified
+ * on the same BEFORE program. It supplies no current read view or stock authority. */
+internal suspend fun readOriginalNormalizedCollectionBefore(view: BusinessOriginalProgram, id: DomainId): LocalCollectionCut {
+    val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.COLLECTION_KIND, id))
+    val collection = SalesSnapshotCodec.decodeHistoricalCollection(row.text(),
+        SalesSnapshotBinding(SalesSnapshotKind.COLLECTION, view.scope, id, row.domainRevision()))
+    check(collection.stockRequirements.normalized)
+    val order = readOriginalOrderBefore(view, collection.orderId)
+    val cash = LocalSalesStorage.cash(view, collection.cashSessionId)
+    SalesSnapshotLinks.requireCollection(collection, order.order.value, cash.session.value)
+    requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("collection", id)) == collection.orderId)
+    for (attempt in collection.attempts) {
+        requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("payment_attempt", attempt.id)) == id)
+        if (attempt.payment != null) requireLocalSalesSource(view.claim(LocalSalesStoreProfile.unique("payment_record", attempt.id)) == id)
+    }
+    return LocalCollectionCut(LocalSalesRow(row, collection), order, cash)
+}
+
 internal fun collectionWrite(after: CollectionLock, before: StoredAggregate?): AggregateChange =
     domainWrite(LocalSalesStoreProfile.COLLECTION_KIND, after.id, after.revision, SalesSnapshotCodec.encodeCollection(after), before)
 
@@ -65,7 +103,10 @@ internal fun requireCollectionReservation(cut: LocalCollectionCut, stock: LocalS
  * closed producer validator; the kernel retains every before/after and original operation.
  */
 internal fun collectionBefore(context: CommandContext, rows: List<Pair<String, StoredAggregate>>): List<AggregateChange> =
-    rows.map { (role, row) -> AggregateChange(collectionBeforeKey(context.operationId, role), null, row.schema, row.payload) }
+    collectionBefore(context.operationId, rows)
+
+internal fun collectionBefore(operationId: OperationId, rows: List<Pair<String, StoredAggregate>>): List<AggregateChange> =
+    rows.map { (role, row) -> AggregateChange(collectionBeforeKey(operationId, role), null, row.schema, row.payload) }
 
 internal fun collectionBeforeKey(operationId: OperationId, role: String): AggregateKey {
     check(role in setOf("order", "collection", "cash", "work", "price_sources", "return_policy_capture")) { "sales.composite.role" }

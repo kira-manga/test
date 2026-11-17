@@ -1,5 +1,6 @@
 package com.ukkera.pos.inventory.store
 
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.CommandReadView
 import com.ukkera.pos.inventory.StockPosition
 import com.ukkera.pos.inventory.StockOwnership
@@ -66,10 +67,10 @@ internal fun serialRegistrationResources(registration: LocalStockSerialRegistrat
 internal fun LocalStockSerialRegistration.confirmation(): StockSerialRegistrationConfirmation = StockSerialRegistrationConfirmation(
     InventoryScope(scope.companyId, scope.branchId), skuId, serialId, registrationId)
 
-internal suspend fun stockSerial(repository: LocalStockRepository, view: CommandReadView, id: DomainId): LocalStockRecord<StockSerialWire>? =
+internal suspend fun stockSerial(repository: LocalStockRepository, view: com.ukkera.pos.database.BusinessFactRead, id: DomainId): LocalStockRecord<StockSerialWire>? =
     repository.record(view, LocalStockStoreProfile.serialKey(id), StockSerialWire.serializer()).also { requireStockSerialClaims(view, id, it) }
 
-internal suspend fun requireStockSerialClaims(view: CommandReadView, id: DomainId, row: LocalStockRecord<StockSerialWire>?) {
+internal suspend fun requireStockSerialClaims(view: BusinessFactRead, id: DomainId, row: LocalStockRecord<StockSerialWire>?) {
     val owner = view.claim(LocalStockStoreProfile.serialClaim(id))
     localStockCheck(if (row == null) owner == null else owner == id, LocalStockFailure.STORAGE_INCONSISTENT)
     row?.value?.let { serial ->

@@ -50,6 +50,10 @@ internal fun foodProducerReadBytes(evidence: RetainedCommandEvidence): Long =
  * may be emitted by this view, and observing a target header cannot authorize an Apply.
  */
 internal class FoodReadView(private val borrowed: CommandReadView) : CommerceStockView, FinancialOriginalProofCarrier {
+    override val commerceOriginalSources: LocalFinancialOriginalSourceServices?
+        get() = (borrowed as? CommerceStockView)?.commerceOriginalSources
+    override val originalSourceBudget: FinancialOriginalSourceBudget?
+        get() = financialOriginalProof?.sourceBudget ?: (borrowed as? OriginalSourceBudgetCarrier)?.originalSourceBudget
     override val financialOriginalProof: LocalFinancialOriginalProofScope?
         get() = (borrowed as? FinancialOriginalProofCarrier)?.financialOriginalProof
     override val commerceStock: com.ukkera.pos.inventory.store.LocalStockRepository get() = commerceRepository(borrowed)

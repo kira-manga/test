@@ -260,6 +260,7 @@ public class LocalEndpointBranchGateway private constructor(
             // The owned worker's result may have waited for this caller's dispatcher after its
             // connection/session retired. Close only the local capability; durable cleanup stays.
             if (result is SignInResult.Authenticated && !result.session.isCurrent()) {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_SESSION_AUTHORITY_UNAVAILABLE, IllegalStateException())
                 result.session.close()
                 return SignInResult.Rejected(SignInFailure.UNAVAILABLE)
             }
@@ -272,7 +273,13 @@ public class LocalEndpointBranchGateway private constructor(
     }
 
     private suspend fun signInOwned(account: String, password: CharArray, explicitMove: Boolean): SignInResult<BranchUiSession> {
-        val rejected: (SignInFailure) -> SignInResult<BranchUiSession> = { SignInResult.Rejected(it) }
+        val rejected: (SignInFailure) -> SignInResult<BranchUiSession> = {
+            // Opt-in diagnostics expose static failure locations only, never credentials,
+            // account identifiers or policy contents. Failure/result semantics are unchanged.
+            if (it == SignInFailure.UNAVAILABLE || it == SignInFailure.AUTHENTICATION_UNRESOLVED)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.CLIENT_SESSION_AUTHORITY_UNAVAILABLE, IllegalStateException())
+            SignInResult.Rejected(it)
+        }
         val login = try { LocalLoginIdentifier(account) } catch (_: IllegalArgumentException) { return rejected(SignInFailure.DENIED) }
         if (!configured) return rejected(SignInFailure.UNAVAILABLE)
         if (active.value != null) return rejected(SignInFailure.RETRY_LATER)

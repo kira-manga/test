@@ -155,7 +155,9 @@ public class LocalSupplierCashHandler(private val stock: LocalStockRepository,
         return SupplierCashPrepared(context, commitment, slot.value.originalActorId, slot.value.domain.reasonCode,
             slot.value.domain.financialResources.toSet() + LocalSupplierCashJournal.authorityResources(requirement), resolve,
             admission = { _, _ -> if (context.physicalParticipants?.let { it.authority == slot.value.domain.authority &&
-                it.clientDeviceId == requirement.clientDeviceId && it.originalActorId == context.originalActorId } == true) admission else null }) { _, at ->
+                // Resolution may execute on B while the requirement still references A.
+                // Admission is not a permit: the actual native gate must qualify both.
+                (resolve || it.clientDeviceId == requirement.clientDeviceId) && it.originalActorId == context.originalActorId } == true) admission else null }) { _, at ->
             val native = context.physicalRecording
             if (native == null || !native.matches(admission) || native.sourceChanges.isNotEmpty()) return@SupplierCashPrepared supplierReject("purchasing.supplier_cash_journal_required")
             val raw = LocalSupplierCashFacts.raw(slot.value, phase, context.originalActorId, normalized, slot.row.digest, at)

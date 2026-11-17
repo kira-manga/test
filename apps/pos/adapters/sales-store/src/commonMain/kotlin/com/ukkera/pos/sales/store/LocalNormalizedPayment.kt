@@ -9,15 +9,20 @@ import com.ukkera.pos.types.*
 
 /** An ordinary collection/link CAS pair. It neither writes stock nor confers a physical right. */
 internal fun normalizedPaymentLink(context: CommandContext, change: AggregateChange,
+    before: StoredAggregate, old: StoredAggregate): AggregateChange = normalizedPaymentLink(context.scope,
+    context.operationId, context.originalActorId, context.key, context.semanticDigest, change, before, old)
+
+/** Literal original proposal only; this grants no current command/recording authority. */
+internal fun normalizedPaymentLink(scope: BranchScope, operationId: OperationId, actorId: DomainId,
+    command: CommandKey, semanticDigest: PayloadDigest, change: AggregateChange,
     before: StoredAggregate, old: StoredAggregate): AggregateChange {
     check(change.key == before.key && change.key.kind == LocalSalesStoreProfile.COLLECTION_KIND &&
         change.expectedRevision == before.revision && old.key == commerceLinkKey(before.key) && old.schema == commerceLinkSchema())
     val previous = localSalesDecode(old.payload, CommerceRowLinkV2.serializer())
-    check(previous.scope == context.scope && previous.kind == before.key.kind && previous.id == before.key.id &&
+    check(previous.scope == scope && previous.kind == before.key.kind && previous.id == before.key.id &&
         previous.generation == before.revision && previous.digest == before.digest)
-    val value = CommerceRowLinkV2(context.scope, change.key.kind, change.key.id, before.revision.next(),
-        sha256(change.payload.copyBytes()), context.operationId, context.originalActorId, context.key.name,
-        context.key.version, context.semanticDigest)
+    val value = CommerceRowLinkV2(scope, change.key.kind, change.key.id, before.revision.next(),
+        sha256(change.payload.copyBytes()), operationId, actorId, command.name, command.version, semanticDigest)
     return AggregateChange(old.key, old.revision, commerceLinkSchema(), localSalesEncode(value, CommerceRowLinkV2.serializer()))
 }
 
@@ -261,6 +266,8 @@ internal class NormalizedPaymentOriginCapacity : IllegalStateException("sales.st
 
 /** Real forwarding decoration, tied to one finite original proof. It supplies no synthetic row or grant. */
 private class NormalizedPaymentOriginView(val borrowed: CommandReadView, val traversal: NormalizedPaymentTraversal) : CommerceStockView {
+    override val originalSourceBudget: FinancialOriginalSourceBudget?
+        get() = (borrowed as? OriginalSourceBudgetCarrier)?.originalSourceBudget
     override val commerceStock: LocalStockRepository get() = commerceRepository(borrowed)
     override val commerceTenderPolicies: HistoricalSalesTenderPolicySourceV1 get() = commerceTenderPolicies(borrowed)
     override val scope: BranchScope get() = borrowed.scope

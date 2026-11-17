@@ -179,6 +179,30 @@ public class LocalCompanyBusinessPublications internal constructor(
 ) {
     /** Unavailable until the actual native owner observes a complete, unambiguous ledger. */
     public fun currentCompletedSnapshot(): NativeCompanyBusinessPublicationSnapshot? = trust.currentCompletedSnapshot()
+    /** Select immutable completed CONTENTS by the original signed manifest. Core must first
+     * bind that proof to the actual authenticated original event. The native-created snapshot
+     * contributes already authenticated immutable outputs, never historical membership or
+     * current permission. Missing content/completion data remains unavailable. */
+    public fun originalCompletedContents(proof: NativeHistoryBusinessPublicationObservationProof): List<CompanyBusinessPublicationOutput>? {
+        val manifest = proof.manifest
+        val snapshot = trust.currentCompletedSnapshot() ?: return null
+        if (manifest.company != proof.scope.company() || manifest.company != trust.company ||
+            manifest.company != snapshot.company || manifest.rootFingerprint != trust.rootFingerprint ||
+            manifest.rootFingerprint != snapshot.rootFingerprint || snapshot.generation < manifest.generation ||
+            manifest.nativeLedgerPresent && !snapshot.nativeLedgerPresent) return null
+        val completed = snapshot.completedPublications.associateBy { it.originalActionId }
+        return manifest.members.map { member ->
+            val output = completed[member.originalActionId] ?: return null
+            if (output.proposal.kind != member.kind || output.proposal.publicationId != member.publicationId ||
+                output.proposal.entityId != member.entityId || output.signingKeyId != member.signingKeyId ||
+                output.proposal.contentDigest != member.contentDigest || output.proposal.company != manifest.company ||
+                output.rootFingerprint != manifest.rootFingerprint) return null
+            val content = output.proposal.copyCanonicalContent()
+            try { if (!trust.verify(manifest.company, output.signingKeyId, content, output.signatureHex)) return null }
+            finally { content.fill(0) }
+            output
+        }
+    }
     /** Legacy unbound facade. Original serial preparation requires protected requester custody. */
     public suspend fun prepareOriginalSerialAuthority(): LocalCompanyAuthorityResult<CompanyBusinessPublicationAction> =
         (controller as? LocalCompanySerialRegistrationController)?.prepareOriginalSerialAuthority()

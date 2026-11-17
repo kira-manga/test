@@ -1,6 +1,7 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.BusinessOriginalProgram
 import com.ukkera.pos.database.StoredBytes
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.sales.CashierEvidence
@@ -106,6 +107,12 @@ internal fun validateExternalText(terminal: String?, reference: String?) {
 public fun interface TransactionSalesReturnPolicySource {
     /** Must include retained original sale/fulfillment facts, not a current-policy-only deadline. */
     public suspend fun current(view: CommandReadView, saleId: DomainId): PreparedSalesReturnPolicy?
+}
+
+/** Same installed immutable policy calculation on a genuinely qualified original BEFORE
+ * cut. This is not a historical current view, employee grant or accepting policy default. */
+public fun interface FactualSalesReturnPolicySourceV1 {
+    public suspend fun before(command: BusinessOriginalProgram, saleId: DomainId): PreparedSalesReturnPolicy?
 }
 
 public interface PreparedSalesReturnPolicy {

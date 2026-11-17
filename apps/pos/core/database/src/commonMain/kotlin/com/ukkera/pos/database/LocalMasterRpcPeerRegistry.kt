@@ -80,6 +80,10 @@ public class LocalMasterRpcPeerRegistration internal constructor(
     public suspend fun remainingSessionLifetimeMillis(credentials: LocalGatewayCredentials): Long? =
         registry.remainingSessionLifetimeMillis(this, credentials)
 
+    /** One fresh protected current-session operation supplies identity and expiry together. */
+    public suspend fun authenticateResourceBinding(credentials: LocalGatewayCredentials): LocalMasterRpcBindingAuthentication? =
+        registry.authenticateResourceBinding(this, credentials)
+
     /** Renewable CURRENT may release retention only after the genuine endpoint work settles. */
     public suspend fun currentAfterExecutionSettles(credentials: LocalGatewayCredentials): LocalSessionViewResult =
         registry.currentAfterExecutionSettles(this, credentials)
@@ -512,7 +516,8 @@ internal class LocalMasterRpcPeerRegistry(
                 if (selections.size != 1) return denied()
                 when (val snapshot = snapshotBusiness(token, credentials, profile, selections.single(), null, peer, session)) {
                     is LocalMasterChangesReplyV1.Snapshot -> LocalMasterChangesRpcAuthorizationV1(
-                        LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(listOf(snapshot.cursor)))
+                        LocalMasterChangesRpcAccessResultV1.ALLOWED, LocalMasterChangesBindingV1.digest(listOf(snapshot.cursor)),
+                        LocalMasterChangesBindingV1.readProjectionDigest(snapshot.cursor))
                     is LocalMasterChangesReplyV1.Unchanged -> denied()
                     is LocalMasterChangesReplyV1.Unavailable -> LocalMasterChangesRpcAuthorizationV1(
                         if (snapshot.reason == LocalMasterChangesFailureV1.CAPACITY_EXCEEDED) LocalMasterChangesRpcAccessResultV1.CAPACITY_ONLY
@@ -829,6 +834,23 @@ internal class LocalMasterRpcPeerRegistry(
         val result = endpoint.currentAfterExecutionSettles(credentials)
         currentCoroutineContext().ensureActive()
         return if (ownsCurrent(token) && entry.isCurrent()) result else LocalSessionViewResult.Unavailable
+    }
+
+    internal suspend fun authenticateResourceBinding(token: LocalMasterRpcPeerRegistration,
+        credentials: LocalGatewayCredentials): LocalMasterRpcBindingAuthentication? {
+        val caller = currentCoroutineContext()
+        caller.ensureActive()
+        if (!ownsCurrent(token)) return null
+        val entry = atom.value.entries.firstOrNull { it.nativePeer.connectionId == credentials.connectionId } ?: return null
+        if (!entry.isCurrent()) return null
+        val endpoint = token.client as? LocalMasterEndpoint ?: return null
+        val result = endpoint.authenticateRpcBinding(credentials) as? RoomRpcBindingResult.Authenticated ?: return null
+        caller.ensureActive()
+        val principal = result.identity.principal
+        if (!ownsCurrent(token) || !entry.isCurrent() || principal.scope != owner.originalScope ||
+            principal.deviceId != entry.nativePeer.deviceId || principal.authenticationPurpose != AuthenticationPurpose.INTERACTIVE ||
+            result.identity.remainingMillis() == null) return null
+        return LocalMasterRpcBindingAuthentication(credentials, result.identity, caller)
     }
 
     internal suspend fun remainingSessionLifetimeMillis(token: LocalMasterRpcPeerRegistration,

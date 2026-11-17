@@ -6,6 +6,8 @@ import com.ukkera.pos.database.LocalMasterRpcAuthenticationTrace
 import com.ukkera.pos.database.LocalMasterRpcAuthenticationTracePhase
 import com.ukkera.pos.database.LocalMasterRpcAuthenticationStage
 import com.ukkera.pos.database.reportLocalMasterRpcAuthenticationStage
+import com.ukkera.pos.database.LocalMasterRpcReadStage
+import com.ukkera.pos.database.reportLocalMasterRpcReadFailure
 import com.ukkera.pos.security.AuthenticationPurpose
 import com.ukkera.pos.security.LocalAuthenticationResult
 import com.ukkera.pos.security.LocalEmployeePrincipal
@@ -496,12 +498,17 @@ internal class LocalRpcMasterAuthenticationIngress(
     private suspend fun authenticationResult(entry: Entry, request: LocalRpcAuthenticationRequest,
         result: LocalAuthenticationResult): RpcReply<LocalRpcAuthenticationResponse, LocalRpcAuthenticationError> {
         if (result !is LocalAuthenticationResult.Authenticated) {
+            if (result is LocalAuthenticationResult.Unavailable)
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, IllegalStateException())
             return publish(entry, LocalRpcAuthenticationResponse.capture(request.action, result))
         }
         var transferred = false
         try {
             val view = result.tokens.view
-            if (request.action == LocalRpcAuthenticationAction.LOGIN && view.login.value != request.login) return unavailable()
+            if (request.action == LocalRpcAuthenticationAction.LOGIN && view.login.value != request.login) {
+                reportLocalMasterRpcReadFailure(LocalMasterRpcReadStage.PRINCIPAL, IllegalStateException())
+                return unavailable()
+            }
             if (!attachResult(entry, result.tokens.access, view)) return unavailable()
             val reply = publish(entry, LocalRpcAuthenticationResponse.capture(request.action, result))
             transferred = reply is RpcReply.Success

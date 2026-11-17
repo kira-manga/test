@@ -87,6 +87,8 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
         var lease: PhysicalRecordingNativeLease? by PhysicalRemoteCell(null)
         var journal: LocalPhysicalJournal? by PhysicalRemoteCell(null)
         var clientSource: AggregateChange? by PhysicalRemoteCell(null)
+        // A's actual Master journal and B's own retention requirement stay distinct.
+        var foreignRequirement: LocalPhysicalJournalRequirementV1? by PhysicalRemoteCell(null)
         var temporary: PhysicalJournalLeaseOwnership? by PhysicalRemoteCell(null)
         var first: LocalPhysicalStartWrite.Fresh? by PhysicalRemoteCell(null)
         var start: PhysicalRecordingCommittedStart? by PhysicalRemoteCell(null)
@@ -270,10 +272,14 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
             val requirement = LocalPhysicalJournalRequirementV1.decode(request.admission.requirementBytes)
             val domain = localPhysicalDomainOwners(requirement)
             val resolution = request.admission.action == PhysicalRecordingAction.RETAIN_RESOLUTION
-            check(domain.master == binding && domain.client == entry.client && domain.authority == request.authority &&
+            val foreign = resolution && domain.client != entry.client
+            check(domain.master == binding && domain.authority == request.authority &&
+                (if (foreign) requirement.clientDeviceId != entry.remote.invocation.clientDeviceId &&
+                    LocalPhysicalForeignResolutionDomain.fromRequirement(requirement) == null
+                else domain.client == entry.client) &&
                 (if (resolution) distributedResolutionActor(entry.remote.invocation.request) == request.originalActorId
                     else requirement.originalActorId == entry.remote.invocation.originalActorId) &&
-                (if (resolution) requirement.resolutionOperationId else requirement.intentOperationId) == request.operationId && requirement.clientStorageProfile == entry.clientProfile &&
+                (if (resolution) requirement.resolutionOperationId else requirement.intentOperationId) == request.operationId && (foreign || requirement.clientStorageProfile == entry.clientProfile) &&
                 requirement.masterStorageProfile == storageProfile)
             val master = gate.withLock {
                 check(entry.requestBinding == null && !entry.unreturnedNativeOwner)
@@ -303,12 +309,24 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
                 entry.temporary = PhysicalJournalLeaseOwnership(captured)
                 opened.journal
             } ?: return@owned held()
-            val clientBytes = ask(entry, LocalMasterPhysicalNativeStageV1.RESERVE_CLIENT, requirement.canonicalBytes)
+            val clientRequirement = if (foreign) {
+                // Only the actual existing Master journal can supply this reference.
+                // No decoded Client catalogue/source assertion qualifies A's UNKNOWN.
+                val original = gate.withLock { snapshot(master) } ?: return@owned held()
+                val body = original.original ?: return@owned held()
+                check(original.actionMayHaveStarted && original.certificate != null &&
+                    domain.domain.classifyOriginal(requirement, body) == LocalPhysicalOriginalKind.UNKNOWN)
+                localPhysicalResolutionDescriptor(domain.domain, requirement, body, request.originalActorId, request.normalized)
+                foreignResolutionRequirement(requirement, body, domain, entry.client,
+                    entry.remote.invocation.clientNative.actorIntentJournalId, request.originalActorId,
+                    entry.clientProfile, entry.remote.invocation.request).also { entry.foreignRequirement = it }
+            } else requirement
+            val clientBytes = ask(entry, LocalMasterPhysicalNativeStageV1.RESERVE_CLIENT, clientRequirement.canonicalBytes)
                 ?: return@owned held()
             val clientSource = AggregateChange(AggregateKey(LocalPhysicalJournalFormatV1.SOURCE_KIND,
-                requirement.clientAllocationId), null, LocalPhysicalJournalFormatV1.SOURCE_SCHEMA, clientBytes)
+                clientRequirement.clientAllocationId), null, LocalPhysicalJournalFormatV1.SOURCE_SCHEMA, clientBytes)
             val projected = LocalPhysicalJournalSourceProjection.decode(clientSource)
-            check(projected.owner == entry.client && projected.requirement.canonicalBytes == requirement.canonicalBytes &&
+            check(projected.owner == entry.client && projected.requirement.canonicalBytes == clientRequirement.canonicalBytes &&
                 projected.nativeIdentity.profile == entry.clientProfile)
             if (resolution) {
                 // Background immutable-original delivery/intake owns this same native
@@ -324,7 +342,9 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
                 gate.withLock { entry.raw = original }
                 val retained = ask(entry, LocalMasterPhysicalNativeStageV1.RETAIN_RESOLUTION, request.normalized)
                     ?: return@owned held()
-                check(retained == distributedResolutionAcknowledgment(requirement.clientAllocationId, requirement.canonicalBytes, original, request.normalized))
+                val expected = if (foreign) foreignResolutionAcknowledgment(clientRequirement, request.normalized)
+                    else distributedResolutionAcknowledgment(requirement.clientAllocationId, requirement.canonicalBytes, original, request.normalized)
+                check(retained == expected)
                 gate.withLock {
                     if (entry.denied.denied || request.latch.denied || !master.retainResolution(requirement.resolutionOperationId,
                             request.originalActorId, descriptor, request.normalized).let {
@@ -363,7 +383,7 @@ public class DistributedPhysicalMasterJournalOwner internal constructor(
             }
             if (!checked) return@owned PhysicalRecordingNativeCheck.HELD
             val client = ask(entry, LocalMasterPhysicalNativeStageV1.RECHECK_CLIENT,
-                master.receipt.binding.requirement.canonicalBytes) ?: return@owned PhysicalRecordingNativeCheck.HELD
+                (entry.foreignRequirement ?: master.receipt.binding.requirement).canonicalBytes) ?: return@owned PhysicalRecordingNativeCheck.HELD
             if (client != entry.clientSource?.payload) { entry.deny(); return@owned PhysicalRecordingNativeCheck.HELD }
             PhysicalRecordingNativeCheck.VERIFIED
         }

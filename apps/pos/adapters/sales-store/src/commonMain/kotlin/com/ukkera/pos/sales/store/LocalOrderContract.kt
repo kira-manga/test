@@ -180,3 +180,9 @@ public object UnavailableSalesQuoteSource : TransactionSalesQuoteSource {
 public object UnavailableSalesTenderSource : TransactionSalesTenderSource {
     override public suspend fun current(view: CommandReadView, tenderId: DomainId, expectedRevision: Revision): LocalSalesTenderSnapshot? = null
 }
+
+/** A fact-only quotation at an actual original cut. Current handlers keep their separate
+ * CommandReadView entry point; this port supplies no command, session or authorization. */
+public fun interface LegacySalesOriginalQuoteSource {
+    public suspend fun quoteBefore(read: com.ukkera.pos.database.BusinessFactRead, selection: LocalOrderSelectionV1): PreparedSalesQuote?
+}

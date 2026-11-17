@@ -16,6 +16,11 @@ import com.ukkera.pos.types.Revision
 internal class RoomLocalAuthorizationReader internal constructor(
     private val transaction: RoomLocalSecurityTransaction,
 ) {
+    /** Locator is parsed from the actual bearer. No caller-supplied actor/device selects rows. */
+    internal suspend fun accessFacts(scope: com.ukkera.pos.security.BranchScope,
+        sessionId: com.ukkera.pos.types.DomainId): RoomLocalAuthorizationFacts? =
+        transaction.readLocalAccessFacts(scope, sessionId)
+
     internal suspend fun facts(principal: LocalEmployeePrincipal): RoomLocalAuthorizationFacts? =
         transaction.readAuthorizationFacts(principal)
 

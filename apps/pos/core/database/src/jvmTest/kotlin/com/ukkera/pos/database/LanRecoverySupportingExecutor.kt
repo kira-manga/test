@@ -2,9 +2,14 @@ package com.ukkera.pos.database
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
@@ -90,12 +95,31 @@ internal object LanRecoverySupportingExecutor {
             withTimeout(1_200_000L) {
                 roles.forEach { workers["$it.initial"] = start(it, "initial") }
                 await("client1.initial.ready"); await("client2.initial.ready")
+                // Observation only: kernel TCP socket tables of the Master and Client1 namespaces
+                // (synthetic addresses/ports, timers, retransmission state), no payload or identity.
+                val sockets = launch(Dispatchers.IO) {
+                    val log = root.resolve("socket-observation.log")
+                    val started = System.nanoTime()
+                    while (isActive && (System.nanoTime() - started) < 240_000_000_000L) {
+                        val sample = StringBuilder("--- +${(System.nanoTime() - started) / 1_000_000}ms")
+                        for (role in listOf("master", "client1")) {
+                            val child = ProcessBuilder("nsenter", "-t", checkNotNull(keepers[role]).pid().toString(), "-n",
+                                "ss", "-tnoi", "state", "all", "( sport != :0 )").redirectErrorStream(true).start()
+                            val text = child.inputStream.bufferedReader().readText()
+                            if (!child.waitFor(5, TimeUnit.SECONDS)) child.destroyForcibly()
+                            sample.append("\n[").append(role).append("]\n").append(text)
+                        }
+                        Files.writeString(log, sample.append('\n').toString(), Charsets.UTF_8,
+                            StandardOpenOption.CREATE, StandardOpenOption.APPEND)
+                        delay(500)
+                    }
+                }
                 network("switch", "link", "set", hostEnds[1], "down")
                 exchange.putText("client1.partitioned", "one-client-veth-down-master-and-client2-stay-up")
                 await("partition.restore-permitted")
                 network("switch", "link", "set", hostEnds[1], "up")
                 exchange.putText("partition.restored", "same-physical-LAN")
-                closed("client1", "initial")
+                try { closed("client1", "initial") } finally { sockets.cancelAndJoin() }
                 await("client1.restart.start")
                 workers["client1.client-restart"] = start("client1", "client-restart")
                 closed("client1", "client-restart")

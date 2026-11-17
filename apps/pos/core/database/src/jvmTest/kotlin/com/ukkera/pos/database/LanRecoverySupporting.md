@@ -45,6 +45,28 @@ the original metadata command, then timed out without result delivery. It omitte
 that required grant; its source, native original and failed outcome are preserved.
 No production permission check or frozen expectation is changed.
 
+Supporting wiring revision **1.0.2** (2026-11-16, frozen before its first execution)
+changes only step 4's reconnect wiring. Earlier attempts made one
+`recoverTransport()` + `connect()` immediately after the partition was restored, and
+that connect failed with `NotConnected (Negotiation; NotSent)`. Production does not
+connect once: `LocalSetupCoordinator`'s Client monitor retries `recoverLanClient` with a
+1 s doubling backoff capped at 30 s. Revision 1.0.2 mirrors that schedule. It retries
+only the exact official same-peer refusal shape (`NotConnected`, `Negotiation`,
+`NotSent`), at most 7 attempts. Each attempt makes a confirmed whole-role close and
+recovers the same SDK identity, which is checked. Any other failure is fatal. The
+attempts and their elapsed times are recorded in the exchange
+(`client1.reconnect.attempts`) and the log.
+
+The executor also samples the Master and Client1 kernel TCP socket tables (`ss -tnoi`,
+synthetic addresses only, 500 ms period) during the partition/reconnect window. This
+sampling is observation only.
+
+Supporting experiment LAN-SIR v1.0.0 (`LanSameIdentityReconnectSupporting.md`)
+confirmed that a same-identity duplicate connect produces exactly that refusal shape.
+However, its bare official Host/Client immediate reconnect after a 14 s partition
+succeeded in 256 ms. The POS-specific cause of the refusal is therefore not
+established by LAN-SIR. RPC, session and native deadlines are unchanged.
+
 1. Install the genuine Master; admit two distinct Clients and employees. Start
    the original Host and complete both Clients' encrypted-journal UI sign-in and
    Current before configuring cash custody. Then start automatic CASH subscriptions
@@ -95,3 +117,21 @@ stop/retirement case. These remain the original frozen requirements and open wor
 `LocalLaunchStorageRecoverySupportingTest` separately checks the shared pre-native
 namespace decision and real desktop launch bytes. It is also self-authored, NOT
 independent, and is not Android AtomicFile execution or whole-case acceptance.
+
+## Additive diagnostic wiring 1.0.3
+
+The step-4 transport recovery/connect window now records bounded JVM exception
+events before the official SDK maps several different failures to `NotConnected`
+without retaining their cause. The 1.0.2 actions and expected observations above
+remain unchanged, including exact identity, confirmed close, retry schedule,
+current authentication and original-result checks. Recordings are private test
+evidence; export only exception types and static frames, never raw recordings or
+exception messages. This adds no product timeout, retry or authority. A passing
+run without a refusal does not establish the historical POS refusal's cause.
+
+Timing correction to the older LAN-SIR description: archived partition/restoration
+timestamps show the first SDK experiment cut lasted 11,051 ms, and the diagnostic
+repeat lasted 11,059 ms. The nominal 14 seconds assumed the probe consumed its
+entire timeout. Neither is a qualified 14-second E2 counterexample. LAN-SIR wiring
+1.0.2 now enforces the original 14-second input independently of probe duration;
+the historical results and unproven POS-cause classification remain preserved.

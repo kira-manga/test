@@ -8,7 +8,7 @@ import com.ukkera.pos.types.*
  * Every policy, branch, publication and high-water source comes from its already
  * joined earlier original; today's signature state never supplies historical trust. */
 internal class LocalCompanyPriceHistory {
-    suspend fun prepareOriginal(command: RuntimeHistoricalCommand, signed: LocalSignedSkuV1,
+    suspend fun prepareOriginal(command: BusinessOriginalProgram, signed: LocalSignedSkuV1,
         previous: LocalPublishedSkuV1?): PreparedCompanyPriceHistory {
         val sku = signed.definition
         val sources = LocalPricingSourceReader.original(command)
@@ -26,7 +26,7 @@ internal class LocalCompanyPriceHistory {
             CompanyPriceHistoryInputs(index, append, hasPublications, rules, prices))
     }
 
-    suspend fun joinCommitted(command: RuntimeHistoricalCommand, signed: LocalSignedSkuV1,
+    suspend fun joinCommitted(command: BusinessOriginalProgram, signed: LocalSignedSkuV1,
         previous: LocalPublishedSkuV1?, resources: MutableSet<RecoveryResourceKey>,
         claims: MutableList<ClaimChange>, changes: MutableList<AggregateChange>): Boolean {
         val prepared = prepareOriginal(command, signed, previous)

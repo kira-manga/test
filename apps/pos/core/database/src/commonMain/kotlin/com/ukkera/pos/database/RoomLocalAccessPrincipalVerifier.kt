@@ -1,5 +1,8 @@
 package com.ukkera.pos.database
 
+import androidx.room3.Transactor
+import com.ukkera.pos.security.LocalEmployeePrincipal
+import com.ukkera.pos.security.TrustedPrincipalFactory
 import com.ukkera.pos.security.BranchScope
 import com.ukkera.pos.security.DenyAllPrincipalVerifier
 import com.ukkera.pos.security.LocalAccessEligibility
@@ -14,6 +17,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Semaphore
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Trusted transport/OS-local adapter, NOT a request DTO or device-ID lookup. Capture evidence
@@ -100,6 +104,83 @@ internal class RoomLocalAccessPrincipalVerifier(
     }
 
     private val admission = Semaphore(maximumConcurrentVerifications)
+
+    internal fun belongsTo(database: MasterRoomDatabase, source: TransactionAuthorizationSource): Boolean =
+        store.database === database && authorization === source
+
+    /** Native operational READ composition only: authenticate in the kernel's actual
+     * IMMEDIATE transaction, then run the unchanged query on that SAME writer. No
+     * transaction is acquired/nested here and no principal leaves the owning operation.
+     * The original unborrowed verifyLocal contract below is unchanged. */
+    internal suspend fun authenticateAtReadWriter(database: MasterRoomDatabase, connection: Transactor,
+        credentials: LocalGatewayCredentials, caller: CoroutineContext): ReadVerification? {
+        check(database === store.database)
+        currentCoroutineContext().ensureActive()
+        caller.ensureActive()
+        // The endpoint and actual writer already own bounded admission. Taking the
+        // unborrowed verifier slot here could exclude/deadlock a verifier waiting for
+        // this very writer; no additional native work is created by this borrowed read.
+        var parsed: ParsedLocalAccessBearer? = null
+        var selectedPeer: RoomLocalAccessPeerBinding? = null
+        var selectedFacts: RoomLocalAuthorizationFacts? = null
+        try {
+            // The standard sealed-principal factory calls this real protected adapter.
+            // It receives neither a supplied identity nor a precomputed accepting result.
+            val factory = TrustedPrincipalFactory(object : PrincipalVerifier by DenyAllPrincipalVerifier {
+                override suspend fun verifyLocal(actual: LocalGatewayCredentials): VerifiedLocalIdentity? {
+                    check(actual === credentials)
+                    val bearer = actual.bearer.useBytes { ParsedLocalAccessBearer.parse(it) } ?: return null
+                    parsed = bearer
+                    caller.ensureActive()
+                    val peer = peers.capture(actual.connectionId) ?: return null
+                    caller.ensureActive()
+                    if (peer.connectionId != actual.connectionId || peer.scope != scope) return null
+                    val reader = store.borrowAuthorizationReader(database, connection)
+                    val facts = try {
+                        val facts = reader.accessFacts(scope, bearer.sessionId) ?: return null
+                        if (facts.issuance.deviceId != peer.deviceId || !peer.matchesAdmission(facts.admission) ||
+                            !bearer.matches(facts.issuance.tokenHash)) return null
+                        reader.ensureHealthy()
+                        facts
+                    } finally { reader.close() }
+                    caller.ensureActive()
+                    if (!peer.isCurrent()) return null
+                    val observation = authorization.observeCurrent(caller)
+                    val issuance = facts.issuance
+                    val identity = VerifiedLocalIdentity(issuance.actorId, issuance.scope, issuance.deviceId,
+                        issuance.sessionId, issuance.generation, issuance.admissionRevisionAtIssue,
+                        issuance.authenticationPurpose)
+                    if (!LocalAccessEligibility.matchesCurrentFacts(identity, issuance, facts.account,
+                            facts.credentialRevision, facts.credentialPresent, facts.admission,
+                            observation.issuerContextId, observation.moment)) return null
+                    selectedPeer = peer
+                    selectedFacts = facts
+                    return identity
+                }
+            })
+            val principal = factory.authenticateLocal(credentials) ?: return null
+            caller.ensureActive()
+            return ReadVerification(principal, checkNotNull(selectedPeer), checkNotNull(selectedFacts), authorization, caller)
+        } finally {
+            parsed?.close()
+        }
+    }
+
+    /** Private operation DATA, never a grant. Fresh peer/time checks occur AFTER the
+     * complete native writer/COMMIT/outer cleanup, as in the unborrowed verifier. */
+    internal class ReadVerification internal constructor(val principal: LocalEmployeePrincipal,
+        private val peer: RoomLocalAccessPeerBinding, private val facts: RoomLocalAuthorizationFacts,
+        private val source: RoomCurrentLocalAuthorizationSource, private val caller: CoroutineContext) {
+        internal fun currentAfterRelease(): Boolean {
+            caller.ensureActive()
+            if (!peer.isCurrent()) return false
+            val observation = source.observeCurrent(caller)
+            caller.ensureActive()
+            return LocalAccessEligibility.matchesCurrentFacts(principal, facts.issuance, facts.account,
+                facts.credentialRevision, facts.credentialPresent, facts.admission,
+                observation.issuerContextId, observation.moment)
+        }
+    }
 
     override suspend fun verifyLocal(credentials: LocalGatewayCredentials): VerifiedLocalIdentity? {
         val caller = currentCoroutineContext()

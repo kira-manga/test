@@ -36,4 +36,20 @@ internal class LocalPricingHistoryProducer : RuntimeHistoryBusinessProducer {
         }
         return true
     }
+    internal suspend fun joinCommitted(command: BusinessOriginalProgram): Boolean {
+        val retained = command.evidence
+        if (command.command !in commands || !retained.committed || retained.code != "committed" || retained.nativeOriginalProvenance != null) return false
+        val request = LocalPricingCodec.decode(command.normalized)
+        check(LocalPricingCodec.encode(request) == command.normalized &&
+            semanticDigest(command.scope, command.actorId, command.command, command.normalized) == command.semanticDigest)
+        val prepared = prepareLocalPricing(request, LocalPricingSourceReader.original(command), LocalPricingIdentity.original(command))
+        if (prepared.sourceUnavailable) return false
+        command.requireRequirement(prepared.requirement)
+        val outcome = prepared.outcome(LocalPricingActorAudit(command.actorId, command.policyRevision, null), command.recordedAt)
+            as? ProposedOutcome.Apply ?: return false
+        command.requireLegacyReadEvidence()
+        command.requireLegacyEffects(outcome, prepared.resources)
+        return true
+    }
+
 }

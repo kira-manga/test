@@ -118,11 +118,13 @@ internal fun validateStoredRefundAttempt(attempt: RefundAttempt) {
         validateStoredRefund(it)
         snapshotCheck(it.attemptId == attempt.id && it.originalOperationId == attempt.originalOperationId &&
             it.payingActorId == attempt.originalActorId && it.payingCashSessionId == attempt.originalCashSessionId &&
-            it.originalPaymentId == attempt.originalPaymentId && it.tender == attempt.tender && it.amount == attempt.amount && it.attestation == evidence &&
+            it.originalPaymentId == attempt.originalPaymentId && it.tender == attempt.tender && it.amount == attempt.amount &&
+            (attempt.tender is Tender.ExchangeOffset || it.attestation == evidence) &&
             it.resolutionObservation == link)
         when (observation) {
             is RefundOutcome.CashPaid -> snapshotCheck(it.tender == Tender.Cash && it.externalEvidence == null)
             is RefundOutcome.ExternalAttested -> snapshotCheck(it.tender is Tender.External && it.externalEvidence == observation.evidence)
+            null -> snapshotCheck(it.tender is Tender.ExchangeOffset && it.recordingOperationId == attempt.originalOperationId)
             else -> snapshotCheck(false)
         }
     }

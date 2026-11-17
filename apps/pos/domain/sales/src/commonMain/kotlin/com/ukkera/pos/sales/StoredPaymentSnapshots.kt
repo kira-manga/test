@@ -221,12 +221,14 @@ internal fun validateStoredPaymentAttempt(attempt: PaymentAttempt) {
         validateStoredPayment(it)
         snapshotCheck(it.attemptId == attempt.id && it.originalOperationId == attempt.originalOperationId &&
             it.collectorId == attempt.originalActorId && it.cashSessionId == attempt.originalCashSessionId &&
-            it.payerReference == attempt.payerReference && it.tender == attempt.tender && it.amount == attempt.amount && it.attestation == evidence &&
+            it.payerReference == attempt.payerReference && it.tender == attempt.tender && it.amount == attempt.amount &&
+            (attempt.tender is Tender.ExchangeOffset || it.attestation == evidence) &&
             it.resolutionObservation == link && it.foodResolutionObservation == foodLink)
         when (observation) {
             is CollectionOutcome.CashReceived -> snapshotCheck(it.tender == Tender.Cash && it.cashReceived == observation.received &&
                 it.changeGiven == observation.change && it.externalEvidence == null)
             is CollectionOutcome.ExternalAttested -> snapshotCheck(it.tender is Tender.External && it.externalEvidence == observation.evidence)
+            null -> snapshotCheck(it.tender is Tender.ExchangeOffset && it.recordingOperationId == attempt.originalOperationId)
             else -> snapshotCheck(false)
         }
     }

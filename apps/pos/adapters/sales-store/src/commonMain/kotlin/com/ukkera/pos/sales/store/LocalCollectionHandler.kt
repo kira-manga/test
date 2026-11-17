@@ -125,13 +125,8 @@ public class LocalCollectionHandler(
                 dependency.reservationId == request.reservationId && dependency.issueId == null) { "sales.stock.plan_identity" }
             SalesSnapshotLinks.requireCollection(after.collection, after.order, cash.session.value)
             val contribution = stock.project(inventory, context, reservation.plan, now)
-            compose(context, contribution, LocalSalesResultV1.Applied(LocalSalesAction.COLLECTION_LOCKED, after.collection.id,
-                listOf(LocalSalesRevision(LocalSalesStoreProfile.ORDER_KIND, after.order.id, after.order.revision),
-                    LocalSalesRevision(LocalSalesStoreProfile.COLLECTION_KIND, after.collection.id, after.collection.revision)),
-                after.collection.quote.payable, contribution.versions()),
-                listOf(orderWrite(after.order, order.order.stored), collectionWrite(after.collection, null)) +
-                    collectionBefore(context, listOf("order" to order.order.stored, "cash" to cash.session.stored) + priceSourcesBefore(order)),
-                listOf(ClaimChange.Acquire(unique, request.orderId)))
+            val effects = legacyCollectionBeginEffects(context.operationId, order, cash, after, contribution.versions())
+            compose(context, contribution, effects.result, effects.changes, effects.claims)
         } }
     }
 
@@ -258,18 +253,10 @@ public class LocalCollectionHandler(
                     check(dependency.kind == InventoryCommitKind.RETAIL_ISSUE && dependency.plan === issued.plan &&
                         dependency.reservationId == collection.reservationId && dependency.issueId == request.stockIssueId) { "sales.stock.plan_identity" }
                     SalesSnapshotLinks.requireCollection(after.collection, after.order, cut.cash.session.value)
-                    val (work, workWrite) = changedWork(cut.order.work, orderIds = cut.order.work.value.orderIds - order.id)
+                    val workChange = changedWork(cut.order.work, orderIds = cut.order.work.value.orderIds - order.id)
                     val contribution = stock.project(inventory, context, issued.plan, now)
-                    compose(context, contribution, LocalSalesResultV1.Applied(LocalSalesAction.SALE_FINALIZED, after.sale.id,
-                        listOf(LocalSalesRevision(LocalSalesStoreProfile.ORDER_KIND, order.id, after.order.revision),
-                            LocalSalesRevision(LocalSalesStoreProfile.COLLECTION_KIND, collection.id, after.collection.revision),
-                            LocalSalesRevision(LocalSalesStoreProfile.SALE_KIND, after.sale.id, Revision(0)),
-                            LocalSalesRevision(LocalSalesStoreProfile.ENTITLEMENT_KIND, after.sale.id, after.entitlement.revision),
-                            LocalSalesRevision(LocalSalesStoreProfile.WORK_KIND, work.id, work.revision)), after.sale.quote.payable, contribution.versions()),
-                        listOf(orderWrite(after.order, cut.order.order.stored), collectionWrite(after.collection, cut.collection.stored),
-                            domainWrite(LocalSalesStoreProfile.SALE_KIND, after.sale.id, Revision(0), SalesSnapshotCodec.encodePaidSale(after.sale), null),
-                            entitlementWrite(after.entitlement, null), workWrite) + before,
-                        listOf(ClaimChange.Acquire(unique[0], order.id), ClaimChange.Acquire(unique[1], request.saleId), ClaimChange.Acquire(unique[2], request.saleId)))
+                    val effects = legacyCollectionFinalizeEffects(cut, after, before, contribution.versions(), workChange)
+                    compose(context, contribution, effects.result, effects.changes, effects.claims)
                 }
             }
         } }
@@ -301,12 +288,15 @@ internal fun collectionResources(cut: LocalCollectionCut): Set<com.ukkera.pos.re
     cashResource(cut.cash.session.value.id), cashResource(cut.cash.drawer.value.id), cashResource(cut.cash.custodian.value.id)) +
     priceSourcesResources(cut.order.order.value.priceSourceReference) + returnPolicyCaptureResources(cut.order.returnPolicyCapture?.value)
 
-internal fun collectionAttemptAdmission(cut: LocalCollectionCut, context: CommandContext, collectionRevision: Revision, sessionRevision: Revision): SalesRule? {
+internal fun collectionAttemptAdmission(cut: LocalCollectionCut, context: CommandContext, collectionRevision: Revision, sessionRevision: Revision): SalesRule? =
+    collectionAttemptAdmission(cut, context.originalActorId, collectionRevision, sessionRevision)
+
+internal fun collectionAttemptAdmission(cut: LocalCollectionCut, actorId: DomainId, collectionRevision: Revision, sessionRevision: Revision): SalesRule? {
     val collection = cut.collection.value
     val order = cut.order.order.value
     val cash = cut.cash.session.value
     if (collection.revision != collectionRevision || cash.revision != sessionRevision) return SalesRule.REVISION_CONFLICT
-    if (order.ownerId != context.originalActorId || collection.collectorId != context.originalActorId || cash.custodianId != context.originalActorId ||
+    if (order.ownerId != actorId || collection.collectorId != actorId || cash.custodianId != actorId ||
         collection.cashSessionId != cash.id) return SalesRule.OWNER_REQUIRED
     if (collection.saleId != null || order.paidSaleId != null) return SalesRule.IMMUTABLE_RECORD
     if (cash.status != CashSessionStatus.OPEN || order.collectionId != collection.id || order.handoff != null || order.revision != collection.lockedOrderRevision) {

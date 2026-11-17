@@ -49,26 +49,62 @@ internal class StockReceiptHandler(
         }
     }
 
-    private suspend fun prepareReceipt(request: StockReceiptPreparationInput, view: CommandReadView, context: CommandContext): PreparedMutation {
-        val purchaseSource = if (purchaseOrder) repository.approvedPurchaseOrder(view, request.basisId) else null
+    private suspend fun prepareReceipt(request: StockReceiptPreparationInput, view: CommandReadView, context: CommandContext): PreparedMutation =
+        receiptPlan(request, view, StockProducerFacts.of(context)).prepared(context)
+
+    /** Exact historical replay of a committed ordinary legacy receipt/opening. The SAME
+     * program reads the core-selected genuine native BEFORE cut (whose present rows have
+     * strictly earlier fully joined writers). No authorization is evaluated or minted: core
+     * compares the original captured requirement, then the WHOLE literal effects/resources. */
+    internal suspend fun requireHistoricalLegacyReceipt(command: com.ukkera.pos.database.RuntimeHistoricalCommand) {
+        localStockCheck(!purchaseOrder && command.command == key && command.original is com.ukkera.pos.database.RetainedOriginalV2.Legacy,
+            LocalStockFailure.PRODUCER_UNAVAILABLE)
+        requireOriginalLegacyReceipt(com.ukkera.pos.database.NativeBusinessOriginalProgram(command),
+            com.ukkera.pos.database.RuntimeHistoricalSetupReadView(command))
+    }
+
+    internal suspend fun requireOriginalLegacyReceipt(command: com.ukkera.pos.database.BusinessOriginalProgram,
+        view: com.ukkera.pos.database.BusinessFactRead = command) {
+        localStockCheck(!purchaseOrder && command.command == key, LocalStockFailure.PRODUCER_UNAVAILABLE)
+        val normalized = command.normalized
+        val facts = StockProducerFacts(command.scope, command.operationId, command.actorId, command.command, command.semanticDigest)
+        localStockCheck(normalize(normalized) == normalized &&
+            com.ukkera.pos.database.semanticDigest(facts.scope, facts.originalActorId, key, normalized) == facts.semanticDigest,
+            LocalStockFailure.STORAGE_INCONSISTENT)
+        requireLegacyStockCurrent(view)
+        val plan = receiptPlan(StockReceiptPreparationInput.legacy(LocalStockCommandCodec.receipt(normalized)), view, facts, command)
+        command.requireRequirement(stockRequirement(facts, plan.documentId, plan.revision, plan.reasonCode))
+        val outcome = plan.action(command.recordedAt) as? com.ukkera.pos.database.ProposedOutcome.Apply ?: inconsistentStock()
+        command.requireLegacyEffects(outcome, plan.resources + RecoveryResourceKey(RecoveryResourceKind.AUTHORIZATION, facts.originalActorId))
+    }
+
+    private suspend fun receiptPlan(request: StockReceiptPreparationInput, view: com.ukkera.pos.database.BusinessFactRead, context: StockProducerFacts, historical: com.ukkera.pos.database.BusinessOriginalProgram? = null): LegacyStockReceiptProgram {
+        val purchaseSource = if (purchaseOrder) repository.approvedPurchaseOrder(view as? CommandReadView ?: throw LocalStockRejected(LocalStockFailure.PRODUCER_UNAVAILABLE), request.basisId) else null
         val priorReceipt = stockDocument(repository, view, LocalStockStoreProfile.RECEIPT_DOCUMENT, request.receiptId, StockReceiptWire.serializer())
         val cut = repository.observe(view, request.items.map { it.skuId })
         // Separate unpriced custody is never a free new stock origin, even after its dispatch.
         // These are preparation-only interlocks over the same borrowed stock transaction.
-        val arrivalGuards = repository.unpricedArrivalReceiptGuards(view, request.lines.map {
+        val arrivalIdentities = request.lines.map {
             ArrivalReceiptIdentity(it.skuId, it.lotId, it.serialId, it.serialCode, it.sourceId, it.lineId)
-        })
-        val basis = if (opening) authority.openingBasis(view, request.basisId) else authority.receivingBasis(view, request.basisId)
+        }
+        val arrivalGuards = if (view is CommandReadView) repository.unpricedArrivalReceiptGuards(view, arrivalIdentities)
+            else originalLegacyReceiptArrivalGuards(checkNotNull(historical), arrivalIdentities)
+        val historicalSources = if (historical == null) null else (authority as? LocalLegacyStockHistorySources
+            ?: error("Original legacy stock source composition unavailable"))
+        val basis = if (historical != null) historicalSources!!.historicalStockBasis(historical, request.basisId)
+            ?.takeIf { (it.kind == LocalStockBasisKind.OPENING) == opening }
+            else if (opening) authority.openingBasis(view as CommandReadView, request.basisId) else authority.receivingBasis(view as CommandReadView, request.basisId)
         localStockCheck(basis == null || basis.scope == context.scope && basis.basisId == request.basisId, LocalStockFailure.STORAGE_INCONSISTENT)
-        val items = request.items.associate { it.skuId to authority.item(view, it.skuId) }
+        val items = request.items.associate { it.skuId to if (historical != null) historicalSources!!.historicalStockItem(historical, it.skuId) else authority.item(view as CommandReadView, it.skuId) }
         for ((id, item) in items) localStockCheck(item == null || item.scope == context.scope && item.skuId == id, LocalStockFailure.STORAGE_INCONSISTENT)
-        val warehouses = request.lines.map { it.warehouseId }.distinct().associateWith { authority.warehouse(view, it) }
+        val warehouses = request.lines.map { it.warehouseId }.distinct().associateWith { if (historical != null) historicalSources!!.historicalStockWarehouse(historical, it) else authority.warehouse(view as CommandReadView, it) }
         for ((id, warehouse) in warehouses) localStockCheck(warehouse == null || warehouse.scope == context.scope && warehouse.warehouseId == id,
             LocalStockFailure.STORAGE_INCONSISTENT)
         val serialized = request.lines.filter { it.serialId != null && it.disposition != LocalReceiptDisposition.REFUSED }
+        localStockCheck(historical == null || !purchaseOrder && serialized.isEmpty(), LocalStockFailure.PRODUCER_UNAVAILABLE)
         val serials = serialized.associate { requireNotNull(it.serialId) to stockSerial(repository, view, requireNotNull(it.serialId)) }
         val serialCodes = serialized.associate { requireNotNull(it.serialId) to view.claim(LocalStockStoreProfile.serialCodeClaim(requireNotNull(it.serialCode))) }
-        val registrations = serialized.associate { requireNotNull(it.serialId) to authority.serialRegistration(view, requireNotNull(it.serialId)) }
+        val registrations = serialized.associate { requireNotNull(it.serialId) to authority.serialRegistration(view as CommandReadView, requireNotNull(it.serialId)) }
         registrations.forEach { (id, registration) -> localStockCheck(registration == null || registration.scope == context.scope &&
             registration.serialId == id, LocalStockFailure.STORAGE_INCONSISTENT) }
         val rawSources = basis?.sources.orEmpty() + items.values.filterNotNull().flatMap { it.sources } +
@@ -110,7 +146,7 @@ internal class StockReceiptHandler(
             }
             registrations.values.filterNotNull().forEach { addAll(serialRegistrationResources(it)) }
         }
-        return preparedStock(context, request.receiptId, request.expectedBasisRevision, request.reasonCode, resources,
+        return LegacyStockReceiptProgram(request.receiptId, request.expectedBasisRevision, request.reasonCode, resources,
             (if (purchaseOrder) poReceiptBarriers else setOf(RecoveryResourceKind.STOCK)) + arrivalBarriers) { now ->
             localStockCheck(priorReceipt == null && !reusedSource, LocalStockFailure.SOURCE_ALREADY_USED)
             localStockCheck(serials.values.all { it == null } && serialCodes.values.all { it == null }, LocalStockFailure.SOURCE_ALREADY_USED)
@@ -228,6 +264,19 @@ internal class StockReceiptHandler(
     }
 }
 
+/** One shared receipt program: inputs to the exact requirement, the conservative resources
+ * and the effect evaluation at the kernel's recorded time. It holds no authorization. */
+internal class LegacyStockReceiptProgram(
+    val documentId: DomainId,
+    val revision: com.ukkera.pos.types.Revision,
+    val reasonCode: String,
+    val resources: Set<RecoveryResourceKey>,
+    val barriers: Set<RecoveryResourceKind>,
+    val action: (UtcInstant) -> com.ukkera.pos.database.ProposedOutcome,
+) {
+    fun prepared(context: CommandContext): PreparedMutation = preparedStock(context, documentId, revision, reasonCode, resources, barriers, action)
+}
+
 private val poReceiptBarriers: Set<RecoveryResourceKind> = setOf(RecoveryResourceKind.STOCK, RecoveryResourceKind.PO_ALLOWANCE,
     RecoveryResourceKind.PURCHASE_CUSTODY, RecoveryResourceKind.SUPPLIER_SETTLEMENT, RecoveryResourceKind.AUTHORIZATION)
 
@@ -290,7 +339,7 @@ internal fun resolveReceiptLine(
     return StockReceivedLineWire(StockReceiptLineWire.from(line), base, conversion?.let(StockConversionWire::from), Quantity(base.unitId, 0, base.scale))
 }
 
-internal suspend fun stockAllowance(repository: LocalStockRepository, view: CommandReadView, id: DomainId): LocalStockRecord<StockAllowanceWire>? {
+internal suspend fun stockAllowance(repository: LocalStockRepository, view: com.ukkera.pos.database.BusinessFactRead, id: DomainId): LocalStockRecord<StockAllowanceWire>? {
     val record = repository.record(view, AggregateKey(LocalStockStoreProfile.ALLOWANCE, id), StockAllowanceWire.serializer())
     val claim = view.claim(LocalStockStoreProfile.allowanceClaim(id))
     localStockCheck(if (record == null) claim == null else claim == id, LocalStockFailure.STORAGE_INCONSISTENT)

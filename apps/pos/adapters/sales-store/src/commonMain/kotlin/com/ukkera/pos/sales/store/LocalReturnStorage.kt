@@ -2,6 +2,7 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.AggregateChange
 import com.ukkera.pos.database.CommandReadView
+import com.ukkera.pos.database.BusinessFactRead
 import com.ukkera.pos.database.StoredAggregate
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.sales.AcceptedReturn
@@ -50,7 +51,7 @@ internal data class LocalClaimCut(
 )
 internal data class LocalReturnCut(val original: LocalClaimCut, val accepted: LocalSalesRow<AcceptedReturn>, val work: LocalSalesRow<LocalWorkState>)
 
-internal suspend fun readIntake(view: CommandReadView, id: DomainId): LocalSalesRow<LocalReturnIntake> {
+internal suspend fun readIntake(view: BusinessFactRead, id: DomainId): LocalSalesRow<LocalReturnIntake> {
     val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_INTAKE_KIND, id))
     val value = decodeLocalSalesSource(row.payload, LocalReturnIntake.serializer(), 8_192)
     requireLocalSalesSource(value.scope.value() == view.scope && value.claimId == id && value.revision == row.domainRevision() &&
@@ -134,6 +135,12 @@ internal suspend fun readClaim(view: CommandReadView, saleId: DomainId, claimId:
     }
     // Historical v1 decoding remains explicit and unchanged; missing CASE provenance is not inferred.
     val original = readEntitlement(view, saleId)
+    return readLegacyClaimSource(view, original, saleId, claimId)
+}
+
+/** Same fact-only legacy claim cut after its caller separately proves the entitlement. */
+internal suspend fun readLegacyClaimSource(view: BusinessFactRead, original: LocalEntitlementCut,
+    saleId: DomainId, claimId: DomainId): LocalClaimCut {
     val intake = readIntake(view, claimId)
     val row = LocalSalesStorage.required(view, LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_CLAIM_KIND, claimId))
     val claim = SalesSnapshotCodec.decodeReturnClaim(row.text(),

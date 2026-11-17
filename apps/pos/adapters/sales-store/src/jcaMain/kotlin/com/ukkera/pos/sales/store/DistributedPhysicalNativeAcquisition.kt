@@ -89,8 +89,11 @@ public class DistributedPhysicalClientNativeAcquisition internal constructor(
                 val receipt = actual.readExpectedReceipt(id) ?: error("physical.remote.receipt")
                 val requirement = receipt.binding.requirement
                 val domain = localPhysicalDomainOwners(requirement)
+                val foreign = LocalPhysicalForeignResolutionDomain.fromRequirement(requirement)
+                val refs = foreign?.references(requirement)
                 check(receipt.binding.owner == binding && domain.client == binding && requirement.scope == binding.scope &&
-                    requirement.originalActorId == originalActorId && requirement.clientDeviceId == binding.deviceId &&
+                    (if (refs != null) refs.resolverActorId == originalActorId && refs.resolverIntentJournalId == actorIntentJournalId
+                        else requirement.originalActorId == originalActorId) && requirement.clientDeviceId == binding.deviceId &&
                     requirement.clientStorageProfile == storageProfile && requirement.masterDeviceId == master.deviceId &&
                     domain.authority.deviceId == master.deviceId && domain.authority.assignmentId == master.assignmentId)
                 unreturnedNativeOwner = true
@@ -101,10 +104,14 @@ public class DistributedPhysicalClientNativeAcquisition internal constructor(
                 }
                 journals.add(existing.journal)
                 unreturnedNativeOwner = false
-                val snapshot = (existing.journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot
-                    ?: error("physical.remote.original")
-                check(existing.journal.receipt.sourceCommitment == receipt.sourceCommitment &&
-                    snapshot.receipt.sourceCommitment == receipt.sourceCommitment)
+                check(existing.journal.receipt.sourceCommitment == receipt.sourceCommitment)
+                if (foreign != null) {
+                    check(existing.journal.readForeignResolution() is LocalForeignResolutionRead.Read)
+                } else {
+                    val snapshot = (existing.journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot
+                        ?: error("physical.remote.original")
+                    check(snapshot.receipt.sourceCommitment == receipt.sourceCommitment)
+                }
                 check(existing.journal.close() == LocalPhysicalSpoolClose.CLOSED)
                 check(journals.remove(existing.journal))
             }

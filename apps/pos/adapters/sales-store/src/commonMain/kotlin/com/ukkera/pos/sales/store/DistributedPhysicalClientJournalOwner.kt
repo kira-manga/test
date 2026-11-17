@@ -47,6 +47,7 @@ public class DistributedPhysicalClientOperation internal constructor(
     internal val request: MutationRequest,
     internal val employee: PhysicalJournalExternalCustodyOwnership,
     internal val requestorActorId: DomainId,
+    internal val foreignResolution: Boolean = false,
 ) {
     public val operationId: OperationId get() = request.operationId
     internal val denial = PhysicalJournalDenial()
@@ -251,9 +252,29 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
         } finally { if (!transferred) check(employee.releaseAfterNativeCleanup()) }
     }
 
+    /** Resolution-only candidate on B's own real catalogue. The Master must separately
+     * qualify A's original and this current resolver; no A owner or Start is returned. */
+    public suspend fun beginForeignLinkedResolution(request: MutationRequest, resolverActorId: DomainId,
+        resolverCustody: LocalPhysicalExternalCustody): DistributedPhysicalClientResolution? {
+        val employee = PhysicalJournalExternalCustodyOwnership(resolverCustody)
+        var transferred = false
+        try {
+            currentCoroutineContext().ensureActive()
+            if (purpose != DistributedPhysicalClientPurpose.INTERACTIVE || denied.value || !rpc.isCurrent() ||
+                employee.denied || resolverActorId != originalActorId || distributedResolutionActor(request) != resolverActorId ||
+                retainedOriginals() == null) return null
+            for (old in operations.filter { it.foreignResolution && it.operationId == request.operationId &&
+                it.request.command == request.command && it.request.payload == request.payload && it.requestorActorId == resolverActorId })
+                if (!retireInterruptedResolution(old)) return null
+            transferred = true
+            return beginOwned(request, employee, resolverActorId, foreignResolution = true)?.let { DistributedPhysicalClientResolution(this, it) }
+        } finally { if (!transferred) check(employee.releaseAfterNativeCleanup()) }
+    }
+
     private suspend fun beginOwned(request: MutationRequest,
-        employee: PhysicalJournalExternalCustodyOwnership, requestorActorId: DomainId): DistributedPhysicalClientOperation? {
-        val operation = DistributedPhysicalClientOperation(this, request, employee, requestorActorId)
+        employee: PhysicalJournalExternalCustodyOwnership, requestorActorId: DomainId,
+        foreignResolution: Boolean = false): DistributedPhysicalClientOperation? {
+        val operation = DistributedPhysicalClientOperation(this, request, employee, requestorActorId, foreignResolution)
         var retained = false
         try {
             return gate.withLock {
@@ -431,13 +452,27 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
         val requirement = LocalPhysicalJournalRequirementV1.decode(bytes)
         val owners = localPhysicalDomainOwners(requirement)
         val resolution = distributedResolutionRequest(operation.request)
+        val foreign = LocalPhysicalForeignResolutionDomain.fromRequirement(requirement)
+        if ((foreign != null) != operation.foreignResolution || operation.foreignResolution && !resolution) return null
+        val refs = foreign?.references(requirement)
         if (owners.client != binding || requirement.scope != rpc.scope || requirement.clientDeviceId != rpc.originalDeviceId ||
-            requirement.originalActorId != originalActorId ||
+            (if (refs != null) refs.resolverActorId != originalActorId || refs.resolverIntentJournalId != actorIntentJournalId
+                else requirement.originalActorId != originalActorId) ||
             (if (resolution) distributedResolutionActor(operation.request) != operation.requestorActorId else operation.requestorActorId != originalActorId) ||
             (if (resolution) requirement.resolutionOperationId else requirement.intentOperationId) != operation.operationId ||
             requirement.command != operation.request.command || requirement.clientStorageProfile != storageProfile) return null
         unreturnedNativeOwner = true // Retain uncertainty BEFORE attempting an actual native open.
-        val opened = if (resolution) {
+        val opened = if (operation.foreignResolution) {
+            val receipt = catalogue.readExpectedReceipt(requirement.clientAllocationId)
+            if (operations.any { it !== operation && it.journal?.receipt?.binding?.allocationId == requirement.clientAllocationId }) {
+                unreturnedNativeOwner = false
+                return null
+            }
+            if (receipt == null) catalogue.allocate(requirement, owners.domain)
+            else if (receipt.binding.requirement.canonicalBytes == requirement.canonicalBytes)
+                catalogue.openExisting(requirement.clientAllocationId, owners.domain)
+            else { unreturnedNativeOwner = false; return null }
+        } else if (resolution) {
             val receipt = catalogue.readExpectedReceipt(requirement.clientAllocationId)
             if (receipt == null || receipt.binding.requirement.canonicalBytes != requirement.canonicalBytes ||
                 operations.any { it !== operation && it.journal?.receipt?.binding?.allocationId == requirement.clientAllocationId }) {
@@ -453,7 +488,8 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
         val journal = opened.journal
         operation.journal = journal // Own the actual returned FD before any later comparison/IO.
         unreturnedNativeOwner = false
-        val leases = (if (resolution) captureResolutionJournal(journal, operation::deny)
+        val leases = (if (operation.foreignResolution) captureForeignResolutionJournal(journal, operation::deny)
+            else if (resolution) captureResolutionJournal(journal, operation::deny)
             else captureSingleJournal(journal, allocatedOnly = true, operation::deny)) ?: return null
         operation.leases = PhysicalJournalLeaseOwnership(leases)
         operation.phase = DistributedPhysicalClientPhase.RESERVED
@@ -465,6 +501,15 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
             operation.request.payload != body || operation.denial.denied || operation.employee.denied || denied.value) return null
         val journal = operation.journal ?: return null
         val requirement = journal.receipt.binding.requirement
+        if (operation.foreignResolution) {
+            val refs = checkNotNull(LocalPhysicalForeignResolutionDomain.fromRequirement(requirement)).references(requirement)
+            if (refs.resolverActorId != operation.requestorActorId || refs.resolverIntentJournalId != actorIntentJournalId) return null
+            val write = journal.retainForeignResolution(body)
+            if (write !in RETAINED_WRITES || (journal.readForeignResolution() as? LocalForeignResolutionRead.Read)?.body != body) return null
+            operation.originalDigest = refs.sourceOriginalDigest
+            operation.phase = DistributedPhysicalClientPhase.RESOLUTION_RETAINED
+            return foreignResolutionAcknowledgment(requirement, body)
+        }
         val snapshot = (journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot ?: return null
         val original = snapshot.original ?: return null
         if (!snapshot.actionMayHaveStarted || snapshot.certificate == null ||
@@ -488,8 +533,11 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
             operation.employee.denied) return null
         val journal = operation.journal ?: return null
         if (journal.receipt.binding.requirement.canonicalBytes != requirement) return null
-        if (resolution && (journal.readResolution() as? LocalPhysicalResolutionRead.Read)?.resolution?.body != operation.request.payload) return null
-        val leases = (if (resolution) captureResolutionJournal(journal, operation::deny)
+        if (operation.foreignResolution) {
+            if ((journal.readForeignResolution() as? LocalForeignResolutionRead.Read)?.body != operation.request.payload) return null
+        } else if (resolution && (journal.readResolution() as? LocalPhysicalResolutionRead.Read)?.resolution?.body != operation.request.payload) return null
+        val leases = (if (operation.foreignResolution) captureForeignResolutionJournal(journal, operation::deny)
+            else if (resolution) captureResolutionJournal(journal, operation::deny)
             else captureSingleJournal(journal, allocatedOnly = true, operation::deny)) ?: return null
         val owned = PhysicalJournalLeaseOwnership(leases)
         owned.release()
@@ -646,6 +694,13 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
                 operation.pending?.isCompleted == false || operation.leases?.released != true || operation.evidence?.released == false)
                 return@withLock false
             val journal = operation.journal ?: return@withLock false
+            if (operation.foreignResolution) {
+                if ((journal.readForeignResolution() as? LocalForeignResolutionRead.Read)?.body != operation.request.payload ||
+                    !operation.employee.releaseAfterNativeCleanup() || journal.close() != LocalPhysicalSpoolClose.CLOSED) return@withLock false
+                operation.deny()
+                retainedOperations.value = operations.filterNot { it === operation }
+                return@withLock true
+            }
             val linked = (journal.readResolution() as? LocalPhysicalResolutionRead.Read)?.resolution ?: return@withLock false
             if (linked.body != operation.request.payload || linked.resolverActorId != operation.requestorActorId ||
                 !operation.employee.releaseAfterNativeCleanup() || journal.close() != LocalPhysicalSpoolClose.CLOSED) return@withLock false
@@ -662,6 +717,19 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
                 operation.pending?.isCompleted == false || operation.capture != null || operation.evidence != null)
                 return@withLock false
             val journal = operation.journal ?: return@withLock false
+            if (operation.foreignResolution) {
+                val body = journal.readForeignResolution() as? LocalForeignResolutionRead.Read ?: return@withLock false
+                if (body.body != operation.request.payload) return@withLock false
+                val refs = checkNotNull(LocalPhysicalForeignResolutionDomain.fromRequirement(journal.receipt.binding.requirement))
+                    .references(journal.receipt.binding.requirement)
+                if (refs.resolverActorId != originalActorId || refs.resolverIntentJournalId != actorIntentJournalId) return@withLock false
+                operation.leases?.release()
+                if (operation.leases?.released != true || !operation.employee.releaseAfterNativeCleanup() ||
+                    journal.close() != LocalPhysicalSpoolClose.CLOSED) return@withLock false
+                operation.deny()
+                retainedOperations.value = operations.filterNot { it === operation }
+                return@withLock true
+            }
             val snapshot = (journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot ?: return@withLock false
             val original = snapshot.original ?: return@withLock false
             val requirement = journal.receipt.binding.requirement
@@ -725,6 +793,17 @@ public class DistributedPhysicalClientJournalOwner internal constructor(
                     journal = opened.journal
                     recoveryJournals[id] = journal // Own before any later read, close or comparison.
                     recoveryOpenUnknown.remove(id)
+                }
+                val foreign = LocalPhysicalForeignResolutionDomain.fromRequirement(receipt.binding.requirement)
+                if (foreign != null) {
+                    val refs = foreign.references(receipt.binding.requirement)
+                    if (refs.resolverActorId != originalActorId || refs.resolverIntentJournalId != actorIntentJournalId ||
+                        journal.readForeignResolution() !is LocalForeignResolutionRead.Read) return@withLock null
+                    if (known == null) {
+                        if (journal.close() != LocalPhysicalSpoolClose.CLOSED) return@withLock null
+                        recoveryJournals.remove(id)
+                    }
+                    continue
                 }
                 val snapshot = (journal.readOriginal() as? LocalPhysicalOriginalRead.Read)?.snapshot
                 if (known == null) {
@@ -826,6 +905,12 @@ internal class DistributedPhysicalStartDelivery private constructor(
 internal fun captureSingleJournal(journal: LocalPhysicalJournal, allocatedOnly: Boolean,
     onRetirement: () -> Unit): List<PhysicalSpoolLease>? = captureJournalCustody(journal, onRetirement) {
         journal.captureNewAction(allocatedOnly, onRetirement)
+    }
+
+/** B's distinct critical retention record has no Start or original observation. */
+internal fun captureForeignResolutionJournal(journal: LocalPhysicalJournal,
+    onRetirement: () -> Unit): List<PhysicalSpoolLease>? = captureJournalCustody(journal, onRetirement) {
+        journal.captureForeignResolution(onRetirement)
     }
 
 /** A linked observation owns existing UNKNOWN evidence; it cannot acquire a new-action

@@ -22,8 +22,14 @@ public enum class LocalMasterChangesRpcAccessResultV1 { ALLOWED, DENIED, CAPACIT
 public class LocalMasterChangesRpcAuthorizationV1(
     public val result: LocalMasterChangesRpcAccessResultV1,
     public val binding: PayloadDigest?,
+    /** Only a complete authorized single-selector observation supplies this READ binding.
+     * Null never authorizes the ordinary READ route; strict cursor routes keep [binding]. */
+    public val readProjectionBinding: PayloadDigest? = null,
 ) {
-    init { require((result == LocalMasterChangesRpcAccessResultV1.ALLOWED) == (binding != null)) }
+    init {
+        require((result == LocalMasterChangesRpcAccessResultV1.ALLOWED) == (binding != null))
+        require(readProjectionBinding == null || result == LocalMasterChangesRpcAccessResultV1.ALLOWED)
+    }
     override fun toString(): String = "LocalMasterChangesRpcAuthorizationV1([REDACTED])"
 }
 

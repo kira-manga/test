@@ -85,7 +85,7 @@ class StockRetainedAuthorizationNativeSupportingTest {
         applied(f.execute(cash(LocalCashRequestV1.Open(cashSession, drawer, Revision(0), Revision(0),
             BusinessDate(LocalDate(2026, 10, 23)), next(), egp(100_000), evidence()))))
     }
-    private suspend fun prepareStock(f: LanBusinessNativeFixture, units: Long) {
+    private suspend fun prepareStock(f: LanBusinessNativeFixture, units: Long): OperationId {
         applied(f.execute(LocalStockRelationalCommandsV2.initializeFresh(op(), next(), "synthetic.opening")))
         val published = LocalPublishedSkuV1(CompanyScope(f.scope.organizationId, f.scope.companyId), next(), sku,
             testId(21_006), Revision(1), Revision(1), LocalNamesV1("Synthetic LAN SKU", "صنف اختبار"),
@@ -111,9 +111,69 @@ class StockRetainedAuthorizationNativeSupportingTest {
                 Quantity(each, units, 0), egp(units * 4_000), false)))))
         configure(LocalConfigurationRequestV1.ConfigureSalesRoute(null, LocalSalesRouteV1(next(), LocalSalesActivity.CLOTHING,
             LocalSalesChannel.COUNTER, warehouse, true)))
-        applied(f.execute(LocalStockRelationalCommandsV2.opening(op(), LocalGoodsReceiptRequest(next(), basis, Revision(0),
+        val opening = op()
+        applied(f.execute(LocalStockRelationalCommandsV2.opening(opening, LocalGoodsReceiptRequest(next(), basis, Revision(0),
             listOf(LocalStockItemVersion(sku, null)), listOf(LocalGoodsReceiptLine(next(), allocation, next(), sku, warehouse,
                 Quantity(each, units, 0), null, null, null, LocalReceiptDisposition.RELEASED, egp(units * 4_000))), "synthetic.opening"))))
+        return opening
+    }
+
+    /** Self-authored, NOT independent. Reuses the failed-read/no-projection contract:
+     * a caught consumer failure must not make the same protected stock loan reusable.
+     * The callback is the only injected fault; original data and native history are real. */
+    @Test fun caughtReplayedConsumerFailureCannotReuseTheProtectedStockLoan(): Unit = runBlocking {
+        val f = LanBusinessNativeFixture()
+        try {
+            f.install()
+            val opening = prepareStock(f, 12)
+            openCash(f)
+            val orderId = next()
+            applied(f.execute(collection(LocalCollectionStockRequestV2.CreateOrder(orderId, selection()))))
+            val begin = collection(LocalCollectionStockRequestV2.Begin(orderId, Revision(0), cashSession,
+                Revision(0), next(), next()))
+            applied(f.execute(begin))
+            for (cancelled in listOf(false, true)) {
+                val failure = if (cancelled) CancellationException("synthetic replay cancellation")
+                    else IllegalStateException("synthetic replay consumer failure")
+                var called = false
+                var refused = false
+                var observed: Throwable? = null
+                f.beforeStockRead = { registry, view, _ ->
+                    val access = view.requireStockRelational()
+                    val original = (access.originals.read(begin.operationId) as? RetainedOriginalV2.Streamed)?.evidence
+                        ?: error("Actual normalized reservation original required")
+                    registry.stock.withRelationalOriginalRead(view) { originals ->
+                        val inspection = originals.requireProducer(view, registry.stock, original)
+                        inspection.stockAuthoritySources { } // Normal complete pass first.
+                        observed = try {
+                            inspection.stockAuthoritySources { called = true; throw failure }
+                            null
+                        } catch (caught: Throwable) { caught }
+                        refused = try {
+                            access.aggregate(LocalStockRelationalProfileV2.itemKey(sku))
+                            false
+                        } catch (_: Exception) { true }
+                    }
+                    System.err.println("Supporting replay negative: cancelled=$cancelled; callback=$called; " +
+                        "sameFailure=${observed === failure}; refused=$refused")
+                    // End this controlled probe through the kernel's real known rollback.
+                    // Continuing a poisoned native loan intentionally fail-stops the JVM;
+                    // the assertions below concern refusal of reuse, not a fabricated DATA reply.
+                    throw MasterReadInvalidSelection()
+                }
+                assertIs<ReadReply.Unavailable>(f.read(LocalStockCommands.quantities(sku)))
+                assertTrue(called, "Must exercise an actual replayed source callback")
+                assertSame(failure, observed, "Actual failure: ${observed?.javaClass?.name}")
+                assertTrue(refused, "Catching the failure cannot revive this stock loan")
+                f.beforeStockRead = { _, _, _ -> }
+                assertEquals(Quantity(each, 12, 0), stock(f).onHand)
+                assertEquals(Quantity(each, 1, 0), stock(f).reserved)
+                assertEquals(mapOf("operation_result" to 1L, "journal_envelope" to 1L,
+                    "audit_event" to 1L, "outbox_intent" to 1L), f.operationCounts(opening))
+                assertEquals(mapOf("operation_result" to 1L, "journal_envelope" to 1L,
+                    "audit_event" to 1L, "outbox_intent" to 1L), f.operationCounts(begin.operationId))
+            }
+        } finally { f.close() }
     }
     /** Both callers reach the start barrier; outcome is asserted from durable state, never timing. */
     private suspend fun race(first: suspend () -> MutationReply, second: suspend () -> MutationReply): List<MutationReply> = coroutineScope {

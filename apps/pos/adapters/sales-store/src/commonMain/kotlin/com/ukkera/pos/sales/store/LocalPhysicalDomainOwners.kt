@@ -15,6 +15,10 @@ internal data class LocalPhysicalDomainOwners(
 )
 
 internal fun localPhysicalDomainOwners(requirement: LocalPhysicalJournalRequirementV1): LocalPhysicalDomainOwners {
+    LocalPhysicalForeignResolutionDomain.fromRequirement(requirement)?.let { domain ->
+        val refs = domain.references(requirement)
+        return LocalPhysicalDomainOwners(domain, refs.authority, refs.master, refs.resolver)
+    }
     val native = NativeOriginalDomain.entries.singleOrNull {
         it.command == requirement.command && it.domainProfile == requirement.domainProfile
     } ?: error("physical.domain.unsupported")

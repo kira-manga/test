@@ -179,6 +179,8 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
     private var employeeApprovedBusinessMutations = 0L
     private var employeeNativeOriginalEvents = 0L
     private var employeeNativeOriginalMutations = 0L
+    private var foundingAdditionalSupervisorReviewEvents = 0L
+    private var foundingAdditionalSupervisorReviewMutations = 0L
     private var originalSupervisorReviewEvents = 0L
     private var originalSupervisorReviewMutations = 0L
     private var employeeSupervisorReviewEvents = 0L
@@ -188,9 +190,13 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
     private var employeePurchasingPolicyRejectionEvents = 0L
     private var employeePurchasingPolicyRejectionMutations = 0L
     private var originalOrderReassignmentRejectionEvents = 0L
+    private var originalNormalizedStockRejectionEvents = 0L
     private var originalOrderReassignmentRejectionMutations = 0L
+    private var originalNormalizedStockRejectionMutations = 0L
     private var employeeOrderReassignmentRejectionEvents = 0L
+    private var employeeNormalizedStockRejectionEvents = 0L
     private var employeeOrderReassignmentRejectionMutations = 0L
+    private var employeeNormalizedStockRejectionMutations = 0L
     private var originalOpeningSupplierObligationRejectionEvents = 0L
     private var originalOpeningSupplierObligationRejectionMutations = 0L
     private var employeeOpeningSupplierObligationRejectionEvents = 0L
@@ -1401,10 +1407,13 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                     var employeeCommand: RuntimeEmployeeCommandHistoryAuthorization? = null
                     var employeeSupervisorReview: RuntimeEmployeeSupervisorReviewHistoryAuthorization? = null
                     var originalSupervisorReview = false
+                    var foundingAdditionalSupervisorReview: RuntimeFoundingAdditionalDeviceSupervisorReviewHistoryAuthorization? = null
                     var employeePurchasingPolicyRejection: RuntimeEmployeePurchasingPolicyRejectionHistoryAuthorization? = null
                     var originalPurchasingPolicyRejection = false
                     var employeeOrderReassignmentRejection: RuntimeEmployeeOrderReassignmentRejectionHistoryAuthorization? = null
+                    var employeeNormalizedStockRejection: RuntimeEmployeeNormalizedStockRejectionHistoryAuthorization? = null
                     var originalOrderReassignmentRejection = false
+                    var originalNormalizedStockRejection = false
                     var employeeOpeningSupplierObligationRejection: RuntimeEmployeeOpeningSupplierObligationRejectionHistoryAuthorization? = null
                     var originalOpeningSupplierObligationRejection = false
                     var employeeInvoiceCaptureRejection: RuntimeEmployeeInvoiceCaptureRejectionHistoryAuthorization? = null
@@ -1459,6 +1468,7 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         val review = RuntimeHistoricalSupervisorReviewProfile.fromCommand(key)
                         val policy = RuntimeHistoricalPurchasingPolicyRejectionProfile.fromCommand(key)
                         val reassignment = RuntimeHistoricalOrderReassignmentRejectionProfile.fromCommand(key)
+                        val normalizedStock = RuntimeHistoricalNormalizedStockRejectionProfile.fromCommand(key)
                         val openingObligation = RuntimeHistoricalOpeningSupplierObligationRejectionProfile.fromCommand(key)
                         val invoiceCapture = RuntimeHistoricalInvoiceCaptureRejectionProfile.fromCommand(key)
                         val capturedInvoiceMatch = RuntimeHistoricalCapturedInvoiceMatchRejectionProfile.fromCommand(key)
@@ -1475,10 +1485,17 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                         val returnStockDisposition = RuntimeHistoricalReturnStockDispositionRejectionProfile.fromCommand(key)
                         when {
                             review?.matches(header, command) == true || review?.matchesApplicationRefusal(header, command) == true -> {
-                                if (command.authorization.actorId == coordinates.firstActorId)
-                                    (replay != null && replay.command(command) && join.captureSupervisorReview(header, commitment.digest,
-                                        command, decoded, capsule.dependencies, businessMutations)).also { originalSupervisorReview = it }
-                                else {
+                                if (command.authorization.actorId == coordinates.firstActorId) {
+                                    if (command.authorization.deviceId == coordinates.deviceId)
+                                        (replay != null && replay.command(command) && join.captureSupervisorReview(header, commitment.digest,
+                                            command, decoded, capsule.dependencies, businessMutations)).also { originalSupervisorReview = it }
+                                    else {
+                                        foundingAdditionalSupervisorReview = replay?.additionalDeviceSupervisorReview(command,
+                                            header, commitment.digest, session)
+                                        foundingAdditionalSupervisorReview?.let { join.captureFoundingAdditionalDeviceSupervisorReview(
+                                            header, commitment.digest, it, decoded, capsule.dependencies, businessMutations) } == true
+                                    }
+                                } else {
                                     employeeSupervisorReview = employees.supervisorReview(command, header, commitment.digest)
                                     employeeSupervisorReview?.let { join.captureEmployeeSupervisorReview(header, commitment.digest,
                                         it, decoded, capsule.dependencies, businessMutations) } == true
@@ -1501,6 +1518,16 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                                 else {
                                     employeeOrderReassignmentRejection = employees.orderReassignmentRejection(command, header, commitment.digest)
                                     employeeOrderReassignmentRejection?.let { join.captureEmployeeOrderReassignmentRejection(header, commitment.digest,
+                                        it, decoded, capsule.dependencies, businessMutations) } == true
+                                }
+                            }
+                            normalizedStock?.matches(header, command) == true -> {
+                                if (command.authorization.actorId == coordinates.firstActorId)
+                                    (replay != null && replay.command(command) && join.captureNormalizedStockRejection(header, commitment.digest,
+                                        command, decoded, capsule.dependencies, businessMutations)).also { originalNormalizedStockRejection = it }
+                                else {
+                                    employeeNormalizedStockRejection = employees.normalizedStockRejection(command, header, commitment.digest)
+                                    employeeNormalizedStockRejection?.let { join.captureEmployeeNormalizedStockRejection(header, commitment.digest,
                                         it, decoded, capsule.dependencies, businessMutations) } == true
                                 }
                             }
@@ -1783,6 +1810,16 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                                 originalOrderReassignmentRejectionMutations = historyAddV2(originalOrderReassignmentRejectionMutations,
                                     header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
                             }
+                            employeeNormalizedStockRejection != null -> {
+                                employeeNormalizedStockRejectionEvents = addCount(employeeNormalizedStockRejectionEvents)
+                                employeeNormalizedStockRejectionMutations = historyAddV2(employeeNormalizedStockRejectionMutations,
+                                    header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
+                            }
+                            originalNormalizedStockRejection -> {
+                                originalNormalizedStockRejectionEvents = addCount(originalNormalizedStockRejectionEvents)
+                                originalNormalizedStockRejectionMutations = historyAddV2(originalNormalizedStockRejectionMutations,
+                                    header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
+                            }
                             employeePurchasingPolicyRejection != null -> {
                                 employeePurchasingPolicyRejectionEvents = addCount(employeePurchasingPolicyRejectionEvents)
                                 employeePurchasingPolicyRejectionMutations = historyAddV2(employeePurchasingPolicyRejectionMutations,
@@ -1791,6 +1828,11 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                             originalPurchasingPolicyRejection -> {
                                 originalPurchasingPolicyRejectionEvents = addCount(originalPurchasingPolicyRejectionEvents)
                                 originalPurchasingPolicyRejectionMutations = historyAddV2(originalPurchasingPolicyRejectionMutations,
+                                    header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
+                            }
+                            foundingAdditionalSupervisorReview != null -> {
+                                foundingAdditionalSupervisorReviewEvents = addCount(foundingAdditionalSupervisorReviewEvents)
+                                foundingAdditionalSupervisorReviewMutations = historyAddV2(foundingAdditionalSupervisorReviewMutations,
                                     header.changeCount.toLong(), RuntimeHistoryProfileV2.MAX_MUTATIONS)
                             }
                             employeeSupervisorReview != null -> {
@@ -3454,9 +3496,10 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             originalThrottleEvents + originalAuthenticationEvents + originalSessionRevocationEvents + originalAdministrationCancellationEvents + originalEmployeeCreationCancellationEvents +
                 deviceRevocationEvents + deviceAdmissions.eventCount + originalPolicyActivationEvents + serialPublications.originalEvents + employees.eventCount +
                 originalBusinessEvents + employeeBusinessEvents + employeeNativeOriginalEvents +
-                originalSupervisorReviewEvents + employeeSupervisorReviewEvents +
+                originalSupervisorReviewEvents + employeeSupervisorReviewEvents + foundingAdditionalSupervisorReviewEvents +
                 originalPurchasingPolicyRejectionEvents + employeePurchasingPolicyRejectionEvents +
                 originalOrderReassignmentRejectionEvents + employeeOrderReassignmentRejectionEvents +
+                originalNormalizedStockRejectionEvents + employeeNormalizedStockRejectionEvents +
                 originalOpeningSupplierObligationRejectionEvents + employeeOpeningSupplierObligationRejectionEvents +
                 originalInvoiceCaptureRejectionEvents + employeeInvoiceCaptureRejectionEvents +
                 originalCapturedInvoiceMatchRejectionEvents + employeeCapturedInvoiceMatchRejectionEvents +
@@ -3473,9 +3516,10 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
             val replay = checkNotNull(authenticationReplay)
             val joined = checkNotNull(business)
             val businessEvents = originalBusinessEvents + employeeBusinessEvents + employeeNativeOriginalEvents +
-                originalSupervisorReviewEvents + employeeSupervisorReviewEvents +
+                originalSupervisorReviewEvents + employeeSupervisorReviewEvents + foundingAdditionalSupervisorReviewEvents +
                 originalPurchasingPolicyRejectionEvents + employeePurchasingPolicyRejectionEvents +
                 originalOrderReassignmentRejectionEvents + employeeOrderReassignmentRejectionEvents +
+                originalNormalizedStockRejectionEvents + employeeNormalizedStockRejectionEvents +
                 originalOpeningSupplierObligationRejectionEvents + employeeOpeningSupplierObligationRejectionEvents +
                 originalInvoiceCaptureRejectionEvents + employeeInvoiceCaptureRejectionEvents +
                 originalCapturedInvoiceMatchRejectionEvents + employeeCapturedInvoiceMatchRejectionEvents +
@@ -3490,9 +3534,10 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 originalReturnStockDispositionRejectionEvents + employeeReturnStockDispositionRejectionEvents +
                 originalApprovedBusinessEvents + employeeApprovedBusinessEvents
             val businessMutations = originalBusinessMutations + employeeBusinessMutations + employeeNativeOriginalMutations +
-                originalSupervisorReviewMutations + employeeSupervisorReviewMutations +
+                originalSupervisorReviewMutations + employeeSupervisorReviewMutations + foundingAdditionalSupervisorReviewMutations +
                 originalPurchasingPolicyRejectionMutations + employeePurchasingPolicyRejectionMutations +
                 originalOrderReassignmentRejectionMutations + employeeOrderReassignmentRejectionMutations +
+                originalNormalizedStockRejectionMutations + employeeNormalizedStockRejectionMutations +
                 originalOpeningSupplierObligationRejectionMutations + employeeOpeningSupplierObligationRejectionMutations +
                 originalInvoiceCaptureRejectionMutations + employeeInvoiceCaptureRejectionMutations +
                 originalCapturedInvoiceMatchRejectionMutations + employeeCapturedInvoiceMatchRejectionMutations +
@@ -3531,8 +3576,12 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 employeeSupervisorReviewMutations == employees.supervisorReviewMutationCount &&
                 employeeSupervisorReviewEvents == joined.employeeSupervisorReviewEvents &&
                 employeeSupervisorReviewMutations == joined.employeeSupervisorReviewMutations &&
-                originalSupervisorReviewEvents + employeeSupervisorReviewEvents == joined.supervisorReviewEvents &&
-                originalSupervisorReviewMutations + employeeSupervisorReviewMutations == joined.supervisorReviewMutations &&
+                foundingAdditionalSupervisorReviewEvents == replay.additionalSupervisorReviewCount &&
+                foundingAdditionalSupervisorReviewMutations == replay.additionalSupervisorReviewMutationCount &&
+                foundingAdditionalSupervisorReviewEvents == joined.foundingAdditionalSupervisorReviewEvents &&
+                foundingAdditionalSupervisorReviewMutations == joined.foundingAdditionalSupervisorReviewMutations &&
+                originalSupervisorReviewEvents + employeeSupervisorReviewEvents + foundingAdditionalSupervisorReviewEvents == joined.supervisorReviewEvents &&
+                originalSupervisorReviewMutations + employeeSupervisorReviewMutations + foundingAdditionalSupervisorReviewMutations == joined.supervisorReviewMutations &&
                 employeePurchasingPolicyRejectionEvents == employees.purchasingPolicyRejectionCount &&
                 employeePurchasingPolicyRejectionMutations == employees.purchasingPolicyRejectionMutationCount &&
                 employeePurchasingPolicyRejectionEvents == joined.employeePurchasingPolicyRejectionEvents &&
@@ -3540,11 +3589,17 @@ internal class RuntimeHistoryScanner private constructor(private val session: Se
                 originalPurchasingPolicyRejectionEvents + employeePurchasingPolicyRejectionEvents == joined.purchasingPolicyRejectionEvents &&
                 originalPurchasingPolicyRejectionMutations + employeePurchasingPolicyRejectionMutations == joined.purchasingPolicyRejectionMutations &&
                 employeeOrderReassignmentRejectionEvents == employees.orderReassignmentRejectionCount &&
+                employeeNormalizedStockRejectionEvents == employees.normalizedStockRejectionCount &&
                 employeeOrderReassignmentRejectionMutations == employees.orderReassignmentRejectionMutationCount &&
+                employeeNormalizedStockRejectionMutations == employees.normalizedStockRejectionMutationCount &&
                 employeeOrderReassignmentRejectionEvents == joined.employeeOrderReassignmentRejectionEvents &&
+                employeeNormalizedStockRejectionEvents == joined.employeeNormalizedStockRejectionEvents &&
                 employeeOrderReassignmentRejectionMutations == joined.employeeOrderReassignmentRejectionMutations &&
+                employeeNormalizedStockRejectionMutations == joined.employeeNormalizedStockRejectionMutations &&
                 originalOrderReassignmentRejectionEvents + employeeOrderReassignmentRejectionEvents == joined.orderReassignmentRejectionEvents &&
+                originalNormalizedStockRejectionEvents + employeeNormalizedStockRejectionEvents == joined.normalizedStockRejectionEvents &&
                 originalOrderReassignmentRejectionMutations + employeeOrderReassignmentRejectionMutations == joined.orderReassignmentRejectionMutations &&
+                originalNormalizedStockRejectionMutations + employeeNormalizedStockRejectionMutations == joined.normalizedStockRejectionMutations &&
                 employeeOpeningSupplierObligationRejectionEvents == employees.openingSupplierObligationRejectionCount &&
                 employeeOpeningSupplierObligationRejectionMutations == employees.openingSupplierObligationRejectionMutationCount &&
                 employeeOpeningSupplierObligationRejectionEvents == joined.employeeOpeningSupplierObligationRejectionEvents &&

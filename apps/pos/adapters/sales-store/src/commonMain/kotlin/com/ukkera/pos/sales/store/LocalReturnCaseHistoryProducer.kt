@@ -1,6 +1,9 @@
 package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.CommandKey
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
+import com.ukkera.pos.database.RetainedCommandEvidence
 import com.ukkera.pos.database.ProposedOutcome
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalAuthority
@@ -37,6 +40,40 @@ public class LocalReturnCaseHistoryProducer(
         if (!original.committed && request !is LocalReturnCaseRequestV1.Qualify && request !is LocalReturnCaseRequestV1.Accept) return false
         if (original.committed && request is LocalReturnCaseRequestV1.Qualify &&
             !returnCaseHistorySupportedQualification(original, request)) return false
+        val production = prepareOriginal(NativeBusinessOriginalProgram(command), original, request) {
+            source.prepare(command, it)
+        } ?: return false
+        val expected = production.propose(command.recordedAt)
+        command.requireRequirement(production.requirement)
+        if (original.committed) {
+            if (expected !is ProposedOutcome.Apply) return false
+            command.requireLegacyEffects(expected, production.resources)
+        } else {
+            if (expected !is ProposedOutcome.Reject) return false
+            command.requireReturnCaseQualificationRejection(expected, production.resources)
+        }
+        return true
+    }
+
+    public suspend fun requireOriginal(command: BusinessOriginalProgram) {
+        val original = command.evidence
+        check(command.command in commands && original.committed && original.code == "committed" &&
+            original.nativeOriginalProvenance == null && original.jobs.isEmpty() &&
+            LocalReturnCaseCommandCodecV1.normalize(command.normalized) == command.normalized &&
+            semanticDigest(command.scope, command.actorId, command.command, command.normalized) == command.semanticDigest)
+        val request = LocalReturnCaseCommandCodecV1.decode(command.normalized)
+        check(request !is LocalReturnCaseRequestV1.Qualify || returnCaseHistorySupportedQualification(original, request))
+        val production = prepareOriginal(command, original, request) {
+            (source as? FactualSalesReturnCaseSourceV1)?.prepare(command, it)
+        } ?: error("Original CASE production unavailable")
+        command.requireRequirement(production.requirement)
+        command.requireLegacyEffects(production.propose(command.recordedAt) as? ProposedOutcome.Apply
+            ?: error("Original CASE effects unavailable"), production.resources)
+    }
+
+    private suspend fun prepareOriginal(command: BusinessOriginalProgram, original: RetainedCommandEvidence,
+        request: LocalReturnCaseRequestV1,
+        prepareSource: suspend (SalesReturnCaseQualificationRequestV1) -> PreparedSalesReturnCaseSourceV1?): CaseProduction? {
         val identity = LocalReturnCaseProductionIdentity(command.scope, command.actorId, command.operationId, command.semanticDigest)
         val sources = LocalReturnCaseHistorySources(command)
         var requiresNewEvent = true
@@ -59,7 +96,7 @@ public class LocalReturnCaseHistoryProducer(
                     returnCaseHistoryOrdinaryQualificationRejection(original, request, cut.row.value)
                 if (!original.committed && !ordinaryRejectionProfile && (binding == null || originalSale?.returnPolicyCapture == null ||
                         !omittedEntitlementProfile && !returnCaseHistorySourceStaleQualification(original, request, cut.row.value,
-                            originalSale.entitlement.value.revision))) return false
+                            originalSale.entitlement.value.revision))) return null
                 // Exact original bytes and genuine BEFORE capture resources select this
                 // dispatch. Complete BEFORE/effect/resource comparison still follows.
                 val unavailableProfile = original.committed &&
@@ -69,7 +106,7 @@ public class LocalReturnCaseHistoryProducer(
                 val ordinaryPreSource = ordinaryRejectionProfile &&
                     (binding == null || originalSale == null || request.expectedEntitlementRevision == null)
                 val prepared = if (unavailableProfile || omittedEntitlementProfile || ordinaryPreSource || binding == null || originalSale == null || request.expectedEntitlementRevision == null) null
-                    else source.prepare(command, SalesReturnCaseQualificationRequestV1(command.scope, request.caseId,
+                    else prepareSource(SalesReturnCaseQualificationRequestV1(command.scope, request.caseId,
                         returnCaseFactsDigest(cut.row.value.facts), checkNotNull(cut.binding).stored.digest,
                         cut.row.value.facts, binding, originalSale.sale.value, cut.row.value.recordedAt, cut.row.value.ownerId,
                         cut.row.value.originalOperationId, request.recordOriginalCommercialTiming, request.ordinaryInspection))
@@ -81,7 +118,7 @@ public class LocalReturnCaseHistoryProducer(
                     CaseProduction(returnCaseUnavailableQualificationProduction(identity, request, cut, originalSale))
                 } else {
                     // Missing or mismatched source preparation never retries another profile.
-                    if (prepared == null) return false
+                    if (prepared == null) return null
                     val references = prepared.sourceReferences.toList()
                     requireReturnCaseHistorySources(command, references)
                     val selectedPromises = linkedMapOf<LocalReturnCaseSourceReferenceV1, LocalSalesReturnPortionPromiseV1?>()
@@ -108,7 +145,7 @@ public class LocalReturnCaseHistoryProducer(
                     requiresNewEvent = false
                     CaseProduction(returnCaseUnavailableAcceptanceProduction(identity, request, cut))
                 } else {
-                    val originalSale = findReturnCaseHistoryEntitlement(command, binding.saleId, sources) ?: return false
+                    val originalSale = findReturnCaseHistoryEntitlement(command, binding.saleId, sources) ?: return null
                     val qualified = sources.readClaim(originalSale, request.caseId)
                     val work = readReturnCaseHistoryAcceptanceWork(command)
                     val duplicate = sources.acceptanceDuplicate(request)
@@ -121,16 +158,7 @@ public class LocalReturnCaseHistoryProducer(
             }
         }
         if (requiresNewEvent) sources.requireNewEvent()
-        val expected = production.propose(command.recordedAt)
-        command.requireRequirement(production.requirement)
-        if (original.committed) {
-            if (expected !is ProposedOutcome.Apply) return false
-            command.requireLegacyEffects(expected, production.resources)
-        } else {
-            if (expected !is ProposedOutcome.Reject) return false
-            command.requireReturnCaseQualificationRejection(expected, production.resources)
-        }
-        return true
+        return production
     }
 
     /** Inert dispatch adapter only. Production values confer no historical authority. */

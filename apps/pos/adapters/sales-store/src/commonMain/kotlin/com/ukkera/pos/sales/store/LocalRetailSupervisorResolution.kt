@@ -65,12 +65,12 @@ public class LocalRetailSupervisorHandler(private val stock: LocalStockRepositor
         if (!supportsRpcWorkflow(profile, normalized) || context.key != key) return null
         return financialOriginalRead(view, context, normalized, originalSources, stock, tenderPolicies = tenderPolicies) { loan ->
             retailJournalRpcOriginalRequirements(normalized, original,
-                stock?.let { commerceLoan(loan, it, tenderPolicies) } ?: loan, context, tenderPolicies)
+                stock?.let { commerceLoan(loan, it, tenderPolicies, originalSources) } ?: loan, context, tenderPolicies)
         }
     }
 
     override suspend fun prepare(normalized: StoredBytes, borrowed: CommandReadView, context: CommandContext): PreparedMutation {
-        val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies) } ?: borrowed
+        val view = stock?.let { commerceLoan(borrowed, it, tenderPolicies, originalSources) } ?: borrowed
         check(context.key == key && context.scope == view.scope &&
             semanticDigest(view.scope, context.originalActorId, key, normalized) == context.semanticDigest)
         return when (val request = LocalRetailSupervisorCodecV1.decode(normalized)) {

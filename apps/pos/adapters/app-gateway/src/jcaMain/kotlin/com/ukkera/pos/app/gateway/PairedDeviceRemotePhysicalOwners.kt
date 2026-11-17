@@ -68,6 +68,8 @@ internal class PairedDeviceRemotePhysicalOwners(
         val selection: PairedPhysicalOriginalSelection, val qualification: LocalPhysicalExternalCustody) {
         @Volatile var acquisition: DistributedPhysicalRawRecoveryAcquisition? = null
         @Volatile var closed: LocalPhysicalSpoolClose? = null
+        // A waiter observes actual native closure; abandoning a login never cancels recovery.
+        val settled = CompletableDeferred<LocalPhysicalSpoolClose>()
     }
     private class ResolverAttempt(val binding: LocalRemoteRetailPhysicalBinding,
         val selection: PairedPhysicalOriginalSelection) {
@@ -100,11 +102,13 @@ internal class PairedDeviceRemotePhysicalOwners(
         override suspend fun beginResolution(request: MutationRequest): DistributedPhysicalClientResolution? {
             currentCoroutineContext().ensureActive()
             if (!isCurrent() || !parent.source.recheckPhysical(journal) || !isCurrent()) return null
-            val original = parent.resolutionOwner(selected.binding, request, journal.owner.actorId) ?: return null
+            val original = parent.resolutionOwner(selected.binding, request, journal.owner.actorId)
             if (!isCurrent() || !parent.source.recheckPhysical(journal) || !isCurrent()) return null
+            val counterparty = if (original == null) native ?: return null else null
             val resolverLoan = parent.source.capturePhysical(journal) ?: return null
             // The original catalogue and the authenticated resolver journal remain distinct.
-            return original.beginLinkedResolution(request, journal.owner.actorId, resolverLoan)
+            return if (original != null) original.beginLinkedResolution(request, journal.owner.actorId, resolverLoan)
+                else checkNotNull(counterparty).beginForeignLinkedResolution(request, journal.owner.actorId, resolverLoan)
         }
     }
 
@@ -163,41 +167,57 @@ internal class PairedDeviceRemotePhysicalOwners(
     override suspend fun acquire(binding: LocalRemoteRetailPhysicalBinding,
         journal: LocalClientIntentJournal): LocalRemoteRetailPhysicalActor? {
         currentCoroutineContext().ensureActive()
-        val work = admission.withLock {
-            if (!isCurrent(binding)) return@withLock null
-            val id = source.physicalJournalId(journal) ?: return@withLock null
-            val disposition = source.physicalDisposition(journal) ?: return@withLock null
-            val resolver = synchronized(stateGate) { resolverAttempts.singleOrNull { it.selection.journalId == id } }
-            if (resolver != null) {
-                if (!resolver.work.isCompleted || closeResolver(resolver) != LocalPhysicalSpoolClose.CLOSED) return@withLock null
-                synchronized(stateGate) { check(resolverAttempts.remove(resolver)) }
-            }
-            val slot = synchronized(stateGate) {
-                // A genuine raw-recovery FD with unknown close still owns this catalogue.
-                if (rawAttempts.any { it.selection.journalId == id }) return@synchronized null
-                slots.singleOrNull { it.journal === journal } ?: run {
-                    if (slots.size >= MAX_ACTORS || slots.any { it.journalId == id || it.journal.owner == journal.owner })
-                        return@synchronized null
-                    ActorSlot(journal, id, disposition).also { slots.add(it) }
+        while (true) {
+            var recovery: RawAttempt? = null
+            val work = admission.withLock {
+                if (!isCurrent(binding)) return@withLock null
+                val id = source.physicalJournalId(journal) ?: return@withLock null
+                val disposition = source.physicalDisposition(journal) ?: return@withLock null
+                val resolver = synchronized(stateGate) { resolverAttempts.singleOrNull { it.selection.journalId == id } }
+                if (resolver != null) {
+                    if (!resolver.work.isCompleted || closeResolver(resolver) != LocalPhysicalSpoolClose.CLOSED) return@withLock null
+                    synchronized(stateGate) { check(resolverAttempts.remove(resolver)) }
                 }
-            } ?: return@withLock null
-            val previous = slot.selected
-            if (previous != null && previous.binding === binding && previous.closed == null) return@withLock previous.work
-            // The close is part of the independently supervised acquisition below. Retain the
-            // replacement before awaiting, and never reopen after an unknown previous close.
-            // A canceled waiter cannot turn an in-flight acquisition into another native
-            // enrollment. Wait for its retained worker to settle before admitting a successor.
-            if (previous != null && (!previous.work.isCompleted || previous.closed == LocalPhysicalSpoolClose.HELD))
-                return@withLock null
-            val attempt = Attempt(binding, previous)
-            synchronized(stateGate) { slot.selected = attempt }
-            attempt.work = owned.async(start = CoroutineStart.LAZY) { acquireOwned(slot, attempt, previous) }
-            attempt.work.start()
-            attempt.work
-        } ?: return null
-        val result = work.await()
-        currentCoroutineContext().ensureActive()
-        return result?.takeIf { isCurrent(binding) && it.isCurrent() }
+                // Cold device-only redelivery may already own this exact catalogue. Its
+                // temporary exclusion must not become a permanent missing UI capability.
+                val recovering = synchronized(stateGate) { rawAttempts.singleOrNull { it.selection.journalId == id } }
+                if (recovering != null) {
+                    recovery = recovering
+                    return@withLock null
+                }
+                val slot = synchronized(stateGate) {
+                    slots.singleOrNull { it.journal === journal } ?: run {
+                        if (slots.size >= MAX_ACTORS || slots.any { it.journalId == id || it.journal.owner == journal.owner })
+                            return@synchronized null
+                        ActorSlot(journal, id, disposition).also { slots.add(it) }
+                    }
+                } ?: return@withLock null
+                val previous = slot.selected
+                if (previous != null && previous.binding === binding && previous.closed == null) return@withLock previous.work
+                // The close is part of the independently supervised acquisition below. Retain the
+                // replacement before awaiting, and never reopen after an unknown previous close.
+                // A canceled waiter cannot turn an in-flight acquisition into another native
+                // enrollment. Wait for its retained worker to settle before admitting a successor.
+                if (previous != null && (!previous.work.isCompleted || previous.closed == LocalPhysicalSpoolClose.HELD))
+                    return@withLock null
+                val attempt = Attempt(binding, previous)
+                synchronized(stateGate) { slot.selected = attempt }
+                attempt.work = owned.async(start = CoroutineStart.LAZY) { acquireOwned(slot, attempt, previous) }
+                attempt.work.start()
+                attempt.work
+            }
+            val pendingRecovery = recovery
+            if (pendingRecovery != null) {
+                // Never hold actor admission during native/network work. The recovery
+                // owner remains independently supervised, including if this waiter dies.
+                if (pendingRecovery.settled.await() != LocalPhysicalSpoolClose.CLOSED) return null
+                currentCoroutineContext().ensureActive()
+                continue // Recheck binding, authenticated journal and every census under admission.
+            }
+            val result = work?.await() ?: return null
+            currentCoroutineContext().ensureActive()
+            return result.takeIf { isCurrent(binding) && it.isCurrent() }
+        }
     }
 
     /** Select the actual recording catalogue on this original Client. Current resolver
@@ -367,16 +387,24 @@ internal class PairedDeviceRemotePhysicalOwners(
                 }
             } finally {
                 withContext(NonCancellable) {
-                    val closed = if (factoryEntered) attempt.acquisition?.close() ?: LocalPhysicalSpoolClose.HELD
-                    else try {
-                        // No native factory was entered. Only this actual counted loan exists.
-                        attempt.qualification.deny()
-                        if (attempt.qualification.release()) LocalPhysicalSpoolClose.CLOSED else LocalPhysicalSpoolClose.HELD
-                    } catch (_: Exception) { LocalPhysicalSpoolClose.HELD }
-                    attempt.closed = closed
-                    if (closed == LocalPhysicalSpoolClose.CLOSED) synchronized(stateGate) {
-                        check(rawAttempts.remove(attempt))
-                        if (acknowledged && isCurrent(binding)) recovered[selection.journalId] = binding.rpc
+                    var settled = LocalPhysicalSpoolClose.HELD
+                    try {
+                        val closed = if (factoryEntered) attempt.acquisition?.close() ?: LocalPhysicalSpoolClose.HELD
+                        else try {
+                            // No native factory was entered. Only this actual counted loan exists.
+                            attempt.qualification.deny()
+                            if (attempt.qualification.release()) LocalPhysicalSpoolClose.CLOSED else LocalPhysicalSpoolClose.HELD
+                        } catch (_: Exception) { LocalPhysicalSpoolClose.HELD }
+                        attempt.closed = closed
+                        if (closed == LocalPhysicalSpoolClose.CLOSED) synchronized(stateGate) {
+                            check(rawAttempts.remove(attempt))
+                            if (acknowledged && isCurrent(binding)) recovered[selection.journalId] = binding.rpc
+                        }
+                        settled = closed
+                    } finally {
+                        // Unknown/failed close stays held in the root census; it never
+                        // permits interactive reopening or another physical action.
+                        attempt.settled.complete(settled)
                     }
                 }
             }

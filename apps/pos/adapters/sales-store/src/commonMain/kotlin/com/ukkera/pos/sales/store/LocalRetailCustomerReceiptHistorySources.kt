@@ -2,6 +2,8 @@ package com.ukkera.pos.sales.store
 
 import com.ukkera.pos.database.RetainedOriginalV2
 import com.ukkera.pos.database.RuntimeHistoricalCommand
+import com.ukkera.pos.database.BusinessOriginalProgram
+import com.ukkera.pos.database.NativeBusinessOriginalProgram
 import com.ukkera.pos.recovery.RecoveryResourceKey
 import com.ukkera.pos.security.PayloadDigest
 import com.ukkera.pos.types.DomainId
@@ -25,7 +27,8 @@ internal class LocalRetailCustomerReceiptHistoryHeadCut(
  * Missing, orphan, unsupported or inconsistent evidence throws/holds; it cannot become a
  * revision-zero source. No current SQL rows, supplied retained reader or authority is used.
  */
-internal class LocalRetailCustomerReceiptHistorySources(private val command: RuntimeHistoricalCommand) {
+internal class LocalRetailCustomerReceiptHistorySources(private val command: BusinessOriginalProgram) {
+    constructor(command: RuntimeHistoricalCommand) : this(NativeBusinessOriginalProgram(command))
     private class EventSource(
         val row: LocalSalesRow<LocalRetailCustomerReceiptEventV1>,
         val original: RetainedOriginalV2.Legacy,

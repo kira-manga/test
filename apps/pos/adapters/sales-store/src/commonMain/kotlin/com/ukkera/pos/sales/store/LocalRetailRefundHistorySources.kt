@@ -21,8 +21,14 @@ internal class RetailRefundHistorySources(val returned: LocalReturnCut, val cash
 internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalCommand,
     target: LocalJournalTargetV3): RetailRefundHistorySources {
     check(target.kind == SalesRecordingKind.REFUND_ATTESTATION)
-    val saleId = checkNotNull(target.originalSaleId)
-    val claimId = checkNotNull(target.originalClaimId)
+    return retailRefundHistorySources(NativeBusinessOriginalProgram(command), checkNotNull(target.originalSaleId),
+        checkNotNull(target.originalClaimId), target.documentId, target.sessionId)
+}
+
+/** Actual whole-joined original DATA only. Separate IDs do not create a physical
+ * journal target or recording capability for nonphysical exchange calculations. */
+internal suspend fun retailRefundHistorySources(command: BusinessOriginalProgram,
+    saleId: DomainId, claimId: DomainId, returnId: DomainId, sessionId: DomainId): RetailRefundHistorySources {
     val saleSource = refundHistoryRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.SALE_KIND, saleId))
     val saleRow = saleSource.row
     check(saleRow.schema == LocalSalesStoreProfile.schema(saleRow.key.kind) && saleRow.revision == Revision(1))
@@ -43,11 +49,14 @@ internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalComman
     val linkedEntitlement = prices?.value?.normalizedStock == true &&
         (command.aggregate(LocalReturnEntitlementProvenanceProfile.locator(saleId)) != null ||
             command.claim(LocalReturnEntitlementProvenanceProfile.locatorClaim(saleId)) != null)
-    val original = if (linkedEntitlement) {
+    val legacyEntitlement = prices?.value?.normalizedStock == true && !linkedEntitlement &&
+        (entitlementSource.original as? RetainedOriginalV2.Legacy)?.evidence?.command == LocalSalesStoreProfile.RETURN_COMMAND
+    val original = if (linkedEntitlement || legacyEntitlement) {
         // A present new linkage is source-required. Never fall back to the old selected-CASE
         // current-writer profile or reset an advanced entitlement to its initial Finalize.
         val joined = findReturnCaseHistoryEntitlement(command, saleId, caseSources) ?: refundHistoryUnavailable()
-        check(refundHistorySameRow(joined.sale.stored, saleRow) && refundHistorySameRow(joined.entitlement.stored, entitlementRow) && joined.normalizedSource != null)
+        check(refundHistorySameRow(joined.sale.stored, saleRow) && refundHistorySameRow(joined.entitlement.stored, entitlementRow) &&
+            (joined.normalizedSource != null) == linkedEntitlement)
         joined
     } else LocalEntitlementCut(LocalSalesRow(saleRow, sale), LocalSalesRow(entitlementRow, entitlement), returnPolicyCapture, prices)
     val claimSource = refundHistoryRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_CLAIM_KIND, claimId))
@@ -55,11 +64,11 @@ internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalComman
     check(claimRow.schema == LocalSalesStoreProfile.schema(claimRow.key.kind))
     val claim = SalesSnapshotCodec.decodeReturnClaim(claimRow.text(),
         SalesSnapshotBinding(SalesSnapshotKind.RETURN_CLAIM, command.scope, claimId, claimRow.domainRevision()), entitlement)
-    val acceptedSource = refundHistoryRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_KIND, target.documentId))
+    val acceptedSource = refundHistoryRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.RETURN_KIND, returnId))
     val acceptedRow = acceptedSource.row
     check(acceptedRow.schema == LocalSalesStoreProfile.schema(acceptedRow.key.kind))
     val accepted = SalesSnapshotCodec.decodeAcceptedReturn(acceptedRow.text(),
-        SalesSnapshotBinding(SalesSnapshotKind.ACCEPTED_RETURN, command.scope, target.documentId, acceptedRow.domainRevision()), entitlement, claim)
+        SalesSnapshotBinding(SalesSnapshotKind.ACCEPTED_RETURN, command.scope, returnId, acceptedRow.domainRevision()), entitlement, claim)
     check(accepted.saleId == saleId && accepted.claimId == claimId && claim.acceptedReturnId == accepted.id &&
         command.claim(LocalSalesStoreProfile.unique("accepted_return", accepted.id)) == saleId &&
         command.claim(LocalSalesStoreProfile.unique("return_claim_source", accepted.id)) == claimId &&
@@ -83,8 +92,9 @@ internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalComman
             LocalClaimCut(original, null, LocalSalesRow(claimRow, claim), resources)
         }
     } else {
-        // No updated normalized v1-intake entitlement writer is supported or inferred here.
-        check(prices?.value?.normalizedStock != true)
+        // A normalized old intake is admitted only after its actual whole acceptance
+        // and remaining-rights writer; no CASE locator/contribution is inferred.
+        check(prices?.value?.normalizedStock != true || legacyEntitlement)
         val intake = refundHistoryRoot(command, LocalSalesStoreProfile.RETURN_INTAKE_KIND, claimId, LocalReturnIntake.serializer(), 8_192) { value, revision ->
             check(value.scope.value() == command.scope && value.claimId == claimId && value.revision == revision && revision == Revision(1) &&
                 value.boundSaleId == saleId && value.facts.saleId == saleId && value.facts.portionId == claim.portionId &&
@@ -95,6 +105,8 @@ internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalComman
             command.claim(LocalSalesStoreProfile.unique("return_claim", claimId)) == saleId)
         val claimantWork = refundHistoryWork(command, intake.value.originalActorId)
         check(claimId !in claimantWork.value.pendingClaimIds)
+        if (legacyEntitlement) refundHistoryLegacyAcceptance(command, original, LocalSalesRow(claimRow, claim),
+            LocalSalesRow(acceptedRow, accepted), claimSource, acceptedSource)
         // The actual legacy intake/binding/acceptance originals must already be joined by an
         // explicitly installed original qualification producer. No policy/date is backfilled.
         LocalClaimCut(original, intake, LocalSalesRow(claimRow, claim))
@@ -102,15 +114,39 @@ internal suspend fun retailRefundHistorySources(command: RuntimeHistoricalComman
     val work = refundHistoryWork(command, accepted.acceptingOperatorId)
     check((accepted.id in work.value.returnIds) == (accepted.due.minor != 0L || accepted.unresolved))
     val returned = LocalReturnCut(claimed, LocalSalesRow(acceptedRow, accepted), work)
-    return RetailRefundHistorySources(returned, refundHistoryCash(command, target.sessionId))
+    return RetailRefundHistorySources(returned, refundHistoryCash(command, sessionId))
+}
+
+/** The immutable claim's actual whole legacy Accept owns the initial liability.
+ * Later financial writers may advance that liability, never replace its origin. */
+private suspend fun refundHistoryLegacyAcceptance(command: BusinessOriginalProgram, original: LocalEntitlementCut,
+    claim: LocalSalesRow<ReturnClaim>, accepted: LocalSalesRow<AcceptedReturn>,
+    claimSource: BusinessOriginalAggregate, acceptedSource: BusinessOriginalAggregate) {
+    val retained = claimSource.original as? RetainedOriginalV2.Legacy ?: refundHistoryUnavailable()
+    val producer = retained.evidence
+    check(command.earlierOriginal(producer.operationId) === retained &&
+        producer.command == LocalSalesStoreProfile.RETURN_COMMAND && producer.nativeOriginalProvenance == null)
+    val request = LocalReturnCommandCodec.decode(producer.normalized) as? LocalReturnRequestV1.Accept ?: refundHistoryUnavailable()
+    check(request.saleId == accepted.value.saleId && request.claimId == claim.value.id && request.returnId == accepted.value.id)
+    check(returnEntitlementWriteMatches(producer, claim.stored.key, claim.stored.revision,
+        claim.stored.schema, claim.stored.payload, claim.stored.digest))
+    val write = producer.aggregateWrites.singleOrNull { it.key == accepted.stored.key } ?: refundHistoryUnavailable()
+    check(write.storageGeneration == Revision(1) && write.schema == accepted.stored.schema)
+    val initial = SalesSnapshotCodec.decodeAcceptedReturn(write.payload.text(),
+        SalesSnapshotBinding(SalesSnapshotKind.ACCEPTED_RETURN, command.scope, accepted.value.id, Revision(0)),
+        original.entitlement.value, claim.value)
+    check(refundHistorySameAccepted(initial, accepted.value))
+    if (accepted.value.revision == Revision(0)) check(acceptedSource.original === retained &&
+        accepted.stored.payload == write.payload && accepted.stored.digest == write.payloadDigest)
+    else refundHistoryClosedFinancialSource(acceptedSource, accepted.value)
 }
 
 /** The selected obligation retains its own immutable acceptance even after unrelated returns
  * advance the sale entitlement. Its liability writer is a genuine earlier whole financial join;
  * current source lookup and each earlier financial producer retain their real BEFORE lineage. */
-private suspend fun refundHistoryLinkedCaseOrigin(command: RuntimeHistoricalCommand,
+private suspend fun refundHistoryLinkedCaseOrigin(command: BusinessOriginalProgram,
     sources: LocalReturnCaseHistorySources, original: LocalClaimCut, accepted: LocalSalesRow<AcceptedReturn>,
-    claimSource: RuntimeHistoricalAggregateSource, acceptedSource: RuntimeHistoricalAggregateSource): Set<RecoveryResourceKey> {
+    claimSource: BusinessOriginalAggregate, acceptedSource: BusinessOriginalAggregate): Set<RecoveryResourceKey> {
     val dependencies = LocalReturnCaseDependencies()
     val cut = sources.readCase(original.claim.value.id, dependencies)
     check(cut.row.value.stage == LocalReturnCaseStageV1.ACCEPTED_DISPOSITION_PENDING &&
@@ -140,7 +176,7 @@ private suspend fun refundHistoryLinkedCaseOrigin(command: RuntimeHistoricalComm
     return returnCaseResources(cut) + dependencies.snapshot()
 }
 
-private suspend fun refundHistoryCash(command: RuntimeHistoricalCommand, id: DomainId): LocalCashCut {
+private suspend fun refundHistoryCash(command: BusinessOriginalProgram, id: DomainId): LocalCashCut {
     val row = refundHistoryRequired(command, CashNonSaleStoreProfile.sessionKey(id)).row
     check(row.schema == CashNonSaleStoreProfile.SESSION_SCHEMA)
     val cash = SalesSnapshotCodec.decodeCashSession(row.text(),
@@ -164,14 +200,14 @@ private suspend fun refundHistoryCash(command: RuntimeHistoricalCommand, id: Dom
     return LocalCashCut(LocalSalesRow(row, cash), drawer, custodian, refundHistoryWork(command, cash.custodianId))
 }
 
-private suspend fun refundHistoryWork(command: RuntimeHistoricalCommand, id: DomainId): LocalSalesRow<LocalWorkState> =
+private suspend fun refundHistoryWork(command: BusinessOriginalProgram, id: DomainId): LocalSalesRow<LocalWorkState> =
     refundHistoryRoot(command, LocalSalesStoreProfile.WORK_KIND, id, LocalWorkState.serializer()) { value, revision ->
         check(value.scope.value() == command.scope && value.id == id && value.revision == revision &&
             listOf(value.orderIds, value.returnIds, value.pendingClaimIds).all { it.size <= LocalSalesStoreProfile.MAX_OPEN_WORK && it.distinct().size == it.size })
     }
 
-private suspend fun refundHistoryPrices(command: RuntimeHistoricalCommand, sale: PaidSale,
-    saleSource: RuntimeHistoricalAggregateSource): LocalSalesRow<LocalSalesPriceSourcesV2>? {
+private suspend fun refundHistoryPrices(command: BusinessOriginalProgram, sale: PaidSale,
+    saleSource: BusinessOriginalAggregate): LocalSalesRow<LocalSalesPriceSourcesV2>? {
     val reference = sale.priceSourceReference ?: return null // Explicit historical profile only.
     val paired = refundHistoryRequired(command, LocalSalesStoreProfile.key(LocalSalesStoreProfile.PRICE_SOURCES_KIND, reference.id))
     check(paired.row.schema == LocalSalesStoreProfile.PRICE_SOURCES_SCHEMA && paired.row.revision == Revision(1))
@@ -193,7 +229,7 @@ private suspend fun refundHistoryPrices(command: RuntimeHistoricalCommand, sale:
 }
 
 /** Exact immutable V2 companion on the SAME whole Create OR Replace quote, not current policy. */
-private suspend fun refundHistoryReturnPolicyCapture(command: RuntimeHistoricalCommand, sale: PaidSale,
+private suspend fun refundHistoryReturnPolicyCapture(command: BusinessOriginalProgram, sale: PaidSale,
     prices: LocalSalesPriceSourcesV2?): LocalSalesRow<LocalSalesReturnPolicyCaptureV2>? {
     val reference = sale.returnPolicySourceReference ?: return null
     val actualPrices = prices ?: refundHistoryUnavailable()
@@ -209,7 +245,7 @@ private suspend fun refundHistoryReturnPolicyCapture(command: RuntimeHistoricalC
     return LocalSalesRow(paired.row, capture)
 }
 
-private suspend fun refundHistoryCommerceLink(command: RuntimeHistoricalCommand, source: RuntimeHistoricalAggregateSource) {
+private suspend fun refundHistoryCommerceLink(command: BusinessOriginalProgram, source: BusinessOriginalAggregate) {
     val paired = refundHistoryRequired(command, commerceLinkKey(source.row.key))
     check(paired.row.schema == commerceLinkSchema() && paired.original === source.original)
     val link = localSalesDecode(paired.row.payload, CommerceRowLinkV2.serializer())
@@ -230,7 +266,7 @@ private suspend fun refundHistoryCommerceLink(command: RuntimeHistoricalCommand,
 
 /** CASE source linkage only, on already WHOLE-joined original producers. This does not install
  * an accepting rights/delivery source or turn an assessment DTO into qualification authority. */
-private class RefundCaseHistory(private val command: RuntimeHistoricalCommand) {
+private class RefundCaseHistory(private val command: BusinessOriginalProgram) {
     private val dependencies = LocalReturnCaseDependencies()
     private val fullEvents = mutableMapOf<OperationId, LocalSalesRow<LocalReturnCaseEventV1>>()
     private val visiting = mutableSetOf<OperationId>()
@@ -317,9 +353,9 @@ private class RefundCaseHistory(private val command: RuntimeHistoricalCommand) {
         }
     }
 
-    suspend fun accepted(original: LocalEntitlementCut, claim: LocalSalesRow<ReturnClaim>, claimSource: RuntimeHistoricalAggregateSource,
-        accepted: LocalSalesRow<AcceptedReturn>, prices: LocalSalesPriceSourcesV2?, entitlementSource: RuntimeHistoricalAggregateSource,
-        acceptedSource: RuntimeHistoricalAggregateSource): Set<RecoveryResourceKey> {
+    suspend fun accepted(original: LocalEntitlementCut, claim: LocalSalesRow<ReturnClaim>, claimSource: BusinessOriginalAggregate,
+        accepted: LocalSalesRow<AcceptedReturn>, prices: LocalSalesPriceSourcesV2?, entitlementSource: BusinessOriginalAggregate,
+        acceptedSource: BusinessOriginalAggregate): Set<RecoveryResourceKey> {
         val caseId = claim.value.id
         val stateRow = refundHistoryRequired(command, LocalReturnCaseProfileV1.key(LocalReturnCaseProfileV1.CASE, caseId))
         val state = localSalesDecode(stateRow.row.payload, LocalReturnCaseStateV1.serializer())
@@ -412,10 +448,36 @@ private class RefundCaseHistory(private val command: RuntimeHistoricalCommand) {
 }
 
 /** Closed selectors on an actual earlier WHOLE business join; never a new business admission. */
-private fun refundHistoryClosedFinancialSource(source: RuntimeHistoricalAggregateSource, accepted: AcceptedReturn) {
+private fun refundHistoryClosedFinancialSource(source: BusinessOriginalAggregate, accepted: AcceptedReturn) {
     val original = (source.original as? RetainedOriginalV2.Legacy)?.evidence ?: refundHistoryUnavailable()
+    requireRefundLiabilityWriter(original, source.row, accepted)
+}
+
+/** Exact liability linkage only. The caller separately requires the whole original
+ * BEFORE/effects program on the actual native-selected source loan. */
+internal fun requireRefundLiabilityWriter(original: RetainedCommandEvidence, row: StoredAggregate, accepted: AcceptedReturn) {
     check(original.nativeOriginalProvenance == null)
-    requireRetailRetainedRowV3(original, source.row)
+    requireRetailRetainedRowV3(original, row)
+    if (original.command == LocalExchangeCodec.COMMAND) {
+        // The native/program caller has already closed this entire earlier exchange
+        // BEFORE calculation. Select its exact accepted-return successor, never a
+        // key-only or equal-balance substitute for that whole producer proof.
+        val record = requireExchangeOriginal(original)
+        val result = LocalExchangeCodec.result(original.result) as? LocalExchangeResultV1.Applied
+            ?: refundHistoryUnavailable()
+        check(record.returnId == accepted.id && record.saleId == accepted.saleId && record.claimId == accepted.claimId &&
+            result.returnRevision == accepted.revision && result.returnDue == accepted.due)
+        val added = accepted.attempts.filter { it.originalOperationId == original.operationId }
+        check(added.size == record.slices.size && added.map { it.id }.toSet() == record.slices.map { it.attemptId }.toSet())
+        for (slice in record.slices) {
+            val attempt = added.single { it.id == slice.attemptId }
+            val tender = attempt.tender as? Tender.ExchangeOffset ?: refundHistoryUnavailable()
+            check(tender.exchangeId == record.exchangeId && tender.returnId == accepted.id &&
+                attempt.originalActorId == original.originalActorId && attempt.originalPaymentId == slice.originalPaymentId &&
+                attempt.amount == slice.amount && attempt.status == AttemptStatus.ATTESTED_PAID && attempt.refund != null)
+        }
+        return
+    }
     val result = LocalFinancialResultCodecV3.decode(original.result)
     val target = when (original.command) {
         LocalFinancialJournalProfileV3.RETURN_COMMAND -> when (val request = LocalReturnCommandCodecV3.decode(original.normalized)) {
@@ -456,7 +518,7 @@ private fun refundHistorySameAccepted(first: AcceptedReturn, current: AcceptedRe
         first.inspectionEvidence == current.inspectionEvidence && first.originalPayable == current.originalPayable &&
         first.components == current.components && first.tenderObligations == current.tenderObligations
 
-private suspend fun <T> refundHistoryRoot(command: RuntimeHistoricalCommand, kind: String, id: DomainId,
+private suspend fun <T> refundHistoryRoot(command: BusinessOriginalProgram, kind: String, id: DomainId,
     serializer: KSerializer<T>, maximum: Int = LOCAL_SALES_MAX_BYTES, checkValue: (T, Revision) -> Unit): LocalSalesRow<T> {
     val row = refundHistoryRequired(command, LocalSalesStoreProfile.key(kind, id)).row
     check(row.schema == LocalSalesStoreProfile.schema(kind))
@@ -466,6 +528,9 @@ private suspend fun <T> refundHistoryRoot(command: RuntimeHistoricalCommand, kin
 }
 
 internal suspend fun refundHistoryRequired(command: RuntimeHistoricalCommand, key: AggregateKey): RuntimeHistoricalAggregateSource =
+    command.aggregateSource(key) ?: refundHistoryUnavailable()
+
+internal suspend fun refundHistoryRequired(command: BusinessOriginalProgram, key: AggregateKey): BusinessOriginalAggregate =
     command.aggregateSource(key) ?: refundHistoryUnavailable()
 private fun StoredBytes.text(): String = copyBytes().decodeToString(throwOnInvalidSequence = true)
 internal fun refundHistoryUnavailable(): Nothing = error("Original accepted retail refund source unavailable")
