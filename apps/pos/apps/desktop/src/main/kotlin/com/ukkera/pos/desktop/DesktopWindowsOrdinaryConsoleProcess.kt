@@ -20,6 +20,11 @@ internal object DesktopWindowsOrdinaryConsoleProcess {
         try {
             val expected = DesktopWindowsPackageIdentity.TEST.target()
             check(WindowsInstalledApplicationIdentity.captureUi(expected) is SelfOwnedInstalledIdentityResultV2.Data)
+            phase = "KERNEL_ACCESS_OBSERVATION"
+            val granted = DesktopSetupWindowsPipe.createdFileAccessForProbe(expected.packageFamilyName)
+            File(output.parentFile, "master-console-access-probe.txt").writeText(
+                "DATA requested=0x00100003 granted=0x" + granted.toUInt().toString(16).padStart(8, '0') + "\n")
+            check(granted == 0x00100083)
             val executable = ProcessHandle.current().info().command().orElseThrow()
             check(executable.endsWith(".exe", ignoreCase = true) && '\"' !in executable)
             val target = output.absolutePath

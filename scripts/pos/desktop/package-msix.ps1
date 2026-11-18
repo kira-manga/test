@@ -115,6 +115,11 @@ if ($Probe) {
             $consoleFile = Join-Path $diagnostics 'master-console-probe.txt'
             $consoleProcess = Start-Process -FilePath $alias -ArgumentList "--master-console-probe=$consoleFile" -Wait -PassThru
             $summary.master_console_exit = $consoleProcess.ExitCode
+            $accessFile = Join-Path $diagnostics 'master-console-access-probe.txt'
+            $summary.master_console_access = if (Test-Path $accessFile) { (Get-Content -Raw $accessFile).Trim() } else { 'NO_OUTPUT' }
+            if ($summary.master_console_access -ne 'DATA requested=0x00100003 granted=0x00100083') {
+                throw "Native CreateFile access observation failed: $($summary.master_console_access)"
+            }
             $summary.master_console_probe = if (Test-Path $consoleFile) { (Get-Content -Raw $consoleFile).Trim() } else { 'NO_OUTPUT' }
             if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true') {
                 throw "Native ordinary-token Master console probe failed: $($summary.master_console_probe)"

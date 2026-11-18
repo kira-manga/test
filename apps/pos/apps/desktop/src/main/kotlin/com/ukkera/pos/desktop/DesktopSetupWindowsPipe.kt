@@ -19,7 +19,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
  * Windows setup-console transport between the packaged UI and the packaged Master service.
  * The service owns the pipe name from its first instance (FILE_FLAG_FIRST_PIPE_INSTANCE) and keeps
  * a next instance pending so the name is never released; remote clients are rejected; the protected
- * DACL grants ordinary packaged Users only data read/write plus synchronization, conditioned on
+ * DACL grants ordinary packaged Users data read/write, read-attributes and synchronization, conditioned on
  * this exact OS-issued package identity. Service/administrator ownership rights remain separate.
  * Both ends verify that the
  * peer process carries this package's family name, so neither a squatting server nor a foreign
@@ -46,6 +46,21 @@ internal object DesktopSetupWindowsPipe {
 
     /** Fixed Win32 outcome only; callers never need an exception message or peer data. */
     internal class ConnectFailure(val nativeCode: Int) : IOException("The Master setup console is unavailable")
+
+    /** Test-runner observation of the actual Win32 wrapper's granted access, not a grant. */
+    internal fun createdFileAccessForProbe(expectedServerFamily: String): Int {
+        val raw = Win.kernel.CreateFileW(WString(NAME), 0x00100003, 0, null, OPEN_EXISTING,
+            FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
+        if (invalid(raw)) throw ConnectFailure(Native.getLastError())
+        try {
+            val pid = IntByReference()
+            check(Win.kernel.GetNamedPipeServerProcessId(raw!!, pid) != 0 && packageFamily(pid.value) == expectedServerFamily)
+            Memory(16).use { io -> Memory(4).use { access ->
+                check(Win.ntdll.NtQueryInformationFile(raw, io, access, 4, 8) == 0)
+                return access.getInt(0)
+            } }
+        } finally { Win.kernel.CloseHandle(raw) }
+    }
 
     /** Failure-only native observation; never changes a descriptor or grants access. */
     internal fun integrityLabelForProbe(expectedServerFamily: String): String {
@@ -288,8 +303,13 @@ internal object DesktopSetupWindowsPipe {
         fun GetAce(acl: Pointer, index: Int, ace: PointerByReference): Int
     }
 
+    private interface Ntdll : StdCallLibrary {
+        fun NtQueryInformationFile(handle: Pointer, ioStatus: Pointer, information: Pointer, length: Int, kind: Int): Int
+    }
+
     private object Win {
         val kernel: Kernel by lazy { Native.load("kernel32", Kernel::class.java) }
         val advapi: Advapi by lazy { Native.load("advapi32", Advapi::class.java) }
+        val ntdll: Ntdll by lazy { Native.load("ntdll", Ntdll::class.java) }
     }
 }

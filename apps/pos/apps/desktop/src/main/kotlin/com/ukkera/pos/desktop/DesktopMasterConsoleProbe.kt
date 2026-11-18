@@ -238,9 +238,16 @@ internal object DesktopWindowsConsoleProbeAccess {
     fun verifyPolicy(token: Pointer, family: String, packaged: Boolean) {
         val descriptor = DesktopMasterConsoleAccess.descriptor(family)
         check(access(token, descriptor, DesktopMasterConsoleAccess.CLIENT_ACCESS) == packaged)
+        if (packaged) {
+            val previous = descriptor.replace("0x00100083", "0x00100003")
+            check(previous != descriptor)
+            check(access(token, previous, 0x00100003))
+            check(!access(token, previous, DesktopMasterConsoleAccess.CLIENT_ACCESS))
+        }
         check(!access(token, DesktopMasterConsoleAccess.descriptor("Other.POS.Test_n9kkbga0qmnm6"),
             DesktopMasterConsoleAccess.CLIENT_ACCESS))
         check(!access(token, descriptor, 0x00000004)) // FILE_CREATE_PIPE_INSTANCE
+        check(!access(token, descriptor, 0x00020000)) // READ_CONTROL
         check(!access(token, descriptor, 0x00040000)) // WRITE_DAC
         check(!access(token, descriptor, 0x00080000)) // WRITE_OWNER
         check(!access(token, descriptor, 0x00010000)) // DELETE
