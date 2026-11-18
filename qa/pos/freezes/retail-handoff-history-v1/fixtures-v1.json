@@ -1,0 +1,138 @@
+{
+  "design_version": "1",
+  "status": "NOT_RUN",
+  "fixture_kind": "semantic synthetic business descriptions, not application schema or construction instructions",
+  "binding_rule": "Aliases must be bound to valid canonical identifiers and genuine original committed sources through a separately documented public production fixture capability. No current implementation or seeding method is presumed.",
+  "scope": {
+    "order_kind": "ordinary unpaid unfulfilled stock-tracked retail draft or parked order under the default no-reservation policy",
+    "organization": "ORG-1",
+    "company": "RETAIL-1",
+    "branch": "BRANCH-1",
+    "foreign_variants": [
+      "BRANCH-2 within RETAIL-1",
+      "OTHER-COMPANY within ORG-1",
+      "OTHER-ORGANIZATION"
+    ],
+    "central_activity": "held; no central implementation or verification performed"
+  },
+  "actors": {
+    "A": "enabled BRANCH-1 employee; original creator and owner; independent local authentication",
+    "B": "enabled BRANCH-1 intended recipient; separately authenticated employee context and credential",
+    "C": "different BRANCH-1 employee without the offer's intended-recipient identity",
+    "A-OTHER-BRANCH": "same human as A, separate enabled branch account; never inherits A's order or permissions",
+    "cancellation_actor": "actual actor allowed by the published ordinary cancellation contract; binding required",
+    "current_recovery_caller": "presently authenticated employee with the published narrow permission for the particular recovery projection; no assumed grant"
+  },
+  "devices_and_sessions": {
+    "admitted_devices": ["DEVICE-A", "DEVICE-B"],
+    "employee_identity_is_separate_from_device": true,
+    "positive_sessions": "independent trusted local A and B authentication; correct current activated policy",
+    "negative_sessions": ["none", "admission only", "expired", "revoked", "wrong employee", "other branch"],
+    "reused_device_variant": "end prior interactive context and separately authenticate next employee; retain protected original operations without sharing private UI or tokens"
+  },
+  "baseline_cut": {
+    "order_alias": "R",
+    "original_creator": "A",
+    "current_owner": "A",
+    "known_order_version": "V0; executor binds the published revision representation",
+    "line_alias": "LINE-R-1",
+    "product_alias": "SKU-R-1",
+    "quantity_units": "2",
+    "unit_price_egp": "100.00",
+    "quoted_payable_egp": "200.00",
+    "quoted_payable_minor": "20000",
+    "collected_egp": "0.00",
+    "refunded_egp": "0.00",
+    "collection_lock": "none",
+    "fulfilled_quantity": "0",
+    "reserved_quantity": "0",
+    "sellable_stock_units": "10",
+    "stock_unit_cost_egp": "20.00",
+    "stock_value_egp": "200.00",
+    "drawer_A_balance_egp": "1000.00",
+    "drawer_A_custodian": "A",
+    "drawer_B_balance_egp": "500.00",
+    "drawer_B_custodian": "B",
+    "total_actual_drawer_cash_egp": "1500.00",
+    "existing_cut": "isolated synthetic provisioned state; constructing opening stock or drawers is not part of this handoff task"
+  },
+  "independent_arithmetic": [
+    "2 units * EGP 100.00 = EGP 200.00 quoted payable = 20000 minor units",
+    "10 units * EGP 20.00 carrying cost = EGP 200.00 stock value",
+    "EGP 1000.00 + EGP 500.00 = EGP 1500.00 actual drawer cash",
+    "Every handoff, historical admission and restart in this suite has EGP 0.00 cash/collection/refund delta and 0 stock/reservation/issue/restoration delta"
+  ],
+  "operation_aliases": {
+    "OFFER-R-B": "stable operation identity, original actor A, target R, intended B, required original version",
+    "CANCEL-R-B": "different stable operation identity for authorized ordinary cancellation of the committed offer",
+    "ACCEPT-R-B": "different stable operation identity, original actor B after separate authentication, accepts the committed offer",
+    "alias_warning": "Aliases are not transport request IDs, UUID strings, endpoints or database rows"
+  },
+  "positive_history_controls": [
+    {
+      "stage": "offered",
+      "creator": "A",
+      "current_owner": "A",
+      "offer_actor": "A",
+      "intended_recipient": "B",
+      "terminal_actor": null,
+      "accepted_owner_changes": 0
+    },
+    {
+      "stage": "cancelled",
+      "creator": "A",
+      "current_owner": "A",
+      "offer_actor": "A",
+      "intended_recipient": "B",
+      "terminal_actor": "actual authorized cancellation actor",
+      "accepted_owner_changes": 0
+    },
+    {
+      "stage": "accepted",
+      "creator": "A",
+      "current_owner": "B",
+      "offer_actor": "A",
+      "intended_recipient": "B",
+      "terminal_actor": "B",
+      "accepted_owner_changes": 1
+    }
+  ],
+  "genuine_original_requirements": [
+    "correct original actor/authenticated scope and authorization for the original bounded operation",
+    "coherent original order/offer/terminal business sources and bound original operation/version",
+    "retained immutable content and supported contract/policy/reader versions",
+    "verified original authority/cut relationships where required by the supported recovery contract",
+    "durable original result/audit/outbox identity with no replayed business effects"
+  ],
+  "negative_original_dimensions": {
+    "authorization": [
+      "absent or incomplete original authorization source",
+      "truncated or corrupted required authorization integrity evidence",
+      "different original actor/action/order/version/recipient/operation binding",
+      "foreign branch/company/organization source",
+      "origin authority beyond verified historic permission/cut"
+    ],
+    "business": [
+      "absent or truncated required original business source",
+      "different original order/creator/previous owner/recipient/terminal actor/version/operation",
+      "foreign branch/company/organization source",
+      "corrupted immutable content or required integrity evidence",
+      "incoherent partial result versus accepted/cancelled source"
+    ],
+    "control_preservation": "Keep genuine originals intact. Negative variants live in disposable synthetic recovery/admission fixtures; no concrete mutation/injection mechanism is assumed."
+  },
+  "revocation_variants": [
+    "original actor loses action permission after genuine commit",
+    "original account disabled or display name changed after genuine commit",
+    "current disclosure permission revoked after local activation",
+    "central intent remains pending offline; no claim of remote delivery or activation verification"
+  ],
+  "failure_boundaries": [
+    "before atomic command commit",
+    "after complete command commit and before response",
+    "client loses response and reconnects",
+    "master process terminates and a fresh process opens the durable store",
+    "supported local copy validation/import is interrupted",
+    "supported historic reader or local compatibility path refuses an unsupported/corrupted cut"
+  ]
+}
