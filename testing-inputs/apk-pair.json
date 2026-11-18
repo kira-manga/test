@@ -1,24 +1,19 @@
 {
-  "source_revision": "fba8f018f8a41a0665f4e3f874277831485af030",
-  "runtime_tests_source_revision": "fba8f018f8a41a0665f4e3f874277831485af030",
+  "source_revision": "46b89828ea133d9d5f7f802f2fa5546bbe3c31a6",
+  "runtime_tests_source_revision": "46b89828ea133d9d5f7f802f2fa5546bbe3c31a6",
   "signer_certificate_sha256": "ae3ac7d57bcca7b8678727bf714bacc52d214d2a11e70f39814207dceb45a693",
-  "limits": "Retained local-testing signer ae3ac7d5 (the 54f974f8 signer is no longer available; uninstall earlier test installs). Runtime-test APK re-signed locally with apksigner (v2+v3), same key. No installation, launch, instrumentation, native qualification or owner acceptance.",
+  "limits": "Source revisions are build provenance, not native or owner acceptance.",
   "app": {
     "filename": "ukkera-pos-testing.apk",
-    "sha256": "ef5f048c50cc342422c97974fdba9fbbe8fe74545d2f57b799ade3eb2adab41f",
-    "bytes": 34562734
+    "sha256": "9e8dab59bcd9bd4fa7e5f10c44f0091e7a3989552d11c06b10c0f41e2b7854a4",
+    "bytes": 35906222
   },
   "runtime_tests": {
     "filename": "ukkera-pos-runtime-tests.apk",
-    "sha256": "e6f0a6d7d57467eb58c3a2a3c188c88c98091e055dfcf63ddf33a74868832b8c",
-    "bytes": 5077495
+    "sha256": "8de0cf8c3568d4a5121c7095f691e7fba8a20a2e8f74a3c4c4c4ec10436d7342",
+    "bytes": 5040433
   },
-  "status": "PACKAGED_NOT_EXECUTED_NOT_UPLOADED",
   "working_tree_dirty": false,
-  "packaged_utc": "2026-11-12T23:06:52.288413+00:00",
-  "android_build_tools": "36.0.0",
-  "build_tasks": [
-    ":apps:android:assembleLocalTesting",
-    ":apps:android-runtime-tests:assembleLocalTesting"
-  ]
+  "runtime_tests_auxiliary_build_revision": "37c9793505a8419f12a526088899e83d56f1e3e9",
+  "source_parity": "POS/scripts/required frozen harness assets match canonical46b89828; tracked source unchanged; generated CMake outputs retained separately"
 }
