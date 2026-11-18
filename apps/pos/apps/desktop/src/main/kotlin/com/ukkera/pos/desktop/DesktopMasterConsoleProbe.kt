@@ -260,11 +260,11 @@ internal object DesktopWindowsConsoleProbeAccess {
         check(!access(token, descriptor, 0x00040000)) // WRITE_DAC
         check(!access(token, descriptor, 0x00080000)) // WRITE_OWNER
         check(!access(token, descriptor, 0x00010000)) // DELETE
-        val process = "O:LSG:LS" + DesktopWindowsConsolePeerAccess.queryRule(family)
+        val process = DesktopWindowsConsolePeerAccess.queryRule(family)
         check(access(token, process, DesktopWindowsConsolePeerAccess.QUERY_LIMITED) == packaged)
-        check(!access(token, "O:LSG:LS" + DesktopWindowsConsolePeerAccess.queryRule("Other.POS.Test_n9kkbga0qmnm6"),
+        check(!access(token, DesktopWindowsConsolePeerAccess.queryRule("Other.POS.Test_n9kkbga0qmnm6"),
             DesktopWindowsConsolePeerAccess.QUERY_LIMITED))
-        check(!access(token, "O:LSG:LS" + DesktopWindowsConsolePeerAccess.serviceQueryRule(
+        check(!access(token, DesktopWindowsConsolePeerAccess.serviceQueryRule(
             DesktopWindowsServiceIdentity.TEST.target()), DesktopWindowsConsolePeerAccess.QUERY_LIMITED))
         for (right in listOf(0x1, 0x8, 0x10, 0x20, 0x40, 0x200, 0x400, 0x40000, 0x80000)) check(!access(token, process, right))
     }
