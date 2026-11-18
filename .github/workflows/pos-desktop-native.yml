@@ -14,6 +14,11 @@ on:
         options: [all, macos, windows]
         default: all
         required: true
+      console_probe_artifact_run:
+        description: Read-only console diagnosis using one existing signed Windows artifact; skips builds
+        required: false
+        default: ""
+        type: string
       desktop_smoke:
         description: Launch the packaged app with --smoke-exit after packaging
         required: true
@@ -34,7 +39,7 @@ env:
 
 jobs:
   macos:
-    if: inputs.platforms != 'windows'
+    if: inputs.platforms != 'windows' && inputs.console_probe_artifact_run == ''
     name: macOS DMG (${{ matrix.arch }})
     strategy:
       fail-fast: false
@@ -184,7 +189,7 @@ jobs:
           if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
 
   windows:
-    if: inputs.platforms != 'macos'
+    if: inputs.platforms != 'macos' && inputs.console_probe_artifact_run == ''
     name: Windows MSI (x64)
     runs-on: windows-2025
     timeout-minutes: 120
@@ -315,3 +320,35 @@ jobs:
           set -euo pipefail
           summary="build/pos-public-artifacts/desktop-windows-x64/diagnostics/summary.txt"
           if [[ -f "$summary" ]]; then cat "$summary" >> "$GITHUB_STEP_SUMMARY"; fi
+
+
+  console_query_diagnostic:
+    if: inputs.console_probe_artifact_run != '' && inputs.platforms == 'windows' && github.repository == 'kira-manga/test'
+    name: Existing signed Windows console identity diagnostic
+    runs-on: windows-2025
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kira-manga/test
+          run-id: ${{ inputs.console_probe_artifact_run }}
+          name: pos-windows-msi-${{ inputs.console_probe_artifact_run }}-1
+          github-token: ${{ github.token }}
+          path: build/existing-signed-pos
+      - name: Observe actual native package APIs; no Gradle or business operation
+        shell: pwsh
+        run: |
+          ./scripts/pos/windows/probe-console-package-query.ps1 -ArtifactDirectory (Resolve-Path build/existing-signed-pos).Path -Output (Join-Path $env:RUNNER_TEMP 'pos-console-query.txt')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pos-console-query-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-console-query.txt
+          if-no-files-found: warn
+          retention-days: 14
