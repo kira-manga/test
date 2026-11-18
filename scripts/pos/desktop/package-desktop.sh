@@ -284,15 +284,16 @@ echo "Building $FORMAT with :apps:desktop:$GRADLE_TASK ..."
     MAC_SIGNING_ARGS+=("-Pukkera.mac.signing.teamIdentifier=$UKKERA_EXPECTED_TEAM_ID"
       "-Pukkera.mac.signing.designatedRequirementSha256=$POS_MAC_DESIGNATED_REQUIREMENT_SHA256")
   fi
-  CONSOLE_TEST_ARGS=()
+  # Keep this array nonempty: the system Bash on macOS treats an empty array
+  # expansion as unbound under set -u.
+  GRADLE_TARGET_ARGS=("$GRADLE_TASK")
   if [[ "$FORMAT" == "msi" ]]; then
     # Actual Windows AccessCheck rejects an unpackaged non-administrator token.
     # The MSIX installation probe separately tests the matching packaged token.
-    CONSOLE_TEST_ARGS=(:apps:desktop:test --tests '*DesktopMasterConsoleAccessSupportingTest')
+    GRADLE_TARGET_ARGS+=(:apps:desktop:test --tests '*DesktopMasterConsoleAccessSupportingTest')
   fi
   bash ./gradlew \
-    "$GRADLE_TASK" \
-    "${CONSOLE_TEST_ARGS[@]}" \
+    "${GRADLE_TARGET_ARGS[@]}" \
     "${MAC_SIGNING_ARGS[@]}" \
     --console=plain \
     --stacktrace \
