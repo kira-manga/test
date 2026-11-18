@@ -31,24 +31,29 @@ internal object DesktopSetupWindowsPipe {
     fun listen(expectedClientFamily: String): DesktopSetupIpcEndpoint = Endpoint(expectedClientFamily)
 
     fun connect(expectedServerFamily: String): DesktopSetupIpcConnection {
+        DesktopWindowsConsolePeerAccess.grantUi(expectedServerFamily)
         val raw = Win.kernel.CreateFileW(WString(NAME), DesktopMasterConsoleAccess.CLIENT_ACCESS, 0, null, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
         if (invalid(raw)) throw ConnectFailure(Native.getLastError())
         val handle = PipeHandle(raw!!)
         try {
             val pid = IntByReference()
-            if (Win.kernel.GetNamedPipeServerProcessId(raw, pid) == 0 || packageFamily(pid.value) != expectedServerFamily) {
-                throw IOException("The setup endpoint is not this package's Master service")
-            }
+            if (Win.kernel.GetNamedPipeServerProcessId(raw, pid) == 0)
+                throw PeerFailure(PeerStep.PIPE_SERVER_PID, Native.getLastError())
+            if (observedPackageFamily(pid.value) != expectedServerFamily)
+                throw PeerFailure(PeerStep.PACKAGE_MISMATCH, 0)
         } catch (failure: Throwable) { handle.close(); throw failure }
         return PipeConnection(handle)
     }
 
     /** Fixed Win32 outcome only; callers never need an exception message or peer data. */
     internal class ConnectFailure(val nativeCode: Int) : IOException("The Master setup console is unavailable")
+    internal enum class PeerStep { PIPE_SERVER_PID, PIPE_CLIENT_PID, PROCESS_OPEN, PACKAGE_QUERY, PACKAGE_MISMATCH }
+    internal class PeerFailure(val step: PeerStep, val nativeCode: Int) : IOException("The Master peer cannot be verified")
 
     /** Test-runner observation of the actual Win32 wrapper's granted access, not a grant. */
     internal fun createdFileAccessForProbe(expectedServerFamily: String): Int {
+        DesktopWindowsConsolePeerAccess.grantUi(expectedServerFamily)
         val raw = Win.kernel.CreateFileW(WString(NAME), 0x00100003, 0, null, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
         if (invalid(raw)) throw ConnectFailure(Native.getLastError())
@@ -60,6 +65,21 @@ internal object DesktopSetupWindowsPipe {
                 return access.getInt(0)
             } }
         } finally { Win.kernel.CloseHandle(raw) }
+    }
+
+    /** Actual installed ordinary-token checks on the verified service process. */
+    internal fun verifyPeerProcessRightsForProbe(connection: DesktopSetupIpcConnection, expected: String) {
+        val actual = connection as? PipeConnection ?: error("No native pipe")
+        actual.withNativeHandle { raw ->
+            val pid = IntByReference()
+            check(Win.kernel.GetNamedPipeServerProcessId(raw, pid) != 0)
+            check(observedPackageFamily(pid.value) == expected)
+            for (access in listOf(0x1, 0x8, 0x10, 0x20, 0x40, 0x200, 0x400, 0x40000, 0x80000)) {
+                val process = Win.kernel.OpenProcess(access, 0, pid.value)
+                if (!invalid(process)) { Win.kernel.CloseHandle(process); error("Unexpected process control access") }
+                check(Native.getLastError() == 5)
+            }
+        }
     }
 
     /** Failure-only native observation; never changes a descriptor or grants access. */
@@ -135,10 +155,17 @@ internal object DesktopSetupWindowsPipe {
                     pending = runCatching { create(first = false) }.getOrNull()
                 }
                 val pid = IntByReference()
-                val trusted = runCatching {
-                    current.use { Win.kernel.GetNamedPipeClientProcessId(it, pid) } != 0 && packageFamily(pid.value) == expectedClient
-                }.getOrDefault(false)
-                if (trusted) return PipeConnection(current)
+                val failure = runCatching {
+                    val observed = current.use { raw ->
+                        val result = Win.kernel.GetNamedPipeClientProcessId(raw, pid)
+                        result to (if (result == 0) Native.getLastError() else 0)
+                    }
+                    if (observed.first == 0) throw PeerFailure(PeerStep.PIPE_CLIENT_PID, observed.second)
+                    if (observedPackageFamily(pid.value) != expectedClient)
+                        throw PeerFailure(PeerStep.PACKAGE_MISMATCH, 0)
+                }.exceptionOrNull()
+                if (failure == null) return PipeConnection(current)
+                if (failure is PeerFailure) recordPeerRefusalForProbe(failure)
                 current.close()
             }
         }
@@ -209,6 +236,7 @@ internal object DesktopSetupWindowsPipe {
     }
 
     private class PipeConnection(private val handle: PipeHandle) : DesktopSetupIpcConnection {
+        fun <T> withNativeHandle(block: (Pointer) -> T): T = handle.use(block)
         private val readBuffer = Memory(65536)
         private val writeBuffer = Memory(65536)
 
@@ -249,14 +277,27 @@ internal object DesktopSetupWindowsPipe {
         override fun close() = handle.close()
     }
 
-    private fun packageFamily(pid: Int): String? {
+    private fun recordPeerRefusalForProbe(failure: PeerFailure) {
+        runCatching {
+            val directory = java.io.File(System.getenv("ProgramData") ?: return, "UkkeraPOSTestProbe")
+            if (!directory.isDirectory) return
+            java.io.File(directory, "service-peer-refusal.txt").writeText(
+                "REFUSED step=${failure.step.name} win32=${failure.nativeCode.takeIf { it in 0..65535 } ?: -1}\n")
+        }
+    }
+
+    private fun packageFamily(pid: Int): String? = runCatching { observedPackageFamily(pid) }.getOrNull()
+
+    private fun observedPackageFamily(pid: Int): String {
         val process = Win.kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
-        if (invalid(process)) return null
+        if (invalid(process)) throw PeerFailure(PeerStep.PROCESS_OPEN, Native.getLastError())
         try {
             val length = IntByReference(256)
             val buffer = CharArray(256)
-            if (Win.kernel.GetPackageFamilyName(process, length, buffer) != 0) return null
-            return String(buffer, 0, (length.value - 1).coerceIn(0, 255))
+            val result = Win.kernel.GetPackageFamilyName(process, length, buffer)
+            if (result != 0) throw PeerFailure(PeerStep.PACKAGE_QUERY, result)
+            if (length.value !in 2..256) throw PeerFailure(PeerStep.PACKAGE_QUERY, 13)
+            return String(buffer, 0, length.value - 1)
         } finally { Win.kernel.CloseHandle(process) }
     }
 

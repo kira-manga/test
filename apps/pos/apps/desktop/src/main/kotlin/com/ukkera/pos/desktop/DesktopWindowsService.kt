@@ -88,6 +88,8 @@ internal object DesktopWindowsService {
             else -> "host=REFUSED ${hostFailure::class.simpleName} at " + hostFailure.stackTrace.take(3)
                 .joinToString("<") { it.className.substringAfterLast('.') + "." + it.methodName }
         }
-        File(directory, "service-probe.txt").writeText("$line $host\n")
+        val acl = hostFailure as? DesktopWindowsConsolePeerAccess.Failure
+        val detail = acl?.let { " peerAclStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: ""
+        File(directory, "service-probe.txt").writeText("$line $host$detail\n")
     }
 }

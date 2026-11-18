@@ -86,7 +86,9 @@ internal object DesktopWindowsOrdinaryConsoleProcess {
             return exit.value
         } catch (failure: Exception) {
             val code = (failure as? NativeFailure)?.code?.takeIf { it in 0..65535 }
-            output.writeText("FAILED phase=$phase" + (code?.let { " win32=$it" } ?: "") + "\n")
+            val acl = failure as? DesktopWindowsConsolePeerAccess.Failure
+            output.writeText("FAILED phase=$phase" + (code?.let { " win32=$it" } ?: "") +
+                (acl?.let { " aclStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: "") + "\n")
             return 1
         } finally {
             thread?.let { Win.kernel.CloseHandle(it) }

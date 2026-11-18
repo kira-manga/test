@@ -68,6 +68,8 @@ try {
 
 $summary = [ordered]@{ msix = (Split-Path $msix -Leaf); version = $Version; sha256 = (Get-FileHash $msix -Algorithm SHA256).Hash.ToLowerInvariant(); bytes = (Get-Item $msix).Length }
 if ($Probe) {
+    $probeDir = Join-Path $env:ProgramData 'UkkeraPOSTestProbe'
+    $serviceFile = Join-Path $probeDir 'service-probe.txt'
     Import-Certificate -FilePath $Certificate -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
     Add-AppxPackage -Path $msix
     try {
@@ -93,7 +95,6 @@ if ($Probe) {
         $summary.client_journal_exit = $journalProcess.ExitCode
         $summary.client_journal_probe = if (Test-Path $journalFile) { (Get-Content -Raw $journalFile).Trim() } else { 'NO_OUTPUT' }
         # Packaged-service identity is an experiment: record the actual outcome, never infer it.
-        $probeDir = Join-Path $env:ProgramData 'UkkeraPOSTestProbe'
         New-Item -ItemType Directory -Force -Path $probeDir | Out-Null
         & icacls.exe $probeDir /grant '*S-1-5-19:(OI)(CI)M' | Out-Null
         $summary.service_sid_type = (& sc.exe qsidtype UkkeraPOSTestMaster | Out-String).Trim()
@@ -105,7 +106,6 @@ if ($Probe) {
             # StartupType auto may already have started it before the probe directory existed.
             Stop-Service -Name UkkeraPOSTestMaster -ErrorAction SilentlyContinue
             Start-Service -Name UkkeraPOSTestMaster
-            $serviceFile = Join-Path $probeDir 'service-probe.txt'
             $deadline = (Get-Date).AddSeconds(90)
             while (-not (Test-Path $serviceFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
             $summary.service_probe = if (Test-Path $serviceFile) { (Get-Content -Raw $serviceFile).Trim() } else { 'NO_OUTPUT' }
@@ -121,15 +121,18 @@ if ($Probe) {
                 throw "Native CreateFile access observation failed: $($summary.master_console_access)"
             }
             $summary.master_console_probe = if (Test-Path $consoleFile) { (Get-Content -Raw $consoleFile).Trim() } else { 'NO_OUTPUT' }
-            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true') {
+            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true') {
                 throw "Native ordinary-token Master console probe failed: $($summary.master_console_probe)"
             }
             Stop-Service -Name UkkeraPOSTestMaster -ErrorAction Continue
         } catch {
-            $summary.service_probe = "SERVICE_ERROR $($_.Exception.Message)"
+            $summary.service_error = "SERVICE_ERROR $($_.Exception.Message)"
             throw
         }
     } finally {
+        if (Test-Path $serviceFile) { Copy-Item $serviceFile (Join-Path $diagnostics 'service-probe.txt') }
+        $peerRefusal = Join-Path $probeDir 'service-peer-refusal.txt'
+        if (Test-Path $peerRefusal) { Copy-Item $peerRefusal (Join-Path $diagnostics 'service-peer-refusal.txt') }
         $summary | ConvertTo-Json | Set-Content (Join-Path $diagnostics 'msix-summary.json')
         Get-AppxPackage -Name 'Ukkera.POS.Test' | Remove-AppxPackage -ErrorAction SilentlyContinue
     }

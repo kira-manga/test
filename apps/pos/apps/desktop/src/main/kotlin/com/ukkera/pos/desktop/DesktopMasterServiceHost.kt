@@ -123,6 +123,7 @@ internal class DesktopMasterServiceHost private constructor(
         /** Fails closed (throws) unless this process is the packaged service with observed identity. */
         fun windows(): DesktopMasterServiceHost {
             val identity = DesktopWindowsServiceIdentity.TEST.target()
+            DesktopWindowsConsolePeerAccess.grant(identity)
             val family = identity.packageFamilyName
             return DesktopMasterServiceHost(identity, DesktopMasterServiceDirectories.setup(identity),
                 identityStore = { WindowsDpapiSecureIdentityStore.open() },

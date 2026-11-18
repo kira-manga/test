@@ -85,6 +85,11 @@ internal object DesktopMasterConsoleProbe {
                 else -> error("Unsupported platform")
             }
             retainedConnection = connection
+            if (Platform.isWindows()) {
+                phase = "PEER_PROCESS_RIGHTS"
+                DesktopSetupWindowsPipe.verifyPeerProcessRightsForProbe(connection,
+                    DesktopWindowsPackageIdentity.TEST.target().packageFamilyName)
+            }
             phase = "UI_HANDSHAKE"
             runBlocking {
                 withTimeout(15_000) {
@@ -96,7 +101,7 @@ internal object DesktopMasterConsoleProbe {
                 }
             }
             result = if (Platform.isWindows())
-                "DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true"
+                "DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true"
             else "DATA platform=macos console=true nativeAgent=true"
             code = 0
         } catch (failure: Exception) {
@@ -118,8 +123,12 @@ internal object DesktopMasterConsoleProbe {
             val pipeIntegrity = if (connectFailure != null) runCatching {
                 DesktopSetupWindowsPipe.integrityLabelForProbe(DesktopWindowsPackageIdentity.TEST.target().packageFamilyName)
             }.getOrDefault("UNAVAILABLE") else "NOT_OBSERVED"
+            val peer = failure as? DesktopSetupWindowsPipe.PeerFailure
+            val acl = failure as? DesktopWindowsConsolePeerAccess.Failure
             result = "FAILED phase=$phase at=$at" +
-                (nativeCode?.let { " win32=$it control=$control tokenIntegrity=$ordinaryIntegrity pipeIntegrity=$pipeIntegrity" } ?: "")
+                (nativeCode?.let { " win32=$it control=$control tokenIntegrity=$ordinaryIntegrity pipeIntegrity=$pipeIntegrity" } ?: "") +
+                (peer?.let { " peerStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: "") +
+                (acl?.let { " aclStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: "")
         } finally {
             if (runCatching { controller?.close() ?: retainedConnection?.close() }.isFailure) {
                 result = "FAILED phase=CONSOLE_CLOSE"
@@ -251,6 +260,13 @@ internal object DesktopWindowsConsoleProbeAccess {
         check(!access(token, descriptor, 0x00040000)) // WRITE_DAC
         check(!access(token, descriptor, 0x00080000)) // WRITE_OWNER
         check(!access(token, descriptor, 0x00010000)) // DELETE
+        val process = "O:LSG:LS" + DesktopWindowsConsolePeerAccess.queryRule(family)
+        check(access(token, process, DesktopWindowsConsolePeerAccess.QUERY_LIMITED) == packaged)
+        check(!access(token, "O:LSG:LS" + DesktopWindowsConsolePeerAccess.queryRule("Other.POS.Test_n9kkbga0qmnm6"),
+            DesktopWindowsConsolePeerAccess.QUERY_LIMITED))
+        check(!access(token, "O:LSG:LS" + DesktopWindowsConsolePeerAccess.serviceQueryRule(
+            DesktopWindowsServiceIdentity.TEST.target()), DesktopWindowsConsolePeerAccess.QUERY_LIMITED))
+        for (right in listOf(0x1, 0x8, 0x10, 0x20, 0x40, 0x200, 0x400, 0x40000, 0x80000)) check(!access(token, process, right))
     }
 
     private fun access(token: Pointer, dacl: String, desired: Int): Boolean {
