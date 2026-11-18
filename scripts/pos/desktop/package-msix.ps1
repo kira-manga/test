@@ -110,13 +110,13 @@ if ($Probe) {
             while (-not (Test-Path $serviceFile) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 2 }
             $summary.service_probe = if (Test-Path $serviceFile) { (Get-Content -Raw $serviceFile).Trim() } else { 'NO_OUTPUT' }
             $summary.service_status = (Get-Service -Name UkkeraPOSTestMaster).Status.ToString()
-            # The real packaged Client drops administrator authority before the native access
-            # check and CreateFile call, then uses the same setup-controller handshake as UI.
+            # A real non-elevated MEDIUM-integrity packaged primary process performs the
+            # native access checks and same setup-controller handshake as an ordinary UI.
             $consoleFile = Join-Path $diagnostics 'master-console-probe.txt'
             $consoleProcess = Start-Process -FilePath $alias -ArgumentList "--master-console-probe=$consoleFile" -Wait -PassThru
             $summary.master_console_exit = $consoleProcess.ExitCode
             $summary.master_console_probe = if (Test-Path $consoleFile) { (Get-Content -Raw $consoleFile).Trim() } else { 'NO_OUTPUT' }
-            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true') {
+            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true') {
                 throw "Native ordinary-token Master console probe failed: $($summary.master_console_probe)"
             }
             Stop-Service -Name UkkeraPOSTestMaster -ErrorAction Continue

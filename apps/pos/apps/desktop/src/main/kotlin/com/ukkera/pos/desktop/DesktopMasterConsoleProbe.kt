@@ -29,8 +29,14 @@ import kotlinx.coroutines.withTimeout
  */
 internal object DesktopMasterConsoleProbe {
     const val ARGUMENT = "--master-console-probe="
+    const val USER_ARGUMENT = "--master-console-user-probe="
 
-    fun run(output: File): Int {
+    fun run(output: File): Int = if (Platform.isWindows()) DesktopWindowsOrdinaryConsoleProcess.run(output)
+        else runNative(output, ordinaryPrimary = false)
+
+    fun runOrdinaryUser(output: File): Int = runNative(output, ordinaryPrimary = true)
+
+    private fun runNative(output: File, ordinaryPrimary: Boolean): Int {
         var phase = "PLATFORM"
         var ordinaryIntegrity = "NOT_OBSERVED"
         var installedAgent = false
@@ -46,7 +52,8 @@ internal object DesktopMasterConsoleProbe {
                     val identity = DesktopWindowsPackageIdentity.TEST.target()
                     check(WindowsInstalledApplicationIdentity.captureUi(identity) is SelfOwnedInstalledIdentityResultV2.Data)
                     phase = "ORDINARY_TOKEN"
-                    DesktopWindowsConsoleProbeAccess.withOrdinaryToken { token ->
+                    check(ordinaryPrimary)
+                    DesktopWindowsConsoleProbeAccess.withOrdinaryPrimaryToken { token ->
                         ordinaryIntegrity = DesktopWindowsConsoleProbeAccess.integrityLevel(token)
                         // The native OS evaluates these conditions on a real reduced token.
                         phase = "ACCESS_CHECK"
@@ -89,7 +96,7 @@ internal object DesktopMasterConsoleProbe {
                 }
             }
             result = if (Platform.isWindows())
-                "DATA platform=windows console=true ordinaryToken=true packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true"
+                "DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true"
             else "DATA platform=macos console=true nativeAgent=true"
             code = 0
         } catch (failure: Exception) {
@@ -194,6 +201,38 @@ internal object DesktopWindowsConsoleProbeAccess {
         val count = sid.getByte(1).toInt() and 0xff
         check(count in 1..15)
         integrityName(sid.getInt(8L + 4L * (count - 1)))
+    }
+
+    /** No impersonation: the actual pipe call uses the ordinary primary process token. */
+    fun <T> withOrdinaryPrimaryToken(action: (Pointer) -> T): T {
+        val previous = PointerByReference()
+        if (Win.advapi.OpenThreadToken(Win.kernel.GetCurrentThread(), TOKEN_QUERY, 1, previous) != 0) {
+            Win.kernel.CloseHandle(previous.value); error("Unexpected impersonation")
+        }
+        check(Native.getLastError() == ERROR_NO_TOKEN)
+        val reference = PointerByReference()
+        check(Win.advapi.OpenProcessToken(Win.kernel.GetCurrentProcess(), TOKEN_QUERY or TOKEN_DUPLICATE, reference) != 0)
+        val primary = checkNotNull(reference.value)
+        try {
+            Memory(4).use { data ->
+                val used = IntByReference()
+                check(Win.advapi.GetTokenInformation(primary, 8, data, 4, used) != 0 && data.getInt(0) == 1)
+                check(Win.advapi.GetTokenInformation(primary, TOKEN_ELEVATION, data, 4, used) != 0 && data.getInt(0) == 0)
+            }
+            check(integrityLevel(primary) == "MEDIUM")
+            val duplicate = PointerByReference()
+            check(Win.advapi.DuplicateToken(primary, SECURITY_IMPERSONATION, duplicate) != 0)
+            val query = checkNotNull(duplicate.value)
+            try {
+                val admin = PointerByReference()
+                check(Win.advapi.ConvertStringSidToSidW(WString("S-1-5-32-544"), admin) != 0)
+                try {
+                    val member = IntByReference()
+                    check(Win.advapi.CheckTokenMembership(query, admin.value, member) != 0 && member.value == 0)
+                } finally { Win.kernel.LocalFree(admin.value) }
+                return action(query) // AccessCheck takes this duplicate; thread token remains absent.
+            } finally { Win.kernel.CloseHandle(query) }
+        } finally { Win.kernel.CloseHandle(primary) }
     }
 
     fun verifyPolicy(token: Pointer, family: String, packaged: Boolean) {

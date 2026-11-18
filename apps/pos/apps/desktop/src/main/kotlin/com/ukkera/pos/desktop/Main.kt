@@ -41,6 +41,9 @@ fun main(args: Array<String>) {
         kotlin.system.exitProcess(DesktopIdentityProbe.runClientJournal(
             java.io.File(it.removePrefix(DesktopIdentityProbe.CLIENT_JOURNAL_ARGUMENT))))
     }
+    args.singleOrNull()?.takeIf { it.startsWith(DesktopMasterConsoleProbe.USER_ARGUMENT) }?.let {
+        kotlin.system.exitProcess(DesktopMasterConsoleProbe.runOrdinaryUser(java.io.File(it.substringAfter('='))))
+    }
     args.singleOrNull()?.takeIf { it.startsWith(DesktopMasterConsoleProbe.ARGUMENT) }?.let {
         kotlin.system.exitProcess(DesktopMasterConsoleProbe.run(java.io.File(it.substringAfter('='))))
     }
