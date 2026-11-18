@@ -1,4 +1,4 @@
-# Native diagnostic only: reuse an already signed MSIX, no Gradle build or business data.
+# Self-authored, NOT independent. Reuse a signed MSIX; no Gradle or business data.
 param([string]$ArtifactDirectory, [string]$Output, [switch]$InsidePackage)
 $ErrorActionPreference = 'Stop'
 if (-not $InsidePackage) {
@@ -63,7 +63,7 @@ public static class PosConsoleQueryDiagnostic {
     uint length=256; var data=new StringBuilder(256); int status=GetPackageFamilyName(process,ref length,data);
     string result="process=0 packageApi="+status+" packageMatch="+(status==0 && data.ToString()==Family);
     IntPtr token; if(!OpenProcessToken(process,8,out token)) return result+" token="+Marshal.GetLastWin32Error();
-    try { length=256;data=new StringBuilder(256);status=GetPackageFamilyNameFromToken(token,ref length,data); return result+" token=0 tokenApi="+status+" tokenMatch="+(status==0 && data.ToString()==Family); }
+    try { length=256;data=new StringBuilder(256);try { status=GetPackageFamilyNameFromToken(token,ref length,data); return result+" token=0 tokenApi="+status+" tokenMatch="+(status==0 && data.ToString()==Family); } catch(EntryPointNotFoundException) { return result+" token=0 tokenApi=NO_EXPORT"; } }
     finally { CloseHandle(token); }
    } finally { CloseHandle(process); }
   } finally { CloseHandle(pipe); }
@@ -83,5 +83,10 @@ public static class PosConsoleQueryDiagnostic {
 }
 '@
     $result = [PosConsoleQueryDiagnostic]::Run()
-} catch { $result = 'DIAGNOSTIC_FAILED ' + $_.Exception.GetType().Name }
+} catch {
+    $failure = $_.Exception
+    while ($null -ne $failure.InnerException) { $failure = $failure.InnerException }
+    $result = 'DIAGNOSTIC_FAILED ' + $failure.GetType().Name
+    if ($failure.Message -match '^NATIVE_[0-9]{1,5}$') { $result += ' ' + $failure.Message }
+}
 $result | Set-Content $Output
