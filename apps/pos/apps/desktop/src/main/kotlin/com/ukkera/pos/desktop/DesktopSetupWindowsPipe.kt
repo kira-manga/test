@@ -33,7 +33,7 @@ internal object DesktopSetupWindowsPipe {
     fun connect(expectedServerFamily: String): DesktopSetupIpcConnection {
         val raw = Win.kernel.CreateFileW(WString(NAME), DesktopMasterConsoleAccess.CLIENT_ACCESS, 0, null, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
-        if (invalid(raw)) throw IOException("The Master setup console is unavailable (${Native.getLastError()})")
+        if (invalid(raw)) throw ConnectFailure(Native.getLastError())
         val handle = PipeHandle(raw!!)
         try {
             val pid = IntByReference()
@@ -42,6 +42,44 @@ internal object DesktopSetupWindowsPipe {
             }
         } catch (failure: Throwable) { handle.close(); throw failure }
         return PipeConnection(handle)
+    }
+
+    /** Fixed Win32 outcome only; callers never need an exception message or peer data. */
+    internal class ConnectFailure(val nativeCode: Int) : IOException("The Master setup console is unavailable")
+
+    /** Failure-only native observation; never changes a descriptor or grants access. */
+    internal fun integrityLabelForProbe(expectedServerFamily: String): String {
+        val raw = Win.kernel.CreateFileW(WString(NAME), 0x00020000, 0, null, OPEN_EXISTING,
+            FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
+        if (invalid(raw)) return "OPEN_REFUSED_${Native.getLastError().takeIf { it in 0..65535 } ?: -1}"
+        try {
+            val pid = IntByReference()
+            if (Win.kernel.GetNamedPipeServerProcessId(raw!!, pid) == 0 || packageFamily(pid.value) != expectedServerFamily)
+                return "UNVERIFIED_PEER"
+            Memory(8192).use { sd ->
+                val used = IntByReference()
+                if (Win.advapi.GetKernelObjectSecurity(raw, 0x10, sd, sd.size().toInt(), used) == 0)
+                    return "UNAVAILABLE"
+                val present = IntByReference(); val defaulted = IntByReference(); val sacl = PointerByReference()
+                if (Win.advapi.GetSecurityDescriptorSacl(sd, present, sacl, defaulted) == 0) return "UNAVAILABLE"
+                if (present.value == 0 || sacl.value == null) return "UNLABELED"
+                val acl = sacl.value
+                val count = acl.getShort(4).toInt() and 0xffff
+                if (count !in 0..16) return "UNAVAILABLE"
+                for (i in 0 until count) {
+                    val ace = PointerByReference()
+                    if (Win.advapi.GetAce(acl, i, ace) == 0) return "UNAVAILABLE"
+                    val actual = ace.value
+                    if ((actual.getByte(0).toInt() and 0xff) == 17) {
+                        val size = actual.getShort(2).toInt() and 0xffff
+                        val subAuthorities = actual.getByte(9).toInt() and 0xff
+                        if (subAuthorities !in 1..15 || size < 16 + 4 * subAuthorities) return "UNAVAILABLE"
+                        return DesktopWindowsConsoleProbeAccess.integrityName(actual.getInt(16L + 4L * (subAuthorities - 1)))
+                    }
+                }
+                return "UNLABELED"
+            }
+        } finally { Win.kernel.CloseHandle(raw) }
     }
 
     private class Endpoint(private val expectedClient: String) : DesktopSetupIpcEndpoint {
@@ -245,6 +283,9 @@ internal object DesktopSetupWindowsPipe {
     private interface Advapi : StdCallLibrary {
         fun ConvertStringSecurityDescriptorToSecurityDescriptorW(text: WString, revision: Int, descriptor: PointerByReference,
             size: Pointer?): Int
+        fun GetKernelObjectSecurity(handle: Pointer, information: Int, descriptor: Pointer, capacity: Int, used: IntByReference): Int
+        fun GetSecurityDescriptorSacl(descriptor: Pointer, present: IntByReference, sacl: PointerByReference, defaulted: IntByReference): Int
+        fun GetAce(acl: Pointer, index: Int, ace: PointerByReference): Int
     }
 
     private object Win {

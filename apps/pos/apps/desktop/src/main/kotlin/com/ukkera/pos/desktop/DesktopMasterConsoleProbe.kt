@@ -32,6 +32,7 @@ internal object DesktopMasterConsoleProbe {
 
     fun run(output: File): Int {
         var phase = "PLATFORM"
+        var ordinaryIntegrity = "NOT_OBSERVED"
         var installedAgent = false
         var controller: DesktopRemoteSetupController? = null
         var retainedConnection: DesktopSetupIpcConnection? = null
@@ -46,6 +47,7 @@ internal object DesktopMasterConsoleProbe {
                     check(WindowsInstalledApplicationIdentity.captureUi(identity) is SelfOwnedInstalledIdentityResultV2.Data)
                     phase = "ORDINARY_TOKEN"
                     DesktopWindowsConsoleProbeAccess.withOrdinaryToken { token ->
+                        ordinaryIntegrity = DesktopWindowsConsoleProbeAccess.integrityLevel(token)
                         // The native OS evaluates these conditions on a real reduced token.
                         phase = "ACCESS_CHECK"
                         DesktopWindowsConsoleProbeAccess.verifyPolicy(token, identity.packageFamilyName, packaged = true)
@@ -93,7 +95,24 @@ internal object DesktopMasterConsoleProbe {
         } catch (failure: Exception) {
             val site = failure.stackTrace.firstOrNull { it.className.startsWith("com.ukkera.pos.desktop.") }
             val at = site?.let { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" } ?: "unavailable"
-            result = "FAILED phase=$phase at=$at"
+            val connectFailure = failure as? DesktopSetupWindowsPipe.ConnectFailure
+            val nativeCode = connectFailure?.nativeCode?.takeIf { it in 0..65535 }
+            // After the reduced-token scope has reverted, one owner-token control can
+            // distinguish endpoint availability from the observed restricted-token failure.
+            // The original check still FAILS; this creates no employee or business session.
+            val control = if (Platform.isWindows() && phase == "PIPE_CONNECT" && connectFailure != null) {
+                try {
+                    DesktopSetupWindowsPipe.connect(DesktopWindowsPackageIdentity.TEST.target().packageFamilyName).close()
+                    "OPENED"
+                } catch (refused: DesktopSetupWindowsPipe.ConnectFailure) {
+                    "REFUSED_${refused.nativeCode.takeIf { it in 0..65535 } ?: -1}"
+                } catch (_: Exception) { "UNAVAILABLE" }
+            } else "NOT_RUN"
+            val pipeIntegrity = if (connectFailure != null) runCatching {
+                DesktopSetupWindowsPipe.integrityLabelForProbe(DesktopWindowsPackageIdentity.TEST.target().packageFamilyName)
+            }.getOrDefault("UNAVAILABLE") else "NOT_OBSERVED"
+            result = "FAILED phase=$phase at=$at" +
+                (nativeCode?.let { " win32=$it control=$control tokenIntegrity=$ordinaryIntegrity pipeIntegrity=$pipeIntegrity" } ?: "")
         } finally {
             if (runCatching { controller?.close() ?: retainedConnection?.close() }.isFailure) {
                 result = "FAILED phase=CONSOLE_CLOSE"
@@ -156,6 +175,25 @@ internal object DesktopWindowsConsoleProbeAccess {
                 }
             } finally { check(Win.kernel.LocalFree(adminSid.value) == null) }
         } finally { check(Win.kernel.CloseHandle(source) != 0) }
+    }
+
+    internal fun integrityName(rid: Int): String = when (rid) {
+        0x0000 -> "UNTRUSTED"
+        0x1000 -> "LOW"
+        0x2000 -> "MEDIUM"
+        0x2100 -> "MEDIUM_PLUS"
+        0x3000 -> "HIGH"
+        0x4000 -> "SYSTEM"
+        else -> "OTHER"
+    }
+
+    internal fun integrityLevel(token: Pointer): String = Memory(256).use { buffer ->
+        val used = IntByReference()
+        check(Win.advapi.GetTokenInformation(token, 25, buffer, buffer.size().toInt(), used) != 0)
+        val sid = buffer.getPointer(0)
+        val count = sid.getByte(1).toInt() and 0xff
+        check(count in 1..15)
+        integrityName(sid.getInt(8L + 4L * (count - 1)))
     }
 
     fun verifyPolicy(token: Pointer, family: String, packaged: Boolean) {
