@@ -41,6 +41,9 @@ fun main(args: Array<String>) {
         kotlin.system.exitProcess(DesktopIdentityProbe.runClientJournal(
             java.io.File(it.removePrefix(DesktopIdentityProbe.CLIENT_JOURNAL_ARGUMENT))))
     }
+    args.singleOrNull()?.takeIf { it.startsWith(DesktopMasterConsoleProbe.ARGUMENT) }?.let {
+        kotlin.system.exitProcess(DesktopMasterConsoleProbe.run(java.io.File(it.substringAfter('='))))
+    }
     // Started by the Service Control Manager only; never opens a window in session 0.
     if (args.firstOrNull() == DesktopWindowsService.ARGUMENT) {
         kotlin.system.exitProcess(if (com.sun.jna.Platform.isMac()) DesktopMasterServiceHost.runMac() else DesktopWindowsService.run())
@@ -66,6 +69,7 @@ internal fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String>
     val scope = rememberCoroutineScope()
     var route by remember { mutableStateOf(DesktopEntryRoute.CHOICE) }
     var closing by remember { mutableStateOf(false) }
+    var masterRuntime by remember { mutableStateOf<com.ukkera.pos.app.UkkeraRuntime?>(null) }
     val exit: () -> Unit = {
         if (!closing) {
             closing = true
@@ -92,7 +96,10 @@ internal fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String>
     Window(
         title = if (presentation.language == AppLanguage.ARABIC) "Ukkera POS · تحقق محلي" else "Ukkera POS · Local qualification",
         state = rememberWindowState(width = 1320.dp, height = 860.dp),
-        onCloseRequest = { runtime.navigate(NavigationAction.CloseHost, runtime.navigator.token(), exit) },
+        onCloseRequest = {
+            val activeRuntime = masterRuntime ?: runtime
+            activeRuntime.navigate(NavigationAction.CloseHost, activeRuntime.navigator.token(), exit)
+        },
     ) {
         DisposableEffect(window, host) {
             val binding = host.bind(window)
@@ -105,8 +112,8 @@ internal fun runUkkeraDesktop(dependencies: AppDependencies, args: Array<String>
             DesktopEntryRoute.CHOICE -> LocalEntryScreen(language, changeLanguage,
                 onSetup = { route = DesktopEntryRoute.SETUP }, onEmployee = { route = DesktopEntryRoute.EMPLOYEE },
                 onMasterService = composition?.let { { route = DesktopEntryRoute.MASTER } })
-            DesktopEntryRoute.MASTER -> DesktopMasterConsole(composition!!, language, changeLanguage,
-                onBack = { route = DesktopEntryRoute.CHOICE })
+            DesktopEntryRoute.MASTER -> DesktopMasterConsole(composition!!, language, changeLanguage, window,
+                onRuntime = { masterRuntime = it }, onBack = { route = DesktopEntryRoute.CHOICE })
             DesktopEntryRoute.SETUP -> if (composition == null) {
                 // Unpackaged/unsigned process: no native custody exists, never a demonstration fallback.
                 LocalSetupConnectionScreen(LocalSetupConnectionPhase.UNAVAILABLE, language, changeLanguage,

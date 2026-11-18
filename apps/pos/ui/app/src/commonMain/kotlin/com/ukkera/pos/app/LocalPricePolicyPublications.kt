@@ -27,8 +27,21 @@ data class LocalPricePolicyPublicationDraft(
 }
 
 data class LocalPricePolicyPublicationPreview(val companyId: DomainId, val definition: LocalPricePolicyPublicationDraft)
-class LocalPricePolicyPublicationReview(val action: CompanyBusinessPublicationAction,
-    val preview: LocalPricePolicyPublicationPreview) {
+class LocalPricePolicyPublicationReview private constructor(
+    private val nativeAction: CompanyBusinessPublicationAction?,
+    val preview: LocalPricePolicyPublicationPreview,
+    val displayAction: LocalCompanyPublicationReviewData,
+    /** Connection-local correlation only; no native action is reconstructed from it. */
+    val remoteCorrelation: DomainId?,
+) {
+    constructor(action: CompanyBusinessPublicationAction, preview: LocalPricePolicyPublicationPreview) :
+        this(action, preview, LocalCompanyPublicationReviewData.of(action), null)
+    /** Native adapters refuse a projected review before reaching the native signer. */
+    val action: CompanyBusinessPublicationAction get() = checkNotNull(nativeAction) { "Projected review has no native owner" }
+    companion object {
+        fun remote(data: LocalCompanyPublicationReviewData, preview: LocalPricePolicyPublicationPreview, correlation: DomainId): LocalPricePolicyPublicationReview =
+            LocalPricePolicyPublicationReview(null, preview, data, correlation)
+    }
     override fun toString(): String = "LocalPricePolicyPublicationReview([REDACTED])"
 }
 data class LocalPricePolicyPublicationCompleted(val originalActionId: DomainId,

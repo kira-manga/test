@@ -85,8 +85,21 @@ data class LocalCatalogReleaseAuthoringSource(
 
 data class LocalCatalogReleasePublicationPreview(val companyId: DomainId,
     val definition: LocalCatalogReleasePublicationDraft)
-class LocalCatalogReleasePublicationReview(val action: CompanyBusinessPublicationAction,
-    val preview: LocalCatalogReleasePublicationPreview) {
+class LocalCatalogReleasePublicationReview private constructor(
+    private val nativeAction: CompanyBusinessPublicationAction?,
+    val preview: LocalCatalogReleasePublicationPreview,
+    val displayAction: LocalCompanyPublicationReviewData,
+    /** Connection-local correlation only; no native action is reconstructed from it. */
+    val remoteCorrelation: DomainId?,
+) {
+    constructor(action: CompanyBusinessPublicationAction, preview: LocalCatalogReleasePublicationPreview) :
+        this(action, preview, LocalCompanyPublicationReviewData.of(action), null)
+    /** Native adapters refuse a projected review before reaching the native signer. */
+    val action: CompanyBusinessPublicationAction get() = checkNotNull(nativeAction) { "Projected review has no native owner" }
+    companion object {
+        fun remote(data: LocalCompanyPublicationReviewData, preview: LocalCatalogReleasePublicationPreview, correlation: DomainId): LocalCatalogReleasePublicationReview =
+            LocalCatalogReleasePublicationReview(null, preview, data, correlation)
+    }
     override fun toString(): String = "LocalCatalogReleasePublicationReview([REDACTED])"
 }
 data class LocalCatalogReleasePublicationCompleted(val originalActionId: DomainId,

@@ -39,16 +39,24 @@ public class DesktopRemoteSetupController private constructor(
     override val compositionProfile: LocalCompositionSdkProfileV1?,
     private val documents: LocalSetupPairingDocuments?,
     private val scope: CoroutineScope,
+    public val employeeConsoleSupported: Boolean,
 ) : LocalSetupController, Closeable {
     private val output = connection.dataOutput()
     private val input = connection.dataInput()
     private val view = MutableStateFlow(LocalSetupView(locked = true))
     private val live = MutableStateFlow(true)
-    private val outgoing = Channel<DesktopSetupIpcWire.Frame>(Channel.UNLIMITED)
+    private val outgoing = Channel<DesktopSetupIpcWire.Frame>(Channel.UNLIMITED,
+        onUndeliveredElement = { it.clear() })
     private var lanDiscovery = IpcLanDiscoveryV2()
     override val state: StateFlow<LocalSetupView> = view.asStateFlow()
     /** False once the service connection ended; the screen should offer reconnecting. */
     public val connected: StateFlow<Boolean> = live.asStateFlow()
+    /** Existing Master employee UI ports over this same authenticated, connection-owned stream. */
+    public val employeeGateway: DesktopMasterEmployeeGateway = DesktopMasterEmployeeGateway(scope,
+        { live.value && employeeConsoleSupported }, { frame ->
+            if (!live.value || outgoing.trySend(frame).isFailure) { frame.clear(); false } else true
+        }, ::disconnect)
+
 
     private fun start() {
         // Old services safely ignore this v1 command; old clients receive no new message.
@@ -64,6 +72,7 @@ public class DesktopRemoteSetupController private constructor(
                     val frame = runInterruptible { DesktopSetupIpcWire.read(input) }
                     frame.clear() // The service never sends secrets.
                     when (val message = frame.message) {
+                        is IpcMessage.EmployeeReply -> employeeGateway.reply(message)
                         is IpcMessage.View -> {
                             val actual = message.view.value()
                             if (actual.locked) lanDiscovery = IpcLanDiscoveryV2()
@@ -111,9 +120,10 @@ public class DesktopRemoteSetupController private constructor(
 
     private fun disconnect() {
         if (!live.compareAndSet(true, false)) return
+        employeeGateway.disconnect()
         view.value = LocalSetupView(locked = true)
         runCatching { connection.close() }
-        outgoing.close()
+        outgoing.cancel()
     }
 
     override fun close(): Unit = disconnect()
@@ -228,7 +238,7 @@ public class DesktopRemoteSetupController private constructor(
                     hello.master -> LocalMasterSdkProfileV1
                     else -> null
                 }
-                return DesktopRemoteSetupController(connection, profile, documents, scope).also { it.start() }
+                return DesktopRemoteSetupController(connection, profile, documents, scope, hello.employeeProtocol == 1).also { it.start() }
             } catch (failure: Throwable) { connection.close(); throw failure }
         }
     }

@@ -64,7 +64,21 @@ data class LocalFoodRecipeChoicePreview(val id: DomainId, val names: LocalText, 
 data class LocalFoodRecipePreview(val publicationId: DomainId, val recipeId: DomainId, val revision: Revision,
     val outputSkuId: DomainId, val outputSkuRevision: Revision, val yieldQuantity: Quantity,
     val portionQuantity: Quantity, val choices: List<LocalFoodRecipeChoicePreview>, val active: Boolean)
-class LocalFoodRecipeReview(val action: CompanyBusinessPublicationAction, val preview: LocalFoodRecipePreview) {
+class LocalFoodRecipeReview private constructor(
+    private val nativeAction: CompanyBusinessPublicationAction?,
+    val preview: LocalFoodRecipePreview,
+    val displayAction: LocalCompanyPublicationReviewData,
+    /** Connection-local correlation only; no native action is reconstructed from it. */
+    val remoteCorrelation: DomainId?,
+) {
+    constructor(action: CompanyBusinessPublicationAction, preview: LocalFoodRecipePreview) :
+        this(action, preview, LocalCompanyPublicationReviewData.of(action), null)
+    /** Native adapters refuse a projected review before reaching the native signer. */
+    val action: CompanyBusinessPublicationAction get() = checkNotNull(nativeAction) { "Projected review has no native owner" }
+    companion object {
+        fun remote(data: LocalCompanyPublicationReviewData, preview: LocalFoodRecipePreview, correlation: DomainId): LocalFoodRecipeReview =
+            LocalFoodRecipeReview(null, preview, data, correlation)
+    }
     override fun toString(): String = "LocalFoodRecipeReview([REDACTED])"
 }
 data class LocalFoodRecipeCompleted(val originalActionId: DomainId, val preview: LocalFoodRecipePreview, val rootFingerprint: String)

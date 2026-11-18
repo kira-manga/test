@@ -19,18 +19,19 @@ import java.util.concurrent.locks.ReentrantReadWriteLock
  * Windows setup-console transport between the packaged UI and the packaged Master service.
  * The service owns the pipe name from its first instance (FILE_FLAG_FIRST_PIPE_INSTANCE) and keeps
  * a next instance pending so the name is never released; remote clients are rejected; the protected
- * DACL admits only SYSTEM, Administrators and the owner (the service). Both ends verify that the
+ * DACL grants ordinary packaged Users only data read/write plus synchronization, conditioned on
+ * this exact OS-issued package identity. Service/administrator ownership rights remain separate.
+ * Both ends verify that the
  * peer process carries this package's family name, so neither a squatting server nor a foreign
  * client is ever spoken to. The client requests SECURITY_IDENTIFICATION only (no impersonation).
  */
 internal object DesktopSetupWindowsPipe {
     const val NAME: String = "\\\\.\\pipe\\UkkeraPOSTestMaster.setup"
-    private const val SDDL = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;OW)"
 
     fun listen(expectedClientFamily: String): DesktopSetupIpcEndpoint = Endpoint(expectedClientFamily)
 
     fun connect(expectedServerFamily: String): DesktopSetupIpcConnection {
-        val raw = Win.kernel.CreateFileW(WString(NAME), GENERIC_READ or GENERIC_WRITE, 0, null, OPEN_EXISTING,
+        val raw = Win.kernel.CreateFileW(WString(NAME), DesktopMasterConsoleAccess.CLIENT_ACCESS, 0, null, OPEN_EXISTING,
             FILE_FLAG_OVERLAPPED or SECURITY_SQOS_PRESENT or SECURITY_IDENTIFICATION, null)
         if (invalid(raw)) throw IOException("The Master setup console is unavailable (${Native.getLastError()})")
         val handle = PipeHandle(raw!!)
@@ -51,7 +52,8 @@ internal object DesktopSetupWindowsPipe {
 
         init {
             val sd = PointerByReference()
-            check(Win.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(WString(SDDL), 1, sd, null) != 0) {
+            check(Win.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                WString(DesktopMasterConsoleAccess.descriptor(expectedClient)), 1, sd, null) != 0) {
                 "Cannot build the setup console security descriptor"
             }
             descriptor = sd.value
@@ -207,8 +209,6 @@ internal object DesktopSetupWindowsPipe {
 
     private fun invalid(handle: Pointer?): Boolean = handle == null || Pointer.nativeValue(handle) == -1L
 
-    private const val GENERIC_READ = -0x80000000
-    private const val GENERIC_WRITE = 0x40000000
     private const val OPEN_EXISTING = 3
     private const val FILE_FLAG_OVERLAPPED = 0x40000000
     private const val SECURITY_SQOS_PRESENT = 0x00100000

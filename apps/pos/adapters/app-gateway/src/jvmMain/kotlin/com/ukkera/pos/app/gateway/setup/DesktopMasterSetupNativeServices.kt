@@ -102,8 +102,9 @@ public class DesktopMasterSetupPlatform(
  * operation, receipt, lifecycle, the original LAN host and the same-device original (cohost) Client
  * that the shared coordinator's admin ceremonies use, over the same shared owners as Android. The
  * cohost Client's journals use the service's own custody ([DesktopMasterSetupPlatform.clientJournals]);
- * its gateway is published only on this service's [localClient]. The desktop UI process remains a
- * paired LAN Client of this Master. Every wrapper retains its exact native owner before checks.
+ * its gateway is published on this service's [localClient]. The OS-authenticated local console
+ * proxies its employee UI ports while all native sessions, journals and signing owners stay here.
+ * The desktop UI process may independently act as a paired LAN Client of a Master. Every wrapper retains its exact native owner before checks.
  * Retail payment/refund and FOOD cash physical recording use the original physical gate over
  * the SAME service custody, installed before activation exactly like Android; without that custody
  * physical recording stays unavailable.

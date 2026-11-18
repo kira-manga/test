@@ -156,9 +156,9 @@ internal fun LocalCompanyCatalogPublicationCard(
     fun adopt(result: LocalCompanyCatalogReviewResult) {
         when (result) {
             is LocalCompanyCatalogReviewResult.Review -> {
-                retainedActionId = result.review.action.originalActionId
+                retainedActionId = result.review.displayAction.originalActionId
                 review = result.review; completed = null; editor = null
-                headLogin = result.review.action.headLogin; headSecret = ""; approvedExact = false
+                headLogin = result.review.displayAction.headLogin; headSecret = ""; approvedExact = false
                 notice = null
             }
             is LocalCompanyCatalogReviewResult.Completed -> {
@@ -316,14 +316,14 @@ internal fun LocalCompanyCatalogPublicationCard(
             review?.let { exact ->
                 SectionHeading(label("Exact company-head approval review", "مراجعة موافقة رئيس الشركة الدقيقة"))
                 CompanySkuPreview(exact.preview)
-                IdentifierText(label("Original native action", "الإجراء الأصلي"), exact.action.originalActionId.value)
-                IdentifierText(label("Endorsed signing key identity", "معرف مفتاح التوقيع المجاز"), exact.action.signingKeyId.value)
+                IdentifierText(label("Original native action", "الإجراء الأصلي"), exact.displayAction.originalActionId.value)
+                IdentifierText(label("Endorsed signing key identity", "معرف مفتاح التوقيع المجاز"), exact.displayAction.signingKeyId.value)
                 IdentifierText(label("Company / organization", "الشركة أو المؤسسة"),
-                    "${exact.action.proposal.company.companyId.value} / ${exact.action.proposal.company.organizationId.value}")
-                IdentifierText(label("Root fingerprint", "بصمة جذر الثقة"), exact.action.rootFingerprint)
-                IdentifierText(label("Content SHA-256", "بصمة المحتوى SHA-256"), exact.action.proposal.contentDigest.value)
-                Text(label("Company: ${exact.action.companyName}. Separate head: ${exact.action.headName} (${exact.action.headLogin}).",
-                    "الشركة: ${exact.action.companyName}. الرئيس المنفصل: ${exact.action.headName} (${exact.action.headLogin})."))
+                    "${exact.displayAction.proposal.company.companyId.value} / ${exact.displayAction.proposal.company.organizationId.value}")
+                IdentifierText(label("Root fingerprint", "بصمة جذر الثقة"), exact.displayAction.rootFingerprint)
+                IdentifierText(label("Content SHA-256", "بصمة المحتوى SHA-256"), exact.displayAction.proposal.contentDigest.value)
+                Text(label("Company: ${exact.displayAction.companyName}. Separate head: ${exact.displayAction.headName} (${exact.displayAction.headLogin}).",
+                    "الشركة: ${exact.displayAction.companyName}. الرئيس المنفصل: ${exact.displayAction.headName} (${exact.displayAction.headLogin})."))
                 Notice(label("This fresh ceremony endorses only the displayed exact content and one ephemeral Ed25519 key through the original native P-256 root. Purchasing-policy or installation approval is NOT catalog-signing authority. No employee login or grant replaces the head's password.",
                     "يجيز هذا الإجراء الجديد المحتوى الدقيق المعروض ومفتاح Ed25519 مؤقتًا واحدًا عبر جذر P-256 الأصلي. موافقة سياسة المشتريات أو التثبيت ليست صلاحية توقيع كتالوج. لا يحل دخول الموظف أو منحه محل كلمة مرور الرئيس."), caution = true)
                 OutlinedTextField(headLogin, { if (callbackCurrent() && ready && it.length <= 128) headLogin = it },
@@ -354,7 +354,7 @@ internal fun LocalCompanyCatalogPublicationCard(
                     OutlinedButton(onClick = {
                         headSecret = ""; approvedExact = false
                         runAction {
-                            val result = gateway.review(exact.action.originalActionId)
+                            val result = gateway.review(exact.displayAction.originalActionId)
                             currentCoroutineContext().ensureActive()
                             if (owns()) adopt(result)
                         }

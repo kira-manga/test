@@ -91,7 +91,7 @@ internal class DesktopMasterServiceHost private constructor(
             lifecycleIntents = LocalMasterLifecycleIntentStore(storages.lifecycle),
             stopBindingIntents = LocalMasterLifecycleIntentStore(storages.stopBinding),
         )
-        server = DesktopSetupIpcServer(coordinator, documents, scope)
+        server = DesktopSetupIpcServer(coordinator, documents, scope, services.localClient)
     }
 
     fun start() {

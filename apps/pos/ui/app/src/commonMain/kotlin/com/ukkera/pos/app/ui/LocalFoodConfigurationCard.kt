@@ -167,9 +167,9 @@ internal fun LocalFoodConfigurationCard(runtime: UkkeraRuntime, token: Navigatio
     fun adopt(result: LocalFoodRecipeResult) {
         when (result) {
             is LocalFoodRecipeResult.Review -> {
-                retainedActionId = result.review.action.originalActionId
+                retainedActionId = result.review.displayAction.originalActionId
                 review = result.review; completed = null; recipeEditor = null; picker = null
-                headLogin = result.review.action.headLogin; headSecret = ""; exactApproved = false
+                headLogin = result.review.displayAction.headLogin; headSecret = ""; exactApproved = false
             }
             is LocalFoodRecipeResult.Completed -> {
                 retainedActionId = result.publication.originalActionId
@@ -481,14 +481,14 @@ internal fun LocalFoodConfigurationCard(runtime: UkkeraRuntime, token: Navigatio
             review?.let { exact ->
                 SectionHeading(label("Exact native company-head recipe review", "مراجعة الوصفة الأصلية الدقيقة لرئيس الشركة"))
                 FoodRecipePreview(exact.preview)
-                IdentifierText(label("Original native action", "الإجراء الأصلي"), exact.action.originalActionId.value)
+                IdentifierText(label("Original native action", "الإجراء الأصلي"), exact.displayAction.originalActionId.value)
                 IdentifierText(label("Company / organization", "الشركة والمؤسسة"),
-                    "${exact.action.proposal.company.companyId.value} / ${exact.action.proposal.company.organizationId.value}")
-                IdentifierText(label("Endorsed signing key", "مفتاح التوقيع المجاز"), exact.action.signingKeyId.value)
-                IdentifierText(label("Original root fingerprint", "بصمة جذر الثقة الأصلي"), exact.action.rootFingerprint)
-                IdentifierText(label("Exact content SHA-256", "بصمة المحتوى الدقيق SHA-256"), exact.action.proposal.contentDigest.value)
-                Text(label("Company ${exact.action.companyName}; separate head ${exact.action.headName} (${exact.action.headLogin}).",
-                    "الشركة ${exact.action.companyName}؛ الرئيس المنفصل ${exact.action.headName} (${exact.action.headLogin})."))
+                    "${exact.displayAction.proposal.company.companyId.value} / ${exact.displayAction.proposal.company.organizationId.value}")
+                IdentifierText(label("Endorsed signing key", "مفتاح التوقيع المجاز"), exact.displayAction.signingKeyId.value)
+                IdentifierText(label("Original root fingerprint", "بصمة جذر الثقة الأصلي"), exact.displayAction.rootFingerprint)
+                IdentifierText(label("Exact content SHA-256", "بصمة المحتوى الدقيق SHA-256"), exact.displayAction.proposal.contentDigest.value)
+                Text(label("Company ${exact.displayAction.companyName}; separate head ${exact.displayAction.headName} (${exact.displayAction.headLogin}).",
+                    "الشركة ${exact.displayAction.companyName}؛ الرئيس المنفصل ${exact.displayAction.headName} (${exact.displayAction.headLogin})."))
                 Notice(label("The original native head endorses ONLY this exact recipe and ephemeral signing key. Employee CATALOG_ACTIVATE / ADMINISTER does not replace head authentication or create a reusable signing approval. Signing does not activate, send, consume stock, charge or acknowledge paper output.",
                     "يجيز الرئيس الأصلي هذا المحتوى الدقيق ومفتاح التوقيع المؤقت فقط. لا تستبدل صلاحية الموظف CATALOG_ACTIVATE / ADMINISTER تحقق الرئيس ولا تنشئ موافقة توقيع قابلة لإعادة الاستخدام. لا يفعّل التوقيع أو يرسل أو يستهلك مخزونًا أو يحصل أموالًا أو يؤكد إخراجًا ورقيًا."), caution = true)
                 FoodSetupField(label("Separate company-head login", "اسم دخول رئيس الشركة المنفصل"), headLogin, 128, ready) { if (editorReady()) headLogin = it }
@@ -508,7 +508,7 @@ internal fun LocalFoodConfigurationCard(runtime: UkkeraRuntime, token: Navigatio
                     }, enabled = ready && exactApproved && headLogin.isNotBlank() && headSecret.length in 4..256,
                         modifier = Modifier.touchTarget()) { Text(label("Authenticate head and sign EXACT recipe", "التحقق من الرئيس وتوقيع الوصفة الدقيقة")) }
                     OutlinedButton(onClick = { headSecret = ""; exactApproved = false
-                        runAction { val result = gateway.review(exact.action.originalActionId); currentCoroutineContext().ensureActive(); if (owns()) adopt(result) }
+                        runAction { val result = gateway.review(exact.displayAction.originalActionId); currentCoroutineContext().ensureActive(); if (owns()) adopt(result) }
                     }, enabled = ready, modifier = Modifier.touchTarget()) { Text(label("Read original exact review", "قراءة المراجعة الأصلية الدقيقة")) }
                     OutlinedButton(onClick = { if (callbackCurrent() && ready) {
                         headSecret = ""; headLogin = ""; exactApproved = false; review = null; syncGuard()

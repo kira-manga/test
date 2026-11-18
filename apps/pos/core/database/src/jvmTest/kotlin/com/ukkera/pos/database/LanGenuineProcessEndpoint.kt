@@ -336,18 +336,27 @@ internal object LanGenuineProcessEndpoint {
             check(auth.logout(credentials) == LocalSignOutResult.Revoked) { "$role logout did not revoke" }
             tokens?.destroy(); tokens = null
             val intents = checkNotNull(heldJournals.actorIntentSource(heldRpc)) { "$role paired actor journal source unavailable" }
-            val connection = LocalRemoteBusinessClientConnection(directory, directory.connectionId,
+            var physicalBindingRequests = 0
+            var acquiredPhysicalBinding: LocalRemoteRetailPhysicalBinding? = null
+            val connection = localPairedClientConnection(directory, directory.connectionId,
                 LocalClientDeviceIdentity(scope, approved.targetDeviceId),
                 LocalBranchDisplayLabels(scope, "Synthetic LAN Company", "Synthetic LAN Branch"),
-                retailPhysicalBinding = if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
-                    checkNotNull(heldJournals.remotePhysicalBinding(heldRpc, directory)) { "Actual paired remote physical binding unavailable" }
-                else null) {
+                profile = LocalMasterRpcWorkflowProfile.LAN_BUSINESS,
+                acquirePhysicalBinding = {
+                    check(++physicalBindingRequests == 1) { "Shared attachment repeated physical binding acquisition" }
+                    (if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY))
+                        checkNotNull(heldJournals.remotePhysicalBinding(heldRpc, directory)) { "Actual paired remote physical binding unavailable" }
+                    else null).also { acquiredPhysicalBinding = it }
+                }) {
                 val directoryCurrent = directory.isCurrent()
                 val journalsCurrent = heldJournals.isCurrent()
                 if (java.lang.Boolean.getBoolean(LanGenuinePaymentSupport.ENABLE_PROPERTY) &&
                     (!directoryCurrent || !journalsCurrent))
                     println("Payment connection observation: directory=$directoryCurrent; journals=$journalsCurrent")
                 directoryCurrent && journalsCurrent
+            } as LocalRemoteBusinessClientConnection
+            check(physicalBindingRequests == 1 && connection.retailPhysicalBinding === acquiredPhysicalBinding) {
+                "Shared attachment did not retain the exact original physical binding"
             }
             val heldGateway = LocalEndpointBranchGateway.remoteBusiness(
                 MutableStateFlow<LocalRemoteBusinessClientConnection?>(connection), heldJournals.credentials, intents)

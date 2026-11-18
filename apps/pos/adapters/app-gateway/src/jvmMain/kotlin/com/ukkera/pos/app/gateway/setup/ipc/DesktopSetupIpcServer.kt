@@ -98,6 +98,7 @@ public class DesktopSetupIpcServer(
     private val controller: LocalSetupController,
     private val documents: DesktopSetupIpcDocuments,
     private val scope: CoroutineScope,
+    private val employeeGateway: com.ukkera.pos.app.BranchUiGateway? = null,
 ) : Closeable {
     @Volatile private var endpoint: DesktopSetupIpcEndpoint? = null
     private var job: Job? = null
@@ -117,9 +118,11 @@ public class DesktopSetupIpcServer(
         val output = connection.dataOutput()
         val input = connection.dataInput()
         val send: (IpcMessage) -> Unit = { message -> DesktopSetupIpcWire.write(output, DesktopSetupIpcWire.Frame(message)) }
+        val employee = DesktopMasterEmployeeService(employeeGateway)
         val lanDiscoveryExtension = java.util.concurrent.atomic.AtomicBoolean(false)
         val profile = controller.compositionProfile
-        send(IpcMessage.Hello((profile as? LocalTrainingSdkProfileV1)?.slot?.name, master = profile != null))
+        send(IpcMessage.Hello((profile as? LocalTrainingSdkProfileV1)?.slot?.name, master = profile != null,
+            employeeProtocol = if (employeeGateway != null) 1 else null))
         documents.attach(send)
         val views = scope.launch(Dispatchers.IO) { controller.state.collect {
             send(IpcMessage.View(IpcView.of(it)))
@@ -130,6 +133,7 @@ public class DesktopSetupIpcServer(
                 val frame = runInterruptible { DesktopSetupIpcWire.read(input) }
                 try {
                     when (val message = frame.message) {
+                        is IpcMessage.EmployeeRequest -> send(employee.request(message, frame))
                         is IpcMessage.Command -> runCatching {
                             if (message.method == "observeLanDiscoveryV2") {
                                 require(message.secretCount == 0 && frame.secrets.isEmpty())
@@ -145,6 +149,8 @@ public class DesktopSetupIpcServer(
             }
         } finally {
             withContext(NonCancellable) {
+                employee.close()
+                runCatching { employee.retireConnection() }
                 documents.detach()
                 views.cancelAndJoin()
                 // Disconnection locks presentation only; owned native work continues in the service.

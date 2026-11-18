@@ -131,8 +131,18 @@ internal object DesktopSetupIpcWire {
 
 @Serializable
 internal sealed class IpcMessage {
+    /** Additive, opt-in local employee console. No credential/native capability is serialized. */
+    @Serializable @SerialName("employee-request-v1") data class EmployeeRequest(
+        val requestId: Long, val session: String?, val method: String,
+        val payload: kotlinx.serialization.json.JsonElement, val secretCount: Int = 0,
+    ) : IpcMessage()
+    @Serializable @SerialName("employee-reply-v1") data class EmployeeReply(
+        val requestId: Long, val session: String?, val payload: kotlinx.serialization.json.JsonElement? = null,
+        val problem: String? = null,
+    ) : IpcMessage()
+
     /** Service -> UI: the exact composition profile of the service-owned coordinator. */
-    @Serializable @SerialName("hello") data class Hello(val trainingSlot: String? = null, val master: Boolean) : IpcMessage()
+    @Serializable @SerialName("hello") data class Hello(val trainingSlot: String? = null, val master: Boolean, val employeeProtocol: Int? = null) : IpcMessage()
     @Serializable @SerialName("view") data class View(val view: IpcView) : IpcMessage()
     /** Sent only after an explicit v1 command opts this peer into the additive LAN extension. */
     @Serializable @SerialName("lan-discovery-v2") data class LanDiscoveryV2(val lan: IpcLanDiscoveryV2) : IpcMessage()

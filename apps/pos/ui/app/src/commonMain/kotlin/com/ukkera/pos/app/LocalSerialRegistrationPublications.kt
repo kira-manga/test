@@ -47,8 +47,21 @@ sealed interface LocalSerialPublicationPreview {
     data class Registration(val definition: LocalPublishedSerialRegistrationV1) : LocalSerialPublicationPreview
 }
 
-class LocalSerialPublicationReview(val action: CompanyBusinessPublicationAction,
-    val preview: LocalSerialPublicationPreview) {
+class LocalSerialPublicationReview private constructor(
+    private val nativeAction: CompanyBusinessPublicationAction?,
+    val preview: LocalSerialPublicationPreview,
+    val displayAction: LocalCompanyPublicationReviewData,
+    /** Connection-local correlation only; no native action is reconstructed from it. */
+    val remoteCorrelation: DomainId?,
+) {
+    constructor(action: CompanyBusinessPublicationAction, preview: LocalSerialPublicationPreview) :
+        this(action, preview, LocalCompanyPublicationReviewData.of(action), null)
+    /** Native adapters refuse a projected review before reaching the native signer. */
+    val action: CompanyBusinessPublicationAction get() = checkNotNull(nativeAction) { "Projected review has no native owner" }
+    companion object {
+        fun remote(data: LocalCompanyPublicationReviewData, preview: LocalSerialPublicationPreview, correlation: DomainId): LocalSerialPublicationReview =
+            LocalSerialPublicationReview(null, preview, data, correlation)
+    }
     override fun toString(): String = "LocalSerialPublicationReview([REDACTED])"
 }
 

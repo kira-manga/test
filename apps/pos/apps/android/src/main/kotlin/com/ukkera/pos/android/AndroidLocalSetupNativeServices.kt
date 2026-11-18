@@ -7,8 +7,8 @@ import com.ukkera.pos.app.gateway.AndroidPairedDeviceClientCredentialsResult
 import com.ukkera.pos.app.gateway.LocalAuthenticationOnlyConnection
 import com.ukkera.pos.app.gateway.LocalRemoteBusinessClientConnection
 import com.ukkera.pos.app.gateway.LocalDirectoryClientConnection
+import com.ukkera.pos.app.gateway.localPairedClientConnection
 import com.ukkera.pos.app.gateway.setup.masterRpcProfile
-import com.ukkera.pos.database.LocalMasterRpcWorkflowProfile
 import com.ukkera.pos.app.gateway.LocalBranchDisplayLabels
 import com.ukkera.pos.app.gateway.LocalEndpointBranchGateway
 import com.ukkera.pos.app.gateway.setup.LocalSetupLanAuthentication
@@ -735,24 +735,24 @@ internal class AndroidLocalSetupNativeServices(
                     // Same retained original Client; the Master authorizes every business call.
                     val creation = rpc.employeeCreationClient(endpoint)
                     check(creation.isCurrent() && endpoint.isCurrent() && current())
-                    val gateway = if (profile == LocalMasterRpcWorkflowProfile.LAN_BUSINESS) {
-                        val connection = LocalRemoteBusinessClientConnection(endpoint, endpoint.connectionId,
-                            journal.credentials.owner, labels) { workCurrent() && journal.isCurrent() && endpoint.isCurrent() }
-                        LocalEndpointBranchGateway.remoteBusiness(MutableStateFlow(connection), journal.credentials, intents, creation)
-                    } else {
-                        val connection = LocalDirectoryClientConnection(endpoint, endpoint.connectionId,
-                            journal.credentials.owner, labels, profile,
-                            supplierReferences = profile == LocalMasterRpcWorkflowProfile.SUPPLIERS
-                        ) { workCurrent() && journal.isCurrent() && endpoint.isCurrent() }
-                        LocalEndpointBranchGateway.directoryWithEmployeeCreation(MutableStateFlow(connection),
-                            journal.credentials, intents, profile, creation)
+                    val connection = localPairedClientConnection(endpoint, endpoint.connectionId,
+                        journal.credentials.owner, labels, profile,
+                        acquirePhysicalBinding = { journal.remotePhysicalBinding(rpc, endpoint) }
+                    ) { workCurrent() && journal.isCurrent() && endpoint.isCurrent() }
+                    val gateway = when (connection) {
+                        is LocalRemoteBusinessClientConnection -> LocalEndpointBranchGateway.remoteBusiness(
+                            MutableStateFlow(connection), journal.credentials, intents, creation)
+                        is LocalDirectoryClientConnection -> LocalEndpointBranchGateway.directoryWithEmployeeCreation(
+                            MutableStateFlow(connection), journal.credentials, intents, profile, creation)
+                        else -> error("Business workflow attachment is absent")
                     }
                     LanAuthentication(gateway, journal, endpoint::isCurrent)
                 } else {
                     val service = rpc.authenticationService()
                     check(service.isCurrent())
-                    val connection = LocalAuthenticationOnlyConnection(service, service.connectionId,
-                        journal.credentials.owner, labels) { workCurrent() && journal.isCurrent() && service.isCurrent() }
+                    val connection = localPairedClientConnection(service, service.connectionId,
+                        journal.credentials.owner, labels, profile = null
+                    ) { workCurrent() && journal.isCurrent() && service.isCurrent() } as LocalAuthenticationOnlyConnection
                     val gateway = LocalEndpointBranchGateway.authenticationOnly(MutableStateFlow(connection), journal.credentials)
                     LanAuthentication(gateway, journal, service::isCurrent)
                 }

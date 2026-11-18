@@ -284,8 +284,15 @@ echo "Building $FORMAT with :apps:desktop:$GRADLE_TASK ..."
     MAC_SIGNING_ARGS+=("-Pukkera.mac.signing.teamIdentifier=$UKKERA_EXPECTED_TEAM_ID"
       "-Pukkera.mac.signing.designatedRequirementSha256=$POS_MAC_DESIGNATED_REQUIREMENT_SHA256")
   fi
+  CONSOLE_TEST_ARGS=()
+  if [[ "$FORMAT" == "msi" ]]; then
+    # Actual Windows AccessCheck rejects an unpackaged non-administrator token.
+    # The MSIX installation probe separately tests the matching packaged token.
+    CONSOLE_TEST_ARGS=(:apps:desktop:test --tests '*DesktopMasterConsoleAccessSupportingTest')
+  fi
   bash ./gradlew \
     "$GRADLE_TASK" \
+    "${CONSOLE_TEST_ARGS[@]}" \
     "${MAC_SIGNING_ARGS[@]}" \
     --console=plain \
     --stacktrace \
@@ -364,6 +371,19 @@ if [[ "$FORMAT" == "dmg" ]]; then
       "$APP_PATH/Contents/MacOS/UkkeraPOS" "--$probe-probe=$DIAG/mac-$probe-probe.txt" > "$DIAG/mac-$probe-probe.log" 2>&1 \
         && echo "probe_exit=0" >> "$DIAG/mac-$probe-probe.log" || echo "probe_exit=$?" >> "$DIAG/mac-$probe-probe.log"
     done
+    # Exercise the same LaunchAgent install and setup-controller handshake as the Master UI.
+    # Use a real copy out of the mounted DMG; never leave launchd pointing into a disk image.
+    CONSOLE_APP_PATH="$WORK_DIR/master-console/UkkeraPOS.app"
+    mkdir -p "$(dirname "$CONSOLE_APP_PATH")"
+    ditto "$APP_PATH" "$CONSOLE_APP_PATH"
+    codesign --verify --deep --strict "$CONSOLE_APP_PATH" > "$DIAG/mac-master-console-signature.txt" 2>&1
+    if "$CONSOLE_APP_PATH/Contents/MacOS/UkkeraPOS" "--master-console-probe=$DIAG/mac-master-console-probe.txt" \
+      > "$DIAG/mac-master-console-probe.log" 2>&1; then
+      grep -q '^DATA platform=macos console=true nativeAgent=true$' "$DIAG/mac-master-console-probe.txt" || \
+        fail "Master console probe did not confirm the native service/UI handshake."
+    else
+      fail "Native macOS Master console probe failed; see its fixed-phase diagnostic."
+    fi
   fi
   if [[ "$SMOKE" == "1" ]]; then
     echo "Launching packaged macOS app with --smoke-exit ..."

@@ -205,7 +205,7 @@ internal fun LocalPricePolicyPublicationCard(runtime: UkkeraRuntime, token: Navi
             is LocalPricePolicyPublicationResult.Unavailable -> null
         }
         val actionId = when (result) {
-            is LocalPricePolicyPublicationResult.Review -> result.review.action.originalActionId
+            is LocalPricePolicyPublicationResult.Review -> result.review.displayAction.originalActionId
             is LocalPricePolicyPublicationResult.Completed -> result.publication.originalActionId
             is LocalPricePolicyPublicationResult.Unavailable -> null
         }
@@ -215,7 +215,7 @@ internal fun LocalPricePolicyPublicationCard(runtime: UkkeraRuntime, token: Navi
             unavailable(LocalServiceProblem.UNAVAILABLE); return
         }
         if (result is LocalPricePolicyPublicationResult.Review) {
-            val proposal = result.review.action.proposal
+            val proposal = result.review.displayAction.proposal
             val definition = result.review.preview.definition
             if (proposal.kind != CompanyBusinessPublicationKind.PRICE_POLICY_V1 ||
                 proposal.company.companyId != result.review.preview.companyId ||
@@ -225,9 +225,9 @@ internal fun LocalPricePolicyPublicationCard(runtime: UkkeraRuntime, token: Navi
         }
         when (result) {
             is LocalPricePolicyPublicationResult.Review -> {
-                original = result.review.action.originalActionId
+                original = result.review.displayAction.originalActionId
                 review = result.review; completed = null; editor = null
-                headLogin = result.review.action.headLogin; headSecret = ""; exactApproved = false
+                headLogin = result.review.displayAction.headLogin; headSecret = ""; exactApproved = false
                 // A successful native PREPARED review, not a failure hint, permits a new explicit approval.
                 approvalHeld = false
             }
@@ -363,10 +363,10 @@ internal fun LocalPricePolicyPublicationCard(runtime: UkkeraRuntime, token: Navi
             }
             review?.let { exact ->
                 PricePolicyPreview(exact.preview)
-                Text(label("Company / head: ${exact.action.companyName} / ${exact.action.headName}",
-                    "الشركة / الرئيس: ${exact.action.companyName} / ${exact.action.headName}"))
-                Text(label("Original root fingerprint: ${exact.action.rootFingerprint}", "بصمة الجذر الأصلي: ${exact.action.rootFingerprint}"))
-                Text(label("Exact content digest: ${exact.action.proposal.contentDigest.value}", "بصمة المحتوى الدقيق: ${exact.action.proposal.contentDigest.value}"))
+                Text(label("Company / head: ${exact.displayAction.companyName} / ${exact.displayAction.headName}",
+                    "الشركة / الرئيس: ${exact.displayAction.companyName} / ${exact.displayAction.headName}"))
+                Text(label("Original root fingerprint: ${exact.displayAction.rootFingerprint}", "بصمة الجذر الأصلي: ${exact.displayAction.rootFingerprint}"))
+                Text(label("Exact content digest: ${exact.displayAction.proposal.contentDigest.value}", "بصمة المحتوى الدقيق: ${exact.displayAction.proposal.contentDigest.value}"))
                 if (approvalHeld) Notice(label("An approval was attempted. Recover or re-read the SAME native action before any further signing; no failure proves noncompletion.",
                     "جرت محاولة الموافقة. استعد الإجراء الأصلي نفسه أو أعد قراءته قبل أي توقيع آخر؛ لا يثبت الفشل عدم اكتماله."), caution = true)
                 OutlinedTextField(headLogin, { if (ready() && !approvalHeld) headLogin = it }, enabled = ready() && !approvalHeld,
@@ -381,7 +381,7 @@ internal fun LocalPricePolicyPublicationCard(runtime: UkkeraRuntime, token: Navi
                         runAction(secret) {
                             val result = gateway.approve(exact, login, secret)
                             currentCoroutineContext().ensureActive()
-                            if (owns()) adopt(result, expectedOriginal = exact.action.originalActionId, expectedDraft = exact.preview.definition)
+                            if (owns()) adopt(result, expectedOriginal = exact.displayAction.originalActionId, expectedDraft = exact.preview.definition)
                         }
                     }
                 }, enabled = ready() && !approvalHeld && exactApproved && headLogin.isNotBlank() && headSecret.isNotEmpty(), modifier = Modifier.touchTarget()) {

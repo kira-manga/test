@@ -47,10 +47,21 @@ class LocalReturnRightsPublicationDraft(
 /** The exact retained native definition, not the currently active policy or a qualification decision. */
 data class LocalReturnRightsPublicationPreview(val companyId: DomainId, val definition: LocalReturnRightsPublicationDraft)
 
-class LocalReturnRightsPublicationReview(
-    val action: CompanyBusinessPublicationAction,
+class LocalReturnRightsPublicationReview private constructor(
+    private val nativeAction: CompanyBusinessPublicationAction?,
     val preview: LocalReturnRightsPublicationPreview,
+    val displayAction: LocalCompanyPublicationReviewData,
+    /** Connection-local correlation only; no native action is reconstructed from it. */
+    val remoteCorrelation: DomainId?,
 ) {
+    constructor(action: CompanyBusinessPublicationAction, preview: LocalReturnRightsPublicationPreview) :
+        this(action, preview, LocalCompanyPublicationReviewData.of(action), null)
+    /** Native adapters refuse a projected review before reaching the native signer. */
+    val action: CompanyBusinessPublicationAction get() = checkNotNull(nativeAction) { "Projected review has no native owner" }
+    companion object {
+        fun remote(data: LocalCompanyPublicationReviewData, preview: LocalReturnRightsPublicationPreview, correlation: DomainId): LocalReturnRightsPublicationReview =
+            LocalReturnRightsPublicationReview(null, preview, data, correlation)
+    }
     override fun toString(): String = "LocalReturnRightsPublicationReview([REDACTED])"
 }
 

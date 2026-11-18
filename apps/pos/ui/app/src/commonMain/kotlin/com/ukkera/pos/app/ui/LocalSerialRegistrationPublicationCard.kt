@@ -121,7 +121,7 @@ internal fun LocalSerialRegistrationPublicationCard(runtime: UkkeraRuntime, toke
     }
     fun adopt(result: LocalSerialPublicationResult, expected: DomainId? = null) {
         val id = when (result) {
-            is LocalSerialPublicationResult.Review -> result.review.action.originalActionId
+            is LocalSerialPublicationResult.Review -> result.review.displayAction.originalActionId
             is LocalSerialPublicationResult.Completed -> result.publication.originalActionId
             is LocalSerialPublicationResult.Unavailable -> null
         }
@@ -141,18 +141,35 @@ internal fun LocalSerialRegistrationPublicationCard(runtime: UkkeraRuntime, toke
             failure(LocalServiceProblem.UNAVAILABLE); return
         }
         if (result is LocalSerialPublicationResult.Review) {
-            val action = result.review.action
-            val exact = runCatching { when (action.proposal.kind) {
-                CompanyBusinessPublicationKind.SERIAL_AUTHORITY_V1 -> LocalSerialPublicationPreview.Authority(action.readNativeSerialAuthorityDefinition())
-                CompanyBusinessPublicationKind.SERIAL_REGISTRATION_V1 -> LocalSerialPublicationPreview.Registration(action.readNativeSerialRegistrationDefinition())
-                else -> null
-            } }.getOrNull()
+            val action = result.review.displayAction
+            val exact = runCatching {
+                val proposal = action.proposal
+                val bytes = proposal.copyCanonicalContent()
+                try {
+                    require(sha256(bytes) == proposal.contentDigest)
+                    when (proposal.kind) {
+                        CompanyBusinessPublicationKind.SERIAL_AUTHORITY_V1 ->
+                            LocalSerialAuthorityPublicationCodecV1.decodeCanonicalPublication(bytes).let {
+                                require(it.company == proposal.company && it.publicationId == proposal.publicationId &&
+                                    it.authorityId == proposal.entityId)
+                                LocalSerialPublicationPreview.Authority(it)
+                            }
+                        CompanyBusinessPublicationKind.SERIAL_REGISTRATION_V1 ->
+                            LocalSerialRegistrationPublicationCodecV1.decodeCanonicalPublication(bytes).let {
+                                require(it.company == proposal.company && it.publicationId == proposal.publicationId &&
+                                    it.registrationId == proposal.entityId)
+                                LocalSerialPublicationPreview.Registration(it)
+                            }
+                        else -> null
+                    }
+                } finally { bytes.fill(0) }
+            }.getOrNull()
             if (exact == null || exact != preview) { failure(LocalServiceProblem.UNAVAILABLE); return }
         }
         when (result) {
             is LocalSerialPublicationResult.Review -> {
                 original = id; review = result.review; completed = null
-                login = result.review.action.headLogin; secret = ""; confirmed = false; held = false
+                login = result.review.displayAction.headLogin; secret = ""; confirmed = false; held = false
             }
             is LocalSerialPublicationResult.Completed -> {
                 original = id; completed = result.publication; review = null
@@ -243,15 +260,15 @@ internal fun LocalSerialRegistrationPublicationCard(runtime: UkkeraRuntime, toke
             if ((page + 1) * 8 < (status?.references?.size ?: 0)) OutlinedButton(onClick = { if (ready()) page++ }, enabled = ready()) { Text(label("Next", "التالي")) }
         }
         review?.let { selected ->
-            Text(label("Original action / signing key: ${selected.action.originalActionId.value} / ${selected.action.signingKeyId.value}", "العملية الأصلية / مفتاح التوقيع: ${selected.action.originalActionId.value} / ${selected.action.signingKeyId.value}"))
-            Text(label("Content digest / root fingerprint: ${selected.action.proposal.contentDigest.value} / ${selected.action.rootFingerprint}", "بصمة المحتوى / بصمة الجذر: ${selected.action.proposal.contentDigest.value} / ${selected.action.rootFingerprint}"))
+            Text(label("Original action / signing key: ${selected.displayAction.originalActionId.value} / ${selected.displayAction.signingKeyId.value}", "العملية الأصلية / مفتاح التوقيع: ${selected.displayAction.originalActionId.value} / ${selected.displayAction.signingKeyId.value}"))
+            Text(label("Content digest / root fingerprint: ${selected.displayAction.proposal.contentDigest.value} / ${selected.displayAction.rootFingerprint}", "بصمة المحتوى / بصمة الجذر: ${selected.displayAction.proposal.contentDigest.value} / ${selected.displayAction.rootFingerprint}"))
             SerialPublicationPreview(selected.preview)
             OutlinedTextField(login, { if (ready() && !held) login = it }, label = { Text(label("Head login", "اسم دخول رئيس الشركة")) }, enabled = ready() && !held)
             OutlinedTextField(secret, { if (ready() && !held) secret = it }, label = { Text(label("Head password (never saved)", "كلمة مرور رئيس الشركة (لا تحفظ)")) }, visualTransformation = PasswordVisualTransformation(), enabled = ready() && !held)
             Row { Checkbox(confirmed, { if (ready() && !held) confirmed = it }); Text(label("I reviewed this exact immutable publication", "راجعت هذا المنشور الدقيق غير القابل للتغيير")) }
             Button(onClick = { run {
                 held = true; val buffer = secret.toCharArray(); secret = ""; confirmed = false
-                try { val result = gateway.approve(selected, login, buffer); currentCoroutineContext().ensureActive(); if (owns()) adopt(result, selected.action.originalActionId) }
+                try { val result = gateway.approve(selected, login, buffer); currentCoroutineContext().ensureActive(); if (owns()) adopt(result, selected.displayAction.originalActionId) }
                 finally { buffer.fill('\u0000') }
             } }, enabled = ready() && !held && confirmed && secret.isNotEmpty()) { Text(label("Approve exact original", "اعتماد الأصل الدقيق")) }
         }
