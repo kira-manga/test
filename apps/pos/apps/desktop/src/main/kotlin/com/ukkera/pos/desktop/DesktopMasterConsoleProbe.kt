@@ -101,7 +101,7 @@ internal object DesktopMasterConsoleProbe {
                 }
             }
             result = if (Platform.isWindows())
-                "DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true"
+                "DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true tokenQuery=true tokenControlDenied=true"
             else "DATA platform=macos console=true nativeAgent=true"
             code = 0
         } catch (failure: Exception) {
@@ -267,6 +267,14 @@ internal object DesktopWindowsConsoleProbeAccess {
         check(!access(token, DesktopWindowsConsolePeerAccess.serviceQueryRule(
             DesktopWindowsServiceIdentity.TEST.target()), DesktopWindowsConsolePeerAccess.QUERY_LIMITED))
         for (right in listOf(0x1, 0x8, 0x10, 0x20, 0x40, 0x200, 0x400, 0x40000, 0x80000)) check(!access(token, process, right))
+        val tokenRule = DesktopWindowsConsolePeerAccess.tokenQueryRule(family)
+        check(access(token, tokenRule, DesktopWindowsConsolePeerAccess.TOKEN_QUERY) == packaged)
+        check(!access(token, DesktopWindowsConsolePeerAccess.tokenQueryRule("Other.POS.Test_n9kkbga0qmnm6"),
+            DesktopWindowsConsolePeerAccess.TOKEN_QUERY))
+        check(!access(token, DesktopWindowsConsolePeerAccess.serviceTokenQueryRule(
+            DesktopWindowsServiceIdentity.TEST.target()), DesktopWindowsConsolePeerAccess.TOKEN_QUERY))
+        for (right in listOf(0x1, 0x2, 0x4, 0x10, 0x20, 0x40, 0x80, 0x100, 0x40000, 0x80000))
+            check(!access(token, tokenRule, right))
     }
 
     private fun access(token: Pointer, dacl: String, desired: Int): Boolean {

@@ -12,10 +12,11 @@ import com.ukkera.pos.security.SelfOwnedWindowsPackagedAppIdentityV2
 import com.ukkera.pos.security.SelfOwnedWindowsPackagedServiceIdentityV2
 import com.ukkera.pos.security.WindowsInstalledApplicationIdentity
 
-/** Only package-identity observation of this actual Master process; never memory/control access. */
+/** Only package-identity observation of the actual peer process/token; never control access. */
 internal object DesktopWindowsConsolePeerAccess {
     const val QUERY_LIMITED = 0x00001000
-    internal enum class Step { SERVICE_IDENTITY, UI_IDENTITY, ACL_QUERY, ACL_CONTROL, RULE_PARSE, ACL_PARSE, ACL_INITIALIZE, ACL_COPY, ACL_SET, ACL_READBACK }
+    const val TOKEN_QUERY = 0x00000008
+    internal enum class Step { SERVICE_IDENTITY, UI_IDENTITY, TOKEN_OPEN, TOKEN_CLOSE, ACL_QUERY, ACL_CONTROL, RULE_PARSE, ACL_PARSE, ACL_INITIALIZE, ACL_COPY, ACL_SET, ACL_READBACK }
     internal class Failure(val step: Step, val nativeCode: Int) : IllegalStateException("Console peer query is unavailable")
     private fun status(code: Int, step: Step) { if (code != 0) throw Failure(step, code) }
     private fun bool(result: Int, step: Step) { if (result == 0) throw Failure(step, Native.getLastError()) }
@@ -26,9 +27,14 @@ internal object DesktopWindowsConsolePeerAccess {
         return "D:(XA;;0x00001000;;;BU;(WIN://SYSAPPID Contains \"$family\"))"
     }
 
+    internal fun tokenQueryRule(family: String): String {
+        SelfOwnedWindowsPackagedAppIdentityV2(family, "$family!UkkeraPOS")
+        return "D:(XA;;0x00000008;;;BU;(WIN://SYSAPPID Contains \"$family\"))"
+    }
+
     fun grant(expected: SelfOwnedWindowsPackagedServiceIdentityV2) {
         demand(WindowsInstalledApplicationIdentity.capturePackagedService(expected) is SelfOwnedInstalledIdentityResultV2.Data, Step.SERVICE_IDENTITY)
-        grantRule(queryRule(expected.packageFamilyName))
+        grantRule(queryRule(expected.packageFamilyName), tokenQueryRule(expected.packageFamilyName))
     }
 
     fun grantUi(family: String) {
@@ -38,16 +44,29 @@ internal object DesktopWindowsConsolePeerAccess {
         demand(WindowsInstalledApplicationIdentity.captureUi(ui) is SelfOwnedInstalledIdentityResultV2.Data, Step.UI_IDENTITY)
         // The reverse PID/package check is made by this exact SCM service SID, not any
         // other Windows user, LocalService process or unpackaged caller.
-        grantRule(serviceQueryRule(service))
+        grantRule(serviceQueryRule(service), serviceTokenQueryRule(service))
     }
 
     internal fun serviceQueryRule(expected: SelfOwnedWindowsPackagedServiceIdentityV2): String =
         "D:(XA;;0x00001000;;;${expected.serviceSid};(WIN://SYSAPPID Contains \"${expected.packageFamilyName}\"))"
 
+    internal fun serviceTokenQueryRule(expected: SelfOwnedWindowsPackagedServiceIdentityV2): String =
+        "D:(XA;;0x00000008;;;${expected.serviceSid};(WIN://SYSAPPID Contains \"${expected.packageFamilyName}\"))"
+
     @Synchronized
-    private fun grantRule(ruleSddl: String) {
+    private fun grantRule(processRule: String, tokenRule: String) {
         val process = Win.kernel.GetCurrentProcess() // No target PID supplied by a UI/caller.
-        withDacl(process) { original, control ->
+        addRule(process, processRule)
+        val opened = PointerByReference()
+        // Change only this primary token object's DACL, never TokenDefaultDacl or privileges.
+        bool(Win.advapi.OpenProcessToken(process, 0x00060008, opened), Step.TOKEN_OPEN)
+        val token = checkNotNull(opened.value)
+        try { addRule(token, tokenRule) }
+        finally { bool(Win.kernel.CloseHandle(token), Step.TOKEN_CLOSE) }
+    }
+
+    private fun addRule(handle: Pointer, ruleSddl: String) {
+        withDacl(handle) { original, control ->
             val parsed = PointerByReference()
             bool(Win.advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
                 WString(ruleSddl), 1, parsed, null), Step.RULE_PARSE)
@@ -72,9 +91,9 @@ internal object DesktopWindowsConsolePeerAccess {
                     }
                     // Owner, group, SACL and old DACL protection remain unchanged.
                     val information = 4 or (if (control and 0x1000 != 0) Int.MIN_VALUE else 0)
-                    status(Win.advapi.SetSecurityInfo(process, 6, information, null, null, result, null), Step.ACL_SET)
+                    status(Win.advapi.SetSecurityInfo(handle, 6, information, null, null, result, null), Step.ACL_SET)
                 }
-                withDacl(process) { actual, actualControl ->
+                withDacl(handle) { actual, actualControl ->
                     demand(actual.size == merged.size && actual.zip(merged).all { (a, b) -> a.contentEquals(b) }, Step.ACL_READBACK)
                     demand((actualControl and 0x1000) == (control and 0x1000), Step.ACL_READBACK)
                 }
@@ -111,8 +130,10 @@ internal object DesktopWindowsConsolePeerAccess {
     private interface Kernel : StdCallLibrary {
         fun GetCurrentProcess(): Pointer
         fun LocalFree(memory: Pointer?): Pointer?
+        fun CloseHandle(handle: Pointer): Int
     }
     private interface Advapi : StdCallLibrary {
+        fun OpenProcessToken(process: Pointer, access: Int, token: PointerByReference): Int
         fun ConvertStringSecurityDescriptorToSecurityDescriptorW(value: WString, revision: Int, descriptor: PointerByReference, size: Pointer?): Int
         fun GetSecurityInfo(handle: Pointer, kind: Int, information: Int, owner: PointerByReference?, group: PointerByReference?,
             dacl: PointerByReference?, sacl: PointerByReference?, descriptor: PointerByReference): Int

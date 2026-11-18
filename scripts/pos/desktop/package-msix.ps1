@@ -121,7 +121,7 @@ if ($Probe) {
                 throw "Native CreateFile access observation failed: $($summary.master_console_access)"
             }
             $summary.master_console_probe = if (Test-Path $consoleFile) { (Get-Content -Raw $consoleFile).Trim() } else { 'NO_OUTPUT' }
-            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true') {
+            if ($consoleProcess.ExitCode -ne 0 -or $summary.master_console_probe -ne 'DATA platform=windows console=true ordinaryToken=true primaryToken=true integrity=MEDIUM packageClaim=true foreignClaimDenied=true pipeInstanceDenied=true aclMutationDenied=true processQuery=true processControlDenied=true tokenQuery=true tokenControlDenied=true') {
                 throw "Native ordinary-token Master console probe failed: $($summary.master_console_probe)"
             }
             Stop-Service -Name UkkeraPOSTestMaster -ErrorAction Continue

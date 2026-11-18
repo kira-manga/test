@@ -48,7 +48,7 @@ internal object DesktopSetupWindowsPipe {
 
     /** Fixed Win32 outcome only; callers never need an exception message or peer data. */
     internal class ConnectFailure(val nativeCode: Int) : IOException("The Master setup console is unavailable")
-    internal enum class PeerStep { PIPE_SERVER_PID, PIPE_CLIENT_PID, PROCESS_OPEN, PACKAGE_QUERY, PACKAGE_MISMATCH }
+    internal enum class PeerStep { PIPE_SERVER_PID, PIPE_CLIENT_PID, PROCESS_OPEN, TOKEN_OPEN, PACKAGE_QUERY, PACKAGE_MISMATCH }
     internal class PeerFailure(val step: PeerStep, val nativeCode: Int) : IOException("The Master peer cannot be verified")
 
     /** Test-runner observation of the actual Win32 wrapper's granted access, not a grant. */
@@ -74,6 +74,21 @@ internal object DesktopSetupWindowsPipe {
             val pid = IntByReference()
             check(Win.kernel.GetNamedPipeServerProcessId(raw, pid) != 0)
             check(observedPackageFamily(pid.value) == expected)
+            val observed = Win.kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid.value)
+            check(!invalid(observed))
+            try {
+                val token = PointerByReference()
+                check(Win.advapi.OpenProcessToken(observed, DesktopWindowsConsolePeerAccess.TOKEN_QUERY, token) != 0)
+                Win.kernel.CloseHandle(token.value)
+                // Reading package claims cannot lend the service token or modify its authority.
+                for (access in listOf(0x1, 0x2, 0x4, 0x10, 0x20, 0x40, 0x80, 0x100, 0x40000, 0x80000)) {
+                    val forbidden = PointerByReference()
+                    if (Win.advapi.OpenProcessToken(observed, access, forbidden) != 0) {
+                        Win.kernel.CloseHandle(forbidden.value); error("Unexpected token control access")
+                    }
+                    check(Native.getLastError() == 5)
+                }
+            } finally { Win.kernel.CloseHandle(observed) }
             for (access in listOf(0x1, 0x8, 0x10, 0x20, 0x40, 0x200, 0x400, 0x40000, 0x80000)) {
                 val process = Win.kernel.OpenProcess(access, 0, pid.value)
                 if (!invalid(process)) { Win.kernel.CloseHandle(process); error("Unexpected process control access") }
@@ -292,12 +307,21 @@ internal object DesktopSetupWindowsPipe {
         val process = Win.kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
         if (invalid(process)) throw PeerFailure(PeerStep.PROCESS_OPEN, Native.getLastError())
         try {
-            val length = IntByReference(256)
-            val buffer = CharArray(256)
-            val result = Win.kernel.GetPackageFamilyName(process, length, buffer)
-            if (result != 0) throw PeerFailure(PeerStep.PACKAGE_QUERY, result)
-            if (length.value !in 2..256) throw PeerFailure(PeerStep.PACKAGE_QUERY, 13)
-            return String(buffer, 0, length.value - 1)
+            // Query the actual pipe peer's primary token, never caller-provided identity DATA
+            // or an impersonating thread. TOKEN_QUERY has a separate object DACL.
+            val opened = PointerByReference()
+            if (Win.advapi.OpenProcessToken(process, DesktopWindowsConsolePeerAccess.TOKEN_QUERY, opened) == 0)
+                throw PeerFailure(PeerStep.TOKEN_OPEN, Native.getLastError())
+            val token = checkNotNull(opened.value)
+            try {
+                val length = IntByReference(65)
+                val buffer = CharArray(65)
+                val result = Win.kernel.GetPackageFamilyNameFromToken(token, length, buffer)
+                if (result != 0) throw PeerFailure(PeerStep.PACKAGE_QUERY, result)
+                if (length.value !in 2..65 || buffer[length.value - 1] != '\u0000')
+                    throw PeerFailure(PeerStep.PACKAGE_QUERY, 13)
+                return String(buffer, 0, length.value - 1)
+            } finally { Win.kernel.CloseHandle(token) }
         } finally { Win.kernel.CloseHandle(process) }
     }
 
@@ -331,12 +355,13 @@ internal object DesktopSetupWindowsPipe {
         fun GetNamedPipeServerProcessId(handle: Pointer, pid: IntByReference): Int
         fun GetNamedPipeClientProcessId(handle: Pointer, pid: IntByReference): Int
         fun OpenProcess(access: Int, inherit: Int, pid: Int): Pointer?
-        fun GetPackageFamilyName(process: Pointer?, length: IntByReference, name: CharArray): Int
+        fun GetPackageFamilyNameFromToken(token: Pointer, length: IntByReference, name: CharArray): Int
         fun LocalFree(memory: Pointer?): Pointer?
     }
 
     @Suppress("FunctionName")
     private interface Advapi : StdCallLibrary {
+        fun OpenProcessToken(process: Pointer?, access: Int, token: PointerByReference): Int
         fun ConvertStringSecurityDescriptorToSecurityDescriptorW(text: WString, revision: Int, descriptor: PointerByReference,
             size: Pointer?): Int
         fun GetKernelObjectSecurity(handle: Pointer, information: Int, descriptor: Pointer, capacity: Int, used: IntByReference): Int
