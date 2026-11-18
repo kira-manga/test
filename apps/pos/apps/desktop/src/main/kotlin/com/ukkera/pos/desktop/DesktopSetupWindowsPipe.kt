@@ -59,7 +59,10 @@ internal object DesktopSetupWindowsPipe {
         if (invalid(raw)) throw ConnectFailure(Native.getLastError())
         try {
             val pid = IntByReference()
-            check(Win.kernel.GetNamedPipeServerProcessId(raw!!, pid) != 0 && packageFamily(pid.value) == expectedServerFamily)
+            if (Win.kernel.GetNamedPipeServerProcessId(raw!!, pid) == 0)
+                throw PeerFailure(PeerStep.PIPE_SERVER_PID, Native.getLastError())
+            if (observedPackageFamily(pid.value) != expectedServerFamily)
+                throw PeerFailure(PeerStep.PACKAGE_MISMATCH, 0)
             Memory(16).use { io -> Memory(4).use { access ->
                 check(Win.ntdll.NtQueryInformationFile(raw, io, access, 4, 8) == 0)
                 return access.getInt(0)
@@ -307,21 +310,15 @@ internal object DesktopSetupWindowsPipe {
         val process = Win.kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
         if (invalid(process)) throw PeerFailure(PeerStep.PROCESS_OPEN, Native.getLastError())
         try {
-            // Query the actual pipe peer's primary token, never caller-provided identity DATA
-            // or an impersonating thread. TOKEN_QUERY has a separate object DACL.
-            val opened = PointerByReference()
-            if (Win.advapi.OpenProcessToken(process, DesktopWindowsConsolePeerAccess.TOKEN_QUERY, opened) == 0)
-                throw PeerFailure(PeerStep.TOKEN_OPEN, Native.getLastError())
-            val token = checkNotNull(opened.value)
-            try {
-                val length = IntByReference(65)
-                val buffer = CharArray(65)
-                val result = Win.kernel.GetPackageFamilyNameFromToken(token, length, buffer)
-                if (result != 0) throw PeerFailure(PeerStep.PACKAGE_QUERY, result)
-                if (length.value !in 2..65 || buffer[length.value - 1] != '\u0000')
-                    throw PeerFailure(PeerStep.PACKAGE_QUERY, 13)
-                return String(buffer, 0, length.value - 1)
-            } finally { Win.kernel.CloseHandle(token) }
+            // The native package API reads this actual process's primary-token identity.
+            // Its token object has a separate QUERY DACL; no caller DATA or fallback is used.
+            val length = IntByReference(65)
+            val buffer = CharArray(65)
+            val result = Win.kernel.GetPackageFamilyName(process, length, buffer)
+            if (result != 0) throw PeerFailure(PeerStep.PACKAGE_QUERY, result)
+            if (length.value !in 2..65 || buffer[length.value - 1] != '\u0000')
+                throw PeerFailure(PeerStep.PACKAGE_QUERY, 13)
+            return String(buffer, 0, length.value - 1)
         } finally { Win.kernel.CloseHandle(process) }
     }
 
@@ -355,7 +352,7 @@ internal object DesktopSetupWindowsPipe {
         fun GetNamedPipeServerProcessId(handle: Pointer, pid: IntByReference): Int
         fun GetNamedPipeClientProcessId(handle: Pointer, pid: IntByReference): Int
         fun OpenProcess(access: Int, inherit: Int, pid: Int): Pointer?
-        fun GetPackageFamilyNameFromToken(token: Pointer, length: IntByReference, name: CharArray): Int
+        fun GetPackageFamilyName(process: Pointer?, length: IntByReference, name: CharArray): Int
         fun LocalFree(memory: Pointer?): Pointer?
     }
 

@@ -87,7 +87,9 @@ internal object DesktopWindowsOrdinaryConsoleProcess {
         } catch (failure: Exception) {
             val code = (failure as? NativeFailure)?.code?.takeIf { it in 0..65535 }
             val acl = failure as? DesktopWindowsConsolePeerAccess.Failure
+            val peer = failure as? DesktopSetupWindowsPipe.PeerFailure
             output.writeText("FAILED phase=$phase" + (code?.let { " win32=$it" } ?: "") +
+                (peer?.let { " peerStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: "") +
                 (acl?.let { " aclStep=${it.step.name} win32=${it.nativeCode.takeIf { value -> value in 0..65535 } ?: -1}" } ?: "") + "\n")
             return 1
         } finally {
