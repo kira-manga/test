@@ -52,24 +52,7 @@ jobs:
           umask 077
           work="$RUNNER_TEMP/pos-ui"
           mkdir -p "$work/public"
-          python - <<'PY'
-          import os
-          from pathlib import Path
-          import platform
-          import re
-          import shutil
-          import subprocess
-          if platform.system() == "Linux":
-              ram = int(re.search(r"MemAvailable:\s+(\d+)", Path("/proc/meminfo").read_text())[1]) * 1024
-          else:
-              assert platform.machine() == "arm64"
-              vm = subprocess.check_output(["vm_stat"], text=True)
-              page = int(re.search(r"page size of (\d+) bytes", vm)[1])
-              ram = sum(int(re.search(f"Pages {name}:\\s+(\\d+)", vm)[1])
-                        for name in ("free", "inactive", "speculative")) * page
-          disk = shutil.disk_usage(os.environ["RUNNER_TEMP"]).free
-          assert ram >= 7 * 1024**3 and disk >= 6 * 1024**3
-          PY
+          python scripts/pos/ui/check-link-resources.py before_install
           if [[ "$POS_UI_TARGET" == android ]]; then
             cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
           else
@@ -125,6 +108,8 @@ jobs:
             ditto "${apps[0]}" "$work/installed/UkkeraPOS.app"
             codesign --verify --deep --strict "$work/installed/UkkeraPOS.app"
           fi
+      - name: Check the effective reserve after app installation
+        run: python scripts/pos/ui/check-link-resources.py before_bridge
       - name: Connect the app network lanes with the upstream mutually authenticated transport
         working-directory: verified-bridge
         env:
@@ -144,6 +129,8 @@ jobs:
           grep -Eq '3 packets transmitted, 3 (packets )?received' "$report"
           cp "$report" "$RUNNER_TEMP/pos-ui/public/"
           printf '{"target":"%s","revision":"%s","opposite_peer_replies":3,"pos_pairing_observed":false}\n'             "$POS_UI_TARGET" "$POS_UI_REVISION" > "$RUNNER_TEMP/pos-ui/public/network.json"
+      - name: Check the effective reserve after the network exercise
+        run: python scripts/pos/ui/check-link-resources.py after_bridge
       - name: Retire only this job's authenticated bridge, interfaces and ephemeral credentials
         if: always()
         working-directory: verified-bridge
