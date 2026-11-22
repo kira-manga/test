@@ -34,6 +34,11 @@ gradle.beforeProject { p ->
 GRADLE
 checks=()
 if [[ -f "$fixture/VARIANT" ]] && [[ "$(<"$fixture/VARIANT")" == c22-native-approval-source-unavailable-v1.0.1 ]]; then
+  freeze=qa/pos/freezes/food-recipe-quotation-verification-binding-v1
+  test -f "$fixture/$freeze/freeze.json"
+  test ! -e "$stage/source/$freeze"
+  mkdir -p "$(dirname "$stage/source/$freeze")"
+  cp -a "$fixture/$freeze" "$stage/source/$freeze"
   checks+=(:adapters:catalog-store:jvmTest :apps:android:compileLocalTestingKotlin :apps:desktop:compileKotlin)
 fi
 result=0
