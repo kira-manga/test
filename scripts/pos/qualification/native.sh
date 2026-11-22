@@ -155,6 +155,10 @@ observe_profile() {
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     python3 "$here/paid-profile-metrics.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$1" &
     profile_pid=$!
+    if [[ -n "${POS_CPU_PROFILER:-}" ]]; then
+      python3 "$here/profile-paid-cpu.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$1" "$POS_CPU_PROFILER" &
+      cpu_observer=$!
+    fi
   fi
 }
 finish_profile() {
@@ -166,6 +170,10 @@ finish_profile() {
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     touch "$stage/$1.profile.done"
     wait "$profile_pid"
+    if [[ -n "${cpu_observer:-}" ]]; then
+      wait "$cpu_observer"
+      unset cpu_observer
+    fi
   fi
 }
 observe_profile seed

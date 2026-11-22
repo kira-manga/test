@@ -34,6 +34,10 @@ on:
         description: Collect bounded diagnostic stacks during slow frozen Start and Apply
         type: boolean
         default: false
+      profile_cpu:
+        description: Sample selected phases of a supporting paid profile with external CPU timers
+        type: boolean
+        default: false
       check_floor_batch:
         description: Require the native bounded floor-batch test before a paid-profile workload
         type: boolean
@@ -181,6 +185,20 @@ jobs:
           if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
+      - name: Prepare the pinned Linux CPU sampler
+        if: matrix.suite == 'paid-profile' && inputs.profile_cpu
+        run: |
+          set -euo pipefail
+          umask 077
+          directory="$RUNNER_TEMP/pos-cpu-profiler"
+          mkdir "$directory"
+          curl --fail --location --max-time 45 --retry 2 \
+            https://github.com/async-profiler/async-profiler/releases/download/v4.2/async-profiler-4.2-linux-x64.tar.gz \
+            --output "$directory/profiler.tar.gz"
+          printf '1d8faf6cfcbf63efdbdbc1d324f1822515987c455ac377fcfcd53b5ce6243d2b  %s\n' "$directory/profiler.tar.gz" | sha256sum --check
+          tar -xzf "$directory/profiler.tar.gz" -C "$directory"
+          test -x "$directory/async-profiler-4.2-linux-x64/bin/asprof"
+          printf 'POS_CPU_PROFILER=%s\n' "$directory/async-profiler-4.2-linux-x64/bin/asprof" >> "$GITHUB_ENV"
       - name: Run protected native checks
         env:
           POS_SUITE: ${{ matrix.suite }}
