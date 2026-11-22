@@ -20,6 +20,22 @@ on:
         type: choice
         options: [allocation, activate, pairing-proof, pairing-after-restart]
         default: allocation
+      android_candidate_revision:
+        description: Exact POS revision of a staged signed Android candidate
+        type: string
+        required: false
+      android_candidate_sha256:
+        description: SHA-256 of the staged candidate APK
+        type: string
+        required: false
+      android_candidate_bundle_sha256:
+        description: SHA-256 of the sealed Android package delta
+        type: string
+        required: false
+      android_candidate_parts:
+        description: Number of sealed Android package parts
+        type: number
+        default: 0
       windows_sparse_service:
         description: Check real Windows external package identity and native service association
         type: boolean
@@ -186,8 +202,158 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  android-signed-candidate:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.android_two_setup && inputs.android_candidate_parts > 0
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        group: [0, 1, 2]
+    environment:
+      name: pos-android-signed-inputs-${{ matrix.group }}
+      deployment: false
+    env:
+      POS_APK_GROUP: ${{ matrix.group }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/pos/ui
+      - name: Assemble signed Android candidate parts 1–17
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_00: ${{ secrets.POS_APK_00 }}
+          POS_APK_01: ${{ secrets.POS_APK_01 }}
+          POS_APK_02: ${{ secrets.POS_APK_02 }}
+          POS_APK_03: ${{ secrets.POS_APK_03 }}
+          POS_APK_04: ${{ secrets.POS_APK_04 }}
+          POS_APK_05: ${{ secrets.POS_APK_05 }}
+          POS_APK_06: ${{ secrets.POS_APK_06 }}
+          POS_APK_07: ${{ secrets.POS_APK_07 }}
+          POS_APK_08: ${{ secrets.POS_APK_08 }}
+          POS_APK_09: ${{ secrets.POS_APK_09 }}
+          POS_APK_10: ${{ secrets.POS_APK_10 }}
+          POS_APK_11: ${{ secrets.POS_APK_11 }}
+          POS_APK_12: ${{ secrets.POS_APK_12 }}
+          POS_APK_13: ${{ secrets.POS_APK_13 }}
+          POS_APK_14: ${{ secrets.POS_APK_14 }}
+          POS_APK_15: ${{ secrets.POS_APK_15 }}
+          POS_APK_16: ${{ secrets.POS_APK_16 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 0 17
+      - name: Assemble signed Android candidate parts 18–34
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_17: ${{ secrets.POS_APK_17 }}
+          POS_APK_18: ${{ secrets.POS_APK_18 }}
+          POS_APK_19: ${{ secrets.POS_APK_19 }}
+          POS_APK_20: ${{ secrets.POS_APK_20 }}
+          POS_APK_21: ${{ secrets.POS_APK_21 }}
+          POS_APK_22: ${{ secrets.POS_APK_22 }}
+          POS_APK_23: ${{ secrets.POS_APK_23 }}
+          POS_APK_24: ${{ secrets.POS_APK_24 }}
+          POS_APK_25: ${{ secrets.POS_APK_25 }}
+          POS_APK_26: ${{ secrets.POS_APK_26 }}
+          POS_APK_27: ${{ secrets.POS_APK_27 }}
+          POS_APK_28: ${{ secrets.POS_APK_28 }}
+          POS_APK_29: ${{ secrets.POS_APK_29 }}
+          POS_APK_30: ${{ secrets.POS_APK_30 }}
+          POS_APK_31: ${{ secrets.POS_APK_31 }}
+          POS_APK_32: ${{ secrets.POS_APK_32 }}
+          POS_APK_33: ${{ secrets.POS_APK_33 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 17 34
+      - name: Assemble signed Android candidate parts 35–51
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_34: ${{ secrets.POS_APK_34 }}
+          POS_APK_35: ${{ secrets.POS_APK_35 }}
+          POS_APK_36: ${{ secrets.POS_APK_36 }}
+          POS_APK_37: ${{ secrets.POS_APK_37 }}
+          POS_APK_38: ${{ secrets.POS_APK_38 }}
+          POS_APK_39: ${{ secrets.POS_APK_39 }}
+          POS_APK_40: ${{ secrets.POS_APK_40 }}
+          POS_APK_41: ${{ secrets.POS_APK_41 }}
+          POS_APK_42: ${{ secrets.POS_APK_42 }}
+          POS_APK_43: ${{ secrets.POS_APK_43 }}
+          POS_APK_44: ${{ secrets.POS_APK_44 }}
+          POS_APK_45: ${{ secrets.POS_APK_45 }}
+          POS_APK_46: ${{ secrets.POS_APK_46 }}
+          POS_APK_47: ${{ secrets.POS_APK_47 }}
+          POS_APK_48: ${{ secrets.POS_APK_48 }}
+          POS_APK_49: ${{ secrets.POS_APK_49 }}
+          POS_APK_50: ${{ secrets.POS_APK_50 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 34 51
+      - name: Assemble signed Android candidate parts 52–68
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_51: ${{ secrets.POS_APK_51 }}
+          POS_APK_52: ${{ secrets.POS_APK_52 }}
+          POS_APK_53: ${{ secrets.POS_APK_53 }}
+          POS_APK_54: ${{ secrets.POS_APK_54 }}
+          POS_APK_55: ${{ secrets.POS_APK_55 }}
+          POS_APK_56: ${{ secrets.POS_APK_56 }}
+          POS_APK_57: ${{ secrets.POS_APK_57 }}
+          POS_APK_58: ${{ secrets.POS_APK_58 }}
+          POS_APK_59: ${{ secrets.POS_APK_59 }}
+          POS_APK_60: ${{ secrets.POS_APK_60 }}
+          POS_APK_61: ${{ secrets.POS_APK_61 }}
+          POS_APK_62: ${{ secrets.POS_APK_62 }}
+          POS_APK_63: ${{ secrets.POS_APK_63 }}
+          POS_APK_64: ${{ secrets.POS_APK_64 }}
+          POS_APK_65: ${{ secrets.POS_APK_65 }}
+          POS_APK_66: ${{ secrets.POS_APK_66 }}
+          POS_APK_67: ${{ secrets.POS_APK_67 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 51 68
+      - name: Assemble signed Android candidate parts 69–85
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_68: ${{ secrets.POS_APK_68 }}
+          POS_APK_69: ${{ secrets.POS_APK_69 }}
+          POS_APK_70: ${{ secrets.POS_APK_70 }}
+          POS_APK_71: ${{ secrets.POS_APK_71 }}
+          POS_APK_72: ${{ secrets.POS_APK_72 }}
+          POS_APK_73: ${{ secrets.POS_APK_73 }}
+          POS_APK_74: ${{ secrets.POS_APK_74 }}
+          POS_APK_75: ${{ secrets.POS_APK_75 }}
+          POS_APK_76: ${{ secrets.POS_APK_76 }}
+          POS_APK_77: ${{ secrets.POS_APK_77 }}
+          POS_APK_78: ${{ secrets.POS_APK_78 }}
+          POS_APK_79: ${{ secrets.POS_APK_79 }}
+          POS_APK_80: ${{ secrets.POS_APK_80 }}
+          POS_APK_81: ${{ secrets.POS_APK_81 }}
+          POS_APK_82: ${{ secrets.POS_APK_82 }}
+          POS_APK_83: ${{ secrets.POS_APK_83 }}
+          POS_APK_84: ${{ secrets.POS_APK_84 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 68 85
+      - name: Assemble signed Android candidate parts 86–99
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_85: ${{ secrets.POS_APK_85 }}
+          POS_APK_86: ${{ secrets.POS_APK_86 }}
+          POS_APK_87: ${{ secrets.POS_APK_87 }}
+          POS_APK_88: ${{ secrets.POS_APK_88 }}
+          POS_APK_89: ${{ secrets.POS_APK_89 }}
+          POS_APK_90: ${{ secrets.POS_APK_90 }}
+          POS_APK_91: ${{ secrets.POS_APK_91 }}
+          POS_APK_92: ${{ secrets.POS_APK_92 }}
+          POS_APK_93: ${{ secrets.POS_APK_93 }}
+          POS_APK_94: ${{ secrets.POS_APK_94 }}
+          POS_APK_95: ${{ secrets.POS_APK_95 }}
+          POS_APK_96: ${{ secrets.POS_APK_96 }}
+          POS_APK_97: ${{ secrets.POS_APK_97 }}
+          POS_APK_98: ${{ secrets.POS_APK_98 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 85 99
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pos-android-signed-part-${{ matrix.group }}
+          path: ${{ runner.temp }}/pos-ui/signed-app.part
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
   android-lan-preflight:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup)
+    needs: android-signed-candidate
+    if: "!cancelled() && github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup) && (inputs.android_candidate_parts == 0 || needs.android-signed-candidate.result == 'success')"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -200,14 +366,33 @@ jobs:
           sparse-checkout: |
             scripts/pos/ui
             testing-inputs
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.android_candidate_parts > 0
+        with:
+          pattern: pos-android-signed-part-*
+          path: ${{ runner.temp }}/pos-ui/signed-parts
       - name: Bind the known signed Android test package
         shell: bash
+        env:
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+          POS_APK_REVISION: ${{ inputs.android_candidate_revision }}
+          POS_APK_EXPECTED: ${{ inputs.android_candidate_sha256 }}
+          POS_APK_BUNDLE: ${{ inputs.android_candidate_bundle_sha256 }}
         run: |
           set -euo pipefail
           umask 077
           work="$RUNNER_TEMP/pos-ui"
           mkdir -p "$work/public"
-          cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
+          if [[ "$POS_APK_PARTS" == 0 ]]; then
+            [[ -z "$POS_APK_REVISION" && -z "$POS_APK_EXPECTED" && -z "$POS_APK_BUNDLE" ]]
+            cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
+          else
+            cat "$work/signed-parts"/pos-android-signed-part-{0,1,2}/signed-app.part > "$work/signed-app.tar.xz"
+            sudo -n apt-get update -qq
+            sudo -n apt-get install -y --no-install-recommends bsdiff
+            python3 scripts/pos/ui/android-package-delta.py verify testing-inputs
+            export POS_UI_REVISION="$POS_APK_REVISION"
+          fi
           python3 scripts/pos/ui/prepare-artifact.py
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         if: inputs.android_two_setup
