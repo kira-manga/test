@@ -33,7 +33,7 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
 fi
 if [[ "$POS_SUITE" == 'payment-regression' ]]; then
   result=0
-  python3 "$here/watched.py" "$report" payment-regression 95 "${gradle[@]}" \
+  python3 "$here/watched.py" "$report" payment-regression 95 "${gradle[@]}" --continue \
     :adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest \
     :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest' || result=$?
   python3 "$here/results.py" payment-regression "$stage" "$source"

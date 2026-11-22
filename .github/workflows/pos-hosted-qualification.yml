@@ -17,6 +17,10 @@ on:
         type: choice
         options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, payment-regression]
         default: both
+      regression_fixtures_sha256:
+        description: Digest of the unchanged QA inputs for the payment regression selection
+        type: string
+        required: false
       recovery_bundle_sha256:
         description: Digest of the existing exact C22 committed-reopen fixture
         type: string
@@ -138,6 +142,29 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(raw),mode="r:xz") as source:
               source.extractall(path,filter="data")
           PYRECOVERY
+      - name: Stage the original QA regression fixture files
+        if: matrix.suite == 'payment-regression'
+        env:
+          REGRESSION_SHA: ${{ inputs.regression_fixtures_sha256 }}
+          POS_QA_00: ${{ secrets.POS_QA_00 }}
+          POS_QA_01: ${{ secrets.POS_QA_01 }}
+          POS_QA_02: ${{ secrets.POS_QA_02 }}
+          POS_QA_03: ${{ secrets.POS_QA_03 }}
+          POS_QA_04: ${{ secrets.POS_QA_04 }}
+          POS_QA_05: ${{ secrets.POS_QA_05 }}
+        run: |
+          umask 077
+          python3 - <<'PYREGRESSION'
+          import base64,hashlib,io,os,tarfile
+          from pathlib import Path
+          parts=(os.environ.pop(f"POS_QA_{i:02}") for i in range(6))
+          raw=b''.join(base64.b64decode(part,validate=True) for part in parts)
+          if hashlib.sha256(raw).hexdigest()!=os.environ["REGRESSION_SHA"]:
+              raise SystemExit("Regression QA digest mismatch")
+          workspace=Path(os.environ["RUNNER_TEMP"])/"pos-qualification"/"source"
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:xz") as source:
+              source.extractall(workspace,filter="data")
+          PYREGRESSION
       - name: Prepare Android compile SDK for JVM Gradle configuration
         run: |
           set -euo pipefail
