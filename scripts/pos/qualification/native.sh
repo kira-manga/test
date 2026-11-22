@@ -40,12 +40,21 @@ cc -shared -fPIC -O2 -Wall -Wextra "$UKKERA_CHB_RUNNER/controlled-utc.c" -o "$UK
 for phase in seed restart; do
   printf '%s 0\n' "$(date -ud '2026-08-01T07:59:00Z' +%s)" > "$UKKERA_CHB_ATTEMPT/$phase.utc"
 done
+if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
+  python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" &
+  observer=$!
+  trap 'touch "$stage/profile.done"' EXIT
+fi
 seed=0
 restart=1
 started=$SECONDS
 phase_budget=337
 python3 "$here/watched.py" "$report" seed "$phase_budget" "${gradle[@]}" \
   -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidSeed || seed=$?
+if [[ -n "${observer:-}" ]]; then
+  touch "$stage/profile.done"
+  wait "$observer"
+fi
 if [[ -f "$stage/seed.raw" ]] && grep -Fxq 'CHB_NATIVE_CLOSE seeded-1000' "$stage/seed.raw"; then
   export UKKERA_CHB_EXISTING=true
   remaining=$((phase_budget - ((SECONDS - started + 59) / 60)))

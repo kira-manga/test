@@ -21,6 +21,10 @@ on:
         description: Digest of the existing exact C22 committed-reopen fixture
         type: string
         required: false
+      profile_history:
+        description: Collect bounded diagnostic stacks during slow frozen Start and Apply
+        type: boolean
+        default: false
       diagnostic_certificate:
         description: Optional ephemeral public X.509 DER recipient for encrypted fixture failure logs
         type: string
@@ -144,6 +148,7 @@ jobs:
       - name: Run protected native checks
         env:
           POS_SUITE: ${{ matrix.suite }}
+          POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
         run: bash scripts/pos/qualification/native.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
