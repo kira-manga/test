@@ -11,6 +11,7 @@ import secrets
 import struct
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -23,7 +24,8 @@ GUESTS = {"master": "emulator-5554", "client": "emulator-5556"}
 WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
 LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
-ACTIVATE = os.environ.get("POS_ANDROID_SETUP_STAGE") == "activate"
+SETUP_STAGE = os.environ.get("POS_ANDROID_SETUP_STAGE", "allocation")
+ACTIVATE = SETUP_STAGE in {"activate", "pairing-proof"}
 UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
@@ -399,6 +401,55 @@ def client_onboarding(ui, observation):
     observation["client_screenshot_sha256"] = ui.screenshot("android-client-pairing-form")
 
 
+def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
+    path = "/sdcard/Download/" + filename
+    assert source.device != destination.device and filename.startswith("ukkera-device-") and filename.endswith(".bin")
+    assert adb(source.device, "shell", "test", "!", "-e", path) == ""
+    assert adb(destination.device, "shell", "test", "!", "-e", path) == ""
+    source.choose(export_action, scroll=18)
+    source.choose("Save")
+    source.find("Exact retained document exported", scroll=10, wait=1800)
+    captured = subprocess.check_output(["adb", "-s", source.device, "exec-out", "cat", path], timeout=12)
+    assert 1 <= len(captured) <= limit, f"Original exported {purpose} document is absent or outside its bound"
+    with tempfile.TemporaryDirectory(dir=WORK) as directory:
+        original = Path(directory) / filename
+        with original.open("xb") as output:
+            output.write(captured)
+        adb(destination.device, "push", str(original), path)
+    imported = subprocess.check_output(["adb", "-s", destination.device, "exec-out", "cat", path], timeout=12)
+    assert imported == captured, f"{purpose} bytes changed during delivery"
+    observation[f"original_{purpose}_document_bytes_verified"] = len(captured)
+    destination.choose(import_action, scroll=20)
+    try:
+        destination.choose(filename)
+    except AssertionError:
+        destination.choose("Show roots")
+        destination.choose("Downloads")
+        destination.choose(filename)
+    destination.find("Complete document imported for review", scroll=12, wait=1700)
+
+
+def verify_pairing_proof(master, client, observation):
+    master.choose("Pair a new target through this original Master", scroll=12)
+    master.find("Import the target identity document (I)", scroll=18, wait=1500)
+    transfer_document(client, master, "Re-read and export original identity (I)", "Import the target identity document (I)",
+        "ukkera-device-sdk-identity-v2.bin", 16_384, observation, "identity")
+    master.choose("I reviewed this complete native/SDK identity", scroll=20)
+    master.choose("Retain original request and prepare challenge", scroll=10)
+    master.find("Re-read and export original challenge (C)", scroll=18, wait=2000)
+    transfer_document(master, client, "Re-read and export original challenge (C)", "Import / review the complete challenge (C)",
+        "ukkera-device-pairing-challenge-v2.bin", 2_113_536, observation, "challenge")
+    client.choose("I reviewed the complete original Master context", scroll=26)
+    client.choose("Retain exact signing intent and respond once", scroll=10)
+    client.find("Re-read and export original response (P)", scroll=22, wait=2000)
+    transfer_document(client, master, "Re-read and export original response (P)", "Import / review the exact response (P)",
+        "ukkera-device-pairing-possession-v2.bin", 2_048, observation, "possession")
+    master.choose("I reviewed the exact response against this original challenge", scroll=26)
+    master.choose("Verify this original target proof once", scroll=12)
+    master.find("Open separate head / admission review", scroll=22, wait=2000)
+    observation["master_verified_native_target_possession"] = True
+
+
 def main():
     preflight = json.loads((REPORT / "android-lan-preflight.json").read_bytes())
     assert preflight["distinct_installed_instances"] == 2 and preflight["shared_wifi"]
@@ -437,6 +488,8 @@ def main():
                             raise AssertionError("Master scope did not become available for the distinct target")
                 prepare_client_target(sessions["client"], observation, scope)
             master.result()
+            if SETUP_STAGE == "pairing-proof":
+                verify_pairing_proof(sessions["master"], sessions["client"], observation)
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
         raise

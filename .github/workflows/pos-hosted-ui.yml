@@ -16,9 +16,9 @@ on:
         type: boolean
         default: false
       android_setup_stage:
-        description: Continue to native first-account and target identity activation when selected
+        description: Select allocation, native activation, or public pairing-document proof
         type: choice
-        options: [allocation, activate]
+        options: [allocation, activate, pairing-proof]
         default: allocation
       windows_sparse_service:
         description: Check real Windows external package identity and native service association
