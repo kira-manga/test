@@ -47,7 +47,7 @@ gradle.beforeProject { p ->
 }
 EOFCONTROL
   result=0
-  python3 "$here/watched.py" "$report" opening-control 45 "${gradle[@]}" \
+  python3 "$here/watched.py" "$report" opening-control 45 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
     -I "$stage/opening-control.init.gradle" :core:database:jvmTest \
     --tests '*LanBusinessTransactionIntegrationTest.nativeOpeningReplyLossKeepsOneOriginalAfterReopen*' || result=$?
   python3 "$here/results.py" opening-control "$stage" "$source"
@@ -55,7 +55,7 @@ EOFCONTROL
 fi
 if [[ "$POS_SUITE" == 'payment-regression' ]]; then
   result=0
-  python3 "$here/watched.py" "$report" payment-regression 95 "${gradle[@]}" --continue \
+  python3 "$here/watched.py" "$report" payment-regression 95 bash "$here/runner-owned-temp.sh" "${gradle[@]}" --continue \
     :adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest \
     :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest' || result=$?
   python3 "$here/results.py" payment-regression "$stage" "$source"
