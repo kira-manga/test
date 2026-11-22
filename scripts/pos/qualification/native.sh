@@ -104,9 +104,6 @@ finish_profile() {
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     touch "$stage/$1.profile.done"
     wait "$profile_pid"
-    if [[ -s "$UKKERA_CHB_ATTEMPT/$1.jfr" ]]; then
-      java "$here/PaidHistoryProfile.java" "$UKKERA_CHB_ATTEMPT/$1.jfr" > "$report/$1.samples.tsv"
-    fi
   fi
 }
 observe_profile seed
