@@ -7,12 +7,16 @@ on:
         type: choice
         options: [all, android, windows, macos]
         default: all
+      android_lan_preflight:
+        description: Check shared Wi-Fi on two independently installed Android emulator instances
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 jobs:
   installed-ui:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight
     strategy:
       fail-fast: false
       matrix:
@@ -163,4 +167,37 @@ jobs:
           name: pos-ui-${{ matrix.platform }}-${{ github.run_id }}
           path: ${{ runner.temp }}/pos-ui/public
           if-no-files-found: warn
+          retention-days: 7
+
+  android-lan-preflight:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.android_lan_preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      POS_UI_TARGET: android
+      POS_UI_REVISION: 46b89828ea133d9d5f7f802f2fa5546bbe3c31a6
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/pos/ui
+            testing-inputs
+      - name: Bind the known signed Android test package
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/pos-ui"
+          mkdir -p "$work/public"
+          cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
+          python3 scripts/pos/ui/prepare-artifact.py
+      - name: Verify shared Wi-Fi between the installed Android instances
+        shell: bash
+        run: bash scripts/pos/ui/android-lan-preflight.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pos-android-lan-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-ui/public
           retention-days: 7
