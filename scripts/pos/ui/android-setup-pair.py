@@ -177,6 +177,10 @@ class InstalledUi:
             "authentication_refused": "Local human authentication was refused.",
             "unsupported_platform": "This native engineering profile is unsupported",
             "invalid_application": "Installed application or native custody could not be confirmed.",
+            "user_locked": "Unlock the device's operating-system user first.",
+            "issuance_withdrawn": "New issuance was disabled.",
+            "owner_required": "This step requires the genuine original target owner",
+            "authentication_throttled": "The protected local authentication delay remains in force",
             "uncertain": "Original state is uncertain",
             "unavailable": "The native owner is unavailable",
             "key_preparation_required": "The original native key preparation must be continued",
@@ -245,6 +249,18 @@ class InstalledUi:
         # and use the accessibility assertion as the test oracle.
         (REPORT / f"{name}.png").write_bytes(png)
         return hashlib.sha256(png).hexdigest()
+
+    def native_owner_refusals(self):
+        # Report only existing, fixed native reason enums and static POS method
+        # locations. Journal data, identities, log messages and values stay private.
+        records = adb(self.device, "logcat", "-d", "-v", "brief", "-s", "UkkeraNativeOwner:W")
+        return [
+            {"reason": reason.group(1) if reason else None,
+             "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", line)[:5]}
+            for line in records.splitlines()
+            if "Native action refused:" in line
+            for reason in [re.search(r"; reason=([A-Z_]{3,40})(?:;|$)", line)]
+        ]
 
 
 def setup_entry(ui):
@@ -436,6 +452,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
 
 
 def verify_pairing_proof(master, client, observation):
+    original_refusal_count = len(master.native_owner_refusals())
     master.choose("Pair a new target through this original Master", scroll=12)
     observation["master_pairing_action_sent"] = True
     transitions = []
@@ -452,11 +469,21 @@ def verify_pairing_proof(master, client, observation):
             previous = labels
         if "pairing_import_control" in labels or "pairing_import_stage" in labels:
             break
-        if "pairing_context_unavailable" in labels or "runtime_publication_held" in labels:
-            raise AssertionError("Installed Master did not publish the original pairing context")
+        if any(label in labels for label in (
+            "runtime_publication_held", "unavailable", "uncertain", "original_action_required",
+            "head_enrollment_required", "owner_required", "invalid_application", "busy",
+            "close_unconfirmed", "full_installation_held", "user_locked", "issuance_withdrawn",
+        )):
+            observation["master_pairing_native_refusals"] = master.native_owner_refusals()[original_refusal_count:][-8:]
+            raise AssertionError("The installed Master reported a pairing-context refusal")
         if not snapshot["app_is_resumed"] or snapshot["known_app_crash_frames"]:
             raise AssertionError("The installed Master stopped while reading the original pairing context")
-        if "pairing_page" in labels and "pairing_context_pending" not in labels:
+        if "pairing_context_unavailable" in labels:
+            # The nullable-context placeholder is not a specific error. Bring
+            # the actual problem text back into view, then read the fixed status.
+            if time.monotonic() - began < 10:
+                master.action("pointer.scroll", x=master.width // 2, y=master.height // 2, dy=-14)
+        elif "pairing_page" in labels and "pairing_context_pending" not in labels:
             # The import button is after setup notices in the scrollable view.
             master.action("pointer.scroll", x=master.width // 2, y=master.height // 2, dy=14)
         time.sleep(0.7)
@@ -464,6 +491,7 @@ def verify_pairing_proof(master, client, observation):
         master.find("Import the target identity document (I)", scroll=18, wait=1500)
     except (AssertionError, ClientError):
         observation["master_pairing_context_after_search"] = master.visible_setup_outcome()
+        observation["master_pairing_native_refusals"] = master.native_owner_refusals()[original_refusal_count:][-8:]
         raise
     observation["master_original_pairing_context_verified"] = True
     transfer_document(client, master, "Re-read and export original identity (I)", "Import the target identity document (I)",
