@@ -1,0 +1,107 @@
+name: POS hosted native qualification (manual, auxiliary)
+run-name: POS native ${{ inputs.suite }} @ ${{ inputs.source_revision }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_revision:
+        description: Exact main POS Git SHA recorded in the sealed inputs
+        type: string
+        required: true
+      bundle_sha256:
+        description: SHA-256 of the sealed input bundle
+        type: string
+        required: true
+      suite:
+        description: Frozen 1,000 paid sales or bounded companion checks
+        type: choice
+        options: [both, frozen, companion]
+        default: both
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
+    environment: pos-qualification-originals
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || format('["{0}"]', inputs.suite)) }}
+    name: Linux x64 / ${{ matrix.suite }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            apps/pos
+            scripts/pos/qualification
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Stage sealed input parts 1–17
+        env:
+          POS_INPUT_00: ${{ secrets.POS_INPUT_00 }}
+          POS_INPUT_01: ${{ secrets.POS_INPUT_01 }}
+          POS_INPUT_02: ${{ secrets.POS_INPUT_02 }}
+          POS_INPUT_03: ${{ secrets.POS_INPUT_03 }}
+          POS_INPUT_04: ${{ secrets.POS_INPUT_04 }}
+          POS_INPUT_05: ${{ secrets.POS_INPUT_05 }}
+          POS_INPUT_06: ${{ secrets.POS_INPUT_06 }}
+          POS_INPUT_07: ${{ secrets.POS_INPUT_07 }}
+          POS_INPUT_08: ${{ secrets.POS_INPUT_08 }}
+          POS_INPUT_09: ${{ secrets.POS_INPUT_09 }}
+          POS_INPUT_10: ${{ secrets.POS_INPUT_10 }}
+          POS_INPUT_11: ${{ secrets.POS_INPUT_11 }}
+          POS_INPUT_12: ${{ secrets.POS_INPUT_12 }}
+          POS_INPUT_13: ${{ secrets.POS_INPUT_13 }}
+          POS_INPUT_14: ${{ secrets.POS_INPUT_14 }}
+          POS_INPUT_15: ${{ secrets.POS_INPUT_15 }}
+          POS_INPUT_16: ${{ secrets.POS_INPUT_16 }}
+        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 0 17
+      - name: Stage sealed input parts 18–33
+        env:
+          POS_INPUT_17: ${{ secrets.POS_INPUT_17 }}
+          POS_INPUT_18: ${{ secrets.POS_INPUT_18 }}
+          POS_INPUT_19: ${{ secrets.POS_INPUT_19 }}
+          POS_INPUT_20: ${{ secrets.POS_INPUT_20 }}
+          POS_INPUT_21: ${{ secrets.POS_INPUT_21 }}
+          POS_INPUT_22: ${{ secrets.POS_INPUT_22 }}
+          POS_INPUT_23: ${{ secrets.POS_INPUT_23 }}
+          POS_INPUT_24: ${{ secrets.POS_INPUT_24 }}
+          POS_INPUT_25: ${{ secrets.POS_INPUT_25 }}
+          POS_INPUT_26: ${{ secrets.POS_INPUT_26 }}
+          POS_INPUT_27: ${{ secrets.POS_INPUT_27 }}
+          POS_INPUT_28: ${{ secrets.POS_INPUT_28 }}
+          POS_INPUT_29: ${{ secrets.POS_INPUT_29 }}
+          POS_INPUT_30: ${{ secrets.POS_INPUT_30 }}
+          POS_INPUT_31: ${{ secrets.POS_INPUT_31 }}
+          POS_INPUT_32: ${{ secrets.POS_INPUT_32 }}
+        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 17 33
+      - name: Verify exact main source and frozen inputs
+        env:
+          EXPECTED_REVISION: ${{ inputs.source_revision }}
+          EXPECTED_BUNDLE: ${{ inputs.bundle_sha256 }}
+        run: umask 077 && python3 scripts/pos/qualification/stage.py verify
+      - name: Prepare Android compile SDK for JVM Gradle configuration
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-37.0' 'build-tools;37.0.0'
+          if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
+            ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
+          fi
+      - name: Run protected native checks
+        env:
+          POS_SUITE: ${{ matrix.suite }}
+        run: bash scripts/pos/qualification/native.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pos-qualification-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pos-qualification/public
+          if-no-files-found: warn
+          retention-days: 14
