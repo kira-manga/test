@@ -38,7 +38,7 @@ python3 "$GITHUB_WORKSPACE/scripts/pos/qualification/watched.py" "$out" recovery
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
   -Pkotlin.compiler.execution.strategy=in-process -I "$fixture/init.gradle" :core:database:posHostedC22Recovery || result=$?
 [[ -f "$stage/recovery.raw" ]] || exit "$result"
-python3 - "$out" "$stage/recovery.raw" "$result" <<'PY'
+python3 - "$out" "$stage/recovery.raw" "$result" "$fixture" <<'PY'
 import json,re,sqlite3,sys
 from pathlib import Path
 out,log=map(Path,sys.argv[1:3])
@@ -50,8 +50,14 @@ expected=[
   "POS_279_C22_COMMITTED_REOPEN same_id_lookup=1 exact_replay=1 case_rows=1 invoice=unchanged receipt=unchanged",
   "POS_279_C22_NATIVE_CLOSE",
 ]
+variant=Path(sys.argv[4])/"VARIANT"
+active_reauth=variant.is_file()
+if active_reauth:
+    assert variant.read_text().strip()=="c22-active-reauth-v1.0.0"
+    expected.insert(1,"POS_279_C22_ACTIVE_REAUTH old_execute=denied old_lookup=denied precommit_rows=0")
 verified=[line for line in expected if lines.count(line)==1]
-record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":False}
+record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":False,
+        "active_reauthorization_verified":active_reauth and verified==expected and rc==0}
 if rc == 0 and verified == expected:
     root,=[line.rsplit(" at ",1)[1] for line in lines
            if re.fullmatch(r"Supporting business native originals retained at /var/tmp/lan-business-native-test[0-9]+",line)]
