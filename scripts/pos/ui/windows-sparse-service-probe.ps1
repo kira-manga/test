@@ -81,18 +81,35 @@ try {
     & $manifestTool -nologo -manifest $launcherManifest "-outputresource:$application;#1" *> (Join-Path $work 'mt-write.log')
     if ($LASTEXITCODE -ne 0) { throw 'The wrapped external launcher manifest was refused' }
 
-    $report.phase = 'pack_and_sign'
-    & (Join-Path $sdk 'makeappx.exe') pack /d $meta /p $identity /o *> (Join-Path $work 'sparse-pack.log')
-    if ($LASTEXITCODE -ne 0) { throw 'MakeAppx refused this external identity and service manifest' }
+    $report.phase = 'pack_external_manifest'
+    $packLog = Join-Path $work 'sparse-pack.log'
+    & (Join-Path $sdk 'makeappx.exe') pack /d $meta /p $identity /o *> $packLog
+    if ($LASTEXITCODE -ne 0) {
+        $report.pack_exit = $LASTEXITCODE
+        # Manifest tool diagnostics contain only sample identity/file grammar.
+        $report.pack_diagnostic = @(Get-Content -LiteralPath $packLog |
+            Where-Object { $_ -match '(?i)error|validation failed' } | Select-Object -Last 8 |
+            ForEach-Object { $_.Replace($work,'[test workspace]').Replace($bits,'[test app image]') })
+        throw 'MakeAppx refused this external identity and service manifest'
+    }
+    $report.phase = 'check_exact_test_signer'
     if ((Get-FileHash -LiteralPath $Certificate -Algorithm SHA256).Hash -ne '998f39e61839e620384736fab82fec773e827314580fb69bfaccf66446026f6c') {
         throw 'The test certificate differs from the authorized POS signer'
     }
     [IO.File]::WriteAllBytes($pfx,[Convert]::FromBase64String($env:PFX_BASE64))
     $tool = Join-Path $sdk 'signtool.exe'
     foreach ($signed in @($application,$identity)) {
+        $report.phase = if ($signed -eq $application) { 'sign_launcher_copy' } else { 'sign_external_package' }
         & $tool sign /fd SHA256 /f $pfx /p $env:POS_MSIX_PFX_PASSWORD $signed *> (Join-Path $work 'sparse-sign.log')
-        if ($LASTEXITCODE -ne 0) { throw 'The existing Windows test signer refused this probe package' }
+        if ($LASTEXITCODE -ne 0) {
+            $report.sign_exit = $LASTEXITCODE
+            $report.sign_diagnostic_codes = @([regex]::Matches(
+                (Get-Content -LiteralPath (Join-Path $work 'sparse-sign.log') -Raw), '(?i)0x[0-9a-f]{8}'
+            ) | ForEach-Object { $_.Value })
+            throw 'The existing Windows test signer refused this probe package'
+        }
     }
+    $report.phase = 'bind_test_signer_trust'
     $publicCert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
         (Resolve-Path -LiteralPath $Certificate).Path)
     if (!(Test-Path -LiteralPath ("Cert:\LocalMachine\TrustedPeople\" + $publicCert.Thumbprint))) {
