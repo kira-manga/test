@@ -15,12 +15,16 @@ on:
         description: Drive both native onboarding UIs on the two Android preflight guests
         type: boolean
         default: false
+      windows_sparse_service:
+        description: Check real Windows external package identity and native service association
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 jobs:
   installed-ui:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup && !inputs.windows_sparse_service
     strategy:
       fail-fast: false
       matrix:
@@ -217,5 +221,45 @@ jobs:
         if: always()
         with:
           name: pos-android-lan-preflight-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-ui/public
+          retention-days: 7
+
+  windows-sparse-service:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.windows_sparse_service
+    runs-on: windows-2025
+    timeout-minutes: 18
+    env:
+      POS_UI_TARGET: windows
+      POS_UI_REVISION: e450ac51708ac9a2684187867e82467109b733d4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/pos/ui
+            apps/pos/apps/desktop/packaging/windows
+      - name: Bind the exact retained signed Windows application
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pos-ui"
+          mkdir -p "$work/public"
+          gh run download 44257616578 --repo kira-manga/test --name pos-windows-msi-44257616578-1 --dir "$work/artifact"
+          python scripts/pos/ui/prepare-artifact.py
+      - name: Observe actual external-location UI and service identity
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.POS_WINDOWS_TEST_PFX_BASE64 }}
+          POS_MSIX_PFX_PASSWORD: ${{ secrets.POS_WINDOWS_TEST_PFX_PASSWORD }}
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'pos-ui'
+          $package = (Get-Content -LiteralPath (Join-Path $work 'package-path') -Raw).Trim()
+          scripts/pos/ui/windows-sparse-service-probe.ps1 -Package $package -Certificate apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pos-windows-sparse-service-${{ github.run_id }}
           path: ${{ runner.temp }}/pos-ui/public
           retention-days: 7
