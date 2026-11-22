@@ -164,6 +164,8 @@ class InstalledUi:
             "pairing_import_stage": "Import the original target identity for review",
             "pairing_import_control": "Import the target identity document (I)",
             "runtime_publication_held": "no usable local client is currently published",
+            "opening_original_installation": "Opening only the original installation owner",
+            "automatic_reopen_unavailable": "The saved startup or stop intent could not be verified",
             "original_installation_retained": "The installation is retained, but no employee is signed in",
             "device_choices": "Device choices",
             "live_local_entry": "Employee sign-in",
@@ -451,17 +453,34 @@ def restart_original_master(ui, observation):
     assert new_pid.isdecimal() and new_pid != old_pid, "The app must start in a different process"
     observation["master_new_process_verified"] = True
     setup_entry(ui)
-    ui.choose("Inspect this device's original installation", scroll=6)
-    ui.choose("Open and verify the same original installation", scroll=10)
-    ui.find("Reopen existing client journals", scroll=12, wait=2500)
-    ui.choose("Reopen existing client journals")
-    resumed = {}
-    try:
-        await_master_publication(ui, resumed)
-    finally:
-        observation["master_restart_publication"] = resumed
-    ui.find("Pair a new target through this original Master", scroll=12, wait=2500)
-    observation["master_existing_journals_reattached_after_restart"] = True
+    # Choosing the same training composition starts the existing-only RUN
+    # attachment automatically. The setup lock stays visible until actual work
+    # completes. Unlock presentation once, not native custody or employee work.
+    started = time.monotonic()
+    transitions = []
+    observation["master_restart_publication"] = transitions
+    while time.monotonic() - started < 300:
+        state = ui.visible_setup_outcome()
+        labels = state["known_labels"]
+        if not transitions or labels != transitions[-1]["known_labels"]:
+            transitions.append({"elapsed_seconds": round(time.monotonic() - started, 2), **state})
+        if "setup_locked" in labels and not observation.get("master_restart_presentation_unlocked"):
+            control = ui.find("Review setup again", wait=2500)
+            node = control["nodes"][0]
+            if node.get("enabled", True):
+                ui.action("element.click", snapshot_id=control["snapshot_id"], id=node["id"])
+                observation["master_restart_presentation_unlocked"] = True
+        if {"journal_unavailable", "close_unconfirmed", "automatic_reopen_unavailable"} & set(labels):
+            raise AssertionError("The installed Master reported an existing-only restart refusal")
+        if "local_device_pairing_available" in labels:
+            observation["master_existing_journals_reattached_after_restart"] = True
+            return
+        if observation.get("master_restart_presentation_unlocked") and "journal_connected" in labels:
+            ui.find("Pair a new target through this original Master", scroll=12, wait=2500)
+            observation["master_existing_journals_reattached_after_restart"] = True
+            return
+        time.sleep(1)
+    raise AssertionError("The original Master did not automatically reattach its existing journals within the setup bound")
 
 
 def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
