@@ -1,0 +1,150 @@
+name: POS installed UI navigation (manual, auxiliary)
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Select which retained signed/installed package to open
+        type: choice
+        options: [all, android, windows, macos]
+        default: all
+permissions:
+  contents: read
+  actions: read
+jobs:
+  installed-ui:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJSON(inputs.platform == 'all' && '["android","windows","macos"]' || format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ fromJSON('{"android":"ubuntu-24.04","windows":"windows-2025","macos":"macos-26"}')[matrix.platform] }}
+    timeout-minutes: 35
+    env:
+      POS_UI_TARGET: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/pos/ui
+            testing-inputs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ui-test-actions/ui-test-actions
+          ref: 0c818c5d72e8c30c59bd1287c330a40392bf8e89
+          persist-credentials: false
+          path: ui-client
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Select and verify the exact retained package
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/pos-ui"
+          mkdir -p "$work/public"
+          case "$POS_UI_TARGET" in
+            android)
+              cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
+              export POS_UI_REVISION=46b89828ea133d9d5f7f802f2fa5546bbe3c31a6
+              ;;
+            windows)
+              gh run download 44257616578 --repo kira-manga/test --name pos-windows-msi-44257616578-1 --dir "$work/artifact"
+              export POS_UI_REVISION=e450ac51708ac9a2684187867e82467109b733d4
+              ;;
+            macos)
+              gh run download 44235850072 --repo kira-manga/test --name pos-macos-dmg-arm64-44235850072-1 --dir "$work/artifact"
+              export POS_UI_REVISION=3683670b29bb4cac7af7f0afcccd84c50627dca7
+              ;;
+          esac
+          python scripts/pos/ui/prepare-artifact.py
+      - name: Install retained Android package in a new emulator
+        if: matrix.platform == 'android'
+        shell: bash
+        run: bash scripts/pos/ui/android-emulator.sh
+      - name: Install retained Windows MSI
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          $work = "$env:RUNNER_TEMP/pos-ui"
+          $msi = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
+          $result = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$work/msi-install.log`"" -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "MSI installation exit $($result.ExitCode)" }
+          $app = Join-Path $env:ProgramFiles "UkkeraPOS/UkkeraPOS.exe"
+          if (!(Test-Path -LiteralPath $app)) { throw "Installed Ukkera POS executable missing" }
+          $app | Set-Content -LiteralPath "$work/installed"
+      - name: Copy the signed macOS app out of its disk image
+        if: matrix.platform == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pos-ui"
+          mkdir -p "$work/mount" "$HOME/Applications"
+          hdiutil attach -nobrowse -readonly -mountpoint "$work/mount" "$(< "$work/package-path")" >/dev/null
+          trap 'hdiutil detach "$work/mount" >/dev/null' EXIT
+          apps=("$work/mount/"*.app)
+          [[ "${#apps[@]}" == 1 && -d "${apps[0]}" ]]
+          app="$HOME/Applications/UkkeraPOS.app"
+          ditto "${apps[0]}" "$app"
+          codesign --verify --deep --strict "$app"
+          printf '%s\n' "$app" > "$work/installed"
+      - name: Generate the loopback session bearer and start the UI observer
+        id: start
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/pos-ui"
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import os, secrets
+          token = secrets.token_hex(32)
+          print(f"::add-mask::{token}")
+          path = Path(os.environ["RUNNER_TEMP"]) / "pos-ui" / "token"
+          with path.open("x") as output:
+              output.write(token)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"digest={sha256(token.encode()).hexdigest()}", file=output)
+          PY
+          PYTHONPATH="$GITHUB_WORKSPACE/ui-client" python scripts/pos/ui/observe.py > "$work/observer.log" 2>&1 &
+      - uses: ui-test-actions/ui-test-actions@0c818c5d72e8c30c59bd1287c330a40392bf8e89
+        with:
+          target: ${{ matrix.platform }}
+          transport: local
+          token-sha256: ${{ steps.start.outputs.digest }}
+          duration-minutes: '2'
+          android-ime: '0'
+          launch: |
+            set -euo pipefail
+            work="$RUNNER_TEMP/pos-ui"
+            case "$UI_TEST_TARGET" in
+              android) adb -s emulator-5554 shell am start -W -n com.ukkera.pos.local.testing/com.ukkera.pos.android.MainActivity ;;
+              macos) open "$(< "$work/installed")" ;;
+              windows) "$(tr -d '\r' < "$work/installed")" > "$work/app.log" 2>&1 & ;;
+            esac
+          ready: |
+            if [[ "$UI_TEST_TARGET" == android ]]; then
+              adb -s emulator-5554 shell dumpsys activity activities | grep 'ResumedActivity.*com.ukkera.pos.local.testing'
+            else
+              true
+            fi
+      - name: Check actual POS UI observation
+        if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pos-ui"
+          test -f "$work/observer.exit"
+          cat "$work/public/observed.json"
+          [[ "$(< "$work/observer.exit")" == 0 ]]
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pos-ui-${{ matrix.platform }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-ui/public
+          if-no-files-found: warn
+          retention-days: 7
