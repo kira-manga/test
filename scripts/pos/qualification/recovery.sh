@@ -32,15 +32,20 @@ gradle.beforeProject { p ->
     }
 }
 GRADLE
+checks=()
+if [[ -f "$fixture/VARIANT" ]] && [[ "$(<"$fixture/VARIANT")" == c22-native-approval-source-unavailable-v1.0.1 ]]; then
+  checks+=(:adapters:catalog-store:jvmTest :apps:android:compileLocalTestingKotlin :apps:desktop:compileKotlin)
+fi
 result=0
 python3 "$GITHUB_WORKSPACE/scripts/pos/qualification/watched.py" "$out" recovery 95 \
   ./gradlew --no-daemon --max-workers=2 --console=plain \
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
-  -Pkotlin.compiler.execution.strategy=in-process -I "$fixture/init.gradle" :core:database:posHostedC22Recovery || result=$?
+  -Pkotlin.compiler.execution.strategy=in-process -I "$fixture/init.gradle" :core:database:posHostedC22Recovery "${checks[@]}" || result=$?
 [[ -f "$stage/recovery.raw" ]] || exit "$result"
 python3 - "$out" "$stage/recovery.raw" "$result" "$fixture" <<'PY'
 import json,re,sqlite3,sys
 from pathlib import Path
+from xml.etree import ElementTree
 out,log=map(Path,sys.argv[1:3])
 rc=int(sys.argv[3])
 lines=log.read_text().splitlines()
@@ -51,13 +56,21 @@ expected=[
   "POS_279_C22_NATIVE_CLOSE",
 ]
 variant=Path(sys.argv[4])/"VARIANT"
-active_reauth=variant.is_file()
+variant_name=variant.read_text().strip() if variant.is_file() else ""
+assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1")
+active_reauth=bool(variant_name)
+source_unavailable=variant_name=="c22-native-approval-source-unavailable-v1.0.1"
 if active_reauth:
-    assert variant.read_text().strip()=="c22-active-reauth-v1.0.0"
     expected.insert(1,"POS_279_C22_ACTIVE_REAUTH old_execute=denied old_lookup=denied precommit_rows=0")
+if source_unavailable:
+    expected[1:1]=[
+        f"POS_279_C22_WITNESS_SOURCE_DEFERRED {stage} quote_hidden=1 same_id_deferrals=2 observed_source_checks=3 terminal_rows=0"
+        for stage in ("active","native_reopen")
+    ]
 verified=[line for line in expected if lines.count(line)==1]
 record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":False,
-        "active_reauthorization_verified":active_reauth and verified==expected and rc==0}
+        "active_reauthorization_verified":active_reauth and verified==expected and rc==0,
+        "installed_source_unavailability_verified":source_unavailable and verified==expected and rc==0}
 if rc == 0 and verified == expected:
     root,=[line.rsplit(" at ",1)[1] for line in lines
            if re.fullmatch(r"Supporting business native originals retained at /var/tmp/lan-business-native-test[0-9]+",line)]
@@ -70,6 +83,15 @@ if rc == 0 and verified == expected:
                 for t in ("operation_result","journal_envelope","audit_event","outbox_intent")}
     assert set(counts.values())=={11}
     record["confirmed_terminal_rows"]=counts
+    if source_unavailable:
+        reports=Path("adapters/catalog-store/build/test-results/jvmTest")
+        suites=[ElementTree.parse(file).getroot() for file in reports.glob("TEST-*.xml")]
+        assert suites
+        regression={name:sum(int(suite.get(name)) for suite in suites)
+                    for name in ("tests","failures","errors","skipped")}
+        assert regression["tests"]>0 and all(regression[name]==0 for name in ("failures","errors","skipped"))
+        record["catalog_store_regression"]=regression
+        record["platform_compile_completed"]=["Android LocalTesting","Desktop JVM"]
 (out/"recovery-observed.json").write_text(json.dumps(record,indent=2)+"\n")
 print(json.dumps(record))
 sys.exit(rc or (0 if verified==expected else 1))
