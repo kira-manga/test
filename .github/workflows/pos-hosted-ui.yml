@@ -271,7 +271,14 @@ jobs:
         run: |
           $work = Join-Path $env:RUNNER_TEMP 'pos-ui'
           $package = (Get-Content -LiteralPath (Join-Path $work 'package-path') -Raw).Trim()
-          scripts/pos/ui/windows-service-msi-probe.ps1 -Package $package -Certificate apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer
+          scripts/pos/ui/windows-service-msi-probe.ps1 -Package $package -Certificate apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer -RetainVerifiedInstaller
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: inputs.windows_service_msi
+        with:
+          name: pos-windows-fresh-service-test-msi-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-ui/verified-msi/UkkeraPOS-Test-Service.msi
+          if-no-files-found: error
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:

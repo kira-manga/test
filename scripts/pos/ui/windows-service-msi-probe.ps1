@@ -1,6 +1,10 @@
 # Isolated hosted control. The real installer is built and exercised locally
 # on the runner. Only fixed verification facts leave the runner.
-param([Parameter(Mandatory)][string]$Package, [Parameter(Mandatory)][string]$Certificate)
+param(
+    [Parameter(Mandatory)][string]$Package,
+    [Parameter(Mandatory)][string]$Certificate,
+    [switch]$RetainVerifiedInstaller
+)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $work = Join-Path $env:RUNNER_TEMP 'pos-ui'
@@ -113,6 +117,16 @@ try {
     $report.removed = $null -eq (Get-AppxPackage -Name $name) -and
         $null -eq (Get-Service $service -ErrorAction SilentlyContinue)
     if (!$report.removed) { throw 'The actual package or service remained after MSI uninstall' }
+    if ($RetainVerifiedInstaller) {
+        $delivery = Join-Path $work 'verified-msi'
+        New-Item -ItemType Directory -Path $delivery | Out-Null
+        $copy = Join-Path $delivery (Split-Path -Leaf $msi)
+        Copy-Item -LiteralPath $msi -Destination $copy
+        if ((Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash.ToLowerInvariant() -ne $report.msi_sha256) {
+            throw 'The retained installer differs from the one exercised by Windows Installer'
+        }
+        $report.installer_retained = $true
+    }
     $report.phase = 'concluded'
 } catch {
     $report.exception_type = $_.Exception.GetType().FullName
