@@ -268,9 +268,11 @@ class InstalledUi:
                 boundary = "master_worker"
             elif "Native action refused:" in line:
                 boundary = "native_task"
+            elif "Native process exclusion requested:" in line:
+                boundary = "process_exclusion"
             else:
                 continue
-            reason = re.search(r"; (?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", line)
+            reason = re.search(r"(?:; |: )(?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", line)
             refusals.append({
                 "boundary": boundary,
                 "reason": reason.group(1) if reason else None,
@@ -601,6 +603,17 @@ def main():
             ui.start()
         assert sessions["master"].session.session_id != sessions["client"].session.session_id
         scope_queue = Queue(maxsize=1)
+        if SETUP_STAGE == "pairing-after-restart":
+            # For the restart diagnostic, finish each installation stage before
+            # the other emulator begins a native ceremony. Keep the normal
+            # simultaneous onboarding path below for the original scenario.
+            master, client = sessions["master"], sessions["client"]
+            master_onboarding(master, observation, scope_queue)
+            restart_original_master(master, observation)
+            client_onboarding(client, observation)
+            prepare_client_target(client, observation, scope_queue.get_nowait())
+            verify_pairing_proof(master, client, observation)
+            return
         with ThreadPoolExecutor(max_workers=2) as executor:
             master = executor.submit(master_onboarding, sessions["master"], observation, scope_queue)
             client = executor.submit(client_onboarding, sessions["client"], observation)
@@ -619,12 +632,15 @@ def main():
                             raise AssertionError("Master scope did not become available for the distinct target")
                 prepare_client_target(sessions["client"], observation, scope)
             master.result()
-            if SETUP_STAGE == "pairing-after-restart":
-                restart_original_master(sessions["master"], observation)
             if PAIR:
                 verify_pairing_proof(sessions["master"], sessions["client"], observation)
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
+        for role, ui in sessions.items():
+            try:
+                observation[f"{role}_final_native_refusals"] = ui.native_owner_refusals()[-12:]
+            except (OSError, subprocess.SubprocessError):
+                observation[f"{role}_final_native_refusals_unavailable"] = True
         raise
     finally:
         for ui in sessions.values():
