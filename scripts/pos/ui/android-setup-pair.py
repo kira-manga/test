@@ -143,6 +143,7 @@ class InstalledUi:
             "setup_page": "Synthetic training composition",
             "entry_page": "Set up or inspect the original local branch",
             "setup_locked": "Review setup again",
+            "master_operating_notice": "This device is the local master",
             "company_review": "Confirm this original company",
             "company_unresolved": "Original state remains unresolved",
             "waiting_for_original_journals": "Opening protected original client journals",
@@ -335,6 +336,11 @@ def activate_master(ui, observation, head_password):
         ui.find("Enroll this original client once", scroll=12, wait=2500)
     observation["master_native_installation_retained"] = True
     ui.choose("Enroll this original client once")
+    # Actual Master publication opens a modal requiring an explicit acknowledgement.
+    # While it is visible only the dialog, not the setup controls, is accessible.
+    ui.find("This device is the local master", wait=15000)
+    observation["master_operating_notice_verified"] = True
+    ui.choose("Understood")
     # This action is visible only when the existing installation is operational
     # and the actual first device and employee journals have attached.
     try:
