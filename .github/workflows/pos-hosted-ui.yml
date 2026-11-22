@@ -325,7 +325,7 @@ jobs:
           POS_APK_83: ${{ secrets.POS_APK_83 }}
           POS_APK_84: ${{ secrets.POS_APK_84 }}
         run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 68 85
-      - name: Assemble signed Android candidate parts 86–99
+      - name: Assemble signed Android candidate parts 86–100
         env:
           POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
           POS_APK_85: ${{ secrets.POS_APK_85 }}
@@ -342,7 +342,8 @@ jobs:
           POS_APK_96: ${{ secrets.POS_APK_96 }}
           POS_APK_97: ${{ secrets.POS_APK_97 }}
           POS_APK_98: ${{ secrets.POS_APK_98 }}
-        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 85 99
+          POS_APK_99: ${{ secrets.POS_APK_99 }}
+        run: umask 077 && python3 scripts/pos/ui/android-package-delta.py chunk 85 100
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pos-android-signed-part-${{ matrix.group }}
