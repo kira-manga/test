@@ -129,8 +129,17 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     echo "The paid profile requires external sampling with its fixed test clock."
     exit 2
   fi
+  compile_tasks=(:core:database:jvmTestClasses)
+  compile_result=0
+  if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
+    compile_tasks+=(:core:database:jvmTest --tests '*NativeColdHistoryWorkspaceSupportingTest.nativeKeyFloorBatchPreservesExactOrderAndStrictCut*')
+  fi
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
-    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:jvmTestClasses
+    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
+  if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
+    python3 "$here/results.py" floor-batch-control "$stage" "$source"
+  fi
+  test "$compile_result" = 0
 fi
 seed=0
 restart=1

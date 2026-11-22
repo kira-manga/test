@@ -62,6 +62,16 @@ elif mode in ("cold-payment-control", "cold-owner-control", "cold-literal-contro
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")
         (published / "cold-literal-validation.json").write_text(json.dumps({"validated_streams": count}) + "\n")
         assert count > 0, "No completed exact cold literal stream verification was observed"
+elif mode == "floor-batch-control":
+    directory = run / "core/database/build/test-results/jvmTest"
+    reports = list(directory.glob("TEST-*.NativeColdHistoryWorkspaceSupportingTest.xml"))
+    report = None
+    if len(reports) == 1:
+        suite = ET.parse(reports[0]).getroot()
+        report = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+    (published / "floor-batch-tests.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report))
+    assert report == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
 elif mode == "retained-reader":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
