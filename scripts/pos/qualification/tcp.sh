@@ -8,10 +8,21 @@ source="$stage/source"
 mapping="$source/.workspace/lan-genuine-20261115/input-mapping-supporting-v1.0.1.json"
 cd "$source/apps/pos"
 if [[ "${1:-}" == exec ]]; then
-  ./gradlew --no-daemon --max-workers=2 --console=plain \
-    '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8' \
-    -Pkotlin.compiler.execution.strategy=in-process -I "$stage/tcp-inputs/runtime.init.gradle" \
-    :core:database:jvmTestClasses :core:database:recordNamespaceRuntimeClasspath
+  compile=(./gradlew --no-daemon --max-workers=2 --console=plain
+    '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
+    -Pkotlin.compiler.execution.strategy=in-process -I "$stage/tcp-inputs/runtime.init.gradle"
+    :core:database:jvmTestClasses :core:database:recordNamespaceRuntimeClasspath)
+  compile_status=0
+  "${compile[@]}" --info > "$runtime/compile.log" 2>&1 || compile_status=$?
+  if [[ "$compile_status" != 0 ]] && grep -Fq "dev.whyoleg.cryptography.gradle.plugin:0.6.0')" "$runtime/compile.log"; then
+    # A failed dependency lookup precedes any native original. Check the exact
+    # official marker and allow one fresh lookup; no native failure is retried.
+    marker='https://repo.maven.apache.org/maven2/dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
+    curl --fail --silent --show-error --retry 3 --max-time 15 --output /dev/null "$marker"
+    compile_status=0
+    "${compile[@]}" --refresh-dependencies --info > "$runtime/compile-retry.log" 2>&1 || compile_status=$?
+  fi
+  [[ "$compile_status" == 0 ]] || exit "$compile_status"
   classpath="$(< "$runtime/runtime-classpath.txt")"
   sudo -n unshare --net -- true
   ip -j link show > "$runtime/host.before"

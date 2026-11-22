@@ -6,7 +6,8 @@ cd "$stage"
 printf '%s' "$DIAGNOSTIC_CERTIFICATE" | base64 --decode | openssl x509 -inform DER -out "$stage/recipient.pem"
 files=()
 for pick in seed.raw restart.raw recovery.raw companion.raw tcp.raw tcp-runtime/process.log \
-  tcp-runtime/master.log tcp-runtime/client1.log tcp-runtime/client2.log; do
+  tcp-runtime/master.log tcp-runtime/client1.log tcp-runtime/client2.log \
+  tcp-runtime/compile.log tcp-runtime/compile-retry.log; do
   if [[ -f "$pick" && ! -L "$pick" ]]; then files+=("$pick"); fi
 done
 if (( ${#files[@]} > 0 )); then
