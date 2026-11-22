@@ -39,6 +39,20 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
+elif mode == "retained-reader":
+    directory = run / "core/database/build/test-results/jvmTest"
+    suites = {}
+    for name in ("RetainedFragmentPageSupportingTest", "RetainedCommandReadTest", "NativeOriginalSourceRootSupportingTest"):
+        entries = list(directory.glob(f"TEST-*.{name}.xml"))
+        if len(entries) == 1:
+            suite = ET.parse(entries[0]).getroot()
+            suites[name] = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+        else:
+            suites[name] = None
+    (published / "retained-reader-tests.json").write_text(json.dumps(suites, indent=2) + "\n")
+    print(json.dumps(suites))
+    assert all(row and row["tests"] and not any(row[field] for field in ("failures", "errors", "skipped"))
+               for row in suites.values())
 elif mode == "opening-control":
     directory = run / "core/database/build/test-results/jvmTest"
     entries = list(directory.glob("TEST-*LanBusinessTransactionIntegrationTest*.xml"))

@@ -31,6 +31,14 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
+if [[ "$POS_SUITE" == 'retained-reader' ]]; then
+  result=0
+  python3 "$here/watched.py" "$report" retained-reader 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+    :core:database:jvmTest --tests '*RetainedFragmentPageSupportingTest' \
+    --tests '*RetainedCommandReadTest' --tests '*NativeOriginalSourceRootSupportingTest' || result=$?
+  python3 "$here/results.py" retained-reader "$stage" "$source"
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'opening-control' ]]; then
   cat > "$stage/opening-control.init.gradle" <<'EOFCONTROL'
 gradle.beforeProject { p ->
