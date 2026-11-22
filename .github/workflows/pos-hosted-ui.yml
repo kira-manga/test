@@ -73,9 +73,23 @@ jobs:
           $msi = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
           $result = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$work/msi-install.log`"" -Wait -PassThru
           if ($result.ExitCode -ne 0) { throw "MSI installation exit $($result.ExitCode)" }
-          $app = Join-Path $env:ProgramFiles "UkkeraPOS/UkkeraPOS.exe"
-          if (!(Test-Path -LiteralPath $app)) { throw "Installed Ukkera POS executable missing" }
-          $app | Set-Content -LiteralPath "$work/installed"
+          # This package explicitly uses jpackage's per-user installation mode.
+          $paths = @(
+            (Join-Path $env:LOCALAPPDATA "UkkeraPOS/UkkeraPOS.exe"),
+            (Join-Path $env:LOCALAPPDATA "Programs/UkkeraPOS/UkkeraPOS.exe")
+          )
+          $menu = Join-Path $env:APPDATA "Microsoft/Windows/Start Menu/Programs/Ukkera POS"
+          if (Test-Path -LiteralPath $menu) {
+            $shell = New-Object -ComObject WScript.Shell
+            $paths += @(Get-ChildItem -LiteralPath $menu -Filter "*.lnk" -File | ForEach-Object {
+              $shell.CreateShortcut($_.FullName).TargetPath
+            })
+          }
+          $apps = @($paths | Where-Object {
+            $_ -and [IO.Path]::GetFileName($_) -eq "UkkeraPOS.exe" -and (Test-Path -LiteralPath $_ -PathType Leaf)
+          } | Select-Object -Unique)
+          if ($apps.Count -ne 1) { throw "Expected one installed per-user Ukkera POS launcher" }
+          $apps[0] | Set-Content -LiteralPath "$work/installed"
       - name: Copy the signed macOS app out of its disk image
         if: matrix.platform == 'macos'
         shell: bash
