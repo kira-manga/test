@@ -22,6 +22,10 @@ on:
         type: choice
         options: ['10', '25', '32', '50', '100', '250', '500']
         default: '10'
+      compare_revision:
+        description: Optional sealed candidate SHA for a same-runner 10-sale comparison
+        type: string
+        required: false
       regression_fixtures_sha256:
         description: Digest of the unchanged QA inputs for the payment regression selection
         type: string
@@ -205,7 +209,25 @@ jobs:
           POS_PAID_PROFILE_COUNT: ${{ inputs.paid_profile_count }}
           POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
           POS_CHECK_FLOOR_BATCH: ${{ inputs.check_floor_batch && '1' || '0' }}
-        run: bash scripts/pos/qualification/native.sh
+          EXPECTED_COMPARISON: ${{ inputs.compare_revision }}
+        run: |
+          set -euo pipefail
+          runner=scripts/pos/qualification/native.sh
+          if [[ -z "$EXPECTED_COMPARISON" ]]; then
+            exec bash "$runner"
+          fi
+          test "$POS_SUITE" = paid-profile
+          test "$POS_PAID_PROFILE_COUNT" = 10
+          umask 077
+          python3 scripts/pos/qualification/prepare-comparison.py
+          baseline=0
+          candidate=0
+          bash "$runner" || baseline=$?
+          RUNNER_TEMP="$RUNNER_TEMP/pos-comparison" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT-comparison" \
+            bash "$runner" || candidate=$?
+          printf 'POS_SAME_RUNNER_PROFILE baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
+          if (( baseline != 0 )); then exit "$baseline"; fi
+          exit "$candidate"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -213,15 +235,33 @@ jobs:
           path: ${{ runner.temp }}/pos-qualification/public
           if-no-files-found: warn
           retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && inputs.compare_revision != '' && matrix.suite == 'paid-profile'
+        with:
+          name: pos-qualification-paired-profile-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pos-comparison/pos-qualification/public
+          if-no-files-found: warn
+          retention-days: 14
       - name: Seal designated failure logs to the supplied recipient
         if: failure() && inputs.diagnostic_certificate != ''
         env:
           DIAGNOSTIC_CERTIFICATE: ${{ inputs.diagnostic_certificate }}
-        run: bash scripts/pos/qualification/seal-failure.sh
+        run: |
+          bash scripts/pos/qualification/seal-failure.sh
+          if [[ -d "$RUNNER_TEMP/pos-comparison/pos-qualification/public" ]]; then
+            RUNNER_TEMP="$RUNNER_TEMP/pos-comparison" bash scripts/pos/qualification/seal-failure.sh
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: failure() && inputs.diagnostic_certificate != ''
         with:
           name: pos-failure-envelope-${{ matrix.suite }}-${{ github.run_id }}
           path: ${{ runner.temp }}/pos-qualification/failure.cms
+          if-no-files-found: ignore
+          retention-days: 1
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure() && inputs.compare_revision != '' && inputs.diagnostic_certificate != ''
+        with:
+          name: pos-failure-envelope-paired-profile-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-comparison/pos-qualification/failure.cms
           if-no-files-found: ignore
           retention-days: 1
