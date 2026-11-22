@@ -45,7 +45,7 @@ gradle.beforeProject { p ->
     if (p.path == ':adapters:app-gateway') {
         p.tasks.withType(Test).configureEach {
             systemProperty 'ukkera.pos.paidReceiptWorkspace', 'true'
-            if (System.getenv('POS_SUITE') == 'cold-owner-control')
+            if (p.findProperty('posColdOwnerDiagnostics') == 'true')
                 systemProperty 'ukkera.lan.verifierDiagnostics', 'true'
             testLogging { exceptionFormat "full" }
         }
@@ -53,8 +53,10 @@ gradle.beforeProject { p ->
 }
 EOFCOLD
   result=0
+  control_options=()
+  if [[ "$POS_SUITE" == 'cold-owner-control' ]]; then control_options+=(-PposColdOwnerDiagnostics=true); fi
   python3 "$here/watched.py" "$report" cold-payment 30 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
-    -I "$stage/cold-payment.init.gradle" :adapters:app-gateway:jvmTest \
+    -I "$stage/cold-payment.init.gradle" "${control_options[@]}" :adapters:app-gateway:jvmTest \
     --tests '*PaidRetailReceiptColdNativeSupportingTest' || result=$?
   python3 "$here/results.py" "$POS_SUITE" "$stage" "$source"
   exit "$result"
