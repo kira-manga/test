@@ -39,12 +39,14 @@ if [[ "$POS_SUITE" == 'retained-reader' ]]; then
   python3 "$here/results.py" retained-reader "$stage" "$source"
   exit "$result"
 fi
-if [[ "$POS_SUITE" == 'cold-payment-control' ]]; then
+if [[ "$POS_SUITE" == 'cold-payment-control' || "$POS_SUITE" == 'cold-owner-control' ]]; then
   cat > "$stage/cold-payment.init.gradle" <<'EOFCOLD'
 gradle.beforeProject { p ->
     if (p.path == ':adapters:app-gateway') {
         p.tasks.withType(Test).configureEach {
             systemProperty 'ukkera.pos.paidReceiptWorkspace', 'true'
+            if (System.getenv('POS_SUITE') == 'cold-owner-control')
+                systemProperty 'ukkera.lan.verifierDiagnostics', 'true'
             testLogging { exceptionFormat "full" }
         }
     }
@@ -54,7 +56,7 @@ EOFCOLD
   python3 "$here/watched.py" "$report" cold-payment 30 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
     -I "$stage/cold-payment.init.gradle" :adapters:app-gateway:jvmTest \
     --tests '*PaidRetailReceiptColdNativeSupportingTest' || result=$?
-  python3 "$here/results.py" cold-payment "$stage" "$source"
+  python3 "$here/results.py" "$POS_SUITE" "$stage" "$source"
   exit "$result"
 fi
 if [[ "$POS_SUITE" == 'opening-control' ]]; then

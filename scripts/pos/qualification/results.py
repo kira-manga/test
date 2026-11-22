@@ -39,7 +39,7 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
-elif mode == "cold-payment":
+elif mode in ("cold-payment-control", "cold-owner-control"):
     suite_dir = run / "adapters/app-gateway/build/test-results/jvmTest"
     entries = list(suite_dir.glob("TEST-*.PaidRetailReceiptColdNativeSupportingTest.xml"))
     report = None
@@ -52,6 +52,11 @@ elif mode == "cold-payment":
     (published / "cold-payment-tests.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
     assert report == {"tests": 2, "failures": 0, "errors": 0, "skipped": 0}
+    if mode == "cold-owner-control":
+        source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
+        count = source.count("Native physical stage: COLD_STREAMED_PREDECESSOR_REUSED")
+        (published / "cold-predecessor-reuse.json").write_text(json.dumps({"reuse_observations": count}) + "\n")
+        assert count > 0, "No observed exact native predecessor reuse"
 elif mode == "retained-reader":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
