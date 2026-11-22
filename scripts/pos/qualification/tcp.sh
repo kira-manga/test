@@ -54,12 +54,33 @@ if location:
     for name in ('network.ready','master.closed','client1.closed','client2.closed',
                  'client1.live-update','client2.live-update','executor.completed'):
         checks['markers'][name]=subprocess.run(
-            ['sudo','-n','test','-f',str(Path(location[-1])/name)],
+            ['sudo','-n','test','-f',str(Path(location[-1])/"exchange"/name)],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ).returncode == 0
 checks['complete']=bool(not rc and checks['host_interface_census_equal'] and len(checks['markers'])==7 and all(checks['markers'].values()))
 if not checks['complete']:
     checks['failure_stage']='native_process' if log.exists() else 'compiled_fixture'
+    role_exits = dict(re.findall(r'(master|client[12]) failed with exit (-?[0-9]+)',text))
+    if role_exits:
+        checks['role_exits']={name:int(value) for name,value in role_exits.items()}
+    checks['executor_exception_types']=sorted(set(re.findall(
+        r'(?m)^(?:Exception in thread "[^"]+" |Caused by: )([A-Za-z0-9_.$]+)(?=:|$)',text)))
+    checks['observed_conditions']=[label for cue,label in (
+        ("Operation not permitted","namespace_operation_not_permitted"),
+        ("An independent JVM failed before network setup","child_before_network"),
+        ("Channel was closed","namespace_owner_closed"),
+    ) if cue in text]
+    if location:
+        observed={}
+        for role in ('master','client1','client2'):
+            child=subprocess.run(['sudo','-n','cat',str(Path(location[-1])/(role+'.log'))],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True, errors='replace')
+            if child.returncode==0:
+                enums=sorted(set(re.findall(r'\b(?:NotConnected|DeadlineExceeded|Unauthorized|Negotiation|NotSent|AwaitingResponse|MayHaveExecuted|STATE_UNCERTAIN|ACTIVE_DEADLINE_REACHED)\b',child.stdout)))
+                if enums:
+                    observed[role]=enums
+        if observed:
+            checks['role_diagnostic_enums']=observed
 (out/'tcp-observed.json').write_text(json.dumps(checks,indent=2)+'\n')
 print(json.dumps(checks))
 sys.exit(0 if checks['complete'] else rc or 1)
