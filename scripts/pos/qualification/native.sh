@@ -16,6 +16,9 @@ cd "$source"
 declare -a gradle=(./gradlew --no-daemon --max-workers=2 --console=plain
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
   -Pkotlin.compiler.execution.strategy=in-process)
+if [[ "$POS_SUITE" == 'recovery' ]]; then
+  exec bash "$here/recovery.sh"
+fi
 if [[ "$POS_SUITE" == 'tcp' ]]; then
   exec bash "$here/tcp.sh"
 fi

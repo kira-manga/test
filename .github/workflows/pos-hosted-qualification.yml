@@ -15,8 +15,12 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp]
+        options: [both, frozen, companion, tcp, recovery]
         default: both
+      recovery_bundle_sha256:
+        description: Digest of the existing exact C22 committed-reopen fixture
+        type: string
+        required: false
       tcp_bundle_sha256:
         description: Digest of the frozen single-Master TCP mapping for the tcp selection
         type: string
@@ -109,6 +113,23 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(payload), mode="r:xz") as source:
               source.extractall(path, filter="data")
           PYTCP
+      - name: Bind the exact C22 supporting fixture
+        if: matrix.suite == 'recovery'
+        env:
+          RECOVERY_SHA: ${{ inputs.recovery_bundle_sha256 }}
+          RECOVERY_INPUT: ${{ secrets.POS_RECOVERY_C22 }}
+        run: |
+          umask 077
+          python3 - <<'PYRECOVERY'
+          import base64,hashlib,io,os,tarfile
+          from pathlib import Path
+          raw=base64.b64decode(os.environ.pop("RECOVERY_INPUT"),validate=True)
+          if hashlib.sha256(raw).hexdigest()!=os.environ["RECOVERY_SHA"]:
+              raise SystemExit("C22 fixture digest mismatch")
+          path=Path(os.environ["RUNNER_TEMP"])/"pos-qualification"/"recovery-inputs"
+          with tarfile.open(fileobj=io.BytesIO(raw),mode="r:xz") as source:
+              source.extractall(path,filter="data")
+          PYRECOVERY
       - name: Prepare Android compile SDK for JVM Gradle configuration
         run: |
           set -euo pipefail
