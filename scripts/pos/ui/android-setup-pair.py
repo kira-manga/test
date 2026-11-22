@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import secrets
 import struct
@@ -127,8 +128,8 @@ class InstalledUi:
     def visible_setup_outcome(self):
         # Keep only fixed statuses from the installed UI, never text field
         # values, credential inputs, branch identifiers or device identities.
-        observed = tuple(str(node.get(field, "")) for node in self.action("tree.snapshot")["nodes"]
-                         for field in ("name", "text"))
+        nodes = self.action("tree.snapshot")["nodes"]
+        observed = tuple(str(node.get(field, "")) for node in nodes for field in ("name", "text"))
         fixed = {
             "company_review": "Confirm this original company",
             "company_retained": "Local company retained",
@@ -143,7 +144,26 @@ class InstalledUi:
             "key_preparation_required": "The original native key preparation must be continued",
             "working": "progress",
         }
-        return [status for status, label in fixed.items() if any(label in value for value in observed)]
+        resumed = adb(self.device, "shell", "dumpsys", "activity", "activities")
+        crashes = adb(self.device, "logcat", "-d", "-b", "crash", "-v", "brief")
+        exceptions = []
+        current_app = False
+        for line in crashes.splitlines():
+            if "Process: " in line:
+                current_app = re.search(r"Process: " + re.escape(PACKAGE) + r"(?:[:,]|$)", line) is not None
+            if current_app:
+                match = re.search(r"\b([a-zA-Z_$][\w.$]*(?:Error|Exception))(?::|$)", line)
+                if match is not None:
+                    exceptions.append(match[1])
+                stack = re.search(r"\bat (com\.ukkera\.pos\.[\w.$]+\([\w.]+:\d+\))", line)
+                if stack is not None and len(exceptions) < 12:
+                    exceptions.append(stack[1])
+        return {
+            "known_labels": [status for status, label in fixed.items() if any(label in value for value in observed)],
+            "pos_accessibility_nodes": sum(node["properties"].get("package") == PACKAGE for node in nodes),
+            "app_is_resumed": any(PACKAGE + "/" in line for line in resumed.splitlines() if "ResumedActivity" in line),
+            "known_app_crash_frames": exceptions[:12],
+        }
 
     def enter(self, label, value, scroll=0):
         # Use the actual focused Android text field. Training inputs use only safe ASCII.
@@ -189,6 +209,8 @@ def master_onboarding(ui, observation):
     ui.enter("New installer password", installer, scroll=6)
     ui.enter("Independent new head password", secrets.token_hex(16), scroll=5)
     ui.choose("I reviewed this original root", scroll=5)
+    adb(ui.device, "logcat", "-b", "crash", "-c")
+    observation["master_pre_submit_state"] = ui.visible_setup_outcome()
     ui.choose("Retain this local company and head", scroll=5)
     observation["master_company_submit_sent"] = True
     try:
