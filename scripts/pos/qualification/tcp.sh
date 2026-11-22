@@ -34,7 +34,7 @@ result=0
 python3 "$GITHUB_WORKSPACE/scripts/pos/qualification/watched.py" "$out" tcp 100 \
   bash "$GITHUB_WORKSPACE/scripts/pos/qualification/tcp.sh" exec || result=$?
 python3 - "$out" "$runtime" "$result" <<'PY'
-import json,re,subprocess,sys
+import hashlib,json,re,subprocess,sys
 from pathlib import Path
 out,runtime=map(Path,sys.argv[1:3])
 rc=int(sys.argv[3])
@@ -51,10 +51,12 @@ checks={
  'two_branch_tested':False,
 }
 if location:
+    mailbox=Path(location[-1])/"exchange"
     for name in ('network.ready','master.closed','client1.closed','client2.closed',
                  'client1.live-update','client2.live-update','executor.completed'):
+        digest=hashlib.sha256(name.encode("utf-8")).hexdigest()
         checks['markers'][name]=subprocess.run(
-            ['sudo','-n','test','-f',str(Path(location[-1])/"exchange"/name)],
+            ['sudo','-n','test','-f',str(mailbox/(digest+".bin"))],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         ).returncode == 0
 checks['complete']=bool(not rc and checks['host_interface_census_equal'] and len(checks['markers'])==7 and all(checks['markers'].values()))
@@ -76,6 +78,10 @@ if not checks['complete']:
             child=subprocess.run(['sudo','-n','cat',str(Path(location[-1])/(role+'.log'))],
                 stdin=subprocess.DEVNULL, capture_output=True, text=True, errors='replace')
             if child.returncode==0:
+                text_log=child.stdout
+                # Keep the complete relevant tail private for the optional sealed diagnostic.
+                # Preserve only logs, never the exchange or native data directory.
+                (runtime/f"{role}.log").write_text(text_log[-2_097_152:])
                 enums=sorted(set(re.findall(r'\b(?:NotConnected|DeadlineExceeded|Unauthorized|Negotiation|NotSent|AwaitingResponse|MayHaveExecuted|STATE_UNCERTAIN|ACTIVE_DEADLINE_REACHED)\b',child.stdout)))
                 if enums:
                     observed[role]=enums
