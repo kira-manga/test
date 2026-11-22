@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, payment-regression]
         default: both
       recovery_bundle_sha256:
         description: Digest of the existing exact C22 committed-reopen fixture
@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || format('["{0}"]', inputs.suite)) }}
+        suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || inputs.suite == 'candidate' && '["paid-prefix","payment-regression"]' || format('["{0}"]', inputs.suite)) }}
     name: Linux x64 / ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262

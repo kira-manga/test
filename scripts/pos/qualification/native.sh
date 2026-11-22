@@ -31,9 +31,20 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
+if [[ "$POS_SUITE" == 'payment-regression' ]]; then
+  result=0
+  python3 "$here/watched.py" "$report" payment-regression 95 "${gradle[@]}" \
+    :adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest \
+    :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest' || result=$?
+  python3 "$here/results.py" payment-regression "$stage" "$source"
+  exit "$result"
+fi
+count=1000
+if [[ "$POS_SUITE" == 'paid-prefix' ]]; then count=8; fi
+export UKKERA_CHB_COUNT="$count"
+expected=$((12 + 7 * count + 5))
 export UKKERA_CHB_RUNNER="$stage/inputs/runner"
 export UKKERA_CHB_ATTEMPT="$HOME/.pos-frozen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-export UKKERA_CHB_COUNT=1000
 mkdir -m700 "$UKKERA_CHB_ATTEMPT"
 printf '%s\n%s\n' "$(< "$stage/inputs/POS-REVISION")" "$(< "$stage/inputs/POS-TREE")" > "$UKKERA_CHB_ATTEMPT/SOURCE"
 cc -shared -fPIC -O2 -Wall -Wextra "$UKKERA_CHB_RUNNER/controlled-utc.c" -o "$UKKERA_CHB_RUNNER/controlled-utc.so"
@@ -55,7 +66,7 @@ if [[ -n "${observer:-}" ]]; then
   touch "$stage/profile.done"
   wait "$observer"
 fi
-if [[ -f "$stage/seed.raw" ]] && grep -Fxq 'CHB_NATIVE_CLOSE seeded-1000' "$stage/seed.raw"; then
+if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$stage/seed.raw"; then
   export UKKERA_CHB_EXISTING=true
   remaining=$((phase_budget - ((SECONDS - started + 59) / 60)))
   if (( remaining > 0 )); then
@@ -76,9 +87,9 @@ printf '%s\n' "$result" > "$UKKERA_CHB_ATTEMPT/EXIT"
 python3 "$here/results.py" frozen "$stage" "$UKKERA_CHB_ATTEMPT"
 test "$result" = 0
 for phase in seed restart; do
-  grep -Fxq 'CHB_EXACT_LOOKUPS_RETURNED 7017' "$stage/$phase.raw"
-  grep -Fxq 'CHB_EXACT_RECEIPTS_RETURNED 1000' "$stage/$phase.raw"
-  grep -Fxq 'CHB_PROTECTED_ORIGINALS_VERIFIED 7017 SALE_COUNT 1000' "$stage/$phase.raw"
+  grep -Fxq "CHB_EXACT_LOOKUPS_RETURNED $expected" "$stage/$phase.raw"
+  grep -Fxq "CHB_EXACT_RECEIPTS_RETURNED $count" "$stage/$phase.raw"
+  grep -Fxq "CHB_PROTECTED_ORIGINALS_VERIFIED $expected SALE_COUNT $count" "$stage/$phase.raw"
 done
-python3 "$UKKERA_CHB_RUNNER/verify-closed-eight-census.py" "$UKKERA_CHB_ATTEMPT" 1000 > "$stage/census.raw"
+python3 "$UKKERA_CHB_RUNNER/verify-closed-eight-census.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/census.raw"
 python3 "$here/results.py" census "$stage" "$UKKERA_CHB_ATTEMPT"

@@ -11,7 +11,7 @@ if mode == "frozen":
     pattern = re.compile(
         r"CHB_(?:STEP_(?:BEGIN|END) [0-9]{1,4} (?:create|begin|start|capture|apply|finalize|receipt/[a-zA-Z0-9_-]+)"
         r"(?: elapsedMillis=[0-9]+)?|PAID_PREFIX [0-9]+|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
-        r"|NATIVE_CLOSE (?:seed(?:ed-1000)?|restart)|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
+        r"|NATIVE_CLOSE (?:seed(?:ed-(?:8|1000))?|restart)|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
         r"|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+|PROTECTED_ORIGINALS_VERIFIED [0-9]+ SALE_COUNT [0-9]+)"
     )
     for phase in ("seed", "restart"):
@@ -36,8 +36,22 @@ elif mode == "census":
     keys = ("paid_sales", "originals", "journal", "audit", "outbox", "both_original_issue_portions_per_sale_verified",
             "receipt_heads", "receipt_events", "receipt_event_portions", "cold_same_process_and_fresh_process", "bound_input_sha256")
     safe = {key: census[key] for key in keys}
+    safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else "8-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
+elif mode == "payment-regression":
+    verification = {}
+    for module in ("adapters/inventory-store", "adapters/sales-store", "core/database"):
+        suite = run / module / "build/test-results/jvmTest"
+        entries = [ET.parse(path).getroot() for path in suite.glob("TEST-*.xml")]
+        verification[module] = {
+            field: sum(int(elem.attrib.get(field, 0)) for elem in entries)
+            for field in ("tests", "failures", "errors", "skipped")
+        }
+    (published / "payment-regression.json").write_text(json.dumps(verification, indent=2) + "\n")
+    print(json.dumps(verification))
+    assert all(row["tests"] > 0 and not any(row[field] for field in ("failures", "errors", "skipped"))
+               for row in verification.values()), "Incomplete inventory, sales or native proof regression"
 else:
     suites = {
         "core:database": "CapturedMatchSourceDeferralNativeSupportingTest",
