@@ -109,3 +109,8 @@ print(json.dumps(report))
 assert all(item['received']==3 for item in observations)
 PY
 headroom
+
+if [[ "${POS_ANDROID_TWO_SETUP:-false}" == true ]]; then
+  python3 scripts/pos/ui/android-setup-pair.py
+  headroom
+fi

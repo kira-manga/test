@@ -1,0 +1,218 @@
+"""Drive two actual training setup sessions bound to different Android guests."""
+
+from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import json
+import os
+from pathlib import Path
+import secrets
+import struct
+import subprocess
+import sys
+import threading
+import time
+
+from agent import Client, ClientError
+from lease import HoldLease
+
+
+PACKAGE = "com.ukkera.pos.local.testing"
+GUESTS = {"master": "emulator-5554", "client": "emulator-5556"}
+WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
+REPORT = WORK / "public"
+LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
+
+
+def adb(device, *args):
+    return subprocess.check_output(["adb", "-s", device, *args], timeout=25, text=True)
+
+
+class InstalledUi:
+    def __init__(self, role, device):
+        self.directory = WORK / role
+        self.directory.mkdir(mode=0o700)
+        self.token_file = self.directory / "token"
+        token = secrets.token_hex(32)
+        self.token_file.write_text(token)
+        self.device = device
+        self.stop = None
+        self.heartbeat = None
+        self.process = None
+        self.env = {
+            **os.environ,
+            "RUNNER_TEMP": str(self.directory),
+            "GITHUB_OUTPUT": str(self.directory / "output"),
+            "GITHUB_STEP_SUMMARY": str(self.directory / "private-summary"),
+            "UI_TEST_TARGET": "android",
+            "UI_TEST_DEVICE": device,
+            "UI_TEST_TOKEN_SHA256": hashlib.sha256(token.encode()).hexdigest(),
+            "UI_TEST_STARTUP_TIMEOUT": "60",
+            "UI_TEST_DURATION": "8",
+            "UI_TEST_TRANSPORT": "local",
+            "UI_TEST_ANDROID_IME": "0",
+            "UI_TEST_LAUNCH": "",
+            "UI_TEST_READY": "",
+        }
+
+    def start(self):
+        adb(self.device, "shell", "am", "start", "-W", "-n",
+            f"{PACKAGE}/com.ukkera.pos.android.MainActivity")
+        with (self.directory / "startup.log").open("wb") as log:
+            self.process = subprocess.Popen([sys.executable, str(LIBRARY / "lifecycle.py"), "start"],
+                                            env=self.env, stdout=log, stderr=subprocess.STDOUT)
+        try:
+            if self.process.wait(timeout=280):
+                raise AssertionError("The selected guest's UI driver did not start")
+        except subprocess.TimeoutExpired:
+            self.process.terminate()
+            raise AssertionError("The selected guest's UI driver startup deadline expired") from None
+        output = (self.directory / "output").read_text().splitlines()
+        (file,) = [Path(line.removeprefix("file=")) for line in output if line.startswith("file=")]
+        assert file.parent.parent == self.directory
+        self.stop = file.parent / "stop"
+        marker = file.parent / HoldLease.heartbeat
+        marker.touch()
+        self.heartbeat = threading.Event()
+
+        def renew():
+            while not self.heartbeat.wait(2):
+                marker.touch()
+
+        threading.Thread(target=renew, daemon=True).start()
+        connection = json.loads(file.read_bytes())
+        assert connection["target"] == "android" and connection["transport"] == "local"
+        self.session = Client(connection, self.token_file)
+        self.session.identify()
+        png = self.session.fetch("/v1/screenshot")
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        self.width, self.height = struct.unpack_from(">II", png, 16)
+
+    def close(self):
+        if self.heartbeat is not None:
+            self.heartbeat.set()
+        if self.stop is not None:
+            self.stop.touch()
+        else:
+            for control in self.directory.glob("ui-session-*"):
+                (control / "stop").touch()
+        self.token_file.unlink(missing_ok=True)
+
+    def action(self, command, **params):
+        reply = self.session.command(command, params)
+        if not reply["ok"]:
+            raise AssertionError(f"Android UI command failed: {command}")
+        return reply["result"]
+
+    def find(self, label, scroll=0, wait=0):
+        for attempt in range(abs(scroll) + 1):
+            try:
+                found = self.action("element.wait", selector={"text_contains": label},
+                                    state="present", timeout_ms=wait or 1400)
+                if found["matched"] == 1:
+                    return found
+                raise AssertionError(f"Ambiguous accessible control: {label}")
+            except ClientError as error:
+                if error.status != 408 or attempt == abs(scroll):
+                    raise AssertionError(f"Expected accessible control is missing: {label}") from None
+            self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
+                        dy=(min(20, self.height // 55) if scroll > 0 else -min(20, self.height // 55)))
+            time.sleep(0.15)
+
+    def choose(self, label, scroll=0):
+        found = self.find(label, scroll=scroll)
+        self.action("element.click", snapshot_id=found["snapshot_id"], id=found["nodes"][0]["id"])
+
+    def enter(self, label, value, scroll=0):
+        # Use the actual focused Android text field. Training inputs use only safe ASCII.
+        assert value and all(c.isascii() and (c.isalnum() or c in "- ") for c in value)
+        self.choose(label, scroll=scroll)
+        adb(self.device, "shell", "input", "text", value.replace(" ", "%s"))
+        adb(self.device, "shell", "input", "keyevent", "KEYCODE_BACK")
+
+    def screenshot(self, name):
+        png = self.session.fetch("/v1/screenshot")
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        # Android may redact secure activity captures. Preserve the exact image
+        # and use the accessibility assertion as the test oracle.
+        (REPORT / f"{name}.png").write_bytes(png)
+        return hashlib.sha256(png).hexdigest()
+
+
+def setup_entry(ui):
+    ui.choose("Set up or inspect the original local branch")
+    ui.find("Choose the setup composition", wait=10000)
+    ui.choose("SYNTHETIC TRAINING 1 - NOT LIVE")
+    ui.find("Synthetic training composition", wait=10000)
+
+
+def master_onboarding(ui, observation):
+    setup_entry(ui)
+    ui.choose("Create a new local company", scroll=5)
+    ui.find("Name the company and both people", scroll=-5)
+    observation["master_form_verified"] = True
+    for label, value in (
+        ("Company name", "Hosted Training Company"),
+        ("Installer name", "Training Installer"),
+        ("Installer login", "traininginstaller"),
+        ("Company head name", "Training Head"),
+        ("Company head login", "traininghead"),
+    ):
+        ui.enter(label, value, scroll=4)
+    ui.choose("OS-isolated AndroidKeyStore", scroll=6)
+    ui.choose("Prepare and review the original company", scroll=5)
+    ui.find("Confirm this original company", scroll=-6)
+    observation["master_original_company_review_verified"] = True
+    ui.enter("New installer password", secrets.token_hex(16), scroll=6)
+    ui.enter("Independent new head password", secrets.token_hex(16), scroll=5)
+    ui.choose("I reviewed this original root", scroll=5)
+    ui.choose("Retain this local company and head", scroll=5)
+    ui.find("Local company retained", scroll=-8)
+    observation["master_native_company_retained"] = True
+    observation["master_screenshot_sha256"] = ui.screenshot("android-master-company-retained")
+
+
+def client_onboarding(ui, observation):
+    setup_entry(ui)
+    ui.choose("Prepare this new device as a pairing target", scroll=7)
+    ui.find("Pair a new physical device", wait=10000)
+    ui.find("Review a distinct new target", scroll=7)
+    observation["client_target_form_verified"] = True
+    observation["client_screenshot_sha256"] = ui.screenshot("android-client-pairing-form")
+
+
+def main():
+    preflight = json.loads((REPORT / "android-lan-preflight.json").read_bytes())
+    assert preflight["distinct_installed_instances"] == 2 and preflight["shared_wifi"]
+    assert all(entry["received"] == 3 for entry in preflight["bidirectional_icmp"])
+    observation = {
+        "pos_source_revision": preflight["pos_source_revision"],
+        "emulator_version": preflight["emulator_version"],
+        "master_form_verified": False,
+        "client_target_form_verified": False,
+        "master_original_company_review_verified": False,
+        "master_native_company_retained": False,
+        "actual_pos_pairing_verified": False,
+        "actual_pos_transaction_verified": False,
+    }
+    sessions = {role: InstalledUi(role, device) for role, device in GUESTS.items()}
+    try:
+        for ui in sessions.values():
+            ui.start()
+        assert sessions["master"].session.session_id != sessions["client"].session.session_id
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            steps = [executor.submit(master_onboarding, sessions["master"], observation),
+                     executor.submit(client_onboarding, sessions["client"], observation)]
+            for step in steps:
+                step.result()
+    except (AssertionError, ClientError) as failure:
+        observation["failed_observation"] = str(failure)
+        raise
+    finally:
+        for ui in sessions.values():
+            ui.close()
+        (REPORT / "android-two-ui.json").write_text(json.dumps(observation, indent=2) + "\n")
+        print(json.dumps(observation, sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()

@@ -11,12 +11,16 @@ on:
         description: Check shared Wi-Fi on two independently installed Android emulator instances
         type: boolean
         default: false
+      android_two_setup:
+        description: Drive both native onboarding UIs on the two Android preflight guests
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 jobs:
   installed-ui:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup
     strategy:
       fail-fast: false
       matrix:
@@ -170,7 +174,7 @@ jobs:
           retention-days: 7
 
   android-lan-preflight:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.android_lan_preflight
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -192,8 +196,22 @@ jobs:
           mkdir -p "$work/public"
           cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
           python3 scripts/pos/ui/prepare-artifact.py
-      - name: Verify shared Wi-Fi between the installed Android instances
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        if: inputs.android_two_setup
+        with:
+          repository: ui-test-actions/ui-test-actions
+          ref: 0c818c5d72e8c30c59bd1287c330a40392bf8e89
+          persist-credentials: false
+          path: ui-client
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        if: inputs.android_two_setup
+        with:
+          python-version: '3.12'
+      - name: Check the installed Android guests and selected UI stages
         shell: bash
+        env:
+          POS_ANDROID_TWO_SETUP: ${{ inputs.android_two_setup }}
+          PYTHONPATH: ${{ github.workspace }}/ui-client
         run: bash scripts/pos/ui/android-lan-preflight.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
