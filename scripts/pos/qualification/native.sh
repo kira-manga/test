@@ -42,13 +42,21 @@ for phase in seed restart; do
 done
 seed=0
 restart=1
-python3 "$here/watched.py" "$report" seed 295 "${gradle[@]}" \
+started=$SECONDS
+phase_budget=337
+python3 "$here/watched.py" "$report" seed "$phase_budget" "${gradle[@]}" \
   -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidSeed || seed=$?
 if [[ -f "$stage/seed.raw" ]] && grep -Fxq 'CHB_NATIVE_CLOSE seeded-1000' "$stage/seed.raw"; then
   export UKKERA_CHB_EXISTING=true
-  restart=0
-  python3 "$here/watched.py" "$report" restart 32 "${gradle[@]}" \
+  remaining=$((phase_budget - ((SECONDS - started + 59) / 60)))
+  if (( remaining > 0 )); then
+    restart=0
+    python3 "$here/watched.py" "$report" restart "$remaining" "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidRestart || restart=$?
+  else
+    restart=124
+    echo "Shared native job time exhausted before fresh-process start."
+  fi
 fi
 : > "$UKKERA_CHB_ATTEMPT/gradle.log"
 if [[ -f "$stage/seed.raw" ]]; then cat "$stage/seed.raw" >> "$UKKERA_CHB_ATTEMPT/gradle.log"; fi
