@@ -124,7 +124,8 @@ done
 # Measure compilation separately from this supporting run's fixed runtime budget.
 # The same resources guard compilation and both native invocations.
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then
-  python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}"     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:jvmTestClasses
+  python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
+    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:jvmTestClasses
 fi
 if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
   python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" &
@@ -172,6 +173,19 @@ if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$st
     restart=124
     echo "Shared native job time exhausted before fresh-process start."
   fi
+fi
+if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+  for phase in seed restart; do
+    recording="$UKKERA_CHB_ATTEMPT/$phase.jfr"
+    if [[ -s "$recording" ]] && (( $(awk '/^MemAvailable:/ {print $2}' /proc/meminfo) >= 2621440 )); then
+      summary="$stage/$phase.jfr.tsv"
+      if timeout 45s "$JAVA_HOME/bin/java" -Xmx128m "$here/PaidJfrSummary.java" "$recording" > "$summary" 2>/dev/null; then
+        mv "$summary" "$report/$phase.jfr.tsv"
+      else
+        echo "$phase JFR summary unavailable."
+      fi
+    fi
+  done
 fi
 : > "$UKKERA_CHB_ATTEMPT/gradle.log"
 if [[ -f "$stage/seed.raw" ]]; then cat "$stage/seed.raw" >> "$UKKERA_CHB_ATTEMPT/gradle.log"; fi
