@@ -34,7 +34,7 @@ result=0
 python3 "$GITHUB_WORKSPACE/scripts/pos/qualification/watched.py" "$out" tcp 100 \
   bash "$GITHUB_WORKSPACE/scripts/pos/qualification/tcp.sh" exec || result=$?
 python3 - "$out" "$runtime" "$result" <<'PY'
-import json,re,sys
+import json,re,subprocess,sys
 from pathlib import Path
 out,runtime=map(Path,sys.argv[1:3])
 rc=int(sys.argv[3])
@@ -53,7 +53,10 @@ checks={
 if location:
     for name in ('network.ready','master.closed','client1.closed','client2.closed',
                  'client1.live-update','client2.live-update','executor.completed'):
-        checks['markers'][name]=(Path(location[-1])/name).is_file()
+        checks['markers'][name]=subprocess.run(
+            ['sudo','-n','test','-f',str(Path(location[-1])/name)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        ).returncode == 0
 checks['complete']=bool(not rc and checks['host_interface_census_equal'] and len(checks['markers'])==7 and all(checks['markers'].values()))
 if not checks['complete']:
     checks['failure_stage']='native_process' if log.exists() else 'compiled_fixture'
