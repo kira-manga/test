@@ -39,6 +39,18 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else "8-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
+elif mode == "opening-control":
+    directory = run / "core/database/build/test-results/jvmTest"
+    entries = list(directory.glob("TEST-*LanBusinessTransactionIntegrationTest*.xml"))
+    results = None
+    if len(entries) == 1:
+        suite = ET.parse(entries[0]).getroot()
+        results = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+        if results["tests"] == 1:
+            (stage / "opening-control.xml").write_bytes(entries[0].read_bytes())
+    (published / "opening-control-tests.json").write_text(json.dumps(results, indent=2) + "\n")
+    print(json.dumps(results))
+    assert results == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
 elif mode == "payment-regression":
     verification = {}
     for module in ("adapters/inventory-store", "adapters/sales-store", "core/database"):

@@ -31,6 +31,28 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
+if [[ "$POS_SUITE" == 'opening-control' ]]; then
+  cat > "$stage/opening-control.init.gradle" <<'EOFCONTROL'
+gradle.beforeProject { p ->
+    if (p.path == ':core:database') {
+        p.tasks.withType(Test).configureEach {
+            testLogging {
+                events "failed"
+                exceptionFormat "full"
+                showCauses true
+                showStackTraces true
+            }
+        }
+    }
+}
+EOFCONTROL
+  result=0
+  python3 "$here/watched.py" "$report" opening-control 45 "${gradle[@]}" \
+    -I "$stage/opening-control.init.gradle" :core:database:jvmTest \
+    --tests '*LanBusinessTransactionIntegrationTest.nativeOpeningReplyLossKeepsOneOriginalAfterReopen*' || result=$?
+  python3 "$here/results.py" opening-control "$stage" "$source"
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'payment-regression' ]]; then
   result=0
   python3 "$here/watched.py" "$report" payment-regression 95 "${gradle[@]}" --continue \

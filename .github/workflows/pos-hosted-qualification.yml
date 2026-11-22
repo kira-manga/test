@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, payment-regression]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, payment-regression, opening-control]
         default: both
       regression_fixtures_sha256:
         description: Digest of the unchanged QA inputs for the payment regression selection
