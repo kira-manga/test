@@ -20,7 +20,7 @@ on:
       paid_profile_count:
         description: Supporting performance prefix length
         type: choice
-        options: ['10', '25', '50', '100', '250', '500']
+        options: ['10', '25', '32', '50', '100', '250', '500']
         default: '10'
       regression_fixtures_sha256:
         description: Digest of the unchanged QA inputs for the payment regression selection
