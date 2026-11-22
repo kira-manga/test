@@ -320,7 +320,19 @@ def activate_master(ui, observation, head_password):
     ui.enter("Confirm employee password", employee, scroll=6)
     ui.choose("I reviewed ALL grants", scroll=10)
     ui.choose("Approve and install the original first account", scroll=6)
-    ui.find("Enroll this original client once", scroll=20)
+    observation["master_first_account_submit_sent"] = True
+    try:
+        ui.find("Enroll this original client once", scroll=20)
+    except AssertionError:
+        state = ui.visible_setup_outcome()
+        observation["master_first_account_initial_outcome"] = state
+        # Exercise the real existing-only inspection after an uncertain response.
+        # Never create another target, submit passwords again or repeat installation.
+        if "company_unresolved" not in state["known_labels"] or "recovery_action" not in state["known_labels"]:
+            raise
+        ui.choose("Inspect the same original again")
+        observation["master_first_account_existing_inspection_sent"] = True
+        ui.find("Enroll this original client once", scroll=12, wait=2500)
     observation["master_native_installation_retained"] = True
     ui.choose("Enroll this original client once")
     # This action is visible only when the existing installation is operational
