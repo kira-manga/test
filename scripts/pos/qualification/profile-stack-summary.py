@@ -20,7 +20,12 @@ categories = {
 profiles = []
 for path in sorted(stage.glob("profile-*.txt")):
     match = re.fullmatch(r"profile-(\d{1,4})-(create|begin|start|capture|apply|finalize|receipt-[12])\.txt", path.name)
-    if not match:
+    cold = re.fullmatch(r"profile-cold-(seed|restart)-(6|15|22|26)s\.txt", path.name)
+    if match:
+        observation = {"sale": int(match[1]), "stage": match[2]}
+    elif cold:
+        observation = {"cold_open": cold[1], "sample_after_seconds": int(cold[2])}
+    else:
         continue
     counts = Counter()
     for block in re.split(r'\n(?=")', path.read_text(errors="replace")):
@@ -30,5 +35,5 @@ for path in sorted(stage.glob("profile-*.txt")):
         for category, needles in categories.items():
             if any(needle in block for needle in needles):
                 counts[category] += 1
-    profiles.append({"sale": int(match[1]), "stage": match[2], "stack_membership_counts": dict(counts)})
+    profiles.append({**observation, "stack_membership_counts": dict(counts)})
 print(json.dumps(profiles, indent=2))

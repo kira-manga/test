@@ -132,23 +132,28 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:jvmTestClasses
 fi
-if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
-  python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$POS_SUITE" &
-  observer=$!
-  trap 'touch "$stage/profile.done"' EXIT
-fi
 seed=0
 restart=1
 started=$SECONDS
 phase_budget=337
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then phase_budget=36; fi
 observe_profile() {
+  if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
+    python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$POS_SUITE" "$1" "$count" &
+    observer=$!
+    trap 'touch "$stage/seed.stack.done" "$stage/restart.stack.done"' EXIT
+  fi
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     python3 "$here/paid-profile-metrics.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$1" &
     profile_pid=$!
   fi
 }
 finish_profile() {
+  if [[ -n "${observer:-}" ]]; then
+    touch "$stage/$1.stack.done"
+    wait "$observer"
+    unset observer
+  fi
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     touch "$stage/$1.profile.done"
     wait "$profile_pid"
@@ -158,13 +163,6 @@ observe_profile seed
 python3 "$here/watched.py" "$report" seed "$phase_budget" "${gradle[@]}" \
   -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidSeed || seed=$?
 finish_profile seed
-if [[ -n "${observer:-}" ]]; then
-  touch "$stage/profile.done"
-  wait "$observer"
-  if [[ "$POS_SUITE" == 'paid-profile' ]]; then
-    python3 "$here/profile-stack-summary.py" "$stage" > "$report/stack-samples.json"
-  fi
-fi
 if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$stage/seed.raw"; then
   export UKKERA_CHB_EXISTING=true
   remaining=$((phase_budget - ((SECONDS - started + 59) / 60)))
@@ -178,6 +176,9 @@ if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$st
     restart=124
     echo "Shared native job time exhausted before fresh-process start."
   fi
+fi
+if [[ "${POS_HISTORY_PROFILE:-0}" == 1 && "$POS_SUITE" == 'paid-profile' ]]; then
+  python3 "$here/profile-stack-summary.py" "$stage" > "$report/stack-samples.json"
 fi
 : > "$UKKERA_CHB_ATTEMPT/gradle.log"
 if [[ -f "$stage/seed.raw" ]]; then cat "$stage/seed.raw" >> "$UKKERA_CHB_ATTEMPT/gradle.log"; fi
