@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+from queue import Empty, Queue
 from pathlib import Path
 import secrets
 import struct
@@ -63,6 +64,7 @@ class InstalledUi:
         # and the actual refusal, regardless of where the last form was scrolled.
         adb(self.device, "shell", "wm", "size", "1080x1920")
         adb(self.device, "shell", "wm", "density", "180")
+        adb(self.device, "shell", "svc", "power", "stayon", "true")
         adb(self.device, "shell", "am", "start", "-W", "-n",
             f"{PACKAGE}/com.ukkera.pos.android.MainActivity")
         with (self.directory / "startup.log").open("wb") as log:
@@ -143,6 +145,13 @@ class InstalledUi:
             "setup_locked": "Review setup again",
             "company_review": "Confirm this original company",
             "company_unresolved": "Original state remains unresolved",
+            "waiting_for_original_journals": "Opening protected original client journals",
+            "journal_unavailable": "Client enrollment or existing journal verification did not complete",
+            "journal_connected": "The original device and first employee journals are connected",
+            "local_device_pairing_available": "Pair a new target through this original Master",
+            "original_installation_retained": "The installation is retained, but no employee is signed in",
+            "device_choices": "Device choices",
+            "live_local_entry": "Employee sign-in",
             "retaining_credentials": "Retaining independent installer/head credentials",
             "recovery_action": "Inspect the same original again",
             "platform_profile": "AndroidKeyStore",
@@ -223,7 +232,7 @@ def setup_entry(ui):
     ui.find("Synthetic training composition", wait=10000)
 
 
-def master_onboarding(ui, observation):
+def master_onboarding(ui, observation, scope_queue):
     setup_entry(ui)
     ui.choose("Create a new local company", scroll=5)
     ui.find("Name the company and both people", scroll=-5)
@@ -261,7 +270,10 @@ def master_onboarding(ui, observation):
         ui.choose("Prepare the original branch allocation", scroll=5)
         ui.find("Original branch allocation", scroll=-10)
         observation["master_branch_review_verified"] = True
-        scope = tuple(ui.review_identifier(label) for label in ("Organization", "Company", "Branch")) if ACTIVATE else None
+        if ACTIVATE:
+            scope = tuple(ui.review_identifier(label) for label in ("Organization", "Company", "Branch"))
+            assert len(set(scope)) == 3
+            scope_queue.put(scope)
         ui.enter("Fresh installer password", installer, scroll=9)
         ui.choose("Prepare only these original branch/device IDs", scroll=5)
         ui.choose("Retain original preparation", scroll=5)
@@ -269,9 +281,7 @@ def master_onboarding(ui, observation):
         ui.find("Original native material retained", scroll=-10)
         observation["master_original_target_retained"] = True
         if ACTIVATE:
-            assert len(set(scope)) == 3
             activate_master(ui, observation, head)
-            return scope
     except (AssertionError, ClientError):
         observation["master_final_known_status"] = ui.visible_setup_outcome()
         raise
@@ -298,9 +308,17 @@ def activate_master(ui, observation, head_password):
     ui.find("Enroll this original client once", scroll=20)
     observation["master_native_installation_retained"] = True
     ui.choose("Enroll this original client once")
-    ui.find("The original device and first employee journals are connected", scroll=-12, wait=2500)
+    # This action is visible only when the existing installation is operational
+    # and the actual first device and employee journals have attached.
+    try:
+        ui.find("Pair a new target through this original Master", scroll=15, wait=1900)
+    except AssertionError:
+        current = ui.visible_setup_outcome()
+        observation["master_first_journal_observation"] = current
+        if "setup_locked" in current["known_labels"]:
+            ui.choose("Review setup again", scroll=-14)
+        ui.find("Pair a new target through this original Master", scroll=12, wait=2500)
     observation["master_original_client_journals_connected"] = True
-    ui.find("Pair a new target through this original Master", scroll=14)
     observation["master_device_pairing_available"] = True
     observation["master_activated_screenshot_sha256"] = ui.screenshot("android-master-activated")
 
@@ -349,13 +367,25 @@ def main():
         for ui in sessions.values():
             ui.start()
         assert sessions["master"].session.session_id != sessions["client"].session.session_id
+        scope_queue = Queue(maxsize=1)
         with ThreadPoolExecutor(max_workers=2) as executor:
-            master = executor.submit(master_onboarding, sessions["master"], observation)
+            master = executor.submit(master_onboarding, sessions["master"], observation, scope_queue)
             client = executor.submit(client_onboarding, sessions["client"], observation)
             client.result()
-            scope = master.result()
-        if ACTIVATE:
-            prepare_client_target(sessions["client"], observation, scope)
+            if ACTIVATE:
+                deadline = time.monotonic() + 175
+                while True:
+                    try:
+                        scope = scope_queue.get(timeout=1)
+                        break
+                    except Empty:
+                        if master.done():
+                            master.result()
+                            raise AssertionError("The original reviewed Master scope was not published")
+                        if time.monotonic() >= deadline:
+                            raise AssertionError("Master scope did not become available for the distinct target")
+                prepare_client_target(sessions["client"], observation, scope)
+            master.result()
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
         raise
