@@ -152,6 +152,12 @@ class InstalledUi:
             "journal_unavailable": "Client enrollment or existing journal verification did not complete",
             "journal_connected": "The original device and first employee journals are connected",
             "local_device_pairing_available": "Pair a new target through this original Master",
+            "pairing_page": "Pair a new physical device",
+            "pairing_context_pending": "Reading the exact original pairing context",
+            "pairing_context_unavailable": "The original pairing context is unavailable",
+            "pairing_import_stage": "Import the original target identity for review",
+            "pairing_import_control": "Import the target identity document (I)",
+            "runtime_publication_held": "no usable local client is currently published",
             "original_installation_retained": "The installation is retained, but no employee is signed in",
             "device_choices": "Device choices",
             "live_local_entry": "Employee sign-in",
@@ -431,7 +437,35 @@ def transfer_document(source, destination, export_action, import_action, filenam
 
 def verify_pairing_proof(master, client, observation):
     master.choose("Pair a new target through this original Master", scroll=12)
-    master.find("Import the target identity document (I)", scroll=18, wait=1500)
+    observation["master_pairing_action_sent"] = True
+    transitions = []
+    observation["master_pairing_context"] = transitions
+    began = time.monotonic()
+    previous = None
+    # This is the existing 30-second application watch plus time to observe
+    # the result. It does not repeat the action or change the native deadline.
+    while time.monotonic() - began <= 37:
+        snapshot = master.visible_setup_outcome()
+        labels = snapshot["known_labels"]
+        if labels != previous:
+            transitions.append({"observation_seconds": round(time.monotonic() - began, 2), **snapshot})
+            previous = labels
+        if "pairing_import_control" in labels or "pairing_import_stage" in labels:
+            break
+        if "pairing_context_unavailable" in labels or "runtime_publication_held" in labels:
+            raise AssertionError("Installed Master did not publish the original pairing context")
+        if not snapshot["app_is_resumed"] or snapshot["known_app_crash_frames"]:
+            raise AssertionError("The installed Master stopped while reading the original pairing context")
+        if "pairing_page" in labels and "pairing_context_pending" not in labels:
+            # The import button is after setup notices in the scrollable view.
+            master.action("pointer.scroll", x=master.width // 2, y=master.height // 2, dy=14)
+        time.sleep(0.7)
+    try:
+        master.find("Import the target identity document (I)", scroll=18, wait=1500)
+    except (AssertionError, ClientError):
+        observation["master_pairing_context_after_search"] = master.visible_setup_outcome()
+        raise
+    observation["master_original_pairing_context_verified"] = True
     transfer_document(client, master, "Re-read and export original identity (I)", "Import the target identity document (I)",
         "ukkera-device-sdk-identity-v2.bin", 16_384, observation, "identity")
     master.choose("I reviewed this complete native/SDK identity", scroll=20)
