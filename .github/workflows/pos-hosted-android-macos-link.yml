@@ -1,0 +1,166 @@
+name: POS Android and macOS isolated test link (manual, auxiliary)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  paired-link:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
+    timeout-minutes: 28
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: android
+            network_side: android
+            runner: ubuntu-24.04
+            revision: 46b89828ea133d9d5f7f802f2fa5546bbe3c31a6
+          - target: macos
+            network_side: ios
+            runner: macos-26
+            revision: 3683670b29bb4cac7af7f0afcccd84c50627dca7
+    runs-on: ${{ matrix.runner }}
+    env:
+      POS_UI_TARGET: ${{ matrix.target }}
+      POS_UI_REVISION: ${{ matrix.revision }}
+      LAN_TARGET: ${{ matrix.network_side }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            scripts/pos/ui
+            testing-inputs
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ui-test-actions/ui-test-actions
+          ref: c7d0002a0614da7166f2abef708dc173362aa535
+          path: verified-bridge
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Bind the retained installer and require both runner reserves
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/pos-ui"
+          mkdir -p "$work/public"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import platform
+          import re
+          import shutil
+          import subprocess
+          if platform.system() == "Linux":
+              ram = int(re.search(r"MemAvailable:\s+(\d+)", Path("/proc/meminfo").read_text())[1]) * 1024
+          else:
+              assert platform.machine() == "arm64"
+              vm = subprocess.check_output(["vm_stat"], text=True)
+              page = int(re.search(r"page size of (\d+) bytes", vm)[1])
+              ram = sum(int(re.search(f"Pages {name}:\\s+(\\d+)", vm)[1])
+                        for name in ("free", "inactive", "speculative")) * page
+          disk = shutil.disk_usage(os.environ["RUNNER_TEMP"]).free
+          assert ram >= 7 * 1024**3 and disk >= 6 * 1024**3
+          PY
+          if [[ "$POS_UI_TARGET" == android ]]; then
+            cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
+          else
+            gh run download 44235850072 --repo kira-manga/test --name pos-macos-dmg-arm64-44235850072-1 --dir "$work/artifact"
+          fi
+          python scripts/pos/ui/prepare-artifact.py
+      - name: Generate the lane-local certificate and start the upstream rendezvous
+        working-directory: verified-bridge
+        run: |
+          set -euo pipefail
+          bash verification/mobile-lan/trial.sh identity "$LAN_TARGET"
+          if [[ "$LAN_TARGET" == android ]]; then
+            bash verification/mobile-lan/trial.sh rendezvous android
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lan-${{ matrix.network_side }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/mobile-lan/public
+          if-no-files-found: error
+          retention-days: 1
+      - name: Boot the Android guest on the proven Wi-Fi TAP
+        if: matrix.target == 'android'
+        working-directory: verified-bridge
+        env:
+          LAN_KEEP: '1'
+        run: bash verification/mobile-lan/preflight-android.sh
+      - name: Prepare the equivalent isolated macOS host link
+        if: matrix.target == 'macos'
+        run: |
+          set -euo pipefail
+          ! ifconfig feth80 >/dev/null 2>&1
+          ! ifconfig feth81 >/dev/null 2>&1
+          sudo -n ifconfig feth80 create
+          touch "$RUNNER_TEMP/pos-feth80-created"
+          sudo -n ifconfig feth81 create
+          touch "$RUNNER_TEMP/pos-feth81-created"
+          sudo -n ifconfig feth80 peer feth81
+          sudo -n ifconfig feth80 inet 192.168.137.2 netmask 255.255.255.0 up
+          sudo -n ifconfig feth81 up
+      - name: Install the retained signed app on the actual guest or macOS host
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/pos-ui"
+          if [[ "$POS_UI_TARGET" == android ]]; then
+            adb -s emulator-5554 install "$(< "$work/package-path")"
+            adb -s emulator-5554 shell pm path com.ukkera.pos.local.testing | grep -q '^package:'
+          else
+            mkdir "$work/mount" "$work/installed"
+            hdiutil attach -nobrowse -readonly -mountpoint "$work/mount" "$(< "$work/package-path")" >/dev/null
+            trap 'hdiutil detach "$work/mount" >/dev/null' EXIT
+            apps=("$work/mount/"*.app)
+            [[ "${#apps[@]}" == 1 && -d "${apps[0]}" ]]
+            ditto "${apps[0]}" "$work/installed/UkkeraPOS.app"
+            codesign --verify --deep --strict "$work/installed/UkkeraPOS.app"
+          fi
+      - name: Connect the app network lanes with the upstream mutually authenticated transport
+        working-directory: verified-bridge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash verification/mobile-lan/trial.sh bridge "$LAN_TARGET"
+      - name: Verify both directions on the actual installed-instance network
+        working-directory: verified-bridge
+        run: |
+          set -euo pipefail
+          bash verification/mobile-lan/trial.sh verify "$LAN_TARGET"
+          root="$RUNNER_TEMP/mobile-lan-preflight"
+          if [[ "$POS_UI_TARGET" == android ]]; then
+            report="$root/android-to-mac.txt"
+          else
+            report="$root/mac-to-android.txt"
+          fi
+          grep -Eq '3 packets transmitted, 3 (packets )?received' "$report"
+          cp "$report" "$RUNNER_TEMP/pos-ui/public/"
+          printf '{"target":"%s","revision":"%s","opposite_peer_replies":3,"pos_pairing_observed":false}\n'             "$POS_UI_TARGET" "$POS_UI_REVISION" > "$RUNNER_TEMP/pos-ui/public/network.json"
+      - name: Retire only this job's authenticated bridge, interfaces and ephemeral credentials
+        if: always()
+        working-directory: verified-bridge
+        run: |
+          set -euo pipefail
+          if [[ ! -d "$RUNNER_TEMP/mobile-lan" ]]; then exit 0; fi
+          if [[ "$LAN_TARGET" == android || ( -f "$RUNNER_TEMP/pos-feth80-created" && -f "$RUNNER_TEMP/pos-feth81-created" ) ]]; then
+            bash verification/mobile-lan/trial.sh cleanup "$LAN_TARGET"
+          elif [[ -f "$RUNNER_TEMP/pos-feth80-created" ]]; then
+            sudo -n ifconfig feth80 destroy
+            rm -f "$RUNNER_TEMP/mobile-lan/key.pem"
+          else
+            rm -f "$RUNNER_TEMP/mobile-lan/key.pem"
+          fi
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pos-hosted-link-${{ matrix.target }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-ui/public
+          retention-days: 7
