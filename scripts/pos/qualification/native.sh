@@ -84,8 +84,23 @@ EOFCONTROL
   exit "$result"
 fi
 if [[ "$POS_SUITE" == 'payment-regression' ]]; then
+  cat > "$stage/native-regression-diagnostics.init.gradle" <<'EOFREGRESSION'
+gradle.beforeProject { p ->
+    if (p.path == ':core:database') {
+        p.tasks.withType(Test).configureEach {
+            systemProperty 'ukkera.lan.verifierDiagnostics', 'true'
+            testLogging {
+                events 'failed'
+                exceptionFormat 'full'
+                showStandardStreams = true
+            }
+        }
+    }
+}
+EOFREGRESSION
   result=0
   python3 "$here/watched.py" "$report" payment-regression 95 bash "$here/runner-owned-temp.sh" "${gradle[@]}" --continue \
+    -I "$stage/native-regression-diagnostics.init.gradle" \
     :adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest \
     :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest' || result=$?
   python3 "$here/results.py" payment-regression "$stage" "$source"
