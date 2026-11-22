@@ -56,6 +56,11 @@ class InstalledUi:
         }
 
     def start(self):
+        # The setup review contains long, scrollable groups. Use a fixed tablet
+        # viewport for these emulators so failure observations include headings
+        # and the actual refusal, regardless of where the last form was scrolled.
+        adb(self.device, "shell", "wm", "size", "1080x1920")
+        adb(self.device, "shell", "wm", "density", "180")
         adb(self.device, "shell", "am", "start", "-W", "-n",
             f"{PACKAGE}/com.ukkera.pos.android.MainActivity")
         with (self.directory / "startup.log").open("wb") as log:
@@ -131,7 +136,20 @@ class InstalledUi:
         nodes = self.action("tree.snapshot")["nodes"]
         observed = tuple(str(node.get(field, "")) for node in nodes for field in ("name", "text"))
         fixed = {
+            "setup_page": "Synthetic training composition",
+            "entry_page": "Set up or inspect the original local branch",
+            "setup_locked": "Review setup again",
             "company_review": "Confirm this original company",
+            "company_unresolved": "Original state remains unresolved",
+            "retaining_credentials": "Retaining independent installer/head credentials",
+            "recovery_action": "Inspect the same original again",
+            "platform_profile": "AndroidKeyStore",
+            "branch_form": "Original branch name",
+            "head_enrollment_required": "The original independent head enrollment is required",
+            "original_action_required": "The exact retained original action is required",
+            "capacity_exhausted": "Required durable capacity is unavailable",
+            "close_unconfirmed": "Actual native close is unconfirmed",
+            "full_installation_held": "Full original installation and operational admission remain held",
             "company_retained": "Local company retained",
             "original_target_retained": "Original native material retained",
             "busy": "Original work is still owned or busy",
@@ -142,7 +160,6 @@ class InstalledUi:
             "uncertain": "Original state is uncertain",
             "unavailable": "The native owner is unavailable",
             "key_preparation_required": "The original native key preparation must be continued",
-            "working": "progress",
         }
         resumed = adb(self.device, "shell", "dumpsys", "activity", "activities")
         crashes = adb(self.device, "logcat", "-d", "-b", "crash", "-v", "brief")
