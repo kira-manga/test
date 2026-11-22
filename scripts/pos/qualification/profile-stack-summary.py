@@ -12,13 +12,14 @@ categories = {
     "stock_producer": ("LocalStockRelationalInspection", "StockOriginalTraversal", "StockReadProducerProof"),
     "catalogue": ("LocalCatalogUnitAuthority", "LocalCatalogPublication"),
     "crypto": ("java.security.", "sun.security.", "org.bouncycastle."),
-    "journal": ("SelfOwnedNativeHistory", "SelfOwnedHistoryStorage", "NativeHistoryJournal"),
+    "journal": ("SelfOwnedNativeHistory", "SelfOwnedHistoryStorage", "NativeHistoryJournal", "SelfOwnedHistoryAnchor"),
+    "serialization": ("kotlinx.serialization.", "NativeHistoryWriterV2"),
     "payment_producer": ("NormalizedPaymentTraversal", "LocalFinancialEvidenceV3"),
     "history_replay": ("RuntimeHistoryScanner", "RuntimeHistoryColdReplay"),
 }
 profiles = []
 for path in sorted(stage.glob("profile-*.txt")):
-    match = re.fullmatch(r"profile-(\d{1,4})-(start|apply)\.txt", path.name)
+    match = re.fullmatch(r"profile-(\d{1,4})-(create|begin|start|capture|apply|finalize|receipt-[12])\.txt", path.name)
     if not match:
         continue
     counts = Counter()
