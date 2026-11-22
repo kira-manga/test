@@ -15,6 +15,11 @@ on:
         description: Drive both native onboarding UIs on the two Android preflight guests
         type: boolean
         default: false
+      android_setup_stage:
+        description: Continue to native first-account and target identity activation when selected
+        type: choice
+        options: [allocation, activate]
+        default: allocation
       windows_sparse_service:
         description: Check real Windows external package identity and native service association
         type: boolean
@@ -219,6 +224,7 @@ jobs:
         shell: bash
         env:
           POS_ANDROID_TWO_SETUP: ${{ inputs.android_two_setup }}
+          POS_ANDROID_SETUP_STAGE: ${{ inputs.android_setup_stage }}
           PYTHONPATH: ${{ github.workspace }}/ui-client
         run: bash scripts/pos/ui/android-lan-preflight.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

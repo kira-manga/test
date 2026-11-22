@@ -22,6 +22,8 @@ GUESTS = {"master": "emulator-5554", "client": "emulator-5556"}
 WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
 LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
+ACTIVATE = os.environ.get("POS_ANDROID_SETUP_STAGE") == "activate"
+UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
 def adb(device, *args):
@@ -189,6 +191,14 @@ class InstalledUi:
         adb(self.device, "shell", "input", "text", value.replace(" ", "%s"))
         adb(self.device, "shell", "input", "keyevent", "KEYCODE_BACK")
 
+    def review_identifier(self, label):
+        self.find(label, scroll=6)
+        nodes = self.action("tree.snapshot")["nodes"]
+        (offset,) = [n for n, node in enumerate(nodes) if label in (node.get("name"), node.get("text"))]
+        (identifier,) = [value for value in (nodes[offset + 1].get("name"), nodes[offset + 1].get("text"))
+                         if isinstance(value, str) and UUID.fullmatch(value)]
+        return identifier
+
     def screenshot(self, name):
         png = self.session.fetch("/v1/screenshot")
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
@@ -223,8 +233,9 @@ def master_onboarding(ui, observation):
     ui.find("Confirm this original company", scroll=-6)
     observation["master_original_company_review_verified"] = True
     installer = secrets.token_hex(16)
+    head = secrets.token_hex(16)
     ui.enter("New installer password", installer, scroll=6)
-    ui.enter("Independent new head password", secrets.token_hex(16), scroll=5)
+    ui.enter("Independent new head password", head, scroll=5)
     ui.choose("I reviewed this original root", scroll=5)
     adb(ui.device, "logcat", "-b", "crash", "-c")
     observation["master_pre_submit_state"] = ui.visible_setup_outcome()
@@ -242,15 +253,64 @@ def master_onboarding(ui, observation):
         ui.choose("Prepare the original branch allocation", scroll=5)
         ui.find("Original branch allocation", scroll=-10)
         observation["master_branch_review_verified"] = True
+        scope = tuple(ui.review_identifier(label) for label in ("Organization", "Company", "Branch")) if ACTIVATE else None
         ui.enter("Fresh installer password", installer, scroll=9)
         ui.choose("Prepare only these original branch/device IDs", scroll=5)
         ui.choose("Retain original preparation", scroll=5)
         ui.choose("Prepare only the original target", scroll=8)
         ui.find("Original native material retained", scroll=-10)
         observation["master_original_target_retained"] = True
+        if ACTIVATE:
+            assert len(set(scope)) == 3
+            activate_master(ui, observation, head)
+            return scope
     except (AssertionError, ClientError):
         observation["master_final_known_status"] = ui.visible_setup_outcome()
         raise
+
+
+def activate_master(ui, observation, head_password):
+    ui.choose("Define the first employee account", scroll=9)
+    ui.find("Define the first LOCAL employee", scroll=-12)
+    ui.enter("Exact employee login", "trainingemployee", scroll=9)
+    ui.choose("Local administration: employees and device admission", scroll=11)
+    ui.choose("Add 3 grants to the review", scroll=8)
+    ui.enter("Access lifetime in milliseconds", "300000", scroll=20)
+    ui.enter("Work lifetime in milliseconds", "900000", scroll=10)
+    ui.choose("Review exactly these selections", scroll=16)
+    ui.choose("Review the COMPLETE account definition", scroll=5)
+    ui.find("Review the COMPLETE original installation", scroll=-6)
+    observation["master_first_account_definition_reviewed"] = True
+    employee = secrets.token_hex(16)
+    ui.enter("Existing company-head password", head_password, scroll=44)
+    ui.enter("New first-employee password", employee, scroll=6)
+    ui.enter("Confirm employee password", employee, scroll=6)
+    ui.choose("I reviewed ALL grants", scroll=10)
+    ui.choose("Approve and install the original first account", scroll=6)
+    ui.find("Enroll this original client once", scroll=20)
+    observation["master_native_installation_retained"] = True
+    ui.choose("Enroll this original client once")
+    ui.find("The original device and first employee journals are connected", scroll=-12, wait=2500)
+    observation["master_original_client_journals_connected"] = True
+    ui.find("Pair a new target through this original Master", scroll=14)
+    observation["master_device_pairing_available"] = True
+    observation["master_activated_screenshot_sha256"] = ui.screenshot("android-master-activated")
+
+
+def prepare_client_target(ui, observation, scope):
+    for label, identifier in zip(("Organization UUID", "Company UUID", "Branch UUID"), scope, strict=True):
+        ui.enter(label, identifier, scroll=9)
+    ui.enter("Private local device name", "Hosted Android Training Client", scroll=9)
+    ui.choose("Review these exact target inputs", scroll=9)
+    ui.choose("I reviewed the exact branch, capabilities, AppId and private name", scroll=20)
+    ui.choose("Retain intent and prepare this new target", scroll=10)
+    ui.find("The original native target is retained", scroll=-18, wait=2500)
+    observation["client_native_target_retained"] = True
+    ui.choose("Acquire only this target's actual original SDK identity", scroll=18)
+    ui.choose("Retain intent and acquire original SDK identity", scroll=9)
+    ui.find("The exact original identity is available for document export", scroll=-18, wait=2500)
+    observation["client_sdk_identity_retained"] = True
+    observation["client_identity_screenshot_sha256"] = ui.screenshot("android-client-native-retained")
 
 
 def client_onboarding(ui, observation):
@@ -282,10 +342,12 @@ def main():
             ui.start()
         assert sessions["master"].session.session_id != sessions["client"].session.session_id
         with ThreadPoolExecutor(max_workers=2) as executor:
-            steps = [executor.submit(master_onboarding, sessions["master"], observation),
-                     executor.submit(client_onboarding, sessions["client"], observation)]
-            for step in steps:
-                step.result()
+            master = executor.submit(master_onboarding, sessions["master"], observation)
+            client = executor.submit(client_onboarding, sessions["client"], observation)
+            client.result()
+            scope = master.result()
+        if ACTIVATE:
+            prepare_client_target(sessions["client"], observation, scope)
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
         raise
