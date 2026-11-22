@@ -15,8 +15,12 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion]
+        options: [both, frozen, companion, tcp]
         default: both
+      tcp_bundle_sha256:
+        description: Digest of the frozen single-Master TCP mapping for the tcp selection
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -87,6 +91,24 @@ jobs:
           EXPECTED_REVISION: ${{ inputs.source_revision }}
           EXPECTED_BUNDLE: ${{ inputs.bundle_sha256 }}
         run: umask 077 && python3 scripts/pos/qualification/stage.py verify
+      - name: Bind the existing frozen TCP mapping
+        if: matrix.suite == 'tcp'
+        env:
+          TCP_SHA: ${{ inputs.tcp_bundle_sha256 }}
+          TCP_0: ${{ secrets.POS_TCP_0 }}
+          TCP_1: ${{ secrets.POS_TCP_1 }}
+        run: |
+          umask 077
+          python3 - <<'PYTCP'
+          import base64, hashlib, io, os, tarfile
+          from pathlib import Path
+          payload = b''.join(base64.b64decode(os.environ.pop(name), validate=True) for name in ("TCP_0", "TCP_1"))
+          if hashlib.sha256(payload).hexdigest() != os.environ["TCP_SHA"]:
+              raise SystemExit("TCP source bundle digest mismatch")
+          path = Path(os.environ["RUNNER_TEMP"]) / "pos-qualification" / "tcp-inputs"
+          with tarfile.open(fileobj=io.BytesIO(payload), mode="r:xz") as source:
+              source.extractall(path, filter="data")
+          PYTCP
       - name: Prepare Android compile SDK for JVM Gradle configuration
         run: |
           set -euo pipefail
