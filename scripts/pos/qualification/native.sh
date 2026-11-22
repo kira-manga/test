@@ -39,7 +39,7 @@ if [[ "$POS_SUITE" == 'retained-reader' ]]; then
   python3 "$here/results.py" retained-reader "$stage" "$source"
   exit "$result"
 fi
-if [[ "$POS_SUITE" == 'cold-payment-control' || "$POS_SUITE" == 'cold-owner-control' ]]; then
+if [[ "$POS_SUITE" == 'cold-payment-control' || "$POS_SUITE" == 'cold-owner-control' || "$POS_SUITE" == 'cold-literal-control' ]]; then
   cat > "$stage/cold-payment.init.gradle" <<'EOFCOLD'
 gradle.beforeProject { p ->
     if (p.path == ':adapters:app-gateway') {
@@ -54,7 +54,7 @@ gradle.beforeProject { p ->
 EOFCOLD
   result=0
   control_options=()
-  if [[ "$POS_SUITE" == 'cold-owner-control' ]]; then control_options+=(-PposColdOwnerDiagnostics=true); fi
+  if [[ "$POS_SUITE" == 'cold-owner-control' || "$POS_SUITE" == 'cold-literal-control' ]]; then control_options+=(-PposColdOwnerDiagnostics=true); fi
   python3 "$here/watched.py" "$report" cold-payment 30 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
     -I "$stage/cold-payment.init.gradle" "${control_options[@]}" :adapters:app-gateway:jvmTest \
     --tests '*PaidRetailReceiptColdNativeSupportingTest' || result=$?

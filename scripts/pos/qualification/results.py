@@ -39,7 +39,7 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
-elif mode in ("cold-payment-control", "cold-owner-control"):
+elif mode in ("cold-payment-control", "cold-owner-control", "cold-literal-control"):
     suite_dir = run / "adapters/app-gateway/build/test-results/jvmTest"
     entries = list(suite_dir.glob("TEST-*.PaidRetailReceiptColdNativeSupportingTest.xml"))
     report = None
@@ -57,6 +57,11 @@ elif mode in ("cold-payment-control", "cold-owner-control"):
         count = source.count("Native physical stage: COLD_STREAMED_PREDECESSOR_REUSED")
         (published / "cold-predecessor-reuse.json").write_text(json.dumps({"reuse_observations": count}) + "\n")
         assert count > 0, "No observed exact native predecessor reuse"
+    if mode == "cold-literal-control":
+        source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
+        count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")
+        (published / "cold-literal-validation.json").write_text(json.dumps({"validated_streams": count}) + "\n")
+        assert count > 0, "No completed exact cold literal stream verification was observed"
 elif mode == "retained-reader":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
