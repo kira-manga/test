@@ -35,17 +35,26 @@ if (( $(df -B1 --output=avail "$work" | tail -1) < 6442450944 )); then
   exit 75
 fi
 sudo chmod a+rw /dev/kvm
-"$sdk/sdkmanager" emulator "$image"
+"$sdk/sdkmanager" --sdk_root="$ANDROID_HOME" emulator "$image"
 emulator="$ANDROID_HOME/emulator/emulator"
-"$emulator" -version > "$work/emulator-version.txt" 2>&1
-python3 - "$work/emulator-version.txt" <<'PY'
+if [[ ! -x "$emulator" ]]; then
+  echo 'The SDK install did not provide the requested emulator executable.'
+  exit 127
+fi
+python3 - "$ANDROID_HOME/emulator/source.properties" "$work/emulator-version.txt" <<'PYVERSION'
 from pathlib import Path
 import re, sys
-line = Path(sys.argv[1]).read_text().splitlines()[0]
-match = re.search(r'version (\d+)\.(\d+)', line)
-if match is None or tuple(map(int, match.groups())) < (36, 5):
+properties = Path(sys.argv[1]).read_text()
+match = re.search(r'^Pkg.Revision\s*=\s*([0-9]+)\.([0-9]+)\.([0-9]+)', properties, re.M)
+if match is None or tuple(map(int, match.groups()[:2])) < (36, 5):
     raise SystemExit('This scenario requires Android Emulator 36.5 or later for shared Wi-Fi.')
-PY
+Path(sys.argv[2]).write_text('.'.join(match.groups())+'\n')
+PYVERSION
+if ! "$emulator" -accel-check > "$work/emulator-acceleration.txt" 2>&1; then
+  head -6 "$work/emulator-acceleration.txt"
+  exit 1
+fi
+head -6 "$work/emulator-acceleration.txt"
 adb start-server
 for port in 5554 5556; do
   printf 'no\n' | "$sdk/avdmanager" create avd --force --name "pos-lan-$port" --package "$image"
@@ -56,7 +65,11 @@ done
 for port in 5554 5556; do
   serial="emulator-$port"
   until [[ "$(timeout 5 adb -s "$serial" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; do
-    kill -0 "$(cat "$work/emulator-$port.pid")"
+    if ! kill -0 "$(cat "$work/emulator-$port.pid")" 2>/dev/null; then
+      echo "$serial exited before Android booted."
+      head -12 "$work/emulator-$port.log"
+      exit 1
+    fi
     headroom
     sleep 3
   done
@@ -74,7 +87,7 @@ import ipaddress,json,re,subprocess,sys
 work = Path(sys.argv[1])
 serials = ('emulator-5554','emulator-5556')
 nodes = []
-version = re.search(r'version ([0-9.]+)', (work/'emulator-version.txt').read_text().splitlines()[0])[1]
+version = (work/'emulator-version.txt').read_text().strip()
 for serial in serials:
     output = subprocess.check_output(['adb','-s',serial,'shell','ip','-4','addr','show','wlan0'], text=True, timeout=12)
     (address,) = re.findall(r'\binet ([\d.]+/\d+)',output)
