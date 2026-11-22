@@ -21,6 +21,10 @@ on:
         description: Digest of the existing exact C22 committed-reopen fixture
         type: string
         required: false
+      diagnostic_certificate:
+        description: Optional ephemeral public X.509 DER recipient for encrypted fixture failure logs
+        type: string
+        required: false
       tcp_bundle_sha256:
         description: Digest of the frozen single-Master TCP mapping for the tcp selection
         type: string
@@ -148,3 +152,15 @@ jobs:
           path: ${{ runner.temp }}/pos-qualification/public
           if-no-files-found: warn
           retention-days: 14
+      - name: Seal designated failure logs to the supplied recipient
+        if: failure() && inputs.diagnostic_certificate != ''
+        env:
+          DIAGNOSTIC_CERTIFICATE: ${{ inputs.diagnostic_certificate }}
+        run: bash scripts/pos/qualification/seal-failure.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: failure() && inputs.diagnostic_certificate != ''
+        with:
+          name: pos-failure-envelope-${{ matrix.suite }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/pos-qualification/failure.cms
+          if-no-files-found: ignore
+          retention-days: 1
