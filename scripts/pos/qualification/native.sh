@@ -63,6 +63,9 @@ if [[ "$POS_SUITE" == 'payment-regression' ]]; then
 fi
 count=1000
 if [[ "$POS_SUITE" == 'paid-prefix' ]]; then count=8; fi
+if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+  case "$POS_PAID_PROFILE_COUNT" in 10|25|50|100|250|500) count=$POS_PAID_PROFILE_COUNT ;; *) exit 2 ;; esac
+fi
 export UKKERA_CHB_COUNT="$count"
 expected=$((12 + 7 * count + 5))
 export UKKERA_CHB_RUNNER="$stage/inputs/runner"
@@ -82,8 +85,26 @@ seed=0
 restart=1
 started=$SECONDS
 phase_budget=337
+if [[ "$POS_SUITE" == 'paid-profile' ]]; then phase_budget=36; fi
+observe_profile() {
+  if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+    python3 "$here/paid-profile-metrics.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$1" &
+    profile_pid=$!
+  fi
+}
+finish_profile() {
+  if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+    touch "$stage/$1.profile.done"
+    wait "$profile_pid"
+    if [[ -s "$UKKERA_CHB_ATTEMPT/$1.jfr" ]]; then
+      java "$here/PaidHistoryProfile.java" "$UKKERA_CHB_ATTEMPT/$1.jfr" > "$report/$1.samples.tsv"
+    fi
+  fi
+}
+observe_profile seed
 python3 "$here/watched.py" "$report" seed "$phase_budget" "${gradle[@]}" \
   -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidSeed || seed=$?
+finish_profile seed
 if [[ -n "${observer:-}" ]]; then
   touch "$stage/profile.done"
   wait "$observer"
@@ -93,8 +114,10 @@ if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$st
   remaining=$((phase_budget - ((SECONDS - started + 59) / 60)))
   if (( remaining > 0 )); then
     restart=0
+    observe_profile restart
     python3 "$here/watched.py" "$report" restart "$remaining" "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidRestart || restart=$?
+    finish_profile restart
   else
     restart=124
     echo "Shared native job time exhausted before fresh-process start."

@@ -15,8 +15,13 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, payment-regression, opening-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, payment-regression, opening-control]
         default: both
+      paid_profile_count:
+        description: Supporting performance prefix length
+        type: choice
+        options: ['10', '25', '50', '100', '250', '500']
+        default: '10'
       regression_fixtures_sha256:
         description: Digest of the unchanged QA inputs for the payment regression selection
         type: string
@@ -175,6 +180,7 @@ jobs:
       - name: Run protected native checks
         env:
           POS_SUITE: ${{ matrix.suite }}
+          POS_PAID_PROFILE_COUNT: ${{ inputs.paid_profile_count }}
           POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
         run: bash scripts/pos/qualification/native.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

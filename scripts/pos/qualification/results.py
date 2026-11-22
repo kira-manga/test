@@ -11,7 +11,7 @@ if mode == "frozen":
     pattern = re.compile(
         r"CHB_(?:STEP_(?:BEGIN|END) [0-9]{1,4} (?:create|begin|start|capture|apply|finalize|receipt/[a-zA-Z0-9_-]+)"
         r"(?: elapsedMillis=[0-9]+)?|PAID_PREFIX [0-9]+|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
-        r"|NATIVE_CLOSE (?:seed(?:ed-(?:8|1000))?|restart)|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
+        r"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
         r"|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+|PROTECTED_ORIGINALS_VERIFIED [0-9]+ SALE_COUNT [0-9]+)"
     )
     for phase in ("seed", "restart"):
@@ -36,7 +36,7 @@ elif mode == "census":
     keys = ("paid_sales", "originals", "journal", "audit", "outbox", "both_original_issue_portions_per_sale_verified",
             "receipt_heads", "receipt_events", "receipt_event_portions", "cold_same_process_and_fresh_process", "bound_input_sha256")
     safe = {key: census[key] for key in keys}
-    safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else "8-sale supporting prefix"
+    safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
 elif mode == "opening-control":
