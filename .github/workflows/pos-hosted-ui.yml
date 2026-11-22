@@ -36,6 +36,10 @@ on:
         description: Number of sealed Android package parts
         type: number
         default: 0
+      android_candidate_run_id:
+        description: Reuse the signed-package part artifacts from this prior auxiliary run
+        type: string
+        required: false
       windows_sparse_service:
         description: Check real Windows external package identity and native service association
         type: boolean
@@ -203,7 +207,7 @@ jobs:
           retention-days: 7
 
   android-signed-candidate:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.android_two_setup && inputs.android_candidate_parts > 0
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.android_two_setup && inputs.android_candidate_parts > 0 && inputs.android_candidate_run_id == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     strategy:
@@ -354,7 +358,7 @@ jobs:
 
   android-lan-preflight:
     needs: android-signed-candidate
-    if: "!cancelled() && github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup) && (inputs.android_candidate_parts == 0 || needs.android-signed-candidate.result == 'success')"
+    if: "!cancelled() && github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup) && (inputs.android_candidate_parts == 0 || inputs.android_candidate_run_id != '' || needs.android-signed-candidate.result == 'success')"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -367,9 +371,20 @@ jobs:
           sparse-checkout: |
             scripts/pos/ui
             testing-inputs
+      - name: Check retained Android artifact coordinates
+        if: inputs.android_candidate_run_id != ''
+        shell: bash
+        env:
+          POS_APK_RUN: ${{ inputs.android_candidate_run_id }}
+          POS_APK_PARTS: ${{ inputs.android_candidate_parts }}
+        run: |
+          [[ "$POS_APK_RUN" =~ ^[1-9][0-9]{0,19}$ && "$POS_APK_PARTS" =~ ^[1-9][0-9]{0,2}$ ]]
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         if: inputs.android_candidate_parts > 0
         with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.android_candidate_run_id || github.run_id }}
           pattern: pos-android-signed-part-*
           path: ${{ runner.temp }}/pos-ui/signed-parts
       - name: Bind the known signed Android test package

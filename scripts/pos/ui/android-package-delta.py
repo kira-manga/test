@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import ssl
 import subprocess
 import sys
 import tarfile
@@ -110,9 +111,12 @@ def verify(inputs):
         rebuild(base, delta, output, expected_apk)
     sdk = Path(os.environ["ANDROID_HOME"]) / "build-tools"
     apksigner = next(path for path in sorted(sdk.glob("*/apksigner"), reverse=True) if path.is_file())
-    signature = subprocess.check_output([str(apksigner), "verify", "--print-certs", str(output)], text=True)
-    check(re.findall(r"^Signer #[0-9]+ certificate SHA-256 digest: ([a-f0-9]{64})$", signature, re.MULTILINE) ==
-          [SIGNER_SHA256], "Android test signer changed")
+    signature = subprocess.check_output([str(apksigner), "verify", "--print-certs-pem", str(output)], text=True)
+    certificates = re.findall(r"-----BEGIN CERTIFICATE-----\n[\sA-Za-z0-9+/=]+?-----END CERTIFICATE-----", signature)
+    check(len(certificates) == signature.count("-----BEGIN CERTIFICATE-----") ==
+          signature.count("-----END CERTIFICATE-----"), "Malformed Android signing certificate output")
+    fingerprints = {hashlib.sha256(ssl.PEM_cert_to_DER_cert(certificate)).hexdigest() for certificate in certificates}
+    check(fingerprints == {SIGNER_SHA256}, "Android test signing certificate does not match the retained signer")
     (WORK / "apk-pair.json").write_text(json.dumps({
         "source_revision": revision, "app": {"sha256": expected_apk},
     }) + "\n")
