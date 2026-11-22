@@ -1,5 +1,6 @@
 """Drive a synthetic, fresh installed POS setup screen through ui-test-actions."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -38,6 +39,23 @@ def wait_for_pos(client):
     raise AssertionError("The installed application window never appeared")
 
 
+def reject_observer_local_network_prompt(client):
+    # The loopback driver does not need local-network discovery. Match the
+    # observed Python permission prompt before pressing its denial button.
+    from PIL import Image
+
+    screen = Image.open(io.BytesIO(client.fetch("/v1/screenshot"))).convert("RGB")
+    if screen.size != (1024, 768):
+        return False
+    title_and_body = screen.crop((396, 212, 628, 324))
+    expected = "d6acd0771b4e502f652bae41a0165735b551c1d0d133e64bd079de8853c59243"
+    if hashlib.sha256(title_and_body.tobytes()).hexdigest() != expected:
+        return False
+    action(client, "pointer.click", {"x": 453, "y": 339})
+    time.sleep(1)
+    return True
+
+
 def identify_session():
     for _ in range(240):
         for file in temp.glob("ui-session-*/connection.json"):
@@ -66,8 +84,12 @@ try:
         wait_for_pos(client)
     result["installed_startup"] = True
     result["before_png_sha256"] = snapshot(client, "before")
+    if target == "macos" and reject_observer_local_network_prompt(client):
+        result["observer_local_network_permission_denied"] = True
+        result["entry_png_sha256"] = snapshot(client, "entry")
     finding = action(client, "element.wait", {
         "selector": {"text_contains": "Set up or inspect the original local branch"},
+        "state": "present",
         "timeout_ms": 10000,
     })
     if finding["matched"] != 1:
