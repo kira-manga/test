@@ -28,6 +28,7 @@ jobs:
           sparse-checkout: |
             scripts/pos/ui
             testing-inputs
+            apps/pos/apps/desktop/packaging/windows
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ui-test-actions/ui-test-actions
@@ -65,31 +66,32 @@ jobs:
         if: matrix.platform == 'android'
         shell: bash
         run: bash scripts/pos/ui/android-emulator.sh
-      - name: Install retained Windows MSI
+      - name: Install the retained signed Windows MSIX with its exact certificate
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Stop"
           $work = "$env:RUNNER_TEMP/pos-ui"
-          $msi = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
-          $result = Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$work/msi-install.log`"" -Wait -PassThru
-          if ($result.ExitCode -ne 0) { throw "MSI installation exit $($result.ExitCode)" }
-          # This package explicitly uses jpackage's per-user installation mode.
-          $paths = @(
-            (Join-Path $env:LOCALAPPDATA "UkkeraPOS/UkkeraPOS.exe"),
-            (Join-Path $env:LOCALAPPDATA "Programs/UkkeraPOS/UkkeraPOS.exe")
-          )
-          $menu = Join-Path $env:APPDATA "Microsoft/Windows/Start Menu/Programs/Ukkera POS"
-          if (Test-Path -LiteralPath $menu) {
-            $shell = New-Object -ComObject WScript.Shell
-            $paths += @(Get-ChildItem -LiteralPath $menu -Filter "*.lnk" -File | ForEach-Object {
-              $shell.CreateShortcut($_.FullName).TargetPath
-            })
+          $msix = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
+          $cert = Join-Path $env:GITHUB_WORKSPACE "apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer"
+          $certHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $cert).Hash.ToLowerInvariant()
+          if ($certHash -ne "998f39e61839e620384736fab82fec773e827314580fb69bfaccf66446026f6c") {
+            throw "Unexpected test signer certificate"
           }
-          $apps = @($paths | Where-Object {
-            $_ -and [IO.Path]::GetFileName($_) -eq "UkkeraPOS.exe" -and (Test-Path -LiteralPath $_ -PathType Leaf)
-          } | Select-Object -Unique)
-          if ($apps.Count -ne 1) { throw "Expected one installed per-user Ukkera POS launcher" }
-          $apps[0] | Set-Content -LiteralPath "$work/installed"
+          Import-Certificate -FilePath $cert -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          Add-AppxPackage -Path $msix
+          $package = Get-AppxPackage -Name "Ukkera.POS.Test"
+          if ($package.PackageFamilyName -ne "Ukkera.POS.Test_n9kkbga0qmnm6") { throw "Unexpected package identity" }
+          $app = Join-Path $env:LOCALAPPDATA "Microsoft/WindowsApps/ukkera-pos-test.exe"
+          if (!(Test-Path -LiteralPath $app)) { throw "Installed MSIX application alias is absent" }
+          $app | Set-Content -LiteralPath "$work/installed"
+          $service = Get-Service -Name UkkeraPOSTestMaster
+          @{
+            package_version = $package.Version.ToString()
+            package_family = $package.PackageFamilyName
+            master_service = $service.Status.ToString()
+            test_certificate_sha256 = $certHash
+          } | ConvertTo-Json | Set-Content -LiteralPath "$work/public/windows-msix.json"
       - name: Copy the signed macOS app out of its disk image
         if: matrix.platform == 'macos'
         shell: bash
@@ -138,7 +140,7 @@ jobs:
             case "$UI_TEST_TARGET" in
               android) adb -s emulator-5554 shell am start -W -n com.ukkera.pos.local.testing/com.ukkera.pos.android.MainActivity ;;
               macos) open "$(< "$work/installed")" ;;
-              windows) "$(tr -d '\r' < "$work/installed")" > "$work/app.log" 2>&1 & ;;
+              windows) pwsh -NoProfile -Command 'Start-Process -FilePath ((Get-Content -LiteralPath "$env:RUNNER_TEMP/pos-ui/installed" -Raw).Trim())' ;;
             esac
           ready: |
             if [[ "$UI_TEST_TARGET" == android ]]; then

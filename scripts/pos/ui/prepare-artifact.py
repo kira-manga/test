@@ -14,7 +14,7 @@ if target == "android":
 else:
     manifest_path, = (work / "artifact").rglob("manifest.json")
     manifest = json.loads(manifest_path.read_text())
-    ending = ".msi" if target == "windows" else ".dmg"
+    ending = ".msix" if target == "windows" else ".dmg"
     record, = [entry for entry in manifest["files"] if entry["path"].endswith(ending)]
     apk = manifest_path.parent / record["path"]
     rev = manifest["metadata"]["source_revision"]
