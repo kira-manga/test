@@ -44,6 +44,7 @@ class InstalledUi:
         self.stop = None
         self.heartbeat = None
         self.process = None
+        self.expires_unix = None
         self.env = {
             **os.environ,
             "RUNNER_TEMP": str(self.directory),
@@ -53,7 +54,7 @@ class InstalledUi:
             "UI_TEST_DEVICE": device,
             "UI_TEST_TOKEN_SHA256": hashlib.sha256(token.encode()).hexdigest(),
             "UI_TEST_STARTUP_TIMEOUT": "60",
-            "UI_TEST_DURATION": "8",
+            "UI_TEST_DURATION": "16" if SETUP_STAGE == "pairing-proof" else "8",
             "UI_TEST_TRANSPORT": "local",
             "UI_TEST_ANDROID_IME": "0",
             "UI_TEST_LAUNCH": "",
@@ -93,11 +94,15 @@ class InstalledUi:
         threading.Thread(target=renew, daemon=True).start()
         connection = json.loads(file.read_bytes())
         assert connection["target"] == "android" and connection["transport"] == "local"
+        self.expires_unix = int(connection["expires_unix"])
         self.session = Client(connection, self.token_file)
         self.session.identify()
         png = self.session.fetch("/v1/screenshot")
         assert png.startswith(b"\x89PNG\r\n\x1a\n")
         self.width, self.height = struct.unpack_from(">II", png, 16)
+
+    def session_seconds_remaining(self):
+        return max(0, int(self.expires_unix - time.time()))
 
     def close(self):
         if self.heartbeat is not None:
@@ -453,6 +458,9 @@ def transfer_document(source, destination, export_action, import_action, filenam
 
 def verify_pairing_proof(master, client, observation):
     original_refusal_count = len(master.native_owner_refusals())
+    observation["pairing_driver_seconds_at_entry"] = {
+        "master": master.session_seconds_remaining(), "client": client.session_seconds_remaining(),
+    }
     master.choose("Pair a new target through this original Master", scroll=12)
     observation["master_pairing_action_sent"] = True
     transitions = []
@@ -465,7 +473,8 @@ def verify_pairing_proof(master, client, observation):
         snapshot = master.visible_setup_outcome()
         labels = snapshot["known_labels"]
         if labels != previous:
-            transitions.append({"observation_seconds": round(time.monotonic() - began, 2), **snapshot})
+            transitions.append({"observation_seconds": round(time.monotonic() - began, 2),
+                                "driver_seconds_remaining": master.session_seconds_remaining(), **snapshot})
             previous = labels
         if "pairing_import_control" in labels or "pairing_import_stage" in labels:
             break
@@ -489,9 +498,14 @@ def verify_pairing_proof(master, client, observation):
         time.sleep(0.7)
     try:
         master.find("Import the target identity document (I)", scroll=18, wait=1500)
-    except (AssertionError, ClientError):
-        observation["master_pairing_context_after_search"] = master.visible_setup_outcome()
+    except (AssertionError, ClientError) as original:
         observation["master_pairing_native_refusals"] = master.native_owner_refusals()[original_refusal_count:][-8:]
+        observation["master_pairing_driver_seconds_after_search"] = master.session_seconds_remaining()
+        observation["master_pairing_search_error_type"] = type(original).__name__
+        try:
+            observation["master_pairing_context_after_search"] = master.visible_setup_outcome()
+        except (AssertionError, ClientError) as diagnostic:
+            observation["master_pairing_followup_snapshot_error_type"] = type(diagnostic).__name__
         raise
     observation["master_original_pairing_context_verified"] = True
     transfer_document(client, master, "Re-read and export original identity (I)", "Import the target identity document (I)",
