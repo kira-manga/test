@@ -16,9 +16,9 @@ on:
         type: boolean
         default: false
       android_setup_stage:
-        description: Select allocation, native activation, or public pairing-document proof
+        description: Select allocation, native activation, or public pairing proof with optional Master restart
         type: choice
-        options: [allocation, activate, pairing-proof]
+        options: [allocation, activate, pairing-proof, pairing-after-restart]
         default: allocation
       windows_sparse_service:
         description: Check real Windows external package identity and native service association

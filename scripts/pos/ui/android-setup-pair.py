@@ -25,7 +25,8 @@ WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
 LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
 SETUP_STAGE = os.environ.get("POS_ANDROID_SETUP_STAGE", "allocation")
-ACTIVATE = SETUP_STAGE in {"activate", "pairing-proof"}
+PAIR = SETUP_STAGE in {"pairing-proof", "pairing-after-restart"}
+ACTIVATE = SETUP_STAGE == "activate" or PAIR
 UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
 
@@ -54,7 +55,7 @@ class InstalledUi:
             "UI_TEST_DEVICE": device,
             "UI_TEST_TOKEN_SHA256": hashlib.sha256(token.encode()).hexdigest(),
             "UI_TEST_STARTUP_TIMEOUT": "60",
-            "UI_TEST_DURATION": "16" if SETUP_STAGE == "pairing-proof" else "8",
+            "UI_TEST_DURATION": "16" if PAIR else "8",
             "UI_TEST_TRANSPORT": "local",
             "UI_TEST_ANDROID_IME": "0",
             "UI_TEST_LAUNCH": "",
@@ -436,6 +437,33 @@ def client_onboarding(ui, observation):
     observation["client_screenshot_sha256"] = ui.screenshot("android-client-pairing-form")
 
 
+def restart_original_master(ui, observation):
+    """Separate an activation handoff failure from the same installed app's settled reopen."""
+    old_pid = adb(ui.device, "shell", "pidof", PACKAGE).strip()
+    assert old_pid.isdecimal(), "The activated Master app process is required"
+    adb(ui.device, "shell", "am", "force-stop", PACKAGE)
+    stopped = subprocess.run(["adb", "-s", ui.device, "shell", "pidof", PACKAGE],
+                             capture_output=True, text=True, timeout=25)
+    assert stopped.returncode == 1 and not stopped.stdout.strip(), "Master process did not stop"
+    adb(ui.device, "shell", "am", "start", "-W", "-n",
+        f"{PACKAGE}/com.ukkera.pos.android.MainActivity")
+    new_pid = adb(ui.device, "shell", "pidof", PACKAGE).strip()
+    assert new_pid.isdecimal() and new_pid != old_pid, "The app must start in a different process"
+    observation["master_new_process_verified"] = True
+    setup_entry(ui)
+    ui.choose("Inspect this device's original installation", scroll=6)
+    ui.choose("Open and verify the same original installation", scroll=10)
+    ui.find("Reopen existing client journals", scroll=12, wait=2500)
+    ui.choose("Reopen existing client journals")
+    resumed = {}
+    try:
+        await_master_publication(ui, resumed)
+    finally:
+        observation["master_restart_publication"] = resumed
+    ui.find("Pair a new target through this original Master", scroll=12, wait=2500)
+    observation["master_existing_journals_reattached_after_restart"] = True
+
+
 def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
     path = "/sdcard/Download/" + filename
     assert source.device != destination.device and filename.startswith("ukkera-device-") and filename.endswith(".bin")
@@ -572,7 +600,9 @@ def main():
                             raise AssertionError("Master scope did not become available for the distinct target")
                 prepare_client_target(sessions["client"], observation, scope)
             master.result()
-            if SETUP_STAGE == "pairing-proof":
+            if SETUP_STAGE == "pairing-after-restart":
+                restart_original_master(sessions["master"], observation)
+            if PAIR:
                 verify_pairing_proof(sessions["master"], sessions["client"], observation)
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
