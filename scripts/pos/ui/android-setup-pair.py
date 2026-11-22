@@ -192,12 +192,20 @@ class InstalledUi:
         adb(self.device, "shell", "input", "keyevent", "KEYCODE_BACK")
 
     def review_identifier(self, label):
-        self.find(label, scroll=6)
-        nodes = self.action("tree.snapshot")["nodes"]
-        (offset,) = [n for n, node in enumerate(nodes) if label in (node.get("name"), node.get("text"))]
-        (identifier,) = [value for value in (nodes[offset + 1].get("name"), nodes[offset + 1].get("text"))
-                         if isinstance(value, str) and UUID.fullmatch(value)]
-        return identifier
+        # Branch and Branch name are different controls. Scan the actual review
+        # once per viewport and match the exact field label, not a substring.
+        for _ in range(7):
+            nodes = self.action("tree.snapshot")["nodes"]
+            offsets = [n for n, node in enumerate(nodes) if label in (node.get("name"), node.get("text"))]
+            assert len(offsets) <= 1, f"Duplicated exact review field: {label}"
+            if offsets and offsets[0] + 1 < len(nodes):
+                value_node = nodes[offsets[0] + 1]
+                values = {value for value in (value_node.get("name"), value_node.get("text"))
+                          if isinstance(value, str) and UUID.fullmatch(value)}
+                if len(values) == 1:
+                    return values.pop()
+            self.action("pointer.scroll", x=self.width // 2, y=self.height // 2, dy=14)
+        raise AssertionError(f"Missing canonical identifier after the exact review field: {label}")
 
     def screenshot(self, name):
         png = self.session.fetch("/v1/screenshot")
