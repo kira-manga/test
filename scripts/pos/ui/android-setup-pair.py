@@ -259,13 +259,21 @@ class InstalledUi:
         # Report only existing, fixed native reason enums and static POS method
         # locations. Journal data, identities, log messages and values stay private.
         records = adb(self.device, "logcat", "-d", "-v", "brief", "-s", "UkkeraNativeOwner:W")
-        return [
-            {"reason": reason.group(1) if reason else None,
-             "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", line)[:5]}
-            for line in records.splitlines()
-            if "Native action refused:" in line
-            for reason in [re.search(r"; reason=([A-Z_]{3,40})(?:;|$)", line)]
-        ]
+        refusals = []
+        for line in records.splitlines():
+            if "Original master native work refused:" in line:
+                boundary = "master_worker"
+            elif "Native action refused:" in line:
+                boundary = "native_task"
+            else:
+                continue
+            reason = re.search(r"; (?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", line)
+            refusals.append({
+                "boundary": boundary,
+                "reason": reason.group(1) if reason else None,
+                "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", line)[:6],
+            })
+        return refusals
 
 
 def setup_entry(ui):
