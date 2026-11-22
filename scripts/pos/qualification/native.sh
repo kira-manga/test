@@ -135,6 +135,9 @@ finish_profile seed
 if [[ -n "${observer:-}" ]]; then
   touch "$stage/profile.done"
   wait "$observer"
+  if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+    python3 "$here/profile-stack-summary.py" "$stage" > "$report/stack-samples.json"
+  fi
 fi
 if [[ -f "$stage/seed.raw" ]] && grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$stage/seed.raw"; then
   export UKKERA_CHB_EXISTING=true
