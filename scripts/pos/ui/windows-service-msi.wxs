@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fresh-install control for the existing signed package and its service. -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Ukkera POS Test Service Installer" Language="1033"
+      Version="0.1.0" Manufacturer="Ukkera" UpgradeCode="CF5A52B2-7599-4E93-9FD0-1C9AE3AD168E">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64"/>
+    <MediaTemplate EmbedCab="yes"/>
+    <Property Id="ARPNOMODIFY" Value="1"/>
+    <Property Id="ARPNOREPAIR" Value="1"/>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="APPDIR" Name="Ukkera POS Test Service Installer">
+          <Component Id="ServiceAppPayload" Guid="4BA86E77-6980-4A91-BC9F-E352041ECD67" Win64="yes">
+            <File Id="ServicePackage" Source="$(var.Package)" Name="UkkeraPOS-Test.msix" KeyPath="yes"/>
+            <File Id="PackageLifecycle" Source="$(var.Lifecycle)" Name="PackageLifecycle.ps1"/>
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+    <Feature Id="ServiceApp" Title="Ukkera POS service application" Level="1">
+      <ComponentRef Id="ServiceAppPayload"/>
+    </Feature>
+    <CustomAction Id="RegisterServicePackage" BinaryKey="WixCA"
+      DllEntry="WixQuietExec64" Execute="deferred" Impersonate="yes" Return="check"/>
+    <CustomAction Id="RemoveServicePackage" BinaryKey="WixCA"
+      DllEntry="WixQuietExec64" Execute="deferred" Impersonate="yes" Return="check"/>
+    <SetProperty Id="RegisterServicePackage" Before="RegisterServicePackage"
+      Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -File &quot;[#PackageLifecycle]&quot; -Mode Install -Package &quot;[#ServicePackage]&quot;"
+      Sequence="execute">NOT Installed</SetProperty>
+    <SetProperty Id="RemoveServicePackage" Before="RemoveServicePackage"
+      Value="&quot;[System64Folder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoLogo -NoProfile -NonInteractive -File &quot;[#PackageLifecycle]&quot; -Mode Remove -Package &quot;[#ServicePackage]&quot;"
+      Sequence="execute">Installed AND REMOVE="ALL"</SetProperty>
+    <InstallExecuteSequence>
+      <Custom Action="RegisterServicePackage" Before="InstallFinalize">NOT Installed</Custom>
+      <Custom Action="RemoveServicePackage" Before="RemoveFiles">Installed AND REMOVE="ALL"</Custom>
+    </InstallExecuteSequence>
+  </Product>
+</Wix>

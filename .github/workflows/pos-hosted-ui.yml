@@ -19,12 +19,16 @@ on:
         description: Check real Windows external package identity and native service association
         type: boolean
         default: false
+      windows_service_msi:
+        description: Install and verify the service-aware signed MSI control on Windows
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
 jobs:
   installed-ui:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup && !inputs.windows_sparse_service
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup && !inputs.windows_sparse_service && !inputs.windows_service_msi
     strategy:
       fail-fast: false
       matrix:
@@ -224,8 +228,8 @@ jobs:
           path: ${{ runner.temp }}/pos-ui/public
           retention-days: 7
 
-  windows-sparse-service:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && inputs.windows_sparse_service
+  windows-identity-service:
+    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.windows_sparse_service || inputs.windows_service_msi)
     runs-on: windows-2025
     timeout-minutes: 18
     env:
@@ -249,6 +253,7 @@ jobs:
           gh run download 44257616578 --repo kira-manga/test --name pos-windows-msi-44257616578-1 --dir "$work/artifact"
           python scripts/pos/ui/prepare-artifact.py
       - name: Observe actual external-location UI and service identity
+        if: inputs.windows_sparse_service
         shell: pwsh
         env:
           PFX_BASE64: ${{ secrets.POS_WINDOWS_TEST_PFX_BASE64 }}
@@ -257,9 +262,19 @@ jobs:
           $work = Join-Path $env:RUNNER_TEMP 'pos-ui'
           $package = (Get-Content -LiteralPath (Join-Path $work 'package-path') -Raw).Trim()
           scripts/pos/ui/windows-sparse-service-probe.ps1 -Package $package -Certificate apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer
+      - name: Exercise the actual signed MSI and ordinary-token Master console
+        if: inputs.windows_service_msi
+        shell: pwsh
+        env:
+          PFX_BASE64: ${{ secrets.POS_WINDOWS_TEST_PFX_BASE64 }}
+          POS_MSIX_PFX_PASSWORD: ${{ secrets.POS_WINDOWS_TEST_PFX_PASSWORD }}
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'pos-ui'
+          $package = (Get-Content -LiteralPath (Join-Path $work 'package-path') -Raw).Trim()
+          scripts/pos/ui/windows-service-msi-probe.ps1 -Package $package -Certificate apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: pos-windows-sparse-service-${{ github.run_id }}
+          name: pos-windows-identity-service-${{ github.run_id }}
           path: ${{ runner.temp }}/pos-ui/public
           retention-days: 7
