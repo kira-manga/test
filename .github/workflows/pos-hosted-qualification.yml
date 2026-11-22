@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, retained-reader, payment-regression, opening-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, retained-reader, cold-payment-control, payment-regression, opening-control]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length

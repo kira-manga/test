@@ -5,7 +5,7 @@ stage="$RUNNER_TEMP/pos-qualification"
 cd "$stage"
 printf '%s' "$DIAGNOSTIC_CERTIFICATE" | base64 --decode | openssl x509 -inform DER -out "$stage/recipient.pem"
 files=()
-for pick in seed.raw restart.raw recovery.raw companion.raw payment-regression.raw retained-reader.raw opening-control.raw opening-control.xml tcp.raw tcp-runtime/process.log \
+for pick in seed.raw restart.raw recovery.raw companion.raw payment-regression.raw retained-reader.raw cold-payment.raw opening-control.raw opening-control.xml tcp.raw tcp-runtime/process.log \
   tcp-runtime/master.log tcp-runtime/client1.log tcp-runtime/client2.log \
   tcp-runtime/compile.log tcp-runtime/compile-retry.log profile-*.txt; do
   if [[ -f "$pick" && ! -L "$pick" ]]; then files+=("$pick"); fi

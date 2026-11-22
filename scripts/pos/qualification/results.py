@@ -39,6 +39,19 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
+elif mode == "cold-payment":
+    suite_dir = run / "adapters/app-gateway/build/test-results/jvmTest"
+    entries = list(suite_dir.glob("TEST-*.PaidRetailReceiptColdNativeSupportingTest.xml"))
+    report = None
+    if len(entries) == 1:
+        suite = ET.parse(entries[0]).getroot()
+        report = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+        timing = re.compile(r"Paid retail receipt original reopened in [0-9.]+(?:ms|s)")
+        lines = (suite.findtext("system-out") or "").splitlines()
+        (published / "cold-payment-timings.txt").write_text("\n".join(line for line in lines if timing.fullmatch(line)) + "\n")
+    (published / "cold-payment-tests.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report))
+    assert report == {"tests": 2, "failures": 0, "errors": 0, "skipped": 0}
 elif mode == "retained-reader":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
