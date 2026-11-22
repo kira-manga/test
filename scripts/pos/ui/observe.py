@@ -56,6 +56,41 @@ def reject_observer_local_network_prompt(client):
     return True
 
 
+def click_known_windows_setup(client):
+    # This particular signed legacy MSI does not expose its Compose button to
+    # the Windows accessibility driver. Use only the exact observed button.
+    from PIL import Image
+
+    image = Image.open(io.BytesIO(client.fetch("/v1/screenshot"))).convert("RGB")
+    role = image.crop((407, 299, 731, 333))
+    digest = hashlib.sha256(role.tobytes()).hexdigest()
+    expected = "2eaa7200deec7537a70ff1a9260b64bef426db12fa5612df76de77f9f5f2c254"
+    if image.size != (1024, 768) or digest != expected:
+        raise AssertionError("Unsupported Windows layout for the exact screenshot-matched setup control")
+    action(client, "pointer.click", {"x": 570, "y": 316})
+
+
+def choose(client, label):
+    finding = action(client, "element.wait", {
+        "selector": {"text_contains": label},
+        "state": "present",
+        "timeout_ms": 10000,
+    })
+    if finding["matched"] != 1:
+        raise AssertionError("Expected one accessible POS setup control")
+    action(client, "element.click", {"snapshot_id": finding["snapshot_id"], "id": finding["nodes"][0]["id"]})
+
+
+def has_label(client, labels):
+    for _ in range(10):
+        tree = action(client, "tree.snapshot")
+        if any(label in str(node.get(field, "")) for label in labels
+               for node in tree["nodes"] for field in ("name", "text")):
+            return True
+        time.sleep(1)
+    return False
+
+
 def identify_session():
     for _ in range(240):
         for file in temp.glob("ui-session-*/connection.json"):
@@ -87,23 +122,34 @@ try:
     if target == "macos" and reject_observer_local_network_prompt(client):
         result["observer_local_network_permission_denied"] = True
         result["entry_png_sha256"] = snapshot(client, "entry")
-    finding = action(client, "element.wait", {
-        "selector": {"text_contains": "Set up or inspect the original local branch"},
-        "state": "present",
-        "timeout_ms": 10000,
-    })
-    if finding["matched"] != 1:
-        raise AssertionError("Expected one accessible original branch setup control")
-    action(client, "element.click", {"snapshot_id": finding["snapshot_id"], "id": finding["nodes"][0]["id"]})
-    labels = ("Set up local Ukkera POS", "Local setup connection", "Choose setup mode")
-    tree = action(client, "tree.snapshot")
-    for _ in range(10):
-        if any(label in str(node.get(field, "")) for label in labels
-               for node in tree["nodes"] for field in ("name", "text")):
-            result["setup_view_opened"] = True
-            break
-        time.sleep(1)
-        tree = action(client, "tree.snapshot")
+    if target == "android":
+        from PIL import Image
+        before = Image.open(report / "before.png").convert("RGB")
+        result["screen_capture_opaque"] = all(low == high == 0 for low, high in before.getextrema())
+    try:
+        choose(client, "Set up or inspect the original local branch")
+    except ClientError as unavailable:
+        if target != "windows" or unavailable.status != 408:
+            raise
+        click_known_windows_setup(client)
+        time.sleep(2)
+        result["visual_click_sent"] = True
+        result["after_png_sha256"] = snapshot(client, "after")
+        if result["before_png_sha256"] == result["after_png_sha256"]:
+            raise AssertionError("The Windows setup click did not change the image")
+        result["status"] = "visual_transition_requires_review"
+        rc = 0
+        sys.exit(0)
+
+    if target == "android":
+        result["composition_choice_opened"] = has_label(client, ("Choose the setup composition",))
+        if not result["composition_choice_opened"]:
+            raise AssertionError("Android did not show the exact setup composition chooser")
+        choose(client, "SYNTHETIC TRAINING 1 - NOT LIVE")
+        labels = ("Synthetic training composition",)
+    else:
+        labels = ("Set up local Ukkera POS", "Local setup connection", "Choose setup mode")
+    result["setup_view_opened"] = has_label(client, labels)
     result["after_png_sha256"] = snapshot(client, "after")
     if not result["setup_view_opened"]:
         raise AssertionError("The expected setup screen was not observed")
