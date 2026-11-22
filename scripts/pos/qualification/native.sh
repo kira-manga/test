@@ -121,6 +121,11 @@ cc -shared -fPIC -O2 -Wall -Wextra "$UKKERA_CHB_RUNNER/controlled-utc.c" -o "$UK
 for phase in seed restart; do
   printf '%s 0\n' "$(date -ud '2026-08-01T07:59:00Z' +%s)" > "$UKKERA_CHB_ATTEMPT/$phase.utc"
 done
+# Measure compilation separately from this supporting run's fixed runtime budget.
+# The same resources guard compilation and both native invocations.
+if [[ "$POS_SUITE" == 'paid-profile' ]]; then
+  python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}"     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:jvmTestClasses
+fi
 if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
   python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" &
   observer=$!
