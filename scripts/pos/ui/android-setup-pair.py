@@ -197,8 +197,21 @@ class InstalledUi:
         # Use the actual focused Android text field. Training inputs use only safe ASCII.
         assert value and all(c.isascii() and (c.isalnum() or c in "- ") for c in value)
         self.choose(label, scroll=scroll)
+        secret_field = "password" in label.lower()
+        if secret_field:
+            self.require_focused_password(label)
         adb(self.device, "shell", "input", "text", value.replace(" ", "%s"))
+        if secret_field:
+            self.require_focused_password(label)
         adb(self.device, "shell", "input", "keyevent", "KEYCODE_BACK")
+
+    def require_focused_password(self, label):
+        # The driver redacts secure fields. Verify focus and field type without
+        # reading, saving, or reporting the typed synthetic credential.
+        nodes = self.action("tree.snapshot")["nodes"]
+        focused = [node for node in nodes if node.get("visible") and node["properties"].get("package") == PACKAGE
+                   and node["properties"].get("focused") and node["properties"].get("password")]
+        assert len(focused) == 1, f"Android secure edit did not have one focused password control: {label}"
 
     def review_identifier(self, label):
         # Branch and Branch name are different controls. Scan the actual review
@@ -275,8 +288,10 @@ def master_onboarding(ui, observation, scope_queue):
             assert len(set(scope)) == 3
             scope_queue.put(scope)
         ui.enter("Fresh installer password", installer, scroll=9)
+        observation["master_branch_secure_input_focus_verified"] = True
         ui.choose("Prepare only these original branch/device IDs", scroll=5)
         ui.choose("Retain original preparation", scroll=5)
+        observation["master_branch_submit_sent"] = True
         ui.choose("Prepare only the original target", scroll=8)
         ui.find("Original native material retained", scroll=-10)
         observation["master_original_target_retained"] = True
