@@ -120,7 +120,30 @@ class InstalledUi:
 
     def choose(self, label, scroll=0):
         found = self.find(label, scroll=scroll)
-        self.action("element.click", snapshot_id=found["snapshot_id"], id=found["nodes"][0]["id"])
+        node = found["nodes"][0]
+        assert node.get("enabled", True), f"Expected enabled control: {label}"
+        self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+
+    def visible_setup_outcome(self):
+        # Keep only fixed statuses from the installed UI, never text field
+        # values, credential inputs, branch identifiers or device identities.
+        observed = tuple(str(node.get(field, "")) for node in self.action("tree.snapshot")["nodes"]
+                         for field in ("name", "text"))
+        fixed = {
+            "company_review": "Confirm this original company",
+            "company_retained": "Local company retained",
+            "original_target_retained": "Original native material retained",
+            "busy": "Original work is still owned or busy",
+            "invalid_input": "Check the exact input.",
+            "authentication_refused": "Local human authentication was refused.",
+            "unsupported_platform": "This native engineering profile is unsupported",
+            "invalid_application": "Installed application or native custody could not be confirmed.",
+            "uncertain": "Original state is uncertain",
+            "unavailable": "The native owner is unavailable",
+            "key_preparation_required": "The original native key preparation must be continued",
+            "working": "progress",
+        }
+        return [status for status, label in fixed.items() if any(label in value for value in observed)]
 
     def enter(self, label, value, scroll=0):
         # Use the actual focused Android text field. Training inputs use only safe ASCII.
@@ -162,13 +185,33 @@ def master_onboarding(ui, observation):
     ui.choose("Prepare and review the original company", scroll=5)
     ui.find("Confirm this original company", scroll=-6)
     observation["master_original_company_review_verified"] = True
-    ui.enter("New installer password", secrets.token_hex(16), scroll=6)
+    installer = secrets.token_hex(16)
+    ui.enter("New installer password", installer, scroll=6)
     ui.enter("Independent new head password", secrets.token_hex(16), scroll=5)
     ui.choose("I reviewed this original root", scroll=5)
     ui.choose("Retain this local company and head", scroll=5)
-    ui.find("Local company retained", scroll=-8)
-    observation["master_native_company_retained"] = True
-    observation["master_screenshot_sha256"] = ui.screenshot("android-master-company-retained")
+    observation["master_company_submit_sent"] = True
+    try:
+        try:
+            ui.find("Local company retained", scroll=-9)
+        except AssertionError:
+            observation["master_first_wait_state"] = ui.visible_setup_outcome()
+            ui.find("Local company retained", wait=25000)
+        observation["master_native_company_retained"] = True
+        observation["master_screenshot_sha256"] = ui.screenshot("android-master-company-retained")
+        ui.enter("Original branch name", "Hosted Training Branch", scroll=12)
+        ui.choose("Prepare the original branch allocation", scroll=5)
+        ui.find("Original branch allocation", scroll=-10)
+        observation["master_branch_review_verified"] = True
+        ui.enter("Fresh installer password", installer, scroll=9)
+        ui.choose("Prepare only these original branch/device IDs", scroll=5)
+        ui.choose("Retain original preparation", scroll=5)
+        ui.choose("Prepare only the original target", scroll=8)
+        ui.find("Original native material retained", scroll=-10)
+        observation["master_original_target_retained"] = True
+    except (AssertionError, ClientError):
+        observation["master_final_known_status"] = ui.visible_setup_outcome()
+        raise
 
 
 def client_onboarding(ui, observation):
