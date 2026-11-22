@@ -336,11 +336,7 @@ def activate_master(ui, observation, head_password):
         ui.find("Enroll this original client once", scroll=12, wait=2500)
     observation["master_native_installation_retained"] = True
     ui.choose("Enroll this original client once")
-    # Actual Master publication opens a modal requiring an explicit acknowledgement.
-    # While it is visible only the dialog, not the setup controls, is accessible.
-    ui.find("This device is the local master", wait=15000)
-    observation["master_operating_notice_verified"] = True
-    ui.choose("Understood")
+    await_master_publication(ui, observation)
     # This action is visible only when the existing installation is operational
     # and the actual first device and employee journals have attached.
     try:
@@ -354,6 +350,28 @@ def activate_master(ui, observation, head_password):
     observation["master_original_client_journals_connected"] = True
     observation["master_device_pairing_available"] = True
     observation["master_activated_screenshot_sha256"] = ui.screenshot("android-master-activated")
+
+
+def await_master_publication(ui, observation):
+    # Use the installed app's existing 300-second setup operation bound.
+    # Observe one previously submitted enrollment. Never submit or repeat it.
+    started = time.monotonic()
+    deadline = started + 300
+    transitions = []
+    observation["master_journal_state_transitions"] = transitions
+    while time.monotonic() < deadline:
+        state = ui.visible_setup_outcome()
+        labels = state["known_labels"]
+        if not transitions or labels != transitions[-1]["known_labels"]:
+            transitions.append({"known_labels": labels, "elapsed_seconds": round(time.monotonic() - started, 2)})
+        if "master_operating_notice" in labels:
+            observation["master_operating_notice_verified"] = True
+            ui.choose("Understood")
+            return
+        if set(labels) & {"journal_unavailable", "company_unresolved", "close_unconfirmed", "setup_locked"}:
+            raise AssertionError("Original journal enrollment reached an installed UI refusal")
+        time.sleep(1)
+    raise AssertionError("The installed Master did not publish its role within the existing setup operation bound")
 
 
 def prepare_client_target(ui, observation, scope):
