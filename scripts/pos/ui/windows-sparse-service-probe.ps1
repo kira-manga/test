@@ -83,7 +83,16 @@ try {
 
     $report.phase = 'pack_external_manifest'
     $packLog = Join-Path $work 'sparse-pack.log'
-    & (Join-Path $sdk 'makeappx.exe') pack /d $meta /p $identity /o *> $packLog
+    # The external launcher is intentionally outside the package. Follow the
+    # documented MakeAppx external-location command after checking every
+    # executable reference against the actual protected copied app image.
+    [xml]$packageManifest = $manifest
+    foreach ($entry in $packageManifest.SelectNodes('//*[@Executable]')) {
+        if ($entry.Executable -ne 'UkkeraPOS.exe' -or !(Test-Path -LiteralPath $application -PathType Leaf)) {
+            throw 'The external package names an unexpected executable'
+        }
+    }
+    & (Join-Path $sdk 'makeappx.exe') pack /d $meta /p $identity /o /nv *> $packLog
     if ($LASTEXITCODE -ne 0) {
         $report.pack_exit = $LASTEXITCODE
         # Manifest tool diagnostics contain only sample identity/file grammar.
