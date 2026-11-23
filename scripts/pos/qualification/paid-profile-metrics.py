@@ -21,6 +21,15 @@ payment_preparation = re.compile(
     rb"REQUIREMENT_ENTERED|REQUIREMENT_RETURNED|VACANCY_RETURNED|OBSERVATIONS_RETURNED|"
     rb"LITERAL_STOCK_RETURNED|EVIDENCE_SEALED) ([0-9]{1,19})"
 )
+retained_io = re.compile(
+    rb"POS_RETAINED_IO pairs=([0-9]+) unique_pairs=([0-9]+|capped) streams=([0-9]+) "
+    rb"unique_streams=([0-9]+|capped) parsed_hits=([0-9]+) owner_hits=([0-9]+) "
+    rb"decodes=([0-9]+) fragments=([0-9]+) fragment_bytes=([0-9]+)"
+)
+retained_io_fields = (
+    "pairs", "unique_pairs", "streams", "unique_streams", "parsed_hits", "owner_hits",
+    "decodes", "fragments", "fragment_bytes",
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -70,6 +79,12 @@ with output.open("x") as stream:
                                   "observer_seconds": round(time.monotonic() - start, 3),
                                   "jvm_elapsed_nanos": int(preparation[2])}
                         print(json.dumps(record, sort_keys=True), file=stream, flush=True)
+                    elif retained := retained_io.fullmatch(line.rstrip()):
+                        record = {"event": "POS_RETAINED_IO", "observer_seconds": round(time.monotonic() - start, 3)}
+                        record.update({key: ("capped" if value == b"capped" else int(value))
+                                       for key, value in zip(retained_io_fields, retained.groups(), strict=True)})
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
+
         if done.exists():
             break
         time.sleep(0.2)
