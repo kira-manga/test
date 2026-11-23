@@ -1,4 +1,4 @@
-"""Bounded parser for native cold history timing records."""
+"""Bounded parsers for native history timing records."""
 import re
 
 
@@ -30,3 +30,23 @@ def parse_cold_history_pass(line):
         "table": table.decode("ascii"),
         **dict(zip(cold_history_pass_counters, map(int, values), strict=True)),
     }
+
+
+history_source_fields = (
+    "events", "versions", "chunks", "capture_ns", "total_ns",
+    "selected_images", "selected_chunks", "selected_immutable", "indexed_absences",
+)
+history_source = re.compile(
+    rb"POS_HISTORY_SOURCE (SCALAR|LEGACY) " +
+    b" ".join(field.encode("ascii") + rb"=([0-9]{1,19})" for field in history_source_fields)
+)
+
+def parse_history_source(line):
+    match = history_source.fullmatch(line)
+    if match is None:
+        return None
+    source, *values = match.groups()
+    fields = dict(zip(history_source_fields, map(int, values), strict=True))
+    if not 0 < fields["capture_ns"] <= fields["total_ns"]:
+        return None
+    return {"source": source.decode("ascii"), **fields}

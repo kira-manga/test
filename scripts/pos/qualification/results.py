@@ -5,7 +5,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-from cold_pass_metrics import parse_cold_history_pass
+from cold_pass_metrics import parse_cold_history_pass, parse_history_source
 
 mode, stage, run = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 published = stage / "public"
@@ -70,6 +70,24 @@ elif mode in ("cold-payment-control", "cold-pass-control", "cold-owner-control",
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")
         (published / "cold-literal-validation.json").write_text(json.dumps({"validated_streams": count}) + "\n")
         assert count > 0, "No completed exact cold literal stream verification was observed"
+elif mode == "history-source-control":
+    directory = run / "adapters/app-gateway/build/test-results/jvmTest"
+    reports = list(directory.glob("TEST-*.SupplierCashAncestryNativeSupportingTest.xml"))
+    report = None
+    if len(reports) == 1:
+        suite = ET.parse(reports[0]).getroot()
+        report = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+        source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
+        # The native assertion and the diagnostic each establish a different condition.
+        # No operand values, identities or underlying exception text are exported.
+        report["indexed_absences"] = sum(
+            found["indexed_absences"] for line in source.splitlines()
+            if (found := parse_history_source(line.encode("utf-8"))) is not None
+        )
+    (published / "history-source-control-tests.json").write_text(json.dumps(report, indent=2) + "\n")
+    print(json.dumps(report))
+    assert report and report["tests"] == 1 and not any(report[field] for field in ("failures", "errors", "skipped"))
+    assert report["indexed_absences"] > 0, "No authenticated journal absence lookup was observed"
 elif mode == "floor-batch-control":
     directory = run / "core/database/build/test-results/jvmTest"
     reports = list(directory.glob("TEST-*.NativeColdHistoryWorkspaceSupportingTest.xml"))

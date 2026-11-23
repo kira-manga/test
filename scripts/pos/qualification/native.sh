@@ -121,6 +121,29 @@ EOFCOLD
   exit "$result"
   ;;
 esac
+if [[ "$POS_SUITE" == 'history-source-control' ]]; then
+  cat > "$stage/history-source-control.init.gradle" <<'EOFSOURCE'
+gradle.beforeProject { p ->
+    if (p.path == ':adapters:app-gateway') {
+        p.tasks.withType(Test).configureEach {
+            environment 'POS_HISTORY_PROFILE', '1'
+            testLogging { exceptionFormat 'full' }
+        }
+    }
+}
+EOFSOURCE
+  result=0
+  tests=(:adapters:app-gateway:jvmTest --tests '*SupplierCashAncestryNativeSupportingTest')
+  python3 "$here/watched.py" "$report" history-source-control 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+    -I "$stage/history-source-control.init.gradle" "${tests[@]}" || result=$?
+  if [[ "$result" == 1 ]] && prepare_verified_plugin history-source-control; then
+    result=0
+    python3 "$here/watched.py" "$report" history-source-control 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+      -I "$stage/verified-cryptography.init.gradle" -I "$stage/history-source-control.init.gradle" "${tests[@]}" || result=$?
+  fi
+  python3 "$here/results.py" history-source-control "$stage" "$source"
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'opening-control' ]]; then
   cat > "$stage/opening-control.init.gradle" <<'EOFCONTROL'
 gradle.beforeProject { p ->
