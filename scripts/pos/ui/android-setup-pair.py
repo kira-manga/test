@@ -146,6 +146,19 @@ class InstalledUi:
         assert node.get("enabled", True), f"Expected enabled control: {label}"
         self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
 
+    def find_admission_consent(self, label, scroll):
+        for attempt in range(abs(scroll) + 1):
+            snapshot = self.action("tree.snapshot")
+            node = admission_consent_control(snapshot, label)
+            if node is not None:
+                return snapshot["snapshot_id"], node["id"]
+            if attempt < abs(scroll):
+                travel = min(20, self.height // 55)
+                self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
+                            dy=travel if scroll > 0 else -travel)
+                time.sleep(0.15)
+        raise AssertionError("The exact device admission consent was not actionable")
+
     def await_document_picker(self, observation, key, save=False):
         # The installed application first re-reads the native original. Its
         # 30-second operation watch still owns that read and opening the picker.
@@ -894,6 +907,26 @@ def verify_pairing_proof(master, client, observation):
     observation["master_verified_native_target_possession"] = True
 
 
+def admission_consent_control(snapshot, label):
+    nodes = {node["id"]: node for node in snapshot["nodes"] if node.get("visible")
+             and node["properties"].get("package") == PACKAGE}
+    matches = {}
+    for node in nodes.values():
+        if label not in (node.get("name"), node.get("text")):
+            continue
+        visited = set()
+        while node is not None and node["id"] not in visited:
+            visited.add(node["id"])
+            properties = node["properties"]
+            if properties.get("checkable") and properties.get("clickable"):
+                if node.get("bounds") and node.get("enabled") and not properties.get("checked"):
+                    matches[node["id"]] = node
+                break
+            node = nodes.get(node.get("parent_id"))
+    assert len(matches) <= 1, "Multiple distinct device admission consent controls"
+    return next(iter(matches.values()), None)
+
+
 def admit_native_device(master, client, head, observation):
     assert observation["master_verified_native_target_possession"] is True
     # The possession proof has already been accepted by the original Master.
@@ -914,9 +947,10 @@ def admit_native_device(master, client, head, observation):
     # item only after the genuine head approval is retained. Stay in that
     # viewport: reading the status at the top and scrolling back can consume the
     # original short consent lifetime. This sends each user action only once.
-    control = "Ask the same original native Master to admit this unchanged"
+    control = ("Ask the same original native Master to admit this unchanged SDK-bound target once. "
+               "Approval is not a permit; preserve this original if the outcome becomes uncertain.")
     try:
-        master.find(control, scroll=8, wait=700)
+        snapshot_id, consent_id = master.find_admission_consent(control, scroll=8)
     except AssertionError:
         # The fixed assertion stays failed unless the real control is present.
         # The approval form can shrink once work settles. If the footer is on
@@ -927,7 +961,7 @@ def admit_native_device(master, client, head, observation):
         if "device_admission_lookup" not in labels or "authentication_refused" in labels:
             raise
         try:
-            master.find(control, scroll=-4, wait=700)
+            snapshot_id, consent_id = master.find_admission_consent(control, scroll=-4)
         except AssertionError:
             observation["master_approval_confirmation_reverse_miss"] = master.visible_setup_outcome()
             # Evidence after failed consent lookup only. Inspect the existing
@@ -942,7 +976,7 @@ def admit_native_device(master, client, head, observation):
             raise
     mark("separate_approved_confirmation_visible")
     observation["master_original_head_approval_verified"] = True
-    master.choose(control, scroll=3)
+    master.action("element.click", snapshot_id=snapshot_id, id=consent_id)
     mark("separate_confirmation_checked")
     master.choose("Admit this approved original device", scroll=4)
     mark("admit_action_returned")
