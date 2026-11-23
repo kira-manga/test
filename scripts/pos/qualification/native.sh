@@ -23,7 +23,8 @@ prepare_verified_plugin() {
   local crypto_repository=
   [[ -f "$stage/$phase.raw" ]] || return 1
   if ! grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" &&
-     ! grep -Fq "Plugin [id: 'org.jetbrains.kotlin.multiplatform', version: '2.4.21', apply: false] was not found" "$stage/$phase.raw"; then
+     ! grep -Fq "Plugin [id: 'org.jetbrains.kotlin.multiplatform', version: '2.4.21', apply: false] was not found" "$stage/$phase.raw" &&
+     ! grep -Fq "Plugin [id: 'org.jetbrains.compose', version: '1.12.2', apply: false] was not found" "$stage/$phase.raw"; then
     return 1
   fi
   local marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
@@ -69,6 +70,8 @@ gradle.beforeSettings { settings ->
         url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
         content {
             includeVersionByRegex('org[.]jetbrains[.]kotlin([.].*)?', '.*', '2[.]4[.]21')
+            includeVersion('org.jetbrains.compose', 'org.jetbrains.compose.gradle.plugin', '1.12.2')
+            includeVersion('org.jetbrains.compose', 'compose-gradle-plugin', '1.12.2')
         }
     }
 }
@@ -81,6 +84,30 @@ EOFCRYPTO
   fi
 }
 
+if [[ "$POS_SUITE" == 'installed-cashier' ]]; then
+  test="$stage/inputs/runner/InstalledCashierFinalizeLatencySupportingTest.kt"
+  target='apps/android/src/androidTest/kotlin/com/ukkera/pos/android/independent/coldoriginalstartv1/InstalledCashierFinalizeLatencySupportingTest.kt'
+  [[ -f "$test" && ! -e "$target" ]]
+  install -m0600 "$test" "$target"
+  sha256sum "$target" | cut -d' ' -f1 > "$report/installed-cashier-test.sha256"
+  "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;27.2.12479018' 'cmake;3.22.1'
+  # The two fresh synthetic APKs use the same disposable guest signer. Never
+  # read or export packaging keys, APKs or native data in this job.
+  export UKKERA_POS_TEST_KEYSTORE="$stage/installed-cashier.p12"
+  export UKKERA_POS_TEST_KEYSTORE_PASSWORD="$(openssl rand -hex 24)"
+  trap 'if [[ -f "$UKKERA_POS_TEST_KEYSTORE" ]]; then unlink -- "$UKKERA_POS_TEST_KEYSTORE"; fi' EXIT
+  keytool -genkeypair -storetype PKCS12 -keystore "$UKKERA_POS_TEST_KEYSTORE" -storepass:env UKKERA_POS_TEST_KEYSTORE_PASSWORD \
+    -alias ukkera-pos-local-testing -keyalg RSA -keysize 2048 -validity 1 -dname 'CN=Disposable POS qualification'
+  build=(:apps:android:assembleLocalTesting :apps:android-runtime-tests:assembleLocalTesting)
+  result=0
+  python3 "$here/watched.py" "$report" installed-compile 55 "${gradle[@]}" "${build[@]}" || result=$?
+  if [[ "$result" == 1 ]] && prepare_verified_plugin installed-compile; then
+    result=0
+    python3 "$here/watched.py" "$report" installed-compile 55 "${gradle[@]}" \
+      -I "$stage/verified-cryptography.init.gradle" "${build[@]}" || result=$?
+  fi
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'recovery' ]]; then
   exec bash "$here/recovery.sh"
 fi

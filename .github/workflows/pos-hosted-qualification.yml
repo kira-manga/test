@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, profile-history-source, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, opening-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, profile-history-source, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, opening-control, installed-cashier]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
@@ -231,6 +231,21 @@ jobs:
           printf 'POS_SAME_RUNNER_PROFILE baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
           if (( baseline != 0 )); then exit "$baseline"; fi
           exit "$candidate"
+      - name: Prepare the disposable Android guest
+        if: matrix.suite == 'installed-cashier'
+        run: sudo chmod 666 /dev/kvm
+      - name: Measure a covered sale through the installed Android UI
+        if: matrix.suite == 'installed-cashier'
+        uses: ReactiveCircus/android-emulator-runner@4c44018e59b437e86cdfc41da381398f93ed8808
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          ram-size: 2048M
+          disk-size: 4096M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
+          script: bash scripts/pos/qualification/installed-cashier.sh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
