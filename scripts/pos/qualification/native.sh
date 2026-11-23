@@ -25,7 +25,8 @@ prepare_verified_plugin() {
   if ! grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" &&
      ! grep -Fq "Plugin [id: 'org.jetbrains.kotlin.multiplatform', version: '2.4.21', apply: false] was not found" "$stage/$phase.raw" &&
      ! grep -Fq "Plugin [id: 'org.jetbrains.compose', version: '1.12.2', apply: false] was not found" "$stage/$phase.raw" &&
-     ! grep -Fq "Plugin [id: 'com.google.devtools.ksp', version: '2.3.12', apply: false] was not found" "$stage/$phase.raw"; then
+     ! grep -Fq "Plugin [id: 'com.google.devtools.ksp', version: '2.3.12', apply: false] was not found" "$stage/$phase.raw" &&
+     ! grep -Eq "https://repo[.]maven[.]apache[.]org/maven2/[^']+'.*status code 429 from server" "$stage/$phase.raw"; then
     return 1
   fi
   local marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
@@ -51,9 +52,8 @@ prepare_verified_plugin() {
   done
   if [[ -n "$crypto_repository" ]]; then
     printf 'POS_QUALIFICATION_CRYPTOGRAPHY_REPOSITORY %s\n' "$crypto_repository"
-    # Use the same Maven Central coordinates explicitly and only for this
-    # exact published marker and implementation. The build's other repositories
-    # and all pinned dependency versions remain in their normal resolution path.
+    # Keep the exact local cryptography coordinates and verified downloads.
+    # For the retry, point Maven Central at Google's documented mirror only.
     cat > "$stage/verified-cryptography.init.gradle" <<EOFCRYPTO || return 1
 gradle.beforeSettings { settings ->
     settings.pluginManagement.repositories.maven {
@@ -64,19 +64,14 @@ gradle.beforeSettings { settings ->
             includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
         }
     }
-    // Compiler plugin markers and their modules use the same pinned
-    // Maven Central release through Google's documented public mirror.
-    settings.pluginManagement.repositories.maven {
-        name = 'PosQualificationPinnedCompilerCentralMirror'
-        url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
-        content {
-            includeVersionByRegex('org[.]jetbrains[.]kotlin([.].*)?', '.*', '2[.]4[.]21')
-            includeVersion('org.jetbrains.compose', 'org.jetbrains.compose.gradle.plugin', '1.12.2')
-            includeVersion('org.jetbrains.compose', 'compose-gradle-plugin', '1.12.2')
-            includeVersion('com.google.devtools.ksp', 'com.google.devtools.ksp.gradle.plugin', '2.3.12')
-            includeVersion('com.google.devtools.ksp', 'symbol-processing-gradle-plugin', '2.3.12')
-            includeVersion('com.google.devtools.ksp', 'symbol-processing-api', '2.3.12')
-            includeVersion('com.google.devtools.ksp', 'symbol-processing-common-deps', '2.3.12')
+}
+gradle.settingsEvaluated { settings ->
+    def central = ['https://repo.maven.apache.org/maven2', 'https://repo.maven.apache.org/maven2/']
+    [settings.pluginManagement.repositories, settings.dependencyResolutionManagement.repositories].each { repositories ->
+        repositories.withType(org.gradle.api.artifacts.repositories.MavenArtifactRepository).each { repository ->
+            if (repository.url.toString() in central) {
+                repository.url = java.net.URI.create('https://maven-central.storage-download.googleapis.com/maven2/')
+            }
         }
     }
 }
