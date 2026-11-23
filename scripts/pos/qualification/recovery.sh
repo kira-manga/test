@@ -62,8 +62,10 @@ expected=[
 ]
 variant=Path(sys.argv[4])/"VARIANT"
 variant_name=variant.read_text().strip() if variant.is_file() else ""
-assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1")
-active_reauth=bool(variant_name)
+assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1",
+                        "c22-native-persisted-missing-witness-v1.0.3")
+persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3"
+active_reauth=bool(variant_name) and not persisted_missing
 source_unavailable=variant_name=="c22-native-approval-source-unavailable-v1.0.1"
 if active_reauth:
     expected.insert(1,"POS_279_C22_ACTIVE_REAUTH old_execute=denied old_lookup=denied precommit_rows=0")
@@ -72,8 +74,14 @@ if source_unavailable:
         f"POS_279_C22_WITNESS_SOURCE_DEFERRED {stage} quote_hidden=1 same_id_deferrals=2 observed_source_checks=3 terminal_rows=0"
         for stage in ("active","native_reopen")
     ]
+if persisted_missing:
+    expected=[
+        "POS_279_C22_PERSISTED_MISSING_WITNESS_ACTIVE revoked=1 same_id_deferrals=2 terminal_rows=0 raw_claim_unchanged=1 receipt_unchanged=1",
+        "POS_279_C22_PERSISTED_MISSING_WITNESS_NATIVE_HOLD no_operational_client=1 terminal_rows=0",
+        "POS_279_C22_NATIVE_CLOSE",
+    ]
 verified=[line for line in expected if lines.count(line)==1]
-record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":False,
+record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":persisted_missing and verified==expected and rc==0,
         "active_reauthorization_verified":active_reauth and verified==expected and rc==0,
         "installed_source_unavailability_verified":source_unavailable and verified==expected and rc==0}
 if rc == 0 and verified == expected:
@@ -86,7 +94,7 @@ if rc == 0 and verified == expected:
     with sqlite3.connect(database.as_uri()+"?mode=ro&immutable=1",uri=True) as conn:
         counts={t:conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                 for t in ("operation_result","journal_envelope","audit_event","outbox_intent")}
-    assert set(counts.values())=={11}
+    assert set(counts.values())=={10 if persisted_missing else 11}
     record["confirmed_terminal_rows"]=counts
     if source_unavailable:
         reports=Path("adapters/catalog-store/build/test-results/jvmTest")
