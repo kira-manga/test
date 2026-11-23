@@ -171,7 +171,7 @@ class InstalledUi:
         observation[f"{key}_setup_outcome"] = self.visible_setup_outcome()
         raise AssertionError("The installed flow did not present the required Android document picker control")
 
-    def visible_setup_outcome(self):
+    def visible_setup_outcome(self, document_name=None):
         # Keep only fixed statuses from the installed UI, never text field
         # values, credential inputs, branch identifiers or device identities.
         nodes = self.action("tree.snapshot")["nodes"]
@@ -193,6 +193,7 @@ class InstalledUi:
             "pairing_document_imported": "Complete document imported for review",
             "pairing_document_cancelled": "Document transfer cancelled",
             "pairing_document_unavailable": "Document transfer unavailable",
+            "pairing_document_footer": "Transfer the complete binary document",
             "pairing_context_pending": "Reading the exact original pairing context",
             "pairing_context_unavailable": "The original pairing context is unavailable",
             "pairing_import_stage": "Import the original target identity for review",
@@ -232,6 +233,10 @@ class InstalledUi:
             "unavailable": "The native owner is unavailable",
             "key_preparation_required": "The original native key preparation must be continued",
         }
+        if document_name is not None:
+            for key in ("pairing_document_exported", "pairing_document_imported",
+                        "pairing_document_cancelled", "pairing_document_unavailable"):
+                fixed[key] = f"{document_name}: {fixed[key]}"
         resumed = adb(self.device, "shell", "dumpsys", "activity", "activities")
         crashes = adb(self.device, "logcat", "-d", "-b", "crash", "-v", "brief")
         exceptions = []
@@ -618,7 +623,7 @@ def restart_original_master(ui, observation):
     raise AssertionError("The original Master did not automatically reattach its existing journals within the setup bound")
 
 
-def observe_document_completion(ui, observation, key, expected):
+def observe_document_completion(ui, observation, key, document_name, expected):
     # Returning from Android's picker retains the exact owned DATA operation,
     # but locks the setup screen. Open its real review only once it is enabled.
     transitions = observation[key] = []
@@ -626,7 +631,7 @@ def observe_document_completion(ui, observation, key, expected):
     pairing_active = False
     started = time.monotonic()
     while time.monotonic() - started < 45:
-        state = ui.visible_setup_outcome()
+        state = ui.visible_setup_outcome(document_name)
         labels = state["known_labels"]
         if not transitions or transitions[-1]["known_labels"] != labels:
             transitions.append({"elapsed_seconds":round(time.monotonic() - started, 2), **state})
@@ -644,7 +649,14 @@ def observe_document_completion(ui, observation, key, expected):
         elif "setup_locked" not in labels and state["app_is_resumed"]:
             pairing_active = pairing_active or "pairing_page" in labels
             if pairing_active:
-                ui.action("pointer.scroll", x=ui.width // 2, y=ui.height // 2, dy=14)
+                # The challenge review is much longer than the identity form.
+                # Move most of a visible page per snapshot. When the explicit
+                # footer appears, step back to the exact document status above it.
+                footer = "pairing_document_footer" in labels
+                distance = max(14, min(72, ui.height // 45))
+                ui.action("pointer.scroll", x=ui.width // 2,
+                          y=ui.height * (2 if footer else 7) // 10,
+                          dy=-distance // 2 if footer else distance)
         time.sleep(0.4)
     raise AssertionError("The installed app did not confirm the original pairing document transfer")
 
@@ -709,7 +721,25 @@ def transfer_document(source, destination, export_action, import_action, filenam
     assert adb(destination.device, "shell", "test", "!", "-e", path) == ""
     source.choose(export_action, scroll=18)
     source.await_document_picker(observation, f"{purpose}_export_picker", save=True)
-    observe_document_completion(source, observation, f"{purpose}_export_completion", "pairing_document_exported")
+    document_name = {"identity": "Identity I", "challenge": "Challenge C", "possession": "Response P",
+                     "approved_master": "Original approval / root"}[purpose]
+    try:
+        observe_document_completion(source, observation, f"{purpose}_export_completion", document_name,
+                                    "pairing_document_exported")
+    except AssertionError:
+        # Report presence/byte count only. File presence cannot replace the
+        # installed application's exact completion status or native import.
+        file_size = None
+        try:
+            present = subprocess.run(["adb", "-s", source.device, "shell", "wc", "-c", path],
+                                     capture_output=True, text=True, timeout=10)
+            count = present.stdout.split(maxsplit=1)
+            if present.returncode == 0 and count and count[0].isdigit():
+                file_size = int(count[0])
+        except (OSError, subprocess.SubprocessError):
+            pass
+        observation[f"{purpose}_exported_file_size_on_failure"] = file_size
+        raise
     captured = subprocess.check_output(["adb", "-s", source.device, "exec-out", "cat", path], timeout=12)
     assert 1 <= len(captured) <= limit, f"Original exported {purpose} document is absent or outside its bound"
     with tempfile.TemporaryDirectory(dir=WORK) as directory:
@@ -723,7 +753,8 @@ def transfer_document(source, destination, export_action, import_action, filenam
     destination.choose(import_action, scroll=20)
     destination.await_document_picker(observation, f"{purpose}_import_picker")
     choose_original_document(destination, filename, observation, purpose)
-    observe_document_completion(destination, observation, f"{purpose}_import_completion", "pairing_document_imported")
+    observe_document_completion(destination, observation, f"{purpose}_import_completion", document_name,
+                                "pairing_document_imported")
 
 
 def verify_pairing_proof(master, client, observation):
