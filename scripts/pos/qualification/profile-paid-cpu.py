@@ -21,15 +21,17 @@ categories = {
     "installed_key_custody": ("DesktopMasterClientJournalCustody", "DesktopSecretStoreCustody"),
     "crypto": ("javax/crypto/", "java/security/", "sun/security/"),
     "stock_proof": ("LocalStockRelationalInspection", "StockOriginalTraversal", "StockReadProducerProof"),
+    "stock_cycle_search": ("StockOriginalTraversal.reaches",),
     "retained_rows": ("RetainedOriginalReader", "StockFrameStreamDecoder", "RuntimeHistoryColdIndex"),
     "published_catalogue": ("LocalCatalogUnitAuthority", "LocalCatalogPublication"),
     "journal_replay": ("RuntimeHistoryScanner", "RuntimeHistoryColdReplay", "NativeHistoryJournal"),
     "result_authorization": ("lookupAtWriter", "lookupInternal", "currentIdentityDenial", "RetainedResultAuthorization"),
+    "native_writer": ("RoomRuntimeHistoryOwner", "AndroidSelfOwnedInstallationLifetime"),
     "receipt_proof": ("LocalRetailCustomerReceipt", "LocalPaidSaleRead", "LocalReceiptMembership"),
     "sqlite": ("androidx/sqlite/", "sqlite3_"),
     "codec": ("kotlinx/serialization/", "NativeHistoryWriterV2", "LocalPhysicalJournalFormatV1"),
 }
-selected = {1, 5, 10, 25, 50, 100, 250, 500, 1000}
+selected = {1, 5, 10, 25, 32, 50, 100, 250, 500, 1000}
 begin = re.compile(rb"CHB_STEP_BEGIN (\d{1,4}) (create|begin|start|capture|apply|finalize|receipt/[1-9])")
 receipt_end = re.compile(rb"CHB_EXACT_RECEIPTS_RETURNED [0-9]+")
 lookup_end = re.compile(rb"CHB_EXACT_LOOKUPS_RETURNED [0-9]+")
@@ -91,9 +93,11 @@ cold_allowed = mode == "restart"
 seed_close = f"CHB_NATIVE_CLOSE seeded-{os.environ['UKKERA_CHB_COUNT']}".encode()
 recovery_started = False
 recovery_mode = "fresh" if mode == "restart" else "same_process"
+active = None
+windows = 0
+next_sample = 0.0
 with (stage / "public" / f"{mode}.cpu-samples.jsonl").open("x") as out:
     while not done.exists():
-        active = None
         try:
             with source.open("rb") as log:
                 log.seek(offset)
@@ -102,6 +106,9 @@ with (stage / "public" / f"{mode}.cpu-samples.jsonl").open("x") as out:
                         break
                     offset = log.tell()
                     line = line.rstrip()
+                    if boundary.fullmatch(line):
+                        windows = 0
+                        next_sample = 0.0
                     if match := begin.fullmatch(line):
                         sale, phase = int(match[1]), match[2].decode()
                         active = {"sale": sale, "phase": phase} if sale in selected else None
@@ -121,6 +128,9 @@ with (stage / "public" / f"{mode}.cpu-samples.jsonl").open("x") as out:
                         active = None
         except FileNotFoundError:
             pass
-        if active:
-            print(json.dumps(capture(active, offset), sort_keys=True), file=out, flush=True)
+        if active and windows < 4 and time.monotonic() >= next_sample:
+            observation = capture({**active, "window": windows + 1}, offset)
+            print(json.dumps(observation, sort_keys=True), file=out, flush=True)
+            windows += 1
+            next_sample = time.monotonic() + 15
         time.sleep(0.1)
