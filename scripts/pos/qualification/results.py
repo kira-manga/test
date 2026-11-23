@@ -19,6 +19,8 @@ if mode == "frozen":
         r" row_ns=[0-9]+ hash_ns=[0-9]+ close_ns=[0-9]+ total_ns=[0-9]+"
         r"|POS_NATIVE_CENSUS_CUT trial=[12] items=[0-9]+ bytes=[0-9]+ row_ns=[0-9]+"
         r" hash_ns=[0-9]+ full_typed_open_and_close_ns=[0-9]+"
+        r"|POS_NATIVE_CENSUS_COVERAGE trial=[12] distinct=[0-9]+ repeated=[0-9]+ repeated_bytes=[0-9]+"
+        r" image_rows=[0-9]+ image_bytes=[0-9]+ same_image_bytes=[0-9]+ plaintext_rows=[0-9]+ plaintext_bytes=[0-9]+"
     )
     for phase in ("seed", "restart"):
         log = stage / f"{phase}.raw"
