@@ -68,10 +68,10 @@ variant=Path(sys.argv[4])/"VARIANT"
 variant_name=variant.read_text().strip() if variant.is_file() else ""
 assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1",
                         "c22-native-persisted-missing-witness-v1.0.3", "c22-native-intact-missing-witness-v1.0.4",
-                        "c22-native-misbound-witness-v1.0.5")
+                        "c22-native-misbound-witness-v1.0.5", "c22-native-misbound-witness-v1.0.6")
 intact_missing=variant_name=="c22-native-intact-missing-witness-v1.0.4"
 persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3" or intact_missing
-misbound=variant_name=="c22-native-misbound-witness-v1.0.5"
+misbound=variant_name in ("c22-native-misbound-witness-v1.0.5", "c22-native-misbound-witness-v1.0.6")
 active_reauth=bool(variant_name) and not (persisted_missing or misbound)
 source_unavailable=variant_name=="c22-native-approval-source-unavailable-v1.0.1"
 if active_reauth:

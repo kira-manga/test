@@ -136,6 +136,21 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   fi
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
+  # A prior hosted runner could not resolve this pinned plugin marker before
+  # a JVM test started. Retry compilation once only when the official source
+  # currently proves that exact marker is available. Preserve the first error.
+  if [[ "$compile_result" == 1 && -f "$stage/profile-compile.raw" ]] &&
+     grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw" &&
+     curl --fail --silent --show-error --location --proto '=https' --retry 2 --max-time 18 \
+       'https://plugins.gradle.org/m2/dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom' \
+       -o "$stage/cryptography-plugin-marker.pom" &&
+     grep -Fq '<artifactId>dev.whyoleg.cryptography.gradle.plugin</artifactId>' "$stage/cryptography-plugin-marker.pom"; then
+    mv "$stage/profile-compile.raw" "$stage/profile-compile-repository-failure.raw"
+    mv "$report/profile-compile.json" "$report/profile-compile-repository-failure.json"
+    compile_result=0
+    python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" --refresh-dependencies \
+      -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
+  fi
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
     python3 "$here/results.py" floor-batch-control "$stage" "$source"
   fi
