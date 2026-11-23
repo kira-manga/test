@@ -94,7 +94,7 @@ jobs:
               export POS_UI_REVISION=46b89828ea133d9d5f7f802f2fa5546bbe3c31a6
               ;;
             windows)
-              gh run download 44257616578 --repo kira-manga/test --name pos-windows-msi-44257616578-1 --dir "$work/artifact"
+              gh run download 45051913690 --repo kira-manga/test --name pos-windows-fresh-service-test-msi-45051913690 --dir "$work/artifact"
               export POS_UI_REVISION=e450ac51708ac9a2684187867e82467109b733d4
               ;;
             macos)
@@ -107,32 +107,55 @@ jobs:
         if: matrix.platform == 'android'
         shell: bash
         run: bash scripts/pos/ui/android-emulator.sh
-      - name: Install the retained signed Windows MSIX with its exact certificate
+      - name: Install the verified service-aware Windows MSI
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
           $work = "$env:RUNNER_TEMP/pos-ui"
-          $msix = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
+          $msi = (Get-Content -LiteralPath "$work/package-path" -Raw).Trim()
           $cert = Join-Path $env:GITHUB_WORKSPACE "apps/pos/apps/desktop/packaging/windows/UkkeraPOS-Test-Signing.cer"
           $certHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $cert).Hash.ToLowerInvariant()
           if ($certHash -ne "998f39e61839e620384736fab82fec773e827314580fb69bfaccf66446026f6c") {
             throw "Unexpected test signer certificate"
           }
-          Import-Certificate -FilePath $cert -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
-          Add-AppxPackage -Path $msix
-          $package = Get-AppxPackage -Name "Ukkera.POS.Test"
+          $packageName = "Ukkera.POS.Test"
+          $serviceName = "UkkeraPOSTestMaster"
+          $os = Get-CimInstance Win32_OperatingSystem
+          if ($os.FreePhysicalMemory * 1024 -lt 7GB -or (Get-PSDrive -Name $env:SystemDrive.TrimEnd(':')).Free -lt 6GB) {
+            throw "Windows resource admission refused"
+          }
+          if ((Get-AppxPackage -AllUsers -Name $packageName) -or (Get-Service -Name $serviceName -ErrorAction SilentlyContinue)) {
+            throw "The Windows UI test requires a fresh installation"
+          }
+          $trusted = Import-Certificate -FilePath $cert -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+          $signature = Get-AuthenticodeSignature -LiteralPath $msi
+          if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Thumbprint -ne $trusted.Thumbprint) {
+            throw "The MSI must be signed by the retained POS test identity"
+          }
+          $log = Join-Path $work "msi-install.log"
+          $install = Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$msi`" /qn /norestart /l*v `"$log`"" -PassThru
+          if (!$install.WaitForExit(150000) -or $install.ExitCode -ne 0) {
+            throw "Windows Installer did not confirm MSI installation"
+          }
+          $package = Get-AppxPackage -Name $packageName
           if ($package.PackageFamilyName -ne "Ukkera.POS.Test_n9kkbga0qmnm6") { throw "Unexpected package identity" }
           $app = Join-Path $env:LOCALAPPDATA "Microsoft/WindowsApps/ukkera-pos-test.exe"
-          if (!(Test-Path -LiteralPath $app)) { throw "Installed MSIX application alias is absent" }
+          if (!(Test-Path -LiteralPath $app)) { throw "Installed Windows application alias is absent" }
+          $service = Get-Service -Name $serviceName
+          $nativeService = Get-CimInstance Win32_Service -Filter "Name='$serviceName'"
+          if ($service.Status -ne "Running" -or $nativeService.StartName -ne "NT AUTHORITY\LocalService") {
+            throw "Installed POS Master service is not running under its intended native account"
+          }
           $app | Set-Content -LiteralPath "$work/installed"
-          $service = Get-Service -Name UkkeraPOSTestMaster
           @{
+            install_exit = $install.ExitCode
             package_version = $package.Version.ToString()
             package_family = $package.PackageFamilyName
             master_service = $service.Status.ToString()
+            master_service_account = $nativeService.StartName
             test_certificate_sha256 = $certHash
-          } | ConvertTo-Json | Set-Content -LiteralPath "$work/public/windows-msix.json"
+          } | ConvertTo-Json | Set-Content -LiteralPath "$work/public/windows-msi.json"
       - name: Copy the signed macOS app out of its disk image
         if: matrix.platform == 'macos'
         shell: bash
