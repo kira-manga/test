@@ -288,6 +288,34 @@ class InstalledUi:
         (REPORT / f"{name}.png").write_bytes(png)
         return hashlib.sha256(png).hexdigest()
 
+    def process_after_submission(self, original_pid):
+        # Tie the observation to the app process that handled the submitted
+        # action. Publish fixed observations only, never dump records, PIDs,
+        # user data, timestamps, log messages or Android trace paths.
+        result = subprocess.run(["adb", "-s", self.device, "shell", "pidof", PACKAGE],
+                                capture_output=True, text=True, timeout=10)
+        running = result.stdout.strip()
+        if result.returncode == 0 and running == original_pid:
+            return {"process": "original_alive"}
+        if result.returncode == 0 and running.isdecimal():
+            state = "different_process"
+        elif result.returncode == 1 and not running:
+            state = "original_not_running"
+        else:
+            return {"process": "observation_unavailable"}
+        info = adb(self.device, "shell", "dumpsys", "activity", "exit-info", PACKAGE)
+        for record in re.split(r"(?m)^\s*ApplicationExitInfo[^\n]*:\s*$", info):
+            if not re.search(r"\bpid=" + re.escape(original_pid) + r"(?=\s|$)", record):
+                continue
+            match = re.search(r"\bprocess=" + re.escape(PACKAGE)
+                              + r"\s+reason=(\d{1,2})\s+\([^\n]*?\)\s+subreason=(\d{1,3})"
+                                r"\s+\([^\n]*?\)\s+status=(-?\d{1,3})(?=\s|$)", record)
+            if match:
+                reason, subreason, status = map(int, match.groups())
+                return {"process": state, "android_exit_reason": reason,
+                        "android_exit_subreason": subreason, "android_exit_status": status}
+        return {"process": state, "original_exit_record_present": False}
+
     def native_owner_refusals(self):
         # Report only existing, fixed native reason enums and static POS method
         # locations. Journal data, identities, log messages and values stay private.
@@ -405,6 +433,8 @@ def activate_master(ui, observation, head_password):
     ui.enter("New first-employee password", employee, scroll=6)
     ui.enter("Confirm employee password", employee, scroll=6)
     ui.choose("I reviewed ALL grants", scroll=10)
+    original_pid = adb(ui.device, "shell", "pidof", PACKAGE).strip()
+    assert original_pid.isdecimal(), "The installed original Master process is required before submission"
     ui.choose("Approve and install the original first account", scroll=6)
     observation["master_first_account_submit_sent"] = True
     try:
@@ -412,6 +442,11 @@ def activate_master(ui, observation, head_password):
     except AssertionError:
         state = ui.visible_setup_outcome()
         observation["master_first_account_initial_outcome"] = state
+        if not state["app_is_resumed"]:
+            try:
+                observation["master_first_account_process"] = ui.process_after_submission(original_pid)
+            except (subprocess.SubprocessError, OSError):
+                observation["master_first_account_process"] = {"process": "observation_unavailable"}
         # Exercise the real existing-only inspection after an uncertain response.
         # Never create another target, submit passwords again or repeat installation.
         if "company_unresolved" not in state["known_labels"] or "recovery_action" not in state["known_labels"]:
