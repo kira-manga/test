@@ -159,6 +159,7 @@ class InstalledUi:
             "journal_connected": "The original device and first employee journals are connected",
             "local_device_pairing_available": "Pair a new target through this original Master",
             "pairing_page": "Pair a new physical device",
+            "target_input_review": "The target request is reviewed DATA. Explicit preparation is still required.",
             "pairing_context_pending": "Reading the exact original pairing context",
             "pairing_context_unavailable": "The original pairing context is unavailable",
             "pairing_import_stage": "Import the original target identity for review",
@@ -434,6 +435,14 @@ def prepare_client_target(ui, observation, scope):
         ui.enter(label, identifier, scroll=9)
     ui.enter("Private local device name", "Hosted Android Training Client", scroll=9)
     ui.choose("Review these exact target inputs", scroll=9)
+    try:
+        # The review replaces the long input form. Its status is at the top,
+        # so do not continue scrolling from the previous form's submit button.
+        ui.find("The target request is reviewed DATA.", scroll=-15, wait=2500)
+    except (AssertionError, ClientError):
+        observation["client_target_review_outcome"] = ui.visible_setup_outcome()
+        raise
+    observation["client_target_input_review_verified"] = True
     ui.choose("I reviewed the exact branch, capabilities, AppId and private name", scroll=20)
     ui.choose("Retain intent and prepare this new target", scroll=10)
     ui.find("The original native target is retained", scroll=-18, wait=2500)
