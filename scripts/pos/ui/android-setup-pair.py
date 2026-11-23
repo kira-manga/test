@@ -393,36 +393,41 @@ class InstalledUi:
         records = adb(self.device, "logcat", "-d", "-v", "threadtime", "-s", "UkkeraNativeOwner:I")
         refusals = []
         last_entered = {}
+        boundaries = {
+            "Original installation refused: ": "original_installation",
+            "Original master open refused: ": "original_master_open",
+            "Original master close unconfirmed: ": "original_master_close",
+            "Original master native work refused: ": "master_worker",
+            "Native action refused: ": "native_task",
+            "Native process exclusion requested: ": "process_exclusion",
+        }
         for line in records.splitlines():
             process = re.match(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+\d+\s+\w\s+UkkeraNativeOwner\s*:", line)
-            if process:
-                approval = device_approval_refusal(line[process.end():].strip())
-                if approval is not None:
-                    refusals.append(approval)
-                    continue
-            entry = re.search(r"Native action entered: (com\.ukkera\.pos\.[\w.$]{1,150})$", line)
-            if process and entry:
+            if process is None:
+                continue
+            message = line[process.end():].strip()
+            approval = device_approval_refusal(message)
+            if approval is not None:
+                refusals.append(approval)
+                continue
+            entry = re.fullmatch(r"Native action entered: (com\.ukkera\.pos\.[\w.$]{1,150})", message)
+            if entry:
                 last_entered[process[1]] = entry[1]
                 continue
-            if "Original master native work refused:" in line:
-                boundary = "master_worker"
-            elif "Native action refused:" in line:
-                boundary = "native_task"
-            elif "Native process exclusion requested:" in line:
-                boundary = "process_exclusion"
-            else:
+            boundary = next((name for prefix, name in boundaries.items() if message.startswith(prefix)), None)
+            if boundary is None:
                 continue
-            reason = re.search(r"(?:; |: )(?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", line)
+            reason = re.search(r"(?:; |: )(?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", message)
             refusal = {
                 "boundary": boundary,
                 "reason": reason.group(1) if reason else None,
-                "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", line)[:6],
+                "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", message)[:6],
             }
             if boundary == "process_exclusion":
-                timing = re.search(r"; phase=([a-z0-9-]{1,90}); elapsedMillis=(\d{1,15}|unavailable); deadlineMillis=(\d{1,15}|none);", line)
+                timing = re.search(r"; phase=([a-z0-9-]{1,90}); elapsedMillis=(\d{1,15}|unavailable); deadlineMillis=(\d{1,15}|none);", message)
                 if timing:
                     refusal.update(phase=timing[1], elapsed_millis=timing[2], deadline_millis=timing[3])
-                if process and process[1] in last_entered:
+                if process[1] in last_entered:
                     refusal["last_native_action_class"] = last_entered[process[1]]
             refusals.append(refusal)
         return refusals
@@ -586,6 +591,11 @@ def observe_first_account_installation(ui, observation, original_pid):
                 used.add(selected)
                 observation[f"master_first_account_{selected}_sent"] = True
         elif "uncertain" in labels and "recovery_action" in used:
+            try:
+                observation["master_first_account_process"] = ui.process_after_submission(original_pid)
+                observation["master_first_account_native_refusals"] = ui.native_owner_refusals()[-12:]
+            except (subprocess.SubprocessError, OSError):
+                observation["master_first_account_original_observation_unavailable"] = True
             raise AssertionError("The installed Master reported uncertainty after original inspection")
         elif "authentication_refused" in labels:
             raise AssertionError("The installed Master refused first-account authorization")
