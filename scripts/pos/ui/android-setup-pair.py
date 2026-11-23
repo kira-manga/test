@@ -474,6 +474,10 @@ def restart_original_master(ui, observation):
                 observation["master_restart_presentation_unlocked"] = True
         if {"journal_unavailable", "close_unconfirmed", "automatic_reopen_unavailable"} & set(labels):
             raise AssertionError("The installed Master reported an existing-only restart refusal")
+        if "master_operating_notice" in labels and not observation.get("master_restart_notice_acknowledged"):
+            ui.choose("Understood")
+            observation["master_restart_notice_acknowledged"] = True
+            continue
         if "local_device_pairing_available" in labels:
             observation["master_existing_journals_reattached_after_restart"] = True
             return
