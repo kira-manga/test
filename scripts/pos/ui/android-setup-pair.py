@@ -20,6 +20,7 @@ from lease import HoldLease
 
 
 PACKAGE = "com.ukkera.pos.local.testing"
+DOCUMENT_PICKERS = {"com.android.documentsui", "com.google.android.documentsui"}
 GUESTS = {"master": "emulator-5554", "client": "emulator-5556"}
 WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
@@ -141,6 +142,34 @@ class InstalledUi:
         node = found["nodes"][0]
         assert node.get("enabled", True), f"Expected enabled control: {label}"
         self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+
+    def await_document_picker(self, observation, key, save=False):
+        # The installed application first re-reads the native original. Its
+        # 30-second operation watch still owns that read and opening the picker.
+        transitions = observation[key] = []
+        started = time.monotonic()
+        while time.monotonic() - started < 34:
+            snapshot = self.action("tree.snapshot")
+            nodes = snapshot["nodes"]
+            picker = [node for node in nodes if node.get("visible")
+                      and node["properties"].get("package") in DOCUMENT_PICKERS]
+            saves = [node for node in picker if node.get("clickable", node["properties"].get("clickable"))
+                     and any(str(node.get(field, "")).casefold() == "save" for field in ("name", "text"))]
+            assert len(saves) <= 1, "The system document picker has multiple Save controls"
+            enabled_save = bool(saves and saves[0].get("enabled", True))
+            state = ("system_save_available" if enabled_save else "system_picker_present" if picker
+                     else "pos_visible" if any(node["properties"].get("package") == PACKAGE for node in nodes)
+                     else "another_window_visible")
+            if not transitions or transitions[-1]["state"] != state:
+                transitions.append({"state": state, "elapsed_seconds": round(time.monotonic() - started, 2)})
+            if save and enabled_save:
+                self.action("element.click", snapshot_id=snapshot["snapshot_id"], id=saves[0]["id"])
+                return
+            if not save and picker:
+                return
+            time.sleep(0.4)
+        observation[f"{key}_setup_outcome"] = self.visible_setup_outcome()
+        raise AssertionError("The installed flow did not present the required Android document picker control")
 
     def visible_setup_outcome(self):
         # Keep only fixed statuses from the installed UI, never text field
@@ -520,7 +549,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
     assert adb(source.device, "shell", "test", "!", "-e", path) == ""
     assert adb(destination.device, "shell", "test", "!", "-e", path) == ""
     source.choose(export_action, scroll=18)
-    source.choose("Save")
+    source.await_document_picker(observation, f"{purpose}_export_picker", save=True)
     source.find("Exact retained document exported", scroll=10, wait=1800)
     captured = subprocess.check_output(["adb", "-s", source.device, "exec-out", "cat", path], timeout=12)
     assert 1 <= len(captured) <= limit, f"Original exported {purpose} document is absent or outside its bound"
@@ -533,6 +562,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
     assert imported == captured, f"{purpose} bytes changed during delivery"
     observation[f"original_{purpose}_document_bytes_verified"] = len(captured)
     destination.choose(import_action, scroll=20)
+    destination.await_document_picker(observation, f"{purpose}_import_picker")
     try:
         destination.choose(filename)
     except AssertionError:
