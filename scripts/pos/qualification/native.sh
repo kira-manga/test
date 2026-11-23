@@ -136,25 +136,34 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   fi
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
-  # A prior hosted runner could not resolve this pinned plugin marker before
-  # a JVM test started. Retry compilation once only when the official source
-  # currently proves that exact marker is available. Preserve the first error.
+  # Confirm the pinned marker on an official Central endpoint before a
+  # compile retry. The first endpoint can be rate limited on hosted runners.
+  crypto_repository=
   if [[ "$compile_result" == 1 && -f "$stage/profile-compile.raw" ]] &&
-     grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw" &&
-     curl --fail --silent --show-error --location --proto '=https' --retry 2 --max-time 18 \
-       'https://repo.maven.apache.org/maven2/dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom' \
-       -o "$stage/cryptography-plugin-marker.pom" &&
-     grep -Fq '<artifactId>dev.whyoleg.cryptography.gradle.plugin</artifactId>' "$stage/cryptography-plugin-marker.pom"; then
+     grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw"; then
+    marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
+    marker_sha='02f7d7b8bb05e4c74b611ac0ab8a5edde67bbabf27a4dc078daf4b86213b6f0d'
+    for repository in https://repo1.maven.org/maven2/ https://repo.maven.apache.org/maven2/; do
+      if curl --fail --silent --show-error --location --proto '=https' --max-time 12 \
+           "$repository$marker" -o "$stage/cryptography-plugin-marker.pom" &&
+         printf '%s  %s\n' "$marker_sha" "$stage/cryptography-plugin-marker.pom" | sha256sum --check --status; then
+        crypto_repository="$repository"
+        break
+      fi
+    done
+  fi
+  if [[ -n "$crypto_repository" ]]; then
+    printf 'POS_QUALIFICATION_CRYPTOGRAPHY_REPOSITORY %s\n' "$crypto_repository"
     mv "$stage/profile-compile.raw" "$stage/profile-compile-repository-failure.raw"
     mv "$report/profile-compile.json" "$report/profile-compile-repository-failure.json"
     # Use the same Maven Central coordinates explicitly and only for this
     # exact published marker and implementation. The build's other repositories
     # and all pinned dependency versions remain in their normal resolution path.
-    cat > "$stage/profile-cryptography.init.gradle" <<'EOFCRYPTO'
+    cat > "$stage/profile-cryptography.init.gradle" <<EOFCRYPTO
 gradle.beforeSettings { settings ->
     settings.pluginManagement.repositories.maven {
         name = 'PosQualificationCryptography'
-        url = uri('https://repo.maven.apache.org/maven2/')
+        url = uri('$crypto_repository')
         content {
             includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
             includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
@@ -163,7 +172,7 @@ gradle.beforeSettings { settings ->
 }
 EOFCRYPTO
     compile_result=0
-    python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" --refresh-dependencies \
+    python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
       -I "$stage/profile-cryptography.init.gradle" -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" \
       "${compile_tasks[@]}" || compile_result=$?
   fi
