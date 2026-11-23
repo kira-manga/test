@@ -1,6 +1,5 @@
 """Export only known synthetic assertions and inert runner measurements."""
 import json
-import os
 from pathlib import Path
 import re
 import sys
@@ -42,7 +41,7 @@ elif mode == "census":
     safe["scope"] = "frozen 1000-sale" if safe["paid_sales"] == 1000 else f"{safe['paid_sales']}-sale supporting prefix"
     (published / "verified-census.json").write_text(json.dumps(safe, indent=2) + "\n")
     print(json.dumps(safe))
-elif mode in ("cold-payment-control", "cold-owner-control", "cold-literal-control"):
+elif mode in ("cold-payment-control", "cold-pass-control", "cold-owner-control", "cold-literal-control"):
     suite_dir = run / "adapters/app-gateway/build/test-results/jvmTest"
     entries = list(suite_dir.glob("TEST-*.PaidRetailReceiptColdNativeSupportingTest.xml"))
     report = None
@@ -60,11 +59,12 @@ elif mode in ("cold-payment-control", "cold-owner-control", "cold-literal-contro
         count = source.count("Native physical stage: COLD_STREAMED_PREDECESSOR_REUSED")
         (published / "cold-predecessor-reuse.json").write_text(json.dumps({"reuse_observations": count}) + "\n")
         assert count > 0, "No observed exact native predecessor reuse"
-        if os.environ.get("POS_HISTORY_PROFILE") == "1":
-            passes = [parsed for line in source.splitlines()
-                      if (parsed := parse_cold_history_pass(line.encode("utf-8"))) is not None]
-            assert {item["phase"] for item in passes} == {"CAPTURE", "REPLAY"}, "Missing cold pass timings"
-            (published / "cold-native-passes.json").write_text(json.dumps(passes, indent=2) + "\n")
+    if mode == "cold-pass-control":
+        source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
+        passes = [parsed for line in source.splitlines()
+                  if (parsed := parse_cold_history_pass(line.encode("utf-8"))) is not None]
+        (published / "cold-native-passes.json").write_text(json.dumps(passes, indent=2) + "\n")
+        assert {item["phase"] for item in passes} == {"CAPTURE", "REPLAY"}, "Missing cold pass timings"
     if mode == "cold-literal-control":
         source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")

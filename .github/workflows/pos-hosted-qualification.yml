@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, retained-reader, cold-payment-control, cold-owner-control, cold-literal-control, payment-regression, opening-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, opening-control]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
@@ -23,7 +23,7 @@ on:
         options: ['5', '10', '25', '32', '50', '100', '250', '500']
         default: '10'
       compare_revision:
-        description: Optional sealed candidate SHA for a same-runner 5-, 10-, or 25-sale comparison
+        description: Optional sealed candidate SHA for a same-runner paid or cold-pass comparison
         type: string
         required: false
       regression_fixtures_sha256:
@@ -216,8 +216,11 @@ jobs:
           if [[ -z "$EXPECTED_COMPARISON" ]]; then
             exec bash "$runner"
           fi
-          test "$POS_SUITE" = paid-profile
-          case "$POS_PAID_PROFILE_COUNT" in 5|10|25) ;; *) exit 2 ;; esac
+          case "$POS_SUITE" in
+            paid-profile) case "$POS_PAID_PROFILE_COUNT" in 5|10|25) ;; *) exit 2 ;; esac ;;
+            cold-pass-control) test "$POS_HISTORY_PROFILE" = 1 ;;
+            *) exit 2 ;;
+          esac
           umask 077
           python3 scripts/pos/qualification/prepare-comparison.py
           baseline=0
@@ -236,7 +239,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always() && inputs.compare_revision != '' && matrix.suite == 'paid-profile'
+        if: always() && inputs.compare_revision != '' && (matrix.suite == 'paid-profile' || matrix.suite == 'cold-pass-control')
         with:
           name: pos-qualification-paired-profile-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pos-comparison/pos-qualification/public
