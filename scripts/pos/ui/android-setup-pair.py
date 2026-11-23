@@ -680,7 +680,10 @@ def verify_pairing_proof(master, client, observation):
 def main():
     preflight = json.loads((REPORT / "android-lan-preflight.json").read_bytes())
     assert preflight["distinct_installed_instances"] == 2 and preflight["shared_wifi"]
-    assert all(entry["received"] == 3 for entry in preflight["bidirectional_icmp"])
+    directions = preflight["bidirectional_tcp"]
+    assert len(directions) == len(GUESTS)
+    assert {item["source"] for item in directions} == set(GUESTS.values())
+    assert all(item["verified"] and item["stage"] == "exact_payload" for item in directions)
     observation = {
         "pos_source_revision": preflight["pos_source_revision"],
         "emulator_version": preflight["emulator_version"],

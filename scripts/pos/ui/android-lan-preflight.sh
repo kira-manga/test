@@ -83,7 +83,7 @@ done
 
 python3 - "$work" <<'PY'
 from pathlib import Path
-import ipaddress,json,re,subprocess,sys
+import ipaddress,json,re,secrets,select,subprocess,sys
 work = Path(sys.argv[1])
 serials = ('emulator-5554','emulator-5556')
 nodes = []
@@ -101,12 +101,37 @@ for index,serial in enumerate(serials):
     replies = re.search(r'3 packets transmitted, (\d+) (?:packets )?received',reply.stdout)
     count = int(replies[1]) if replies is not None else 0
     observations.append({'source':serial,'sent':3,'received':count})
+def tcp_payload(index):
+    source, destination = serials[index], serials[1-index]
+    target = str(nodes[1-index].ip)
+    nonce = secrets.token_hex(16).encode("ascii") + b"\n"
+    # The guest binds its own Wi-Fi address and reports a kernel-selected
+    # port. There is no ADB port forwarding or host-visible listener.
+    with subprocess.Popen(['adb','-s',destination,'shell','-T','toybox','nc','-4','-l','-w','10','-W','4','-s',target],
+                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as listener:
+        try:
+            ready, _, _ = select.select([listener.stdout], [], [], 6)
+            port = listener.stdout.readline(8).strip() if ready else b""
+            if not port.isdigit() or not 1024 <= int(port) <= 65535:
+                return {'source':source,'verified':False,'stage':'listener_not_ready'}
+            sent = subprocess.run(['adb','-s',source,'shell','-T','toybox','nc','-4','-n','-w','4','-q','1',target,port.decode("ascii")],
+                                  input=nonce, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=7)
+            received, _ = listener.communicate(timeout=6)
+            exact = sent.returncode==0 and listener.returncode==0 and received==nonce
+            return {'source':source,'verified':exact,'stage':'exact_payload' if exact else 'payload_not_verified'}
+        except subprocess.TimeoutExpired:
+            return {'source':source,'verified':False,'stage':'transport_deadline'}
+        finally:
+            if listener.poll() is None:
+                listener.kill()
+
+tcp = [tcp_payload(index) for index in range(len(serials))]
 report = {'pos_source_revision':(work/'pos-revision').read_text().strip(),'emulator_version':version,
-          'distinct_installed_instances':2,'shared_wifi':True,'bidirectional_icmp':observations,
+          'distinct_installed_instances':2,'shared_wifi':True,'bidirectional_icmp':observations,'bidirectional_tcp':tcp,
           'pos_pairing_or_transactions_verified':False}
 (work/'public'/'android-lan-preflight.json').write_text(json.dumps(report, indent=2)+'\n')
 print(json.dumps(report))
-assert all(item['received']==3 for item in observations)
+assert all(item['verified'] for item in tcp), 'Direct guest TCP payload exchange was not confirmed in both directions.'
 PY
 headroom
 
