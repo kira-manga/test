@@ -24,6 +24,10 @@ gradle.beforeProject { p ->
                 mainClass.set('com.ukkera.pos.database.FiniteC22Inputs')
                 maxHeapSize = '256m'
                 jvmArgs '-XX:ActiveProcessorCount=2'
+                def variant = new File(fixture, 'VARIANT')
+                if (variant.isFile() && variant.text.trim() == 'c22-native-intact-missing-witness-v1.0.4') {
+                    systemProperty 'ukkera.lan.verifierDiagnostics', 'true'
+                }
                 environment 'LD_PRELOAD', new File(fixture, 'controlled-utc.so').absolutePath
                 environment 'UKKERA_CHB_TEST_UTC_FILE', System.getenv('POS_C22_CLOCK')
                 args new File(fixture, 'synthetic-c22.pdf').absolutePath
@@ -63,8 +67,9 @@ expected=[
 variant=Path(sys.argv[4])/"VARIANT"
 variant_name=variant.read_text().strip() if variant.is_file() else ""
 assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1",
-                        "c22-native-persisted-missing-witness-v1.0.3")
-persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3"
+                        "c22-native-persisted-missing-witness-v1.0.3", "c22-native-intact-missing-witness-v1.0.4")
+intact_missing=variant_name=="c22-native-intact-missing-witness-v1.0.4"
+persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3" or intact_missing
 active_reauth=bool(variant_name) and not persisted_missing
 source_unavailable=variant_name=="c22-native-approval-source-unavailable-v1.0.1"
 if active_reauth:
@@ -81,6 +86,11 @@ if persisted_missing:
         "POS_279_C22_NATIVE_CLOSE",
     ]
 verified=[line for line in expected if lines.count(line)==1]
+if intact_missing:
+    expected.append("FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT")
+    marker="Native physical stage: FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT"
+    if sum(line.endswith(marker) for line in lines)==1:
+        verified.append("FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT")
 record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":persisted_missing and verified==expected and rc==0,
         "active_reauthorization_verified":active_reauth and verified==expected and rc==0,
         "installed_source_unavailability_verified":source_unavailable and verified==expected and rc==0}
