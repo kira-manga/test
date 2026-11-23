@@ -25,7 +25,8 @@ gradle.beforeProject { p ->
                 maxHeapSize = '256m'
                 jvmArgs '-XX:ActiveProcessorCount=2'
                 def variant = new File(fixture, 'VARIANT')
-                if (variant.isFile() && variant.text.trim() == 'c22-native-intact-missing-witness-v1.0.4') {
+                if (variant.isFile() && variant.text.trim() in ['c22-native-intact-missing-witness-v1.0.4',
+                        'c22-native-current-ungranted-missing-witness-v1.0.7']) {
                     systemProperty 'ukkera.lan.verifierDiagnostics', 'true'
                 }
                 environment 'LD_PRELOAD', new File(fixture, 'controlled-utc.so').absolutePath
@@ -68,8 +69,10 @@ variant=Path(sys.argv[4])/"VARIANT"
 variant_name=variant.read_text().strip() if variant.is_file() else ""
 assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1",
                         "c22-native-persisted-missing-witness-v1.0.3", "c22-native-intact-missing-witness-v1.0.4",
-                        "c22-native-misbound-witness-v1.0.5", "c22-native-misbound-witness-v1.0.6")
-intact_missing=variant_name=="c22-native-intact-missing-witness-v1.0.4"
+                        "c22-native-misbound-witness-v1.0.5", "c22-native-misbound-witness-v1.0.6",
+                        "c22-native-current-ungranted-missing-witness-v1.0.7")
+current_ungranted=variant_name=="c22-native-current-ungranted-missing-witness-v1.0.7"
+intact_missing=variant_name=="c22-native-intact-missing-witness-v1.0.4" or current_ungranted
 persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3" or intact_missing
 misbound=variant_name in ("c22-native-misbound-witness-v1.0.5", "c22-native-misbound-witness-v1.0.6")
 active_reauth=bool(variant_name) and not (persisted_missing or misbound)
@@ -93,6 +96,8 @@ if misbound:
         "POS_279_C22_MISBOUND_WITNESS_NATIVE_HOLD no_operational_client=1 terminal_rows=0",
         "POS_279_C22_NATIVE_CLOSE",
     ]
+if current_ungranted:
+    expected.append("POS_279_C22_CURRENT_UNGRANTED quote_denied=1 same_id_denied=2 original_source_deferred=1 terminal_rows=0")
 verified=[line for line in expected if lines.count(line)==1]
 if intact_missing:
     expected.append("FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT")
@@ -103,6 +108,8 @@ record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tes
         "authentic_misbound_witness_tested":misbound and verified==expected and rc==0,
         "active_reauthorization_verified":active_reauth and verified==expected and rc==0,
         "installed_source_unavailability_verified":source_unavailable and verified==expected and rc==0}
+if current_ungranted:
+    record["current_ungranted_same_original_verified"]=verified==expected and rc==0
 if rc == 0 and verified == expected:
     root,=[line.rsplit(" at ",1)[1] for line in lines
            if re.fullmatch(r"Supporting business native originals retained at /var/tmp/lan-business-native-test[0-9]+",line)]
