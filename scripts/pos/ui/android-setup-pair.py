@@ -366,6 +366,23 @@ class InstalledUi:
                         "android_exit_subreason": subreason, "android_exit_status": status}
         return {"process": state, "original_exit_record_present": False}
 
+    def pairing_picker_transitions(self):
+        # Keep only the bounded, exact names emitted by the testing package.
+        records = adb(self.device, "logcat", "-d", "-v", "brief", "-s", "UkkeraPairingPicker:I")
+        known = frozenset((
+            "BOUND", "HOST_RESUMED", "STOP_FOR_PICKER", "STOP_WITHOUT_CURRENT_PICKER", "RETIRE_REQUESTED",
+            "HOST_RETIRED", "PICKER_LAUNCHED", "RESULT_WITHOUT_REQUEST", "RESULT_ALREADY_OBSERVED",
+            "RESULT_DOCUMENT", "RESULT_CANCELLED", "RESULT_UNAVAILABLE", "RESULT_FOREIGN_HOST",
+            "RESULT_WAITING_FOR_RESUME", "RESULT_INACTIVE", "RESULT_DELIVERED", "RESULT_ORIGINAL_UNAVAILABLE",
+            "IMPORT_COMPLETE", "IMPORT_ORIGINAL_UNAVAILABLE", "IMPORT_UNAVAILABLE",
+        ))
+        transitions = []
+        for line in records.splitlines():
+            entry = re.fullmatch(r"I/UkkeraPairingPicker\s*\(\s*\d+\): ([A-Z_]+)", line)
+            if entry and entry[1] in known:
+                transitions.append(entry[1])
+        return transitions[-48:]
+
     def native_owner_refusals(self):
         # Report only existing, fixed native reason enums and static POS method
         # locations. Journal data, identities, log messages and values stay private.
@@ -1064,7 +1081,11 @@ def main():
                 observation[f"{role}_final_native_refusals_unavailable"] = True
         raise
     finally:
-        for ui in sessions.values():
+        for role, ui in sessions.items():
+            try:
+                observation[f"{role}_pairing_picker_transitions"] = ui.pairing_picker_transitions()
+            except (OSError, subprocess.SubprocessError):
+                observation[f"{role}_pairing_picker_transitions_unavailable"] = True
             ui.close()
         (REPORT / "android-two-ui.json").write_text(json.dumps(observation, indent=2) + "\n")
         print(json.dumps(observation, sort_keys=True))
