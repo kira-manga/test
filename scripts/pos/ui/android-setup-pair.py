@@ -242,6 +242,8 @@ class InstalledUi:
             "device_admission_signing_intent": "Original signing unresolved",
             "device_admission_approval_phase": "Original head approval DATA retained",
             "device_admission_original_unavailable": "The exact native original cannot currently be resolved",
+            "device_admission_outcome_unresolved": "The original admission outcome is unresolved",
+            "device_admission_recorded": "Original admission recorded.",
             "runtime_publication_held": "no usable local client is currently published",
             "installing_first_account": "Awaiting original approval, durable installation and acknowledgement",
             "account_ack_pending": "Finish the original acknowledgement — no SQL replay",
@@ -441,15 +443,17 @@ class InstalledUi:
 
 def device_approval_refusal(message):
     guard = re.fullmatch(
-        r"Native device approval delivery refusal: (CURRENT_ORIGIN|PREPARED_HEAD|APPROVAL_EXPIRY|"
-        r"PREPARED_OBSERVATION|CURRENT_ISSUANCE|CURRENT_HEAD_CONSENT|RETAINED_ENDORSEMENT|DELIVER_ORIGINAL)/"
+        r"Native device (approval delivery|admission) refusal: (CURRENT_ORIGIN|PREPARED_HEAD|APPROVAL_EXPIRY|"
+        r"PREPARED_OBSERVATION|CURRENT_ISSUANCE|CURRENT_HEAD_CONSENT|RETAINED_ENDORSEMENT|"
+        r"DELIVER_ORIGINAL|ADMISSION_OBSERVATION)/"
         r"(AUTHENTICATION_REFUSED|ORIGINAL_ACTION_REQUIRED|ISSUANCE_WITHDRAWN|INVALID_APPLICATION|"
         r"USER_LOCKED|CONFLICT|AUTHORITY_UNAVAILABLE|STATE_UNCERTAIN|KEY_STATE_UNCERTAIN|NATIVE_RETIRED|UNAVAILABLE)",
         message,
     )
     if guard is None:
         return None
-    return {"boundary": "device_approval_delivery", "guard": guard[1], "reason": guard[2]}
+    boundary = "device_admission" if guard[1] == "admission" else "device_approval_delivery"
+    return {"boundary": boundary, "guard": guard[2], "reason": guard[3]}
 
 
 def setup_entry(ui):
@@ -998,7 +1002,18 @@ def admit_native_device(master, client, head, observation):
     mark("separate_confirmation_checked")
     master.choose("Admit this approved original device", scroll=4)
     mark("admit_action_returned")
-    master.find("Original admission recorded.", scroll=-17, wait=2000)
+    try:
+        master.find("Original admission recorded.", scroll=-17, wait=2000)
+    except AssertionError:
+        # A submitted admission is never sent again. Preserve the failed
+        # assertion and observe only the existing original recovery control.
+        try:
+            observation["master_after_admission_failure"] = master.visible_setup_outcome()
+            master.choose("Read / look up only this original", scroll=20)
+            observation["master_after_one_admission_inspection"] = master.visible_setup_outcome()
+        except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
+            observation["master_admission_inspection_error_type"] = type(diagnostic).__name__
+        raise
     mark("exact_original_admission_observed")
     observation["master_original_client_admission_verified"] = True
     master.choose("Retain original history and return to setup", scroll=25)
