@@ -16,15 +16,16 @@ cd "$source"
 declare -a gradle=(./gradlew --no-daemon --max-workers=2 --console=plain
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
   -Pkotlin.compiler.execution.strategy=in-process)
-# Some hosted runners cannot resolve this exact pinned plugin through Gradle.
-# Retry only that error with the published artifacts after checking their digests.
+# Some hosted runners cannot resolve an exact pinned plugin through Gradle.
+# Retry only those errors, keeping the published versions and artifact coordinates.
 prepare_verified_plugin() {
   local phase="$1"
   local crypto_repository=
   [[ -f "$stage/$phase.raw" ]] || return 1
   if ! grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" &&
      ! grep -Fq "Plugin [id: 'org.jetbrains.kotlin.multiplatform', version: '2.4.21', apply: false] was not found" "$stage/$phase.raw" &&
-     ! grep -Fq "Plugin [id: 'org.jetbrains.compose', version: '1.12.2', apply: false] was not found" "$stage/$phase.raw"; then
+     ! grep -Fq "Plugin [id: 'org.jetbrains.compose', version: '1.12.2', apply: false] was not found" "$stage/$phase.raw" &&
+     ! grep -Fq "Plugin [id: 'com.google.devtools.ksp', version: '2.3.12', apply: false] was not found" "$stage/$phase.raw"; then
     return 1
   fi
   local marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
@@ -63,15 +64,19 @@ gradle.beforeSettings { settings ->
             includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
         }
     }
-    // Kotlin plugin markers and their compiler modules use the same pinned
+    // Compiler plugin markers and their modules use the same pinned
     // Maven Central release through Google's documented public mirror.
     settings.pluginManagement.repositories.maven {
-        name = 'PosQualificationPinnedKotlinCentralMirror'
+        name = 'PosQualificationPinnedCompilerCentralMirror'
         url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
         content {
             includeVersionByRegex('org[.]jetbrains[.]kotlin([.].*)?', '.*', '2[.]4[.]21')
             includeVersion('org.jetbrains.compose', 'org.jetbrains.compose.gradle.plugin', '1.12.2')
             includeVersion('org.jetbrains.compose', 'compose-gradle-plugin', '1.12.2')
+            includeVersion('com.google.devtools.ksp', 'com.google.devtools.ksp.gradle.plugin', '2.3.12')
+            includeVersion('com.google.devtools.ksp', 'symbol-processing-gradle-plugin', '2.3.12')
+            includeVersion('com.google.devtools.ksp', 'symbol-processing-api', '2.3.12')
+            includeVersion('com.google.devtools.ksp', 'symbol-processing-common-deps', '2.3.12')
         }
     }
 }
