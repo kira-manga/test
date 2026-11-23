@@ -261,9 +261,15 @@ class InstalledUi:
     def native_owner_refusals(self):
         # Report only existing, fixed native reason enums and static POS method
         # locations. Journal data, identities, log messages and values stay private.
-        records = adb(self.device, "logcat", "-d", "-v", "brief", "-s", "UkkeraNativeOwner:W")
+        records = adb(self.device, "logcat", "-d", "-v", "threadtime", "-s", "UkkeraNativeOwner:I")
         refusals = []
+        last_entered = {}
         for line in records.splitlines():
+            process = re.match(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+\d+\s+\w\s+UkkeraNativeOwner\s*:", line)
+            entry = re.search(r"Native action entered: (com\.ukkera\.pos\.[\w.$]{1,150})$", line)
+            if process and entry:
+                last_entered[process[1]] = entry[1]
+                continue
             if "Original master native work refused:" in line:
                 boundary = "master_worker"
             elif "Native action refused:" in line:
@@ -282,6 +288,8 @@ class InstalledUi:
                 timing = re.search(r"; phase=([a-z0-9-]{1,90}); elapsedMillis=(\d{1,15}|unavailable); deadlineMillis=(\d{1,15}|none);", line)
                 if timing:
                     refusal.update(phase=timing[1], elapsed_millis=timing[2], deadline_millis=timing[3])
+                if process and process[1] in last_entered:
+                    refusal["last_native_action_class"] = last_entered[process[1]]
             refusals.append(refusal)
         return refusals
 
