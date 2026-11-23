@@ -17,9 +17,9 @@ import zlib
 WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 BUNDLE = WORK / "signed-app.tar.xz"
 PARTS_PER_GROUP = 100
-MAX_PARTS = 3 * PARTS_PER_GROUP
-# Base64 encodes this to 47,996 bytes, below the hosted 48 KB limit.
-MAX_PART_BYTES = 35_997
+MAX_PARTS = 3 * PARTS_PER_GROUP + 1
+# Keep the tested size for one encrypted Actions environment secret.
+MAX_PART_BYTES = 35_900
 BASE_APK_SHA256 = "9e8dab59bcd9bd4fa7e5f10c44f0091e7a3989552d11c06b10c0f41e2b7854a4"
 SIGNER_SHA256 = "ae3ac7d57bcca7b8678727bf714bacc52d214d2a11e70f39814207dceb45a693"
 
@@ -37,7 +37,7 @@ def file_digest(path):
 def chunk(first, last, count):
     WORK.mkdir(mode=0o700, exist_ok=True)
     group = int(os.environ["POS_APK_GROUP"])
-    check(0 <= group < MAX_PARTS // PARTS_PER_GROUP, "Unknown Android package group")
+    check(0 <= group <= 3 and (group < 3 or count == MAX_PARTS), "Unknown Android package group")
     size = count - group * PARTS_PER_GROUP
     with (WORK / "signed-app.part").open("xb" if first == 0 else "ab") as output:
         for part in range(first, min(last, size)):

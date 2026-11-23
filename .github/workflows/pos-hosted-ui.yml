@@ -247,7 +247,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [0, 1, 2]
+        group: ${{ fromJSON(inputs.android_candidate_parts == 301 && '[0,1,2,3]' || '[0,1,2]') }}
     environment:
       name: pos-android-signed-inputs-${{ matrix.group }}
       deployment: false
@@ -437,7 +437,12 @@ jobs:
             [[ -z "$POS_APK_REVISION" && -z "$POS_APK_EXPECTED" && -z "$POS_APK_BUNDLE" ]]
             cp testing-inputs/{ukkera-pos-testing.apk,apk-pair.json} "$work/"
           else
-            cat "$work/signed-parts"/pos-android-signed-part-{0,1,2}/signed-app.part > "$work/signed-app.tar.xz"
+            {
+              cat "$work/signed-parts"/pos-android-signed-part-{0,1,2}/signed-app.part
+              if [[ "$POS_APK_PARTS" == 301 ]]; then
+                cat "$work/signed-parts"/pos-android-signed-part-3/signed-app.part
+              fi
+            } > "$work/signed-app.tar.xz"
             sudo -n apt-get update -qq
             sudo -n apt-get install -y --no-install-recommends bsdiff
             python3 scripts/pos/ui/android-package-delta.py verify testing-inputs
