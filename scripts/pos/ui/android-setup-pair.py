@@ -189,6 +189,10 @@ class InstalledUi:
             "local_device_pairing_available": "Pair a new target through this original Master",
             "pairing_page": "Pair a new physical device",
             "target_input_review": "The target request is reviewed DATA. Explicit preparation is still required.",
+            "pairing_document_exported": "Exact retained document exported",
+            "pairing_document_imported": "Complete document imported for review",
+            "pairing_document_cancelled": "Document transfer cancelled",
+            "pairing_document_unavailable": "Document transfer unavailable",
             "pairing_context_pending": "Reading the exact original pairing context",
             "pairing_context_unavailable": "The original pairing context is unavailable",
             "pairing_import_stage": "Import the original target identity for review",
@@ -578,6 +582,34 @@ def restart_original_master(ui, observation):
     raise AssertionError("The original Master did not automatically reattach its existing journals within the setup bound")
 
 
+def observe_document_completion(ui, observation, key, expected):
+    # Returning from Android's picker retains the exact owned DATA operation,
+    # but locks the setup screen. Open its real review only once it is enabled.
+    transitions = observation[key] = []
+    unlocked = False
+    started = time.monotonic()
+    while time.monotonic() - started < 45:
+        state = ui.visible_setup_outcome()
+        labels = state["known_labels"]
+        if not transitions or transitions[-1]["known_labels"] != labels:
+            transitions.append({"elapsed_seconds":round(time.monotonic() - started, 2), **state})
+        if expected in labels:
+            return
+        if {"pairing_document_cancelled", "pairing_document_unavailable", "close_unconfirmed"} & set(labels):
+            raise AssertionError("The installed app reported a pairing document refusal")
+        if "setup_locked" in labels and not unlocked and state["app_is_resumed"]:
+            found = ui.find("Review setup again", wait=2500)
+            node = found["nodes"][0]
+            if node.get("enabled", True):
+                ui.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+                observation[f"{key}_presentation_unlocked"] = True
+                unlocked = True
+        elif "pairing_page" in labels and state["app_is_resumed"]:
+            ui.action("pointer.scroll", x=ui.width // 2, y=ui.height // 2, dy=14)
+        time.sleep(0.4)
+    raise AssertionError("The installed app did not confirm the original pairing document transfer")
+
+
 def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
     path = "/sdcard/Download/" + filename
     assert source.device != destination.device and filename.startswith("ukkera-device-") and filename.endswith(".bin")
@@ -585,7 +617,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
     assert adb(destination.device, "shell", "test", "!", "-e", path) == ""
     source.choose(export_action, scroll=18)
     source.await_document_picker(observation, f"{purpose}_export_picker", save=True)
-    source.find("Exact retained document exported", scroll=10, wait=1800)
+    observe_document_completion(source, observation, f"{purpose}_export_completion", "pairing_document_exported")
     captured = subprocess.check_output(["adb", "-s", source.device, "exec-out", "cat", path], timeout=12)
     assert 1 <= len(captured) <= limit, f"Original exported {purpose} document is absent or outside its bound"
     with tempfile.TemporaryDirectory(dir=WORK) as directory:
@@ -604,7 +636,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
         destination.choose("Show roots")
         destination.choose("Downloads")
         destination.choose(filename)
-    destination.find("Complete document imported for review", scroll=12, wait=1700)
+    observe_document_completion(destination, observation, f"{purpose}_import_completion", "pairing_document_imported")
 
 
 def verify_pairing_proof(master, client, observation):
