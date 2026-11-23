@@ -140,8 +140,8 @@ class InstalledUi:
                         dy=(min(20, self.height // 55) if scroll > 0 else -min(20, self.height // 55)))
             time.sleep(0.15)
 
-    def choose(self, label, scroll=0):
-        found = self.find(label, scroll=scroll)
+    def choose(self, label, scroll=0, wait=0):
+        found = self.find(label, scroll=scroll, wait=wait)
         node = found["nodes"][0]
         assert node.get("enabled", True), f"Expected enabled control: {label}"
         self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
@@ -458,7 +458,9 @@ def device_approval_refusal(message):
 
 
 def setup_entry(ui):
-    ui.choose("Set up or inspect the original local branch")
+    # Activity launch and the accessibility connection can settle before
+    # Compose publishes the first usable app screen. Wait for that exact UI.
+    ui.choose("Set up or inspect the original local branch", wait=10000)
     ui.find("Choose the setup composition", wait=10000)
     ui.choose("SYNTHETIC TRAINING 1 - NOT LIVE")
     ui.find("Synthetic training composition", wait=10000)
@@ -1216,6 +1218,12 @@ def main():
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
         for role, ui in sessions.items():
+            if (getattr(ui, "session", None) is not None and
+                    str(failure) == "Expected accessible control is missing: Set up or inspect the original local branch"):
+                try:
+                    observation[f"{role}_setup_entry_after_failure"] = ui.visible_setup_outcome()
+                except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
+                    observation[f"{role}_setup_entry_error_type"] = type(diagnostic).__name__
             try:
                 observation[f"{role}_final_native_refusals"] = ui.native_owner_refusals()[-12:]
             except (OSError, subprocess.SubprocessError):
