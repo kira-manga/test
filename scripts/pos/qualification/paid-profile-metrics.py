@@ -20,6 +20,12 @@ cold_history_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
     rb"(COLD_HISTORY_(?:TRANSCRIPT_CAPTURED|INDEX_BUILT|INDEX_SPILL_RETURNED|REPLAY_ENTERED))"
 )
+payment_owner_stage = re.compile(
+    rb"UkkeraNativeOwner I Native physical stage: "
+    rb"(PHYSICAL_(?:START_(?:AUTHENTICATION|PREFLIGHT|PREPARATION|NATIVE_ACQUIRE|COMMIT|RECHECK|PERSIST|RELEASE)"
+    rb"|INSTRUCTION_(?:AUTHENTICATION|NATIVE_PREPARE|AUTHORIZATION|RETAINED_READ|DOMAIN_PREPARE|RELEASE))"
+    rb"_(?:ENTERED|RETURNED))"
+)
 physical_dependencies = re.compile(
     rb"POS_PHYSICAL_READ_DEPENDENCIES complete=(true|false) total=([0-9]{1,4}) "
     rb"retained=([0-9]{1,4}) aggregates=([0-9]{1,3}) ranges=([0-9]{1,3}) "
@@ -90,6 +96,10 @@ with output.open("x") as stream:
                         sample(line.rstrip())
                     elif cold := cold_history_stage.fullmatch(line.rstrip()):
                         sample(cold[1])
+                    elif payment_owner := payment_owner_stage.fullmatch(line.rstrip()):
+                        record = {"event": payment_owner[1].decode(),
+                                  "observer_seconds": round(time.monotonic() - start, 3)}
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif dependencies := physical_dependencies.fullmatch(line.rstrip()):
                         total, *counts = map(int, dependencies.groups()[1:])
                         if total == sum(counts) and counts[0] <= 8192 and sum(counts[1:]) <= 512:
