@@ -109,7 +109,7 @@ fi
 count=1000
 if [[ "$POS_SUITE" == 'paid-prefix' ]]; then count=8; fi
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then
-  case "$POS_PAID_PROFILE_COUNT" in 10|25|32|50|100|250|500) count=$POS_PAID_PROFILE_COUNT ;; *) exit 2 ;; esac
+  case "$POS_PAID_PROFILE_COUNT" in 5|10|25|32|50|100|250|500) count=$POS_PAID_PROFILE_COUNT ;; *) exit 2 ;; esac
 fi
 export UKKERA_CHB_COUNT="$count"
 expected=$((12 + 7 * count + 5))
