@@ -23,7 +23,7 @@ on:
         options: ['10', '25', '32', '50', '100', '250', '500']
         default: '10'
       compare_revision:
-        description: Optional sealed candidate SHA for a same-runner 10-sale comparison
+        description: Optional sealed candidate SHA for a same-runner 10- or 25-sale comparison
         type: string
         required: false
       regression_fixtures_sha256:
@@ -217,7 +217,7 @@ jobs:
             exec bash "$runner"
           fi
           test "$POS_SUITE" = paid-profile
-          test "$POS_PAID_PROFILE_COUNT" = 10
+          case "$POS_PAID_PROFILE_COUNT" in 10|25) ;; *) exit 2 ;; esac
           umask 077
           python3 scripts/pos/qualification/prepare-comparison.py
           baseline=0
