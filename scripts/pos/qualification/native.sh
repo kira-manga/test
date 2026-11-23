@@ -136,17 +136,27 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   fi
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
-  # Confirm the pinned marker on an official Central endpoint before a
-  # compile retry. The first endpoint can be rate limited on hosted runners.
+  # The hosted runner can be rate limited by both Central endpoints. Retry
+  # only this exact pinned plugin using the byte-verified public artifacts.
   crypto_repository=
   if [[ "$compile_result" == 1 && -f "$stage/profile-compile.raw" ]] &&
      grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw"; then
     marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
-    marker_sha='02f7d7b8bb05e4c74b611ac0ab8a5edde67bbabf27a4dc078daf4b86213b6f0d'
-    for repository in https://repo1.maven.org/maven2/ https://repo.maven.apache.org/maven2/; do
-      if curl --fail --silent --show-error --location --proto '=https' --max-time 12 \
-           "$repository$marker" -o "$stage/cryptography-plugin-marker.pom" &&
-         printf '%s  %s\n' "$marker_sha" "$stage/cryptography-plugin-marker.pom" | sha256sum --check --status; then
+    implementation='dev/whyoleg/cryptography/cryptography-gradle-plugin/0.6.0/cryptography-gradle-plugin-0.6.0'
+    plugin_repository="$stage/profile-cryptography-maven"
+    mkdir -p "$plugin_repository/${marker%/*}" "$plugin_repository/${implementation%/*}"
+    fetch_verified_plugin_file() {
+      local repository="$1" path="$2" digest="$3"
+      curl --fail --silent --show-error --location --proto '=https' --max-time 12 \
+        "$repository$path" -o "$plugin_repository/$path" &&
+        printf '%s  %s\n' "$digest" "$plugin_repository/$path" | sha256sum --check --status
+    }
+    for repository in https://repo1.maven.org/maven2/ https://repo.maven.apache.org/maven2/ \
+        https://maven-central.storage-download.googleapis.com/maven2/; do
+      if fetch_verified_plugin_file "$repository" "$marker" 02f7d7b8bb05e4c74b611ac0ab8a5edde67bbabf27a4dc078daf4b86213b6f0d &&
+         fetch_verified_plugin_file "$repository" "$implementation.pom" 3de81c3773fd3f9baf73921f440c6b49a8e30282e71c4922f8c37133d62d6f6c &&
+         fetch_verified_plugin_file "$repository" "$implementation.module" 3d271824f9a2428e9715143d9da200b0bb48f28a1b728af6ca208b8ce6e940d5 &&
+         fetch_verified_plugin_file "$repository" "$implementation.jar" 9ddf44b4775c84916e018b5c7abe6ba34e2a1f229663013a83165b91bd8dbd0d; then
         crypto_repository="$repository"
         break
       fi
@@ -163,7 +173,7 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
 gradle.beforeSettings { settings ->
     settings.pluginManagement.repositories.maven {
         name = 'PosQualificationCryptography'
-        url = uri('$crypto_repository')
+        url = uri('$plugin_repository')
         content {
             includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
             includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
