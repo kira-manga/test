@@ -462,7 +462,7 @@ def restart_original_master(ui, observation):
     setup_entry(ui)
     # Choosing the same training composition starts the existing-only RUN
     # attachment automatically. The setup lock stays visible until actual work
-    # completes. Unlock presentation once, not native custody or employee work.
+    # completes. Unlock the settled presentation after the operating notice.
     started = time.monotonic()
     transitions = []
     observation["master_restart_publication"] = transitions
@@ -471,7 +471,8 @@ def restart_original_master(ui, observation):
         labels = state["known_labels"]
         if not transitions or labels != transitions[-1]["known_labels"]:
             transitions.append({"elapsed_seconds": round(time.monotonic() - started, 2), **state})
-        if "setup_locked" in labels and not observation.get("master_restart_presentation_unlocked"):
+        if ("setup_locked" in labels and observation.get("master_restart_notice_acknowledged")
+                and not observation.get("master_restart_presentation_unlocked")):
             control = ui.find("Review setup again", wait=2500)
             node = control["nodes"][0]
             if node.get("enabled", True):
