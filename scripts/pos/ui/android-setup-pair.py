@@ -978,6 +978,13 @@ def click_original_admission_controls(master, began, timings, observations):
         elapsed = round(time.monotonic() - began, 3)
         if elapsed >= 21:
             break
+        viewport = {"seconds": elapsed,
+                    "work_visible": any(label.startswith("Awaiting named-head approval") for label in labels if label),
+                    "unresolved_visible": any(label.startswith("Original head approval is unresolved") for label in labels if label),
+                    "approved_visible": any(label.startswith("Exact original approval DATA is retained") for label in labels if label),
+                    "consent_visible": consent_label in labels,
+                    "lookup_visible": lookup_label in labels,
+                    "lookup_enabled": lookup is not None}
         if node is not None:
             if not consent_checked:
                 timings["separate_approved_confirmation_visible"] = elapsed
@@ -987,20 +994,20 @@ def click_original_admission_controls(master, began, timings, observations):
                 return
             consent_checked = True
             timings["separate_confirmation_checked"] = round(time.monotonic() - began, 3)
-            observations.append({"state": "confirmed_original", "seconds": elapsed})
+            observations.append({**viewport, "state": "confirmed_original"})
         elif lookup is not None and not looked_up and attempt > 0:
             master.action("element.click", snapshot_id=snapshot["snapshot_id"], id=lookup["id"])
             looked_up = True
             timings["exact_original_approval_lookup_returned"] = round(time.monotonic() - began, 3)
-            observations.append({"state": "read_original_once", "seconds": elapsed})
+            observations.append({**viewport, "state": "read_original_once"})
         elif (not {consent_label, lookup_label, admit_label}.intersection(labels)
               or (looked_up and not consent_checked and consent_label not in labels)):
             travel = min(20, master.height // 55)
             master.action("pointer.scroll", x=master.width // 2, y=master.height // 2,
                           dy=-travel if looked_up and not consent_checked else travel)
-            observations.append({"state": "seek_exact_original_controls", "seconds": elapsed})
+            observations.append({**viewport, "state": "seek_exact_original_controls"})
         else:
-            observations.append({"state": "observe_same_viewport", "seconds": elapsed})
+            observations.append({**viewport, "state": "observe_same_viewport"})
     raise AssertionError("The exact device admission controls were not actionable in time")
 
 
@@ -1021,7 +1028,17 @@ def admit_native_device(master, client, head, observation):
     master.choose("Approve this exact original only", scroll=10)
     mark("approve_action_returned")
     observations = observation["master_approval_viewport_observations"] = []
-    click_original_admission_controls(master, began, elapsed, observations)
+    try:
+        click_original_admission_controls(master, began, elapsed, observations)
+    except (AssertionError, ClientError):
+        # Inspect the same screen once after the original assertion failed.
+        # This is observability only: do not send a lookup, approval or admission.
+        try:
+            observation["master_admission_observation_after_failure"] = master.visible_setup_outcome()
+            mark("after_failure_read_only_viewport")
+        except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
+            observation["master_admission_followup_error_type"] = type(diagnostic).__name__
+        raise
     observation["master_original_head_approval_verified"] = True
     try:
         master.find("Original admission recorded.", scroll=-17, wait=2000)
