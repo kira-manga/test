@@ -89,6 +89,14 @@ if [[ "$POS_SUITE" == 'installed-cashier' ]]; then
   target='apps/android/src/androidTest/kotlin/com/ukkera/pos/android/independent/coldoriginalstartv1/InstalledCashierFinalizeLatencySupportingTest.kt'
   [[ -f "$test" && ! -e "$target" ]]
   install -m0600 "$test" "$target"
+  # An isolated supporting selector may bind its declared synthetic policy to
+  # the original helper. The sealed patch applies only during this APK build.
+  fixture_patch="$stage/inputs/runner/installed-cashier-fixture.patch"
+  if [[ -f "$fixture_patch" ]]; then
+    git apply --check "$fixture_patch"
+    git apply "$fixture_patch"
+    sha256sum "$fixture_patch" | cut -d' ' -f1 > "$report/installed-cashier-fixture.sha256"
+  fi
   sha256sum "$target" | cut -d' ' -f1 > "$report/installed-cashier-test.sha256"
   "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'ndk;27.2.12479018' 'cmake;3.22.1'
   # The two fresh synthetic APKs use the same disposable guest signer. Never
