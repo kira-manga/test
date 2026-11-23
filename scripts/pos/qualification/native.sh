@@ -142,14 +142,30 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   if [[ "$compile_result" == 1 && -f "$stage/profile-compile.raw" ]] &&
      grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw" &&
      curl --fail --silent --show-error --location --proto '=https' --retry 2 --max-time 18 \
-       'https://plugins.gradle.org/m2/dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom' \
+       'https://repo.maven.apache.org/maven2/dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom' \
        -o "$stage/cryptography-plugin-marker.pom" &&
      grep -Fq '<artifactId>dev.whyoleg.cryptography.gradle.plugin</artifactId>' "$stage/cryptography-plugin-marker.pom"; then
     mv "$stage/profile-compile.raw" "$stage/profile-compile-repository-failure.raw"
     mv "$report/profile-compile.json" "$report/profile-compile-repository-failure.json"
+    # Use the same Maven Central coordinates explicitly and only for this
+    # exact published marker and implementation. The build's other repositories
+    # and all pinned dependency versions remain in their normal resolution path.
+    cat > "$stage/profile-cryptography.init.gradle" <<'EOFCRYPTO'
+gradle.beforeSettings { settings ->
+    settings.pluginManagement.repositories.maven {
+        name = 'PosQualificationCryptography'
+        url = uri('https://repo.maven.apache.org/maven2/')
+        content {
+            includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
+            includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
+        }
+    }
+}
+EOFCRYPTO
     compile_result=0
     python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" --refresh-dependencies \
-      -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
+      -I "$stage/profile-cryptography.init.gradle" -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" \
+      "${compile_tasks[@]}" || compile_result=$?
   fi
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
     python3 "$here/results.py" floor-batch-control "$stage" "$source"
