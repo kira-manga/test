@@ -16,6 +16,59 @@ cd "$source"
 declare -a gradle=(./gradlew --no-daemon --max-workers=2 --console=plain
   '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8'
   -Pkotlin.compiler.execution.strategy=in-process)
+# Some hosted runners cannot resolve this exact pinned plugin through Gradle.
+# Retry only that error with the published artifacts after checking their digests.
+prepare_verified_plugin() {
+  local phase="$1"
+  local crypto_repository=
+  [[ -f "$stage/$phase.raw" ]] || return 1
+  grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" || return 1
+  local marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
+  local implementation='dev/whyoleg/cryptography/cryptography-gradle-plugin/0.6.0/cryptography-gradle-plugin-0.6.0'
+  local plugin_repository="$stage/profile-cryptography-maven"
+  mkdir -p "$plugin_repository/${marker%/*}" "$plugin_repository/${implementation%/*}" || return 1
+  fetch_verified_plugin_file() {
+    local repository="$1" path="$2" digest="$3"
+    curl --fail --silent --show-error --location --proto '=https' --max-time 12 \
+      "$repository$path" -o "$plugin_repository/$path" &&
+      printf '%s  %s\n' "$digest" "$plugin_repository/$path" | sha256sum --check --status
+  }
+  local repository
+  for repository in https://repo1.maven.org/maven2/ https://repo.maven.apache.org/maven2/ \
+      https://maven-central.storage-download.googleapis.com/maven2/; do
+    if fetch_verified_plugin_file "$repository" "$marker" 02f7d7b8bb05e4c74b611ac0ab8a5edde67bbabf27a4dc078daf4b86213b6f0d &&
+       fetch_verified_plugin_file "$repository" "$implementation.pom" 3de81c3773fd3f9baf73921f440c6b49a8e30282e71c4922f8c37133d62d6f6c &&
+       fetch_verified_plugin_file "$repository" "$implementation.module" 3d271824f9a2428e9715143d9da200b0bb48f28a1b728af6ca208b8ce6e940d5 &&
+       fetch_verified_plugin_file "$repository" "$implementation.jar" 9ddf44b4775c84916e018b5c7abe6ba34e2a1f229663013a83165b91bd8dbd0d; then
+      crypto_repository="$repository"
+      break
+    fi
+  done
+  if [[ -n "$crypto_repository" ]]; then
+    printf 'POS_QUALIFICATION_CRYPTOGRAPHY_REPOSITORY %s\n' "$crypto_repository"
+    # Use the same Maven Central coordinates explicitly and only for this
+    # exact published marker and implementation. The build's other repositories
+    # and all pinned dependency versions remain in their normal resolution path.
+    cat > "$stage/verified-cryptography.init.gradle" <<EOFCRYPTO || return 1
+gradle.beforeSettings { settings ->
+    settings.pluginManagement.repositories.maven {
+        name = 'PosQualificationCryptography'
+        url = uri('$plugin_repository')
+        content {
+            includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
+            includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
+        }
+    }
+}
+EOFCRYPTO
+    mv "$stage/$phase.raw" "$stage/$phase-repository-failure.raw" &&
+      mv "$report/$phase.json" "$report/$phase-repository-failure.json" &&
+      mv "$report/$phase.resources.tsv" "$report/$phase-repository-failure.resources.tsv"
+  else
+    return 1
+  fi
+}
+
 if [[ "$POS_SUITE" == 'recovery' ]]; then
   exec bash "$here/recovery.sh"
 fi
@@ -106,10 +159,16 @@ gradle.beforeProject { p ->
 }
 EOFREGRESSION
   result=0
+  regression=(:adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest
+    :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest')
   python3 "$here/watched.py" "$report" payment-regression 95 bash "$here/runner-owned-temp.sh" "${gradle[@]}" --continue \
-    -I "$stage/native-regression-diagnostics.init.gradle" \
-    :adapters:inventory-store:jvmTest :adapters:sales-store:jvmTest \
-    :core:database:jvmTest --tests '*NativeOriginalSourceRootSupportingTest' --tests '*LanBusinessTransactionIntegrationTest' || result=$?
+    -I "$stage/native-regression-diagnostics.init.gradle" "${regression[@]}" || result=$?
+  if [[ "$result" == 1 ]] && prepare_verified_plugin payment-regression; then
+    result=0
+    python3 "$here/watched.py" "$report" payment-regression 95 bash "$here/runner-owned-temp.sh" "${gradle[@]}" --continue \
+      -I "$stage/verified-cryptography.init.gradle" -I "$stage/native-regression-diagnostics.init.gradle" \
+      "${regression[@]}" || result=$?
+  fi
   python3 "$here/results.py" payment-regression "$stage" "$source"
   exit "$result"
 fi
@@ -143,60 +202,19 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
   fi
   python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
-  # The hosted runner can be rate limited by both Central endpoints. Retry
-  # only this exact pinned plugin using the byte-verified public artifacts.
-  crypto_repository=
-  if [[ "$compile_result" == 1 && -f "$stage/profile-compile.raw" ]] &&
-     grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/profile-compile.raw"; then
-    marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
-    implementation='dev/whyoleg/cryptography/cryptography-gradle-plugin/0.6.0/cryptography-gradle-plugin-0.6.0'
-    plugin_repository="$stage/profile-cryptography-maven"
-    mkdir -p "$plugin_repository/${marker%/*}" "$plugin_repository/${implementation%/*}"
-    fetch_verified_plugin_file() {
-      local repository="$1" path="$2" digest="$3"
-      curl --fail --silent --show-error --location --proto '=https' --max-time 12 \
-        "$repository$path" -o "$plugin_repository/$path" &&
-        printf '%s  %s\n' "$digest" "$plugin_repository/$path" | sha256sum --check --status
-    }
-    for repository in https://repo1.maven.org/maven2/ https://repo.maven.apache.org/maven2/ \
-        https://maven-central.storage-download.googleapis.com/maven2/; do
-      if fetch_verified_plugin_file "$repository" "$marker" 02f7d7b8bb05e4c74b611ac0ab8a5edde67bbabf27a4dc078daf4b86213b6f0d &&
-         fetch_verified_plugin_file "$repository" "$implementation.pom" 3de81c3773fd3f9baf73921f440c6b49a8e30282e71c4922f8c37133d62d6f6c &&
-         fetch_verified_plugin_file "$repository" "$implementation.module" 3d271824f9a2428e9715143d9da200b0bb48f28a1b728af6ca208b8ce6e940d5 &&
-         fetch_verified_plugin_file "$repository" "$implementation.jar" 9ddf44b4775c84916e018b5c7abe6ba34e2a1f229663013a83165b91bd8dbd0d; then
-        crypto_repository="$repository"
-        break
-      fi
-    done
-  fi
-  if [[ -n "$crypto_repository" ]]; then
-    printf 'POS_QUALIFICATION_CRYPTOGRAPHY_REPOSITORY %s\n' "$crypto_repository"
-    mv "$stage/profile-compile.raw" "$stage/profile-compile-repository-failure.raw"
-    mv "$report/profile-compile.json" "$report/profile-compile-repository-failure.json"
-    # Use the same Maven Central coordinates explicitly and only for this
-    # exact published marker and implementation. The build's other repositories
-    # and all pinned dependency versions remain in their normal resolution path.
-    cat > "$stage/profile-cryptography.init.gradle" <<EOFCRYPTO
-gradle.beforeSettings { settings ->
-    settings.pluginManagement.repositories.maven {
-        name = 'PosQualificationCryptography'
-        url = uri('$plugin_repository')
-        content {
-            includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
-            includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
-        }
-    }
-}
-EOFCRYPTO
+  if [[ "$compile_result" == 1 ]] && prepare_verified_plugin profile-compile; then
     compile_result=0
     python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
-      -I "$stage/profile-cryptography.init.gradle" -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" \
+      -I "$stage/verified-cryptography.init.gradle" -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" \
       "${compile_tasks[@]}" || compile_result=$?
   fi
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
     python3 "$here/results.py" floor-batch-control "$stage" "$source"
   fi
   test "$compile_result" = 0
+  if [[ -f "$stage/verified-cryptography.init.gradle" ]]; then
+    gradle+=(-I "$stage/verified-cryptography.init.gradle")
+  fi
 fi
 seed=0
 restart=1
