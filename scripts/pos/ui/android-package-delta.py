@@ -18,8 +18,8 @@ WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 BUNDLE = WORK / "signed-app.tar.xz"
 PARTS_PER_GROUP = 100
 MAX_PARTS = 3 * PARTS_PER_GROUP
-# Base64 encodes this to 47,668 bytes, below the hosted 48 KB limit.
-MAX_PART_BYTES = 35_750
+# Base64 encodes this to 47,868 bytes, below the hosted 48 KB limit.
+MAX_PART_BYTES = 35_900
 BASE_APK_SHA256 = "9e8dab59bcd9bd4fa7e5f10c44f0091e7a3989552d11c06b10c0f41e2b7854a4"
 SIGNER_SHA256 = "ae3ac7d57bcca7b8678727bf714bacc52d214d2a11e70f39814207dceb45a693"
 
