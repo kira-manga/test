@@ -273,11 +273,16 @@ class InstalledUi:
             else:
                 continue
             reason = re.search(r"(?:; |: )(?:reason|nativeReason)=([A-Z_]{3,40})(?:;|$)", line)
-            refusals.append({
+            refusal = {
                 "boundary": boundary,
                 "reason": reason.group(1) if reason else None,
                 "frames": re.findall(r"com\.ukkera\.pos\.[\w.$<>]+:\d+", line)[:6],
-            })
+            }
+            if boundary == "process_exclusion":
+                timing = re.search(r"; phase=([a-z0-9-]{1,90}); elapsedMillis=(\d{1,15}|unavailable); deadlineMillis=(\d{1,15}|none);", line)
+                if timing:
+                    refusal.update(phase=timing[1], elapsed_millis=timing[2], deadline_millis=timing[3])
+            refusals.append(refusal)
         return refusals
 
 
@@ -603,21 +608,24 @@ def main():
     }
     sessions = {role: InstalledUi(role, device) for role, device in GUESTS.items()}
     try:
-        for ui in sessions.values():
-            ui.start()
-        assert sessions["master"].session.session_id != sessions["client"].session.session_id
         scope_queue = Queue(maxsize=1)
         if SETUP_STAGE == "pairing-after-restart":
-            # For the restart diagnostic, finish each installation stage before
-            # the other emulator begins a native ceremony. Keep the normal
-            # simultaneous onboarding path below for the original scenario.
+            # Both guests already passed independent install and WLAN checks.
+            # Defer the second app and driver's CPU use until the native Master
+            # installation and reopen have finished on this shared runner.
             master, client = sessions["master"], sessions["client"]
+            master.start()
             master_onboarding(master, observation, scope_queue)
             restart_original_master(master, observation)
+            client.start()
+            assert master.session.session_id != client.session.session_id
             client_onboarding(client, observation)
             prepare_client_target(client, observation, scope_queue.get_nowait())
             verify_pairing_proof(master, client, observation)
             return
+        for ui in sessions.values():
+            ui.start()
+        assert sessions["master"].session.session_id != sessions["client"].session.session_id
         with ThreadPoolExecutor(max_workers=2) as executor:
             master = executor.submit(master_onboarding, sessions["master"], observation, scope_queue)
             client = executor.submit(client_onboarding, sessions["client"], observation)
