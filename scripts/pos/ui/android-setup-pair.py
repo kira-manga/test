@@ -798,22 +798,26 @@ def documents_file_control(snapshot, filename):
 
 
 def choose_original_document(ui, filename, observation, purpose):
-    def selected():
-        for _ in range(5):
+    def selected(attempts):
+        for attempt in range(attempts):
             snapshot = ui.action("tree.snapshot")
             control = documents_file_control(snapshot, filename)
             if control is not None:
                 ui.action("element.click", snapshot_id=snapshot["snapshot_id"], id=control["id"])
                 observation[f"{purpose}_system_exact_import_row_selected"] = True
                 return True
-            time.sleep(0.4)
+            if attempt + 1 < attempts:
+                time.sleep(0.4)
         return False
 
-    if selected():
+    # The isolated delivered file is already in Downloads. Do not wait for
+    # multiple identical snapshots if the chooser's current folder lacks it.
+    if selected(1):
         return
     ui.choose("Show roots")
     ui.choose("Downloads")
-    assert selected(), "The exact exported document is unavailable in the Android picker"
+    observation[f"{purpose}_system_downloads_opened"] = True
+    assert selected(5), "The exact exported document is unavailable in the Android picker"
 
 
 def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
@@ -852,11 +856,17 @@ def transfer_document(source, destination, export_action, import_action, filenam
     imported = subprocess.check_output(["adb", "-s", destination.device, "exec-out", "cat", path], timeout=12)
     assert imported == captured, f"{purpose} bytes changed during delivery"
     observation[f"original_{purpose}_document_bytes_verified"] = len(captured)
+    timing = observation[f"{purpose}_import_timing_seconds"] = {}
+    began = time.monotonic()
     destination.choose(import_action, scroll=20)
+    timing["app_import_action_returned"] = round(time.monotonic() - began, 3)
     destination.await_document_picker(observation, f"{purpose}_import_picker")
+    timing["system_picker_confirmed"] = round(time.monotonic() - began, 3)
     choose_original_document(destination, filename, observation, purpose)
+    timing["exact_document_action_returned"] = round(time.monotonic() - began, 3)
     observe_document_completion(destination, observation, f"{purpose}_import_completion", document_name,
                                 "pairing_document_imported")
+    timing["installed_app_import_confirmed"] = round(time.monotonic() - began, 3)
 
 
 def verify_pairing_proof(master, client, observation):
