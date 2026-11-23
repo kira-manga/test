@@ -1057,11 +1057,19 @@ def admit_native_device(master, client, head, observation):
     try:
         click_original_admission_controls(master, began, elapsed, observations)
     except (AssertionError, ClientError):
-        # Inspect the same screen once after the original assertion failed.
-        # This is observability only: do not send a lookup, approval or admission.
+        # The original assertion has failed. Read the same viewport long enough
+        # to distinguish still-running work from its eventual UI outcome.
         try:
-            observation["master_admission_observation_after_failure"] = master.visible_setup_outcome()
+            outcome = master.visible_setup_outcome()
+            observation["master_admission_observation_after_failure"] = outcome
             mark("after_failure_read_only_viewport")
+            timeline = observation["master_approval_settlement_after_failure"] = [
+                {"seconds": elapsed["after_failure_read_only_viewport"], **outcome}]
+            while ("device_admission_approval_work" in outcome["known_labels"]
+                   and len(timeline) < 10 and time.monotonic() - began < 55):
+                time.sleep(3)
+                outcome = master.visible_setup_outcome()
+                timeline.append({"seconds": round(time.monotonic() - began, 3), **outcome})
         except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
             observation["master_admission_followup_error_type"] = type(diagnostic).__name__
         raise
