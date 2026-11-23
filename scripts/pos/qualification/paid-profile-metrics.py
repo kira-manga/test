@@ -16,6 +16,11 @@ event = re.compile(
     rb"(?: elapsedMillis=[0-9]+)?|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
     rb"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+)"
 )
+payment_preparation = re.compile(
+    rb"POS_PAID_PREPARATION (COLLECTION_ENTERED|COLLECTION_RETURNED|STOCK_ENTERED|STOCK_RETURNED|"
+    rb"REQUIREMENT_ENTERED|REQUIREMENT_RETURNED|VACANCY_RETURNED|OBSERVATIONS_RETURNED|"
+    rb"LITERAL_STOCK_RETURNED|EVIDENCE_SEALED) ([0-9]{1,19})"
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -60,6 +65,11 @@ with output.open("x") as stream:
                     offset = log.tell()
                     if event.fullmatch(line.rstrip()):
                         sample(line.rstrip())
+                    elif preparation := payment_preparation.fullmatch(line.rstrip()):
+                        record = {"event": "POS_PAID_PREPARATION " + preparation[1].decode(),
+                                  "observer_seconds": round(time.monotonic() - start, 3),
+                                  "jvm_elapsed_nanos": int(preparation[2])}
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
         if done.exists():
             break
         time.sleep(0.2)
