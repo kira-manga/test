@@ -25,10 +25,15 @@ retained_io = re.compile(
     rb"POS_RETAINED_IO pairs=([0-9]+) unique_pairs=([0-9]+|capped) streams=([0-9]+) "
     rb"unique_streams=([0-9]+|capped) parsed_hits=([0-9]+) owner_hits=([0-9]+) "
     rb"decodes=([0-9]+) fragments=([0-9]+) fragment_bytes=([0-9]+)"
+    rb"(?: original_decode=([0-9]+) pair_check=([0-9]+) owner_reopen=([0-9]+)"
+    rb" frame_read=([0-9]+) producer_check=([0-9]+) batch_close=([0-9]+))?"
 )
 retained_io_fields = (
     "pairs", "unique_pairs", "streams", "unique_streams", "parsed_hits", "owner_hits",
     "decodes", "fragments", "fragment_bytes",
+)
+retained_read_kinds = (
+    "original_decode", "pair_check", "owner_reopen", "frame_read", "producer_check", "batch_close",
 )
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
@@ -82,7 +87,10 @@ with output.open("x") as stream:
                     elif retained := retained_io.fullmatch(line.rstrip()):
                         record = {"event": "POS_RETAINED_IO", "observer_seconds": round(time.monotonic() - start, 3)}
                         record.update({key: ("capped" if value == b"capped" else int(value))
-                                       for key, value in zip(retained_io_fields, retained.groups(), strict=True)})
+                                       for key, value in zip(retained_io_fields + retained_read_kinds, retained.groups(), strict=True)
+                                       if value is not None})
+                        if "original_decode" in record and sum(record[key] for key in retained_read_kinds) != record["streams"]:
+                            continue
                         print(json.dumps(record, sort_keys=True), file=stream, flush=True)
 
         if done.exists():
