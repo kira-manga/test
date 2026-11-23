@@ -645,7 +645,7 @@ def observe_document_completion(ui, observation, key, document_name, expected):
     # Returning from Android's picker retains the exact owned DATA operation,
     # but locks the setup screen. Open its real review only once it is enabled.
     transitions = observation[key] = []
-    unlocked = False
+    unlock_attempts = []
     pairing_active = False
     started = time.monotonic()
     while time.monotonic() - started < 45:
@@ -654,17 +654,26 @@ def observe_document_completion(ui, observation, key, document_name, expected):
         if not transitions or transitions[-1]["known_labels"] != labels:
             transitions.append({"elapsed_seconds":round(time.monotonic() - started, 2), **state})
         if expected in labels:
+            if unlock_attempts and "setup_locked" not in labels:
+                observation[f"{key}_presentation_unlocked"] = True
             return
         if {"pairing_document_cancelled", "pairing_document_unavailable", "close_unconfirmed"} & set(labels):
             raise AssertionError("The installed app reported a pairing document refusal")
-        if "setup_locked" in labels and not unlocked and state["app_is_resumed"]:
-            found = ui.find("Review setup again", wait=2500)
-            node = found["nodes"][0]
-            if node.get("enabled", True):
-                ui.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
-                observation[f"{key}_presentation_unlocked"] = True
-                unlocked = True
+        if "setup_locked" in labels and state["app_is_resumed"]:
+            now = time.monotonic()
+            # The installed review action can be a no-op while document
+            # ownership is active. A later confirmed locked screen can
+            # request presentation again. This never reimports the file.
+            if len(unlock_attempts) < 2 and (not unlock_attempts or now - unlock_attempts[-1] >= 7):
+                found = ui.find("Review setup again", wait=2500)
+                node = found["nodes"][0]
+                if node.get("enabled", True):
+                    ui.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+                    unlock_attempts.append(time.monotonic())
+                    observation[f"{key}_presentation_review_requests"] = len(unlock_attempts)
         elif "setup_locked" not in labels and state["app_is_resumed"]:
+            if unlock_attempts and "pairing_page" in labels:
+                observation[f"{key}_presentation_unlocked"] = True
             pairing_active = pairing_active or "pairing_page" in labels
             if pairing_active:
                 # The challenge review is much longer than the identity form.
