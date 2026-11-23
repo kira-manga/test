@@ -93,6 +93,11 @@ if [[ "$POS_SUITE" == 'installed-cashier' ]]; then
   # the original helper. The sealed patch applies only during this APK build.
   fixture_patch="$stage/inputs/runner/installed-cashier-fixture.patch"
   if [[ -f "$fixture_patch" ]]; then
+    fixture_helper="$(dirname "$target")/NativeColdOriginalClient.kt"
+    git apply --numstat "$fixture_patch" | awk -F '\t' -v expected="$fixture_helper" '
+      NF != 3 || $1 !~ /^[0-9]+$/ || $2 !~ /^[0-9]+$/ || $3 != expected { invalid=1 }
+      END { exit (invalid || NR != 1) }
+    '
     git apply --check "$fixture_patch"
     git apply "$fixture_patch"
     sha256sum "$fixture_patch" | cut -d' ' -f1 > "$report/installed-cashier-fixture.sha256"
