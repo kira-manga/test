@@ -67,10 +67,12 @@ expected=[
 variant=Path(sys.argv[4])/"VARIANT"
 variant_name=variant.read_text().strip() if variant.is_file() else ""
 assert variant_name in ("", "c22-active-reauth-v1.0.0", "c22-native-approval-source-unavailable-v1.0.1",
-                        "c22-native-persisted-missing-witness-v1.0.3", "c22-native-intact-missing-witness-v1.0.4")
+                        "c22-native-persisted-missing-witness-v1.0.3", "c22-native-intact-missing-witness-v1.0.4",
+                        "c22-native-misbound-witness-v1.0.5")
 intact_missing=variant_name=="c22-native-intact-missing-witness-v1.0.4"
 persisted_missing=variant_name=="c22-native-persisted-missing-witness-v1.0.3" or intact_missing
-active_reauth=bool(variant_name) and not persisted_missing
+misbound=variant_name=="c22-native-misbound-witness-v1.0.5"
+active_reauth=bool(variant_name) and not (persisted_missing or misbound)
 source_unavailable=variant_name=="c22-native-approval-source-unavailable-v1.0.1"
 if active_reauth:
     expected.insert(1,"POS_279_C22_ACTIVE_REAUTH old_execute=denied old_lookup=denied precommit_rows=0")
@@ -85,6 +87,12 @@ if persisted_missing:
         "POS_279_C22_PERSISTED_MISSING_WITNESS_NATIVE_HOLD no_operational_client=1 terminal_rows=0",
         "POS_279_C22_NATIVE_CLOSE",
     ]
+if misbound:
+    expected=[
+        "POS_279_C22_MISBOUND_WITNESS_ACTIVE revoked=1 native_deadline_checks=3 same_id_deferrals=2 terminal_rows=0 raw_claim_unchanged=1 receipt_unchanged=1",
+        "POS_279_C22_MISBOUND_WITNESS_NATIVE_HOLD no_operational_client=1 terminal_rows=0",
+        "POS_279_C22_NATIVE_CLOSE",
+    ]
 verified=[line for line in expected if lines.count(line)==1]
 if intact_missing:
     expected.append("FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT")
@@ -92,6 +100,7 @@ if intact_missing:
     if sum(line.endswith(marker) for line in lines)==1:
         verified.append("FINITE_PURCHASE_APPROVAL_INTACT_DECISION_ABSENT")
 record={"verified_assertions":verified,"exit":rc,"historical_missing_witness_tested":persisted_missing and verified==expected and rc==0,
+        "authentic_misbound_witness_tested":misbound and verified==expected and rc==0,
         "active_reauthorization_verified":active_reauth and verified==expected and rc==0,
         "installed_source_unavailability_verified":source_unavailable and verified==expected and rc==0}
 if rc == 0 and verified == expected:
@@ -104,7 +113,7 @@ if rc == 0 and verified == expected:
     with sqlite3.connect(database.as_uri()+"?mode=ro&immutable=1",uri=True) as conn:
         counts={t:conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
                 for t in ("operation_result","journal_envelope","audit_event","outbox_intent")}
-    assert set(counts.values())=={10 if persisted_missing else 11}
+    assert set(counts.values())=={10 if persisted_missing or misbound else 11}
     record["confirmed_terminal_rows"]=counts
     if source_unavailable:
         reports=Path("adapters/catalog-store/build/test-results/jvmTest")
