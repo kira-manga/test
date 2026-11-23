@@ -24,6 +24,7 @@ categories = {
     "stock_cycle_search": ("StockOriginalTraversal.reaches",),
     "retained_rows": ("RetainedOriginalReader", "StockFrameStreamDecoder", "RuntimeHistoryColdIndex"),
     "retained_pair": ("RetainedOriginalReader.entryCensus", "RetainedOriginalReader.readPair",
+                      "RetainedOriginalReader.readEntry",
                       "RetainedOriginalReader.requireCurrentRoot", "RetainedOriginalReader.requirePair"),
     "retained_fragment_reads": ("RetainedOriginalReader.scanFragments", "RetainedOriginalReader.fragmentPage",
                                 "StockFragmentChainV2.append"),
