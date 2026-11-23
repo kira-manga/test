@@ -189,6 +189,22 @@ jobs:
           if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
+      - name: Verify the disposable Android system image before compiling
+        if: matrix.suite == 'installed-cashier'
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          image='system-images;android-35;google_apis;x86_64'
+          directory="$ANDROID_HOME/system-images/android-35/google_apis/x86_64"
+          for attempt in 1 2 3; do
+            if "$sdkmanager" --install "$image" --channel=0 &&
+              [[ -s "$directory/package.xml" && -s "$directory/system.img" ]]; then
+              exit 0
+            fi
+            printf 'Android API 35 image incomplete after attempt %s\n' "$attempt" >&2
+            if [[ "$attempt" != 3 ]]; then sleep 4; fi
+          done
+          exit 1
       - name: Prepare the pinned Linux CPU sampler
         if: matrix.suite == 'paid-profile' && inputs.profile_cpu
         run: |
