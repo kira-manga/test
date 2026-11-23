@@ -1,9 +1,12 @@
 """Export only known synthetic assertions and inert runner measurements."""
 import json
+import os
 from pathlib import Path
 import re
 import sys
 import xml.etree.ElementTree as ET
+
+from cold_pass_metrics import parse_cold_history_pass
 
 mode, stage, run = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 published = stage / "public"
@@ -57,6 +60,11 @@ elif mode in ("cold-payment-control", "cold-owner-control", "cold-literal-contro
         count = source.count("Native physical stage: COLD_STREAMED_PREDECESSOR_REUSED")
         (published / "cold-predecessor-reuse.json").write_text(json.dumps({"reuse_observations": count}) + "\n")
         assert count > 0, "No observed exact native predecessor reuse"
+        if os.environ.get("POS_HISTORY_PROFILE") == "1":
+            passes = [parsed for line in source.splitlines()
+                      if (parsed := parse_cold_history_pass(line.encode("utf-8"))) is not None]
+            assert {item["phase"] for item in passes} == {"CAPTURE", "REPLAY"}, "Missing cold pass timings"
+            (published / "cold-native-passes.json").write_text(json.dumps(passes, indent=2) + "\n")
     if mode == "cold-literal-control":
         source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")

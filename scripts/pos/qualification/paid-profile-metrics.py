@@ -6,6 +6,8 @@ import re
 import sys
 import time
 
+from cold_pass_metrics import parse_cold_history_pass
+
 stage, worker = map(Path, sys.argv[1:3])
 phase = sys.argv[3]
 progress = stage / (phase + ".raw")
@@ -20,22 +22,6 @@ event = re.compile(
 cold_history_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
     rb"(COLD_HISTORY_(?:TRANSCRIPT_CAPTURED|INDEX_BUILT|INDEX_SPILL_RETURNED|REPLAY_ENTERED))"
-)
-cold_history_pass = re.compile(
-    rb"POS_COLD_PASS (CAPTURE|REPLAY) "
-    rb"(CENSUS|EMPLOYEE_ENROLLMENTS|EVENTS|LINEAGE|COMMANDS|STOCK_AGGREGATES|STOCK_REVERSE|"
-    rb"ACCOUNT_RELATIONS|ACCESS_RELATIONS|ARCHIVE_RELATIONS|APPROVAL_RELATIONS) "
-    rb"(BRANCH|OPERATION|AGGREGATE|CLAIM|JOURNAL|AUDIT|OUTBOX|ACCOUNT|POLICY|ADMISSION|"
-    rb"THROTTLE|ACCESS|CONFIGURATION|REFRESH|AUTH_EVENT|ARCHIVE|APPROVAL|STOCK_POSITION|"
-    rb"STOCK_ALLOCATION|STOCK_RESERVATION|STOCK_VALUE|JOURNAL_FRAGMENT|HEAD|EVENT|ROW_VERSION|"
-    rb"CHUNK|ROW_TIP|WRITE_FRAME|CAPTURE) "
-    rb"elapsed_ns=([0-9]{1,19}) original_calls=([0-9]{1,12}) original_ns=([0-9]{1,19}) "
-    rb"workspace_reads=([0-9]{1,12}) workspace_read_ns=([0-9]{1,19}) "
-    rb"workspace_writes=([0-9]{1,12}) workspace_write_ns=([0-9]{1,19})"
-)
-cold_history_pass_counters = (
-    "elapsed_ns", "original_calls", "original_ns", "workspace_reads", "workspace_read_ns",
-    "workspace_writes", "workspace_write_ns",
 )
 payment_owner_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
@@ -121,10 +107,8 @@ with output.open("x") as stream:
                         sample(line.rstrip())
                     elif cold := cold_history_stage.fullmatch(line.rstrip()):
                         sample(cold[1])
-                    elif cold_pass := cold_history_pass.fullmatch(line.rstrip()):
-                        sample(b"POS_COLD_PASS", phase=cold_pass[1].decode(),
-                               history_pass=cold_pass[2].decode(), table=cold_pass[3].decode(),
-                               **dict(zip(cold_history_pass_counters, map(int, cold_pass.groups()[3:]), strict=True)))
+                    elif cold_pass := parse_cold_history_pass(line.rstrip()):
+                        sample(b"POS_COLD_PASS", **cold_pass)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
