@@ -198,6 +198,11 @@ class InstalledUi:
             "pairing_import_stage": "Import the original target identity for review",
             "pairing_import_control": "Import the target identity document (I)",
             "runtime_publication_held": "no usable local client is currently published",
+            "installing_first_account": "Awaiting original approval, durable installation and acknowledgement",
+            "account_ack_pending": "Finish the original acknowledgement — no SQL replay",
+            "acknowledging_first_account": "Completing only the original company acknowledgement",
+            "account_original_receipt": "Open and verify the same original installation",
+            "first_client_enrollment": "Enroll this original client once",
             "opening_original_installation": "Opening only the original installation owner",
             "automatic_reopen_unavailable": "The saved startup or stop intent could not be verified",
             "original_installation_retained": "The installation is retained, but no employee is signed in",
@@ -441,23 +446,7 @@ def activate_master(ui, observation, head_password):
     assert original_pid.isdecimal(), "The installed original Master process is required before submission"
     ui.choose("Approve and install the original first account", scroll=6)
     observation["master_first_account_submit_sent"] = True
-    try:
-        ui.find("Enroll this original client once", scroll=20)
-    except AssertionError:
-        state = ui.visible_setup_outcome()
-        observation["master_first_account_initial_outcome"] = state
-        if not state["app_is_resumed"]:
-            try:
-                observation["master_first_account_process"] = ui.process_after_submission(original_pid)
-            except (subprocess.SubprocessError, OSError):
-                observation["master_first_account_process"] = {"process": "observation_unavailable"}
-        # Exercise the real existing-only inspection after an uncertain response.
-        # Never create another target, submit passwords again or repeat installation.
-        if "company_unresolved" not in state["known_labels"] or "recovery_action" not in state["known_labels"]:
-            raise
-        ui.choose("Inspect the same original again")
-        observation["master_first_account_existing_inspection_sent"] = True
-        ui.find("Enroll this original client once", scroll=12, wait=2500)
+    observe_first_account_installation(ui, observation, original_pid)
     observation["master_native_installation_retained"] = True
     ui.choose("Enroll this original client once")
     await_master_publication(ui, observation)
@@ -474,6 +463,53 @@ def activate_master(ui, observation, head_password):
     observation["master_original_client_journals_connected"] = True
     observation["master_device_pairing_available"] = True
     observation["master_activated_screenshot_sha256"] = ui.screenshot("android-master-activated")
+
+
+def observe_first_account_installation(ui, observation, original_pid):
+    began = time.monotonic()
+    # This is the existing setup action budget plus only the UI observation
+    # needed to see the current state. Never resubmit the first account.
+    transitions = observation["master_first_account_transitions"] = []
+    used = set()
+    actions = {
+        "account_ack_pending": "Finish the original acknowledgement — no SQL replay",
+        "account_original_receipt": "Open and verify the same original installation",
+        "recovery_action": "Inspect the same original again",
+    }
+    while time.monotonic() - began < 300:
+        state = ui.visible_setup_outcome()
+        labels = set(state["known_labels"])
+        if not transitions or transitions[-1]["known_labels"] != state["known_labels"]:
+            transitions.append({**state, "elapsed_seconds": round(time.monotonic() - began, 2)})
+        if state["known_app_crash_frames"] or not state["app_is_resumed"]:
+            try:
+                observation["master_first_account_process"] = ui.process_after_submission(original_pid)
+            except (subprocess.SubprocessError, OSError):
+                observation["master_first_account_process"] = {"process": "observation_unavailable"}
+            raise AssertionError("The installed Master stopped during first-account installation")
+        if "first_client_enrollment" in labels:
+            return
+        if labels & {"installing_first_account", "acknowledging_first_account", "opening_original_installation"}:
+            time.sleep(0.7)
+            continue
+        if "close_unconfirmed" in labels:
+            raise AssertionError("Original first-account native close remains unconfirmed")
+        selected = next((key for key in actions if key in labels), None)
+        if selected is not None and selected not in used:
+            found = ui.find(actions[selected])
+            node = found["nodes"][0]
+            if node.get("enabled", True):
+                ui.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+                used.add(selected)
+                observation[f"master_first_account_{selected}_sent"] = True
+        elif "uncertain" in labels and "recovery_action" in used:
+            raise AssertionError("The installed Master reported uncertainty after original inspection")
+        elif "authentication_refused" in labels:
+            raise AssertionError("The installed Master refused first-account authorization")
+        else:
+            ui.action("pointer.scroll", x=ui.width // 2, y=ui.height // 2, dy=14)
+        time.sleep(0.7)
+    raise AssertionError("The installed Master did not reach first-client enrollment")
 
 
 def await_master_publication(ui, observation):
