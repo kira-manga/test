@@ -587,6 +587,7 @@ def observe_document_completion(ui, observation, key, expected):
     # but locks the setup screen. Open its real review only once it is enabled.
     transitions = observation[key] = []
     unlocked = False
+    pairing_active = False
     started = time.monotonic()
     while time.monotonic() - started < 45:
         state = ui.visible_setup_outcome()
@@ -604,8 +605,10 @@ def observe_document_completion(ui, observation, key, expected):
                 ui.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
                 observation[f"{key}_presentation_unlocked"] = True
                 unlocked = True
-        elif "pairing_page" in labels and state["app_is_resumed"]:
-            ui.action("pointer.scroll", x=ui.width // 2, y=ui.height // 2, dy=14)
+        elif "setup_locked" not in labels and state["app_is_resumed"]:
+            pairing_active = pairing_active or "pairing_page" in labels
+            if pairing_active:
+                ui.action("pointer.scroll", x=ui.width // 2, y=ui.height // 2, dy=14)
         time.sleep(0.4)
     raise AssertionError("The installed app did not confirm the original pairing document transfer")
 
