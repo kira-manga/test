@@ -26,7 +26,8 @@ WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
 LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
 SETUP_STAGE = os.environ.get("POS_ANDROID_SETUP_STAGE", "allocation")
-PAIR = SETUP_STAGE in {"pairing-proof", "pairing-after-restart"}
+ADMIT = SETUP_STAGE == "admission-after-restart"
+PAIR = SETUP_STAGE in {"pairing-proof", "pairing-after-restart"} or ADMIT
 ACTIVATE = SETUP_STAGE == "activate" or PAIR
 UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
 
@@ -443,6 +444,7 @@ def master_onboarding(ui, observation, scope_queue):
         observation["master_original_target_retained"] = True
         if ACTIVATE:
             activate_master(ui, observation, head)
+        return head
     except (AssertionError, ClientError):
         observation["master_final_known_status"] = ui.visible_setup_outcome()
         raise
@@ -856,6 +858,33 @@ def verify_pairing_proof(master, client, observation):
     observation["master_verified_native_target_possession"] = True
 
 
+def admit_native_device(master, client, head, observation):
+    assert observation["master_verified_native_target_possession"] is True
+    # The possession proof has already been accepted by the original Master.
+    # The company-head password belongs only to this synthetic native Master.
+    master.choose("Open separate head / admission review", scroll=15)
+    master.find("The complete original is ready for explicit named-head review", scroll=20, wait=2500)
+    master.enter("Existing named company-head password", head, scroll=24)
+    master.choose("I reviewed this exact original action/request, branch/root", scroll=14)
+    master.choose("Approve this exact original only", scroll=10)
+    master.find("Exact original approval DATA is retained", scroll=-15, wait=2500)
+    observation["master_original_head_approval_verified"] = True
+    master.choose("Ask the same original native Master to admit this unchanged", scroll=24)
+    master.choose("Admit this approved original device", scroll=10)
+    master.find("Original admission recorded.", scroll=-17, wait=2500)
+    observation["master_original_client_admission_verified"] = True
+    master.choose("Retain original history and return to setup", scroll=25)
+    master.choose("Pair a new target through this original Master", scroll=20)
+    transfer_document(master, client, "Re-read and export original approval and root",
+        "Import / review original approval and root", "ukkera-device-pairing-approved-master-v1.bin",
+        2_189_312, observation, "approved_master")
+    client.choose("I reviewed this exact original Master, challenge and approval/root document", scroll=25)
+    client.choose("Verify and retain this original Master", scroll=12)
+    client.find("The native owner verified the selected original Master.", scroll=-25, wait=2500)
+    observation["client_native_original_master_verified"] = True
+    observation["actual_pos_pairing_verified"] = True
+
+
 def main():
     preflight = json.loads((REPORT / "android-lan-preflight.json").read_bytes())
     assert preflight["distinct_installed_instances"] == 2 and preflight["shared_wifi"]
@@ -876,19 +905,21 @@ def main():
     sessions = {role: InstalledUi(role, device) for role, device in GUESTS.items()}
     try:
         scope_queue = Queue(maxsize=1)
-        if SETUP_STAGE == "pairing-after-restart":
+        if SETUP_STAGE == "pairing-after-restart" or ADMIT:
             # Both guests already passed independent install and WLAN checks.
             # Defer the second app and driver's CPU use until the native Master
             # installation and reopen have finished on this shared runner.
             master, client = sessions["master"], sessions["client"]
             master.start()
-            master_onboarding(master, observation, scope_queue)
+            head = master_onboarding(master, observation, scope_queue)
             restart_original_master(master, observation)
             client.start()
             assert master.session.session_id != client.session.session_id
             client_onboarding(client, observation)
             prepare_client_target(client, observation, scope_queue.get_nowait())
             verify_pairing_proof(master, client, observation)
+            if ADMIT:
+                admit_native_device(master, client, head, observation)
             return
         for ui in sessions.values():
             ui.start()
