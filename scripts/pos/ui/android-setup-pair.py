@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -26,7 +27,8 @@ WORK = Path(os.environ["RUNNER_TEMP"]) / "pos-ui"
 REPORT = WORK / "public"
 LIBRARY = Path(os.environ["GITHUB_WORKSPACE"]) / "ui-client"
 SETUP_STAGE = os.environ.get("POS_ANDROID_SETUP_STAGE", "allocation")
-ADMIT = SETUP_STAGE == "admission-after-restart"
+LAN = SETUP_STAGE == "lan-after-admission"
+ADMIT = SETUP_STAGE == "admission-after-restart" or LAN
 PAIR = SETUP_STAGE in {"pairing-proof", "pairing-after-restart"} or ADMIT
 ACTIVATE = SETUP_STAGE == "activate" or PAIR
 UUID = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
@@ -250,6 +252,11 @@ class InstalledUi:
             "authentication_throttled": "The protected local authentication delay remains in force",
             "uncertain": "Original state is uncertain",
             "unavailable": "The native owner is unavailable",
+            "lan_transport_unavailable": "This LAN attachment is unavailable",
+            "lan_transport_unknown": "LAN state or cleanup is unconfirmed",
+            "lan_host_listening": "The LAN Host is confirmed listening",
+            "lan_client_connected": "The LAN Client is confirmed connected to the selected original Master",
+            "lan_employee_authentication_attached": "Employee authentication is attached",
             "key_preparation_required": "The original native key preparation must be continued",
         }
         if document_name is not None:
@@ -866,12 +873,28 @@ def admit_native_device(master, client, head, observation):
     master.find("The complete original is ready for explicit named-head review", scroll=20, wait=2500)
     master.enter("Existing named company-head password", head, scroll=24)
     master.choose("I reviewed this exact original action/request, branch/root", scroll=14)
+    began = time.monotonic()
+    elapsed = observation["master_approval_admission_timing_seconds"] = {}
+
+    def mark(name):
+        elapsed[name] = round(time.monotonic() - began, 3)
+
     master.choose("Approve this exact original only", scroll=10)
-    master.find("Exact original approval DATA is retained", scroll=-15, wait=2500)
+    mark("approve_action_returned")
+    # Compose renders the separate confirmation in the same original review
+    # item only after the genuine head approval is retained. Stay in that
+    # viewport: reading the status at the top and scrolling back can consume the
+    # original short consent lifetime. This sends each user action only once.
+    control = "Ask the same original native Master to admit this unchanged"
+    master.find(control, scroll=8, wait=700)
+    mark("separate_approved_confirmation_visible")
     observation["master_original_head_approval_verified"] = True
-    master.choose("Ask the same original native Master to admit this unchanged", scroll=24)
-    master.choose("Admit this approved original device", scroll=10)
-    master.find("Original admission recorded.", scroll=-17, wait=2500)
+    master.choose(control, scroll=3)
+    mark("separate_confirmation_checked")
+    master.choose("Admit this approved original device", scroll=4)
+    mark("admit_action_returned")
+    master.find("Original admission recorded.", scroll=-17, wait=2000)
+    mark("exact_original_admission_observed")
     observation["master_original_client_admission_verified"] = True
     master.choose("Retain original history and return to setup", scroll=25)
     master.choose("Pair a new target through this original Master", scroll=20)
@@ -883,6 +906,58 @@ def admit_native_device(master, client, head, observation):
     client.find("The native owner verified the selected original Master.", scroll=-25, wait=2500)
     observation["client_native_original_master_verified"] = True
     observation["actual_pos_pairing_verified"] = True
+
+
+def observed_wifi_network(device):
+    output = adb(device, "shell", "ip", "-4", "addr", "show", "wlan0")
+    (address,) = re.findall(r"\binet ([\d.]+/\d+)", output)
+    network = ipaddress.IPv4Interface(address)
+    assert network.ip.is_private and network.ip != network.network.network_address
+    return network
+
+
+def choose_exact_wifi(ui, expected):
+    assert observed_wifi_network(ui.device) == expected, "The selected guest Wi-Fi interface changed"
+    ui.choose("Find local networks", scroll=20)
+    ui.choose(f"wlan0 · {expected.ip} · {expected.network}", scroll=-4)
+
+
+def attach_approved_lan(master, client, observation):
+    assert observation["actual_pos_pairing_verified"] is True
+    master_network = observed_wifi_network(master.device)
+    client_network = observed_wifi_network(client.device)
+    assert master_network.ip != client_network.ip and master_network.network == client_network.network
+    # The guest image has API 35. The tested application's Android permission
+    # port only needs an interactive local network grant starting at API 37.
+    assert all(adb(ui.device, "shell", "getprop", "ro.build.version.sdk").strip() == "35"
+               for ui in (master, client))
+    master.choose("Retain original history and return", scroll=24)
+    master.find("Host on the existing operational Master", scroll=24)
+    choose_exact_wifi(master, master_network)
+    checked = master.find("✓ Allow Clients to discover this Master on the selected LAN", scroll=6)
+    assert checked["nodes"][0].get("enabled", True), "The original Master advertisement is unavailable"
+    master.choose("Review these exact LAN inputs", scroll=22)
+    master.choose("Start LAN Host on this existing Master", scroll=10)
+    master.find("The LAN Host is confirmed listening", scroll=-30, wait=2000)
+    master.find("Observed assigned listener port", scroll=4)
+    observation["master_ui_native_listener_confirmed"] = True
+
+    client.find("Client to the selected original Master", scroll=-36)
+    choose_exact_wifi(client, client_network)
+    client.choose("Branch business operations", scroll=30)
+    client.choose("Initialize this new device's credential journal", scroll=14)
+    client.choose("Enroll an employee without an original allocation", scroll=14)
+    client.choose("Review these exact LAN inputs", scroll=22)
+    client.choose("Discover the approved Master", scroll=12)
+    client.find("Connect to the approved original Master", scroll=22, wait=1800)
+    observation["client_ui_discovered_approved_native_master"] = True
+    client.choose("Connect to the approved original Master", scroll=4)
+    client.find("The LAN Client is confirmed connected to the selected original Master", scroll=-32, wait=2200)
+    observation["client_ui_lan_connected"] = True
+    client.find("Employee authentication is attached", scroll=4)
+    observation["client_ui_employee_authentication_attached"] = True
+    observation["master_lan_status_png_sha256"] = master.screenshot("master-native-lan-status")
+    observation["client_lan_status_png_sha256"] = client.screenshot("client-native-lan-status")
 
 
 def main():
@@ -920,6 +995,8 @@ def main():
             verify_pairing_proof(master, client, observation)
             if ADMIT:
                 admit_native_device(master, client, head, observation)
+            if LAN:
+                attach_approved_lan(master, client, observation)
             return
         for ui in sessions.values():
             ui.start()

@@ -16,9 +16,9 @@ on:
         type: boolean
         default: false
       android_setup_stage:
-        description: Select allocation, native activation, possession proof, or native admission after restart
+        description: Select allocation, native activation, possession proof, native admission, or secure LAN attachment
         type: choice
-        options: [allocation, activate, pairing-proof, pairing-after-restart, admission-after-restart]
+        options: [allocation, activate, pairing-proof, pairing-after-restart, admission-after-restart, lan-after-admission]
         default: allocation
       android_candidate_revision:
         description: Exact POS revision of a staged signed Android candidate
