@@ -20,6 +20,11 @@ cold_history_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
     rb"(COLD_HISTORY_(?:TRANSCRIPT_CAPTURED|INDEX_BUILT|INDEX_SPILL_RETURNED|REPLAY_ENTERED))"
 )
+physical_dependencies = re.compile(
+    rb"POS_PHYSICAL_READ_DEPENDENCIES complete=(true|false) total=([0-9]{1,3}) "
+    rb"retained=([0-9]{1,3}) aggregates=([0-9]{1,3}) ranges=([0-9]{1,3}) "
+    rb"claims=([0-9]{1,3}) resources=([0-9]{1,3})"
+)
 payment_preparation = re.compile(
     rb"POS_PAID_PREPARATION (COLLECTION_ENTERED|COLLECTION_RETURNED|STOCK_ENTERED|STOCK_RETURNED|"
     rb"REQUIREMENT_ENTERED|REQUIREMENT_RETURNED|VACANCY_RETURNED|OBSERVATIONS_RETURNED|"
@@ -85,6 +90,15 @@ with output.open("x") as stream:
                         sample(line.rstrip())
                     elif cold := cold_history_stage.fullmatch(line.rstrip()):
                         sample(cold[1])
+                    elif dependencies := physical_dependencies.fullmatch(line.rstrip()):
+                        total, *counts = map(int, dependencies.groups()[1:])
+                        if total == sum(counts):
+                            record = {"event": "POS_PHYSICAL_READ_DEPENDENCIES",
+                                      "observer_seconds": round(time.monotonic() - start, 3),
+                                      "complete": dependencies[1] == b"true", "total": total}
+                            record.update(zip(("retained", "aggregates", "ranges", "claims", "resources"), counts,
+                                              strict=True))
+                            print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif preparation := payment_preparation.fullmatch(line.rstrip()):
                         record = {"event": "POS_PAID_PREPARATION " + preparation[1].decode(),
                                   "observer_seconds": round(time.monotonic() - start, 3),
