@@ -44,6 +44,10 @@ on:
         description: Check real Windows external package identity and native service association
         type: boolean
         default: false
+      windows_console_navigation:
+        description: Open the installed Windows Master service console through its actual UI
+        type: boolean
+        default: false
       windows_service_msi:
         description: Install and verify the service-aware signed MSI control on Windows
         type: boolean
@@ -174,6 +178,8 @@ jobs:
       - name: Generate the loopback session bearer and start the UI observer
         id: start
         shell: bash
+        env:
+          POS_WINDOWS_CONSOLE_UI: ${{ inputs.windows_console_navigation }}
         run: |
           set -euo pipefail
           umask 077

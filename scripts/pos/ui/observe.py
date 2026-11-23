@@ -19,6 +19,19 @@ def snapshot(client, name):
     screenshot = client.fetch("/v1/screenshot")
     if not screenshot.startswith(b"\x89PNG\r\n\x1a\n"):
         raise AssertionError("UI session did not return a PNG")
+    if target == "windows":
+        from PIL import Image
+        image = Image.open(io.BytesIO(screenshot)).convert("RGB")
+        rect = windows_pos_window(client)["bounds"]
+        # Capture the foreground application interior only. Do not publish
+        # runner terminals, taskbar notifications or unrelated windows.
+        left, top = max(0, rect["x"] + 8), max(0, rect["y"] + 8)
+        right = min(image.width, rect["x"] + rect["width"] - 8)
+        bottom = min(image.height, rect["y"] + rect["height"] - 8)
+        assert left < right and top < bottom, "Windows application has no visible area"
+        cropped = io.BytesIO()
+        image.crop((left, top, right, bottom)).save(cropped, format="PNG")
+        screenshot = cropped.getvalue()
     (report / f"{name}.png").write_bytes(screenshot)
     return hashlib.sha256(screenshot).hexdigest()
 
@@ -56,18 +69,32 @@ def reject_observer_local_network_prompt(client):
     return True
 
 
-def click_known_windows_setup(client):
-    # This particular signed legacy MSI does not expose its Compose button to
-    # the Windows accessibility driver. Use only the exact observed button.
+def windows_pos_window(client):
+    windows = action(client, "windows.list")["windows"]
+    matches = [window for window in windows if window.get("title") == "Ukkera POS · Local qualification"]
+    assert len(matches) == 1, "Expected one exact installed Windows POS window"
+    return matches[0]
+
+
+def click_known_windows_role(client, console=False):
+    # This signed Windows package may omit the Compose controls from its
+    # accessibility tree. Match only the previously observed exact button.
     from PIL import Image
 
     image = Image.open(io.BytesIO(client.fetch("/v1/screenshot"))).convert("RGB")
-    role = image.crop((407, 299, 731, 333))
-    digest = hashlib.sha256(role.tobytes()).hexdigest()
-    expected = "2eaa7200deec7537a70ff1a9260b64bef426db12fa5612df76de77f9f5f2c254"
+    if console:
+        rect, pointer = (407, 450, 740, 482), (570, 466)
+        expected = "8401e63b3e0ec5174b7125801ae81fabc28c8c0b81aab271d76868910ff865c8"
+    else:
+        rect, pointer = (407, 299, 731, 333), (570, 316)
+        expected = "2eaa7200deec7537a70ff1a9260b64bef426db12fa5612df76de77f9f5f2c254"
+    window = windows_pos_window(client)["bounds"]
+    assert window["x"] <= rect[0] and window["y"] <= rect[1] and \
+        window["x"] + window["width"] >= rect[2] and window["y"] + window["height"] >= rect[3]
+    digest = hashlib.sha256(image.crop(rect).tobytes()).hexdigest()
     if image.size != (1024, 768) or digest != expected:
-        raise AssertionError("Unsupported Windows layout for the exact screenshot-matched setup control")
-    action(client, "pointer.click", {"x": 570, "y": 316})
+        raise AssertionError("Unsupported Windows layout for the exact observed role control")
+    action(client, "pointer.click", {"x": pointer[0], "y": pointer[1]})
 
 
 def choose(client, label):
@@ -117,6 +144,8 @@ try:
     client = identify_session()
     if target != "android":
         wait_for_pos(client)
+    if target == "windows":
+        action(client, "windows.focus", {"id": windows_pos_window(client)["id"]})
     result["installed_startup"] = True
     result["before_png_sha256"] = snapshot(client, "before")
     if target == "macos" and reject_observer_local_network_prompt(client):
@@ -126,12 +155,28 @@ try:
         from PIL import Image
         before = Image.open(report / "before.png").convert("RGB")
         result["screen_capture_opaque"] = all(low == high == 0 for low, high in before.getextrema())
+    console = target == "windows" and os.environ.get("POS_WINDOWS_CONSOLE_UI") == "true"
+    if console:
+        try:
+            choose(client, "Administer this computer's Master service")
+        except ClientError as unavailable:
+            if unavailable.status != 408:
+                raise
+            click_known_windows_role(client, console=True)
+        result["master_console_action_sent"] = True
+        result["master_console_accessible_verified"] = has_label(client, ("Master employee administration",))
+        result["after_png_sha256"] = snapshot(client, "after")
+        if not result["master_console_accessible_verified"]:
+            raise AssertionError("The employee administration label requires review of the installed console capture")
+        result["status"] = "master_service_console_navigation_verified"
+        rc = 0
+        sys.exit(0)
     try:
         choose(client, "Set up or inspect the original local branch")
     except ClientError as unavailable:
         if target != "windows" or unavailable.status != 408:
             raise
-        click_known_windows_setup(client)
+        click_known_windows_role(client)
         time.sleep(2)
         result["visual_click_sent"] = True
         result["after_png_sha256"] = snapshot(client, "after")
