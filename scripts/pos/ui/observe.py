@@ -27,7 +27,7 @@ def snapshot(client, name):
         # runner terminals, taskbar notifications or unrelated windows.
         left, top = max(0, rect["x"] + 8), max(0, rect["y"] + 8)
         right = min(image.width, rect["x"] + rect["width"] - 8)
-        bottom = min(image.height, rect["y"] + rect["height"] - 8)
+        bottom = min(image.height - 48, rect["y"] + rect["height"] - 8)
         assert left < right and top < bottom, "Windows application has no visible area"
         cropped = io.BytesIO()
         image.crop((left, top, right, bottom)).save(cropped, format="PNG")
@@ -95,6 +95,22 @@ def click_known_windows_role(client, console=False):
     if image.size != (1024, 768) or digest != expected:
         raise AssertionError("Unsupported Windows layout for the exact observed role control")
     action(client, "pointer.click", {"x": pointer[0], "y": pointer[1]})
+
+
+def observed_windows_service_console(capture):
+    # The two regions are from the recorded, actually connected service
+    # console. Both the administration control and the setup heading must
+    # match. A cursor click or generic screen change cannot pass this check.
+    from PIL import Image
+
+    image = Image.open(capture).convert("RGB")
+    expected = (
+        ((30, 51, 260, 77), "b0049ae2f3d21003927eba1f405f70ddd8984259665501e732ed858b32595254"),
+        ((24, 262, 334, 292), "87206010a3c754f58a3ddefb0803af77082cdf8a4d999ee2d1dd93d8d7be158c"),
+    )
+    return all(region[2] <= image.width and region[3] <= image.height and
+               hashlib.sha256(image.crop(region).tobytes()).hexdigest() == digest
+               for region, digest in expected)
 
 
 def choose(client, label):
@@ -166,8 +182,9 @@ try:
         result["master_console_action_sent"] = True
         result["master_console_accessible_verified"] = has_label(client, ("Master employee administration",))
         result["after_png_sha256"] = snapshot(client, "after")
-        if not result["master_console_accessible_verified"]:
-            raise AssertionError("The employee administration label requires review of the installed console capture")
+        result["master_console_exact_visual_verified"] = observed_windows_service_console(report / "after.png")
+        if not (result["master_console_accessible_verified"] or result["master_console_exact_visual_verified"]):
+            raise AssertionError("The installed console did not reach the exact connected administration view")
         result["status"] = "master_service_console_navigation_verified"
         rc = 0
         sys.exit(0)
