@@ -653,7 +653,9 @@ def observe_document_completion(ui, observation, key, document_name, expected):
                 # Move most of a visible page per snapshot. When the explicit
                 # footer appears, step back to the exact document status above it.
                 footer = "pairing_document_footer" in labels
-                distance = max(14, min(72, ui.height // 45))
+                # ui-test-actions accepts at most 30 wheel steps per command
+                # and Android converts each step into 24 pixels of swipe.
+                distance = max(1, min(30, ui.height // (2 * 24)))
                 ui.action("pointer.scroll", x=ui.width // 2,
                           y=ui.height * (2 if footer else 7) // 10,
                           dy=-distance // 2 if footer else distance)
