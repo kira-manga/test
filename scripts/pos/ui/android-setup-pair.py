@@ -492,11 +492,13 @@ def restart_original_master(ui, observation):
             ui.choose("Understood")
             observation["master_restart_notice_acknowledged"] = True
             continue
-        if "local_device_pairing_available" in labels:
-            observation["master_existing_journals_reattached_after_restart"] = True
-            return
-        if observation.get("master_restart_presentation_unlocked") and "journal_connected" in labels:
-            ui.find("Pair a new target through this original Master", scroll=12, wait=2500)
+        if (observation.get("master_restart_presentation_unlocked") and "setup_page" in labels
+                and "setup_locked" not in labels
+                and not {"opening_original_installation", "runtime_publication_held"}.intersection(labels)):
+            # The settled setup page is scrollable. Looking at the first viewport
+            # cannot establish whether its connected-only action is present.
+            found = ui.find("Pair a new target through this original Master", scroll=15, wait=2500)
+            assert found["nodes"][0].get("enabled", True), "The existing Master pairing action stayed disabled"
             observation["master_existing_journals_reattached_after_restart"] = True
             return
         time.sleep(1)
