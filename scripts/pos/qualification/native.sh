@@ -196,6 +196,9 @@ restart=1
 started=$SECONDS
 phase_budget=337
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then phase_budget=36; fi
+if [[ "${POS_HISTORY_PROFILE:-0}" == 1 && "$POS_SUITE" == 'paid-profile' ]]; then
+  export UKKERA_CHB_SOURCE_DIAGNOSTICS=true
+fi
 observe_profile() {
   if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
     python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$POS_SUITE" "$1" "$count" &
