@@ -406,6 +406,11 @@ class InstalledUi:
         last_entered = {}
         for line in records.splitlines():
             process = re.match(r"^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d+\s+(\d+)\s+\d+\s+\w\s+UkkeraNativeOwner\s*:", line)
+            if process:
+                approval = device_approval_refusal(line[process.end():].strip())
+                if approval is not None:
+                    refusals.append(approval)
+                    continue
             entry = re.search(r"Native action entered: (com\.ukkera\.pos\.[\w.$]{1,150})$", line)
             if process and entry:
                 last_entered[process[1]] = entry[1]
@@ -432,6 +437,19 @@ class InstalledUi:
                     refusal["last_native_action_class"] = last_entered[process[1]]
             refusals.append(refusal)
         return refusals
+
+
+def device_approval_refusal(message):
+    guard = re.fullmatch(
+        r"Native device approval delivery refusal: (CURRENT_ORIGIN|PREPARED_HEAD|APPROVAL_EXPIRY|"
+        r"PREPARED_OBSERVATION|CURRENT_ISSUANCE|CURRENT_HEAD_CONSENT|RETAINED_ENDORSEMENT|DELIVER_ORIGINAL)/"
+        r"(AUTHENTICATION_REFUSED|ORIGINAL_ACTION_REQUIRED|ISSUANCE_WITHDRAWN|INVALID_APPLICATION|"
+        r"USER_LOCKED|CONFLICT|AUTHORITY_UNAVAILABLE|STATE_UNCERTAIN|KEY_STATE_UNCERTAIN|NATIVE_RETIRED|UNAVAILABLE)",
+        message,
+    )
+    if guard is None:
+        return None
+    return {"boundary": "device_approval_delivery", "guard": guard[1], "reason": guard[2]}
 
 
 def setup_entry(ui):
