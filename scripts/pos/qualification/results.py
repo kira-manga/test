@@ -22,6 +22,8 @@ if mode == "frozen":
         r"|POS_NATIVE_CENSUS_COVERAGE trial=[12] distinct=[0-9]+ repeated=[0-9]+ repeated_bytes=[0-9]+"
         r" image_rows=[0-9]+ image_bytes=[0-9]+ same_image_bytes=[0-9]+ plaintext_rows=[0-9]+ plaintext_bytes=[0-9]+"
         r"|POS_NATIVE_COMMAND_PROJECTION trial=[12] originals=[0-9]+ rows=[0-9]+ boundaries=[0-9]+"
+        r"|POS_NATIVE_APPEND_PREFIX prefix_rows=[0-9]{1,19} prefix_bytes=[0-9]{1,19}"
+        r" tail_rows=[0-9]{1,19} tail_bytes=[0-9]{1,19} tail_events=[0-9]{1,19}"
     )
     for phase in ("seed", "restart"):
         log = stage / f"{phase}.raw"
