@@ -220,6 +220,15 @@ class InstalledUi:
             "pairing_import_stage": "Import the original target identity for review",
             "pairing_import_control": "Import the target identity document (I)",
             "device_admission_page": "Retained original device admission",
+            "device_admission_read_work": "Reading retained original native device actions",
+            "device_admission_original_selected": "Selected complete original",
+            "device_admission_native_possession": "Original target possession retained",
+            "device_admission_target_not_ready": "This original is not eligible for admission here",
+            "device_admission_head_review": "The complete original is ready for explicit named-head review",
+            "device_admission_head_password": "Existing named company-head password",
+            "device_admission_head_submit": "Approve this exact original only",
+            "device_admission_read_unavailable": "The original operation or result read is unavailable",
+            "device_admission_storage_uncertain": "Original storage or outcome is uncertain",
             "device_admission_approval_work": "Awaiting named-head approval of this exact device original",
             "device_admission_approval_unresolved": "Original head approval is unresolved",
             "device_admission_approval_retained": "Exact original approval DATA is retained",
@@ -1015,8 +1024,25 @@ def admit_native_device(master, client, head, observation):
     assert observation["master_verified_native_target_possession"] is True
     # The possession proof has already been accepted by the original Master.
     # The company-head password belongs only to this synthetic native Master.
+    handoff = time.monotonic()
     master.choose("Open separate head / admission review", scroll=15)
-    master.find("The complete original is ready for explicit named-head review", scroll=20, wait=2500)
+    review = observation["master_head_review_handoff"] = {
+        "action_returned_seconds": round(time.monotonic() - handoff, 3)}
+    try:
+        master.find("The complete original is ready for explicit named-head review", scroll=20, wait=2500)
+    except (AssertionError, ClientError):
+        review["expected_review_missing_seconds"] = round(time.monotonic() - handoff, 3)
+        try:
+            review["failure_viewport"] = master.visible_setup_outcome()
+            # The list virtualizes the original review and the approval
+            # fields separately. A backward viewport read has no native action.
+            master.action("pointer.scroll", x=master.width // 2, y=master.height // 2,
+                          dy=-min(20, master.height // 55))
+            review["previous_viewport"] = master.visible_setup_outcome()
+        except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
+            review["diagnostic_error_type"] = type(diagnostic).__name__
+        raise
+    review["expected_review_visible_seconds"] = round(time.monotonic() - handoff, 3)
     master.enter("Existing named company-head password", head, scroll=24)
     master.choose("I reviewed this exact original action/request, branch/root", scroll=14)
     began = time.monotonic()
