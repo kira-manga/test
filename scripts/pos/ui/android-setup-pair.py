@@ -153,9 +153,15 @@ class InstalledUi:
             if node is not None:
                 return snapshot["snapshot_id"], node["id"]
             if attempt < abs(scroll):
-                travel = min(20, self.height // 55)
-                self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
-                            dy=travel if scroll > 0 else -travel)
+                visible_consent = any(
+                    node.get("visible") and node["properties"].get("package") == PACKAGE
+                    and label in (node.get("name"), node.get("text"))
+                    for node in snapshot["nodes"]
+                )
+                if not visible_consent:
+                    travel = min(20, self.height // 55)
+                    self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
+                                dy=travel if scroll > 0 else -travel)
                 time.sleep(0.15)
         raise AssertionError("The exact device admission consent was not actionable")
 
@@ -984,27 +990,21 @@ def admit_native_device(master, client, head, observation):
     try:
         snapshot_id, consent_id = master.find_admission_consent(control, scroll=8)
     except AssertionError:
-        # The fixed assertion stays failed unless the real control is present.
-        # The approval form can shrink once work settles. If the footer is on
-        # screen, search backwards from it before concluding consent is absent.
+        # The approval form can shrink as the native action settles. If the
+        # exact-original lookup is visible, read it once before searching back.
+        # The previous guests displayed the real confirmation after this read.
         before = master.visible_setup_outcome()
         observation["master_approval_confirmation_initial_miss"] = before
         labels = set(before["known_labels"])
-        if "device_admission_lookup" not in labels or "authentication_refused" in labels:
+        if ("device_admission_lookup" not in labels or "authentication_refused" in labels
+                or "device_admission_outcome_unresolved" in labels or "device_admission_recorded" in labels):
             raise
+        master.choose("Read / look up only this original")
+        mark("exact_original_approval_lookup_returned")
         try:
             snapshot_id, consent_id = master.find_admission_consent(control, scroll=-4)
         except AssertionError:
-            observation["master_approval_confirmation_reverse_miss"] = master.visible_setup_outcome()
-            # Evidence after failed consent lookup only. Inspect the existing
-            # read-only UI control once; never resend head approval or admission.
-            try:
-                master.choose("Read / look up only this original", scroll=6)
-                observation["master_after_one_approval_inspection"] = master.visible_setup_outcome()
-                master.find("Retained original device admission", scroll=-18, wait=1000)
-                observation["master_approval_failure_header"] = master.visible_setup_outcome()
-            except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
-                observation["master_approval_inspection_error_type"] = type(diagnostic).__name__
+            observation["master_after_one_approval_inspection"] = master.visible_setup_outcome()
             raise
     mark("separate_approved_confirmation_visible")
     observation["master_original_head_approval_verified"] = True
