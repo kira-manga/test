@@ -22,7 +22,10 @@ prepare_verified_plugin() {
   local phase="$1"
   local crypto_repository=
   [[ -f "$stage/$phase.raw" ]] || return 1
-  grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" || return 1
+  if ! grep -Fq "Plugin [id: 'dev.whyoleg.cryptography', version: '0.6.0', apply: false] was not found" "$stage/$phase.raw" &&
+     ! grep -Fq "Plugin [id: 'org.jetbrains.kotlin.multiplatform', version: '2.4.21', apply: false] was not found" "$stage/$phase.raw"; then
+    return 1
+  fi
   local marker='dev/whyoleg/cryptography/dev.whyoleg.cryptography.gradle.plugin/0.6.0/dev.whyoleg.cryptography.gradle.plugin-0.6.0.pom'
   local implementation='dev/whyoleg/cryptography/cryptography-gradle-plugin/0.6.0/cryptography-gradle-plugin-0.6.0'
   local plugin_repository="$stage/profile-cryptography-maven"
@@ -57,6 +60,15 @@ gradle.beforeSettings { settings ->
         content {
             includeVersion('dev.whyoleg.cryptography', 'dev.whyoleg.cryptography.gradle.plugin', '0.6.0')
             includeVersion('dev.whyoleg.cryptography', 'cryptography-gradle-plugin', '0.6.0')
+        }
+    }
+    // Kotlin plugin markers and their compiler modules use the same pinned
+    // Maven Central release through Google's documented public mirror.
+    settings.pluginManagement.repositories.maven {
+        name = 'PosQualificationPinnedKotlinCentralMirror'
+        url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
+        content {
+            includeVersionByRegex('org[.]jetbrains[.]kotlin([.].*)?', '.*', '2[.]4[.]21')
         }
     }
 }
