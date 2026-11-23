@@ -20,7 +20,7 @@ on:
       paid_profile_count:
         description: Supporting performance prefix length
         type: choice
-        options: ['5', '10', '25', '32', '50', '100', '250', '500']
+        options: ['5', '10', '25', '32', '35', '50', '100', '250', '500']
         default: '10'
       compare_revision:
         description: Optional sealed candidate SHA for a same-runner paid or cold-pass comparison
