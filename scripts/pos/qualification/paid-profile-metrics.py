@@ -61,6 +61,7 @@ retained_read_sites = (
 retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
 )
+history_source_replay = re.compile(rb"POS_HISTORY_SOURCE_REPLAY images=([0-9]{1,19}) closure_chunks=([0-9]{1,19})")
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -111,6 +112,9 @@ with output.open("x") as stream:
                         sample(b"POS_COLD_PASS", **cold_pass)
                     elif history := parse_history_source(line.rstrip()):
                         sample(b"POS_HISTORY_SOURCE", **history)
+                    elif replay := history_source_replay.fullmatch(line.rstrip()):
+                        images, closure_chunks = map(int, replay.groups())
+                        sample(b"POS_HISTORY_SOURCE_REPLAY", images=images, closure_chunks=closure_chunks)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
