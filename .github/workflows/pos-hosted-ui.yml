@@ -52,6 +52,10 @@ on:
         description: Install and verify the service-aware signed MSI control on Windows
         type: boolean
         default: false
+      macos_console_navigation:
+        description: Install the user LaunchAgent and open the real Master console through the macOS app
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -180,6 +184,7 @@ jobs:
         shell: bash
         env:
           POS_WINDOWS_CONSOLE_UI: ${{ inputs.windows_console_navigation }}
+          POS_MACOS_CONSOLE_UI: ${{ inputs.macos_console_navigation }}
         run: |
           set -euo pipefail
           umask 077

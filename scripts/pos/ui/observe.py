@@ -3,6 +3,9 @@ import hashlib
 import io
 import json
 import os
+import plistlib
+import re
+import subprocess
 from pathlib import Path
 import sys
 import time
@@ -113,6 +116,37 @@ def observed_windows_service_console(capture):
                for region, digest in expected)
 
 
+def verify_macos_service(client, observed):
+    label = "com.ukkera.pos.master"
+    agent = Path.home() / "Library/LaunchAgents" / f"{label}.plist"
+    assert not agent.exists(), "Expected a fresh macOS user service"
+    choose(client, "Administer this computer's Master service")
+    observed["master_console_action_sent"] = True
+    choose(client, "Install Master service")
+    observed["install_service_ui_action_sent"] = True
+
+    for _ in range(16):
+        # Read launchd state only. The installed application owns registration.
+        info = subprocess.run(["/bin/launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                              capture_output=True, text=True, timeout=4)
+        if info.returncode == 0 and re.search(r"^\s*state = running\s*$", info.stdout, re.MULTILINE):
+            break
+        time.sleep(0.6)
+    else:
+        raise AssertionError("The installed app did not register a running user Master service")
+
+    app = Path((work / "installed").read_text().strip())
+    expected = str(app / "Contents/MacOS/UkkeraPOS")
+    assert agent.is_file() and not agent.is_symlink(), "The expected user LaunchAgent was not written"
+    configuration = plistlib.loads(agent.read_bytes())
+    assert configuration["Label"] == label and configuration["ProgramArguments"] == [expected, "--service"]
+    observed["master_service_user_launch_agent_running"] = True
+    observed["master_console_accessible_verified"] = has_label(client, ("Master employee administration",))
+    observed["after_png_sha256"] = snapshot(client, "after")
+    assert observed["master_console_accessible_verified"], "The installed console did not show connected employee administration"
+    observed["status"] = "master_service_console_navigation_verified"
+
+
 def choose(client, label):
     finding = action(client, "element.wait", {
         "selector": {"text_contains": label},
@@ -171,6 +205,10 @@ try:
         from PIL import Image
         before = Image.open(report / "before.png").convert("RGB")
         result["screen_capture_opaque"] = all(low == high == 0 for low, high in before.getextrema())
+    if target == "macos" and os.environ.get("POS_MACOS_CONSOLE_UI") == "true":
+        verify_macos_service(client, result)
+        rc = 0
+        sys.exit(0)
     console = target == "windows" and os.environ.get("POS_WINDOWS_CONSOLE_UI") == "true"
     if console:
         try:
