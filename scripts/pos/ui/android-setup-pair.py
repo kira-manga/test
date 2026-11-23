@@ -219,6 +219,16 @@ class InstalledUi:
             "pairing_context_unavailable": "The original pairing context is unavailable",
             "pairing_import_stage": "Import the original target identity for review",
             "pairing_import_control": "Import the target identity document (I)",
+            "device_admission_page": "Retained original device admission",
+            "device_admission_approval_work": "Awaiting named-head approval of this exact device original",
+            "device_admission_approval_unresolved": "Original head approval is unresolved",
+            "device_admission_approval_retained": "Exact original approval DATA is retained",
+            "device_admission_confirmation": "Ask the same original native Master to admit this unchanged",
+            "device_admission_lookup": "Read / look up only this original",
+            "device_admission_head_intent": "Original head-consent intent retained",
+            "device_admission_signing_intent": "Original signing unresolved",
+            "device_admission_approval_phase": "Original head approval DATA retained",
+            "device_admission_original_unavailable": "The exact native original cannot currently be resolved",
             "runtime_publication_held": "no usable local client is currently published",
             "installing_first_account": "Awaiting original approval, durable installation and acknowledgement",
             "account_ack_pending": "Finish the original acknowledgement — no SQL replay",
@@ -886,7 +896,31 @@ def admit_native_device(master, client, head, observation):
     # viewport: reading the status at the top and scrolling back can consume the
     # original short consent lifetime. This sends each user action only once.
     control = "Ask the same original native Master to admit this unchanged"
-    master.find(control, scroll=8, wait=700)
+    try:
+        master.find(control, scroll=8, wait=700)
+    except AssertionError:
+        # The fixed assertion stays failed unless the real control is present.
+        # The approval form can shrink once work settles. If the footer is on
+        # screen, search backwards from it before concluding consent is absent.
+        before = master.visible_setup_outcome()
+        observation["master_approval_confirmation_initial_miss"] = before
+        labels = set(before["known_labels"])
+        if "device_admission_lookup" not in labels or "authentication_refused" in labels:
+            raise
+        try:
+            master.find(control, scroll=-4, wait=700)
+        except AssertionError:
+            observation["master_approval_confirmation_reverse_miss"] = master.visible_setup_outcome()
+            # Evidence after failed consent lookup only. Inspect the existing
+            # read-only UI control once; never resend head approval or admission.
+            try:
+                master.choose("Read / look up only this original", scroll=6)
+                observation["master_after_one_approval_inspection"] = master.visible_setup_outcome()
+                master.find("Retained original device admission", scroll=-18, wait=1000)
+                observation["master_approval_failure_header"] = master.visible_setup_outcome()
+            except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
+                observation["master_approval_inspection_error_type"] = type(diagnostic).__name__
+            raise
     mark("separate_approved_confirmation_visible")
     observation["master_original_head_approval_verified"] = True
     master.choose(control, scroll=3)
