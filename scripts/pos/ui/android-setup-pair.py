@@ -146,25 +146,6 @@ class InstalledUi:
         assert node.get("enabled", True), f"Expected enabled control: {label}"
         self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
 
-    def find_admission_consent(self, label, scroll):
-        for attempt in range(abs(scroll) + 1):
-            snapshot = self.action("tree.snapshot")
-            node = admission_consent_control(snapshot, label)
-            if node is not None:
-                return snapshot["snapshot_id"], node["id"]
-            if attempt < abs(scroll):
-                visible_consent = any(
-                    node.get("visible") and node["properties"].get("package") == PACKAGE
-                    and label in (node.get("name"), node.get("text"))
-                    for node in snapshot["nodes"]
-                )
-                if not visible_consent:
-                    travel = min(20, self.height // 55)
-                    self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
-                                dy=travel if scroll > 0 else -travel)
-                time.sleep(0.15)
-        raise AssertionError("The exact device admission consent was not actionable")
-
     def await_document_picker(self, observation, key, save=False):
         # The installed application first re-reads the native original. Its
         # 30-second operation watch still owns that read and opening the picker.
@@ -945,7 +926,7 @@ def verify_pairing_proof(master, client, observation):
     observation["master_verified_native_target_possession"] = True
 
 
-def admission_consent_control(snapshot, label):
+def admission_control(snapshot, label, checkable=False):
     nodes = {node["id"]: node for node in snapshot["nodes"] if node.get("visible")
              and node["properties"].get("package") == PACKAGE}
     matches = {}
@@ -956,13 +937,61 @@ def admission_consent_control(snapshot, label):
         while node is not None and node["id"] not in visited:
             visited.add(node["id"])
             properties = node["properties"]
-            if properties.get("checkable") and properties.get("clickable"):
+            if properties.get("clickable") and bool(properties.get("checkable")) == checkable:
                 if node.get("bounds") and node.get("enabled") and not properties.get("checked"):
                     matches[node["id"]] = node
                 break
             node = nodes.get(node.get("parent_id"))
-    assert len(matches) <= 1, "Multiple distinct device admission consent controls"
+    assert len(matches) <= 1, "Multiple distinct original device admission controls"
     return next(iter(matches.values()), None)
+
+
+def click_original_admission_controls(master, began, timings, observations):
+    consent_label = ("Ask the same original native Master to admit this unchanged SDK-bound target once. "
+                     "Approval is not a permit; preserve this original if the outcome becomes uncertain.")
+    lookup_label = "Read / look up only this original"
+    admit_label = "Admit this approved original device"
+    looked_up = consent_checked = False
+    for attempt in range(7):
+        # Leave time for the actual native pre-dispatch checks. The authority
+        # still expires on its original native clock and no action is replayed.
+        if time.monotonic() - began >= 21:
+            break
+        snapshot = master.action("tree.snapshot")
+        labels = {node.get(field) for node in snapshot["nodes"]
+                  if node.get("visible") and node["properties"].get("package") == PACKAGE
+                  for field in ("name", "text")}
+        assert not any(label.startswith(("Original admission recorded.", "The original admission outcome is unresolved.",
+                                        "Local human authentication was refused.")) for label in labels if label)
+        node = admission_control(snapshot, admit_label) if consent_checked else admission_control(snapshot, consent_label, checkable=True)
+        lookup = admission_control(snapshot, lookup_label) if node is None and not consent_checked else None
+        elapsed = round(time.monotonic() - began, 3)
+        if elapsed >= 21:
+            break
+        if node is not None:
+            if not consent_checked:
+                timings["separate_approved_confirmation_visible"] = elapsed
+            master.action("element.click", snapshot_id=snapshot["snapshot_id"], id=node["id"])
+            if consent_checked:
+                timings["admit_action_returned"] = round(time.monotonic() - began, 3)
+                return
+            consent_checked = True
+            timings["separate_confirmation_checked"] = round(time.monotonic() - began, 3)
+            observations.append({"state": "confirmed_original", "seconds": elapsed})
+        elif lookup is not None and not looked_up and attempt > 0:
+            master.action("element.click", snapshot_id=snapshot["snapshot_id"], id=lookup["id"])
+            looked_up = True
+            timings["exact_original_approval_lookup_returned"] = round(time.monotonic() - began, 3)
+            observations.append({"state": "read_original_once", "seconds": elapsed})
+        elif (not {consent_label, lookup_label, admit_label}.intersection(labels)
+              or (looked_up and not consent_checked and consent_label not in labels)):
+            travel = min(20, master.height // 55)
+            master.action("pointer.scroll", x=master.width // 2, y=master.height // 2,
+                          dy=-travel if looked_up and not consent_checked else travel)
+            observations.append({"state": "seek_exact_original_controls", "seconds": elapsed})
+        else:
+            observations.append({"state": "observe_same_viewport", "seconds": elapsed})
+    raise AssertionError("The exact device admission controls were not actionable in time")
 
 
 def admit_native_device(master, client, head, observation):
@@ -981,37 +1010,9 @@ def admit_native_device(master, client, head, observation):
 
     master.choose("Approve this exact original only", scroll=10)
     mark("approve_action_returned")
-    # Compose renders the separate confirmation in the same original review
-    # item only after the genuine head approval is retained. Stay in that
-    # viewport: reading the status at the top and scrolling back can consume the
-    # original short consent lifetime. This sends each user action only once.
-    control = ("Ask the same original native Master to admit this unchanged SDK-bound target once. "
-               "Approval is not a permit; preserve this original if the outcome becomes uncertain.")
-    try:
-        snapshot_id, consent_id = master.find_admission_consent(control, scroll=8)
-    except AssertionError:
-        # The approval form can shrink as the native action settles. If the
-        # exact-original lookup is visible, read it once before searching back.
-        # The previous guests displayed the real confirmation after this read.
-        before = master.visible_setup_outcome()
-        observation["master_approval_confirmation_initial_miss"] = before
-        labels = set(before["known_labels"])
-        if ("device_admission_lookup" not in labels or "authentication_refused" in labels
-                or "device_admission_outcome_unresolved" in labels or "device_admission_recorded" in labels):
-            raise
-        master.choose("Read / look up only this original")
-        mark("exact_original_approval_lookup_returned")
-        try:
-            snapshot_id, consent_id = master.find_admission_consent(control, scroll=-4)
-        except AssertionError:
-            observation["master_after_one_approval_inspection"] = master.visible_setup_outcome()
-            raise
-    mark("separate_approved_confirmation_visible")
+    observations = observation["master_approval_viewport_observations"] = []
+    click_original_admission_controls(master, began, elapsed, observations)
     observation["master_original_head_approval_verified"] = True
-    master.action("element.click", snapshot_id=snapshot_id, id=consent_id)
-    mark("separate_confirmation_checked")
-    master.choose("Admit this approved original device", scroll=4)
-    mark("admit_action_returned")
     try:
         master.find("Original admission recorded.", scroll=-17, wait=2000)
     except AssertionError:
