@@ -148,8 +148,26 @@ class InstalledUi:
         # 30-second operation watch still owns that read and opening the picker.
         transitions = observation[key] = []
         started = time.monotonic()
+        snapshot_errors = 0
         while time.monotonic() - started < 34:
-            snapshot = self.action("tree.snapshot")
+            try:
+                snapshot = self.action("tree.snapshot")
+            except ClientError as failure:
+                detail = (failure.payload or {}).get("error")
+                if failure.status != 502 or not isinstance(detail, dict) or detail.get("code") != "driver_error":
+                    raise
+                resumed = adb(self.device, "shell", "dumpsys", "activity", "activities")
+                packages = {package for package in {PACKAGE, *DOCUMENT_PICKERS}
+                            if any(f" {package}/" in line for line in resumed.splitlines() if "ResumedActivity" in line)}
+                snapshot_errors += 1
+                transitions.append({"state": "observer_snapshot_failed", "known_foreground": sorted(packages),
+                                    "elapsed_seconds": round(time.monotonic() - started, 2)})
+                if not packages or snapshot_errors > 2:
+                    raise
+                # Only the accessibility read is retried. The previously sent
+                # import/export and native save actions are never sent again.
+                time.sleep(0.4)
+                continue
             nodes = snapshot["nodes"]
             picker = [node for node in nodes if node.get("visible")
                       and node["properties"].get("package") in DOCUMENT_PICKERS]

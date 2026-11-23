@@ -5,6 +5,7 @@ import json
 import os
 import plistlib
 import re
+import stat
 import subprocess
 from pathlib import Path
 import sys
@@ -141,7 +142,30 @@ def verify_macos_service(client, observed):
     configuration = plistlib.loads(agent.read_bytes())
     assert configuration["Label"] == label and configuration["ProgramArguments"] == [expected, "--service"]
     observed["master_service_user_launch_agent_running"] = True
-    observed["master_console_accessible_verified"] = has_label(client, ("Master employee administration",))
+    socket = Path.home() / "Library/Application Support/com.ukkera.pos.local.desktop/master-console/setup.sock"
+    for _ in range(16):
+        try:
+            state = socket.lstat()
+        except FileNotFoundError:
+            time.sleep(0.6)
+            continue
+        assert stat.S_ISSOCK(state.st_mode) and state.st_uid == os.getuid() and stat.S_IMODE(state.st_mode) == 0o600
+        observed["master_console_owner_socket_ready"] = True
+        break
+    else:
+        info = subprocess.run(["/bin/launchctl", "print", f"gui/{os.getuid()}/{label}"],
+                              capture_output=True, text=True, timeout=4)
+        status = re.search(r"^\s*last exit code = (\d+)\s*$", info.stdout, re.MULTILINE)
+        observed["master_service_last_exit_code"] = int(status[1]) if status else None
+        observed["after_png_sha256"] = snapshot(client, "after")
+        raise AssertionError("The registered macOS Master did not expose its original user socket")
+
+    connected = has_label(client, ("Master employee administration",))
+    if not connected and has_label(client, ("Reconnect to setup",)):
+        choose(client, "Reconnect to setup")
+        observed["master_console_reconnect_ui_action_sent"] = True
+        connected = has_label(client, ("Master employee administration",))
+    observed["master_console_accessible_verified"] = connected
     observed["after_png_sha256"] = snapshot(client, "after")
     assert observed["master_console_accessible_verified"], "The installed console did not show connected employee administration"
     observed["status"] = "master_service_console_navigation_verified"
