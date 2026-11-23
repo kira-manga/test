@@ -14,7 +14,8 @@ output = stage / "public" / (phase + ".metrics.jsonl")
 event = re.compile(
     rb"CHB_(?:STEP_(?:BEGIN|END) [0-9]{1,4} (?:create|begin|start|capture|apply|finalize|receipt/[1-9])"
     rb"(?: elapsedMillis=[0-9]+)?|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
-    rb"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+)"
+    rb"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+"
+    rb"|RETURN_(?:BEGIN|END) (?:record|receipt-evidence|qualification|accept|restore)(?: elapsedMillis=[0-9]+)?)"
 )
 cold_history_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
@@ -66,6 +67,14 @@ retained_io_fields = (
 retained_read_kinds = (
     "original_decode", "pair_check", "owner_reopen", "frame_read", "producer_check", "batch_close",
 )
+retained_read_sites = (
+    "source_frames_hit", "source_frames_miss", "direct_source_batch", "direct_producer_read",
+    "replay_installed", "replay_released", "replay_evicted", "replay_unavailable_scan",
+    "replay_size_refused", "replay_budget_refused", "commerce_key_scan",
+)
+retained_sites_event = re.compile(
+    b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -116,6 +125,9 @@ with output.open("x") as stream:
                         sample(b"POS_COLD_PASS", phase=cold_pass[1].decode(),
                                history_pass=cold_pass[2].decode(), table=cold_pass[3].decode(),
                                **dict(zip(cold_history_pass_counters, map(int, cold_pass.groups()[3:]), strict=True)))
+                    elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
+                        sample(b"POS_RETAINED_SITES",
+                               **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
                     elif payment_owner := payment_owner_stage.fullmatch(line.rstrip()):
                         record = {"event": payment_owner[1].decode(),
                                   "observer_seconds": round(time.monotonic() - start, 3)}
