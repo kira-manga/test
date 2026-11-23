@@ -649,6 +649,59 @@ def observe_document_completion(ui, observation, key, expected):
     raise AssertionError("The installed app did not confirm the original pairing document transfer")
 
 
+def documents_file_control(snapshot, filename):
+    nodes = {node["id"]: node for node in snapshot["nodes"] if node.get("visible")
+             and node["properties"].get("package") in DOCUMENT_PICKERS}
+    choices = {}
+    for node in nodes.values():
+        if filename not in (node.get("name"), node.get("text")):
+            continue
+        seen = set()
+        ancestor = node
+        while ancestor is not None and ancestor["id"] not in seen:
+            seen.add(ancestor["id"])
+            if ancestor.get("clickable", ancestor["properties"].get("clickable")) and ancestor.get("bounds"):
+                if ancestor.get("enabled", True):
+                    choices[ancestor["id"]] = ancestor
+                break
+            ancestor = nodes.get(ancestor.get("parent_id"))
+    if len(choices) > 1:
+        # A document row and a nested label may both be clickable. Treat them
+        # as one choice only if every candidate belongs to the same row.
+        def nested(node):
+            parent = nodes.get(node.get("parent_id"))
+            visited = set()
+            while parent is not None and parent["id"] not in visited:
+                if parent["id"] in choices:
+                    return True
+                visited.add(parent["id"])
+                parent = nodes.get(parent.get("parent_id"))
+            return False
+
+        choices = {key: node for key, node in choices.items() if not nested(node)}
+    assert len(choices) <= 1, "The system document picker has multiple separate exact files"
+    return next(iter(choices.values()), None)
+
+
+def choose_original_document(ui, filename, observation, purpose):
+    def selected():
+        for _ in range(5):
+            snapshot = ui.action("tree.snapshot")
+            control = documents_file_control(snapshot, filename)
+            if control is not None:
+                ui.action("element.click", snapshot_id=snapshot["snapshot_id"], id=control["id"])
+                observation[f"{purpose}_system_exact_import_row_selected"] = True
+                return True
+            time.sleep(0.4)
+        return False
+
+    if selected():
+        return
+    ui.choose("Show roots")
+    ui.choose("Downloads")
+    assert selected(), "The exact exported document is unavailable in the Android picker"
+
+
 def transfer_document(source, destination, export_action, import_action, filename, limit, observation, purpose):
     path = "/sdcard/Download/" + filename
     assert source.device != destination.device and filename.startswith("ukkera-device-") and filename.endswith(".bin")
@@ -669,12 +722,7 @@ def transfer_document(source, destination, export_action, import_action, filenam
     observation[f"original_{purpose}_document_bytes_verified"] = len(captured)
     destination.choose(import_action, scroll=20)
     destination.await_document_picker(observation, f"{purpose}_import_picker")
-    try:
-        destination.choose(filename)
-    except AssertionError:
-        destination.choose("Show roots")
-        destination.choose("Downloads")
-        destination.choose(filename)
+    choose_original_document(destination, filename, observation, purpose)
     observe_document_completion(destination, observation, f"{purpose}_import_completion", "pairing_document_imported")
 
 
