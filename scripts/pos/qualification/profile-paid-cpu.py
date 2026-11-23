@@ -112,10 +112,10 @@ with (stage / "public" / f"{mode}.cpu-samples.jsonl").open("x") as out:
                         active = {"phase": f"{recovery_mode}_reopen"}
                         recovery_started = True
                     elif recovery_started and line == b"CHB_NATIVE_HISTORY_OPERATIONAL":
-                        active = {"phase": f"{recovery_mode}_receipt_checks"}
-                    elif recovery_started and receipt_end.fullmatch(line):
                         active = {"phase": f"{recovery_mode}_protected_lookups"}
                     elif recovery_started and lookup_end.fullmatch(line):
+                        active = {"phase": f"{recovery_mode}_receipt_checks"}
+                    elif recovery_started and receipt_end.fullmatch(line):
                         active = {"phase": f"{recovery_mode}_final_consistency"}
                     elif boundary.fullmatch(line):
                         active = None
