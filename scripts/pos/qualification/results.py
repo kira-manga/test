@@ -37,6 +37,7 @@ if mode == "frozen":
         r"|POS_PHYSICAL_START_NATIVE_LITERALS points=[0-9]{1,3} publication_selections=[0-9]{1,3}"
         r"|POS_PHYSICAL_START_VERIFIED_RETURN_REUSED count=1"
         r"|POS_RETURN_TRIAL_ALTERED_PROOF kind=[123]"
+        r"|POS_DISTINCT_SETTLED_RETURN_INPUTS root=[01] sources=[01] before=[01] after=[01] stock=[01]"
         r"|POS_PHYSICAL_START_EXTERNAL_WITNESS publications=[0-9]{1,2} unsupported_cash=[0-9]{1,3}"
         r"|POS_PHYSICAL_START_LEGACY_EFFECTS callbacks=[0-9]{1,4} native_changed=[0-9]{1,4} stock_changed=[0-9]{1,4} publication_changed=[0-9]{1,4}"
         r"|POS_PHYSICAL_START_FRESH_LITERALS streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
