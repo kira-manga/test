@@ -34,6 +34,7 @@ if mode == "frozen":
         r"|POS_PHYSICAL_START_LITERAL streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
         r" prepare_bytes=[0-9]{1,13} distinct_bytes=[0-9]{1,13} prepare_ns=[0-9]{1,19} verify_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_LITERAL_BOUND"
+        r"|POS_HISTORY_JOURNAL_ABSENCE_INDEX entries=[0-9]{1,5}"
         r"|POS_NATIVE_TYPED_PROJECTION_LEDGERS employees=[0-9]{1,4} policies=[0-9]{1,4}"
         r" publications=[0-9]{1,4} admissions=[0-9]{1,4}"
         r"|POS_NATIVE_BOOTSTRAP_FINGERPRINT stage=(?:SEED|FRESH_SAME_CUT|FRESH_NEW_CUT)"
