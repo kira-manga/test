@@ -26,6 +26,8 @@ if mode == "frozen":
         r" tail_rows=[0-9]{1,19} tail_bytes=[0-9]{1,19} tail_events=[0-9]{1,19}"
         r"|POS_NATIVE_TYPED_PREFIX prefix_commands=[0-9]{1,4} added_commands=[0-9]{1,4}"
         r" prefix_streamed=[0-9]{1,4} added_streamed=[0-9]{1,4} comparator_controls=5"
+        r"|POS_NATIVE_MUTABLE_PREFIX prior_keys=[0-9]{1,4} final_keys=[0-9]{1,4}"
+        r" tail_versions=[0-9]{1,4} tombstones=[0-9]{1,4} comparator_controls=5"
     )
     for phase in ("seed", "restart"):
         log = stage / f"{phase}.raw"
