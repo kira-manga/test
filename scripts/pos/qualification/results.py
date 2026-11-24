@@ -23,6 +23,7 @@ if mode == "frozen":
         r"|POS_NATIVE_TYPED_CHECKPOINT anchors=[0-9]{1,3} receipts=[0-9]{1,4} bytes=[0-9]{1,7} roundtrip_ns=[0-9]{1,19}"
         r"|POS_NATIVE_TYPED_CHECKPOINT anchors=[0-9]{1,5} receipts=[0-9]{1,4} bytes=[0-9]{1,7}"
         r" encode_ns=[0-9]{1,19} seal_ns=[0-9]{1,19} verify_ns=[0-9]{1,19} refused=2"
+        r"|POS_NATIVE_TYPED_CHECKPOINT_RESTORE (?:seed_saved=1|fresh_exact=1 fresh_new_cut_refused=1)"
         r"|POS_NATIVE_BOOTSTRAP_FINGERPRINT stage=(?:SEED|FRESH_SAME_CUT|FRESH_NEW_CUT)"
         r" employees=[0-9]{1,4} policies=[0-9]{1,4} publications=[0-9]{1,4} admissions=[0-9]{1,4} elapsed_ns=[0-9]{1,19}"
         r"|POS_NATIVE_CENSUS_CUT trial=[12] items=[0-9]+ bytes=[0-9]+ row_ns=[0-9]+"
