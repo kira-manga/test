@@ -34,6 +34,20 @@ categories = {
     "stock_typed_ancestors": ("LocalStockRelationalRepository.requireOneComplete",),
     "stock_literal_transitions": ("requireStockRelationalTransitions",),
     "stock_direct_sources": ("LocalStockRelationalRead.checkDirectSources", "requireNonstockSources"),
+    "legacy_native_capsule": ("RoomClosedRejectedOriginalSources.authenticateHistory",),
+    "legacy_before_images": ("RoomClosedRejectedOriginalSources.withAfter",
+                             "RoomClosedRejectedOriginalSources.aggregateBefore",
+                             "RoomClosedRejectedOriginalSources.claimBefore"),
+    "legacy_typed_ancestors": ("LocalFinancialOriginalProofScope.requireSelectedOriginal",
+                              "LocalFinancialOriginalProofScope.requireLegacyBusinessOriginal"),
+    "accepted_return_proof": ("LocalReturnCaseHistoryProducer", "LocalReturnCaseHistorySources",
+                              "requireAcceptedCaseSources"),
+    "sale_and_entitlement_proof": ("LocalNormalizedReturnSourceKt.requireNormalizedReturnSaleSource",
+                                  "LocalReturnEntitlementSourcesKt", "LocalReturnStorageKt.readReturnSaleSource"),
+    "recorded_publication_contents": ("originalPublicationContents",
+                                      "FinancialLegacyOriginalProgram.completedNativeBusinessPublicationsBefore"),
+    "stock_valuation_proof": ("LocalStockRelationalPosting", "LocalStockRelationalRestoration",
+                              "LocalStockRelationalValuation"),
     "payment_ancestry": ("NormalizedPaymentTraversal", "LocalStockPaymentObservations"),
     "payment_collection_links": ("LocalCollectionStorageKt.readCollection",),
     "payment_stock_availability": ("LocalStockPaymentObservationsKt.observePaymentReservation",),
@@ -48,7 +62,7 @@ categories = {
     "sqlite": ("androidx/sqlite/", "sqlite3_"),
     "codec": ("kotlinx/serialization/", "NativeHistoryWriterV2", "LocalPhysicalJournalFormatV1"),
 }
-selected = {1, 5, 10, 25, 32, 50, 100, 250, 500, 1000}
+selected = {1, 2, 3, 4, 5, 10, 25, 32, 50, 100, 250, 500, 1000}
 begin = re.compile(rb"CHB_STEP_BEGIN (\d{1,4}) (create|begin|start|capture|apply|finalize|receipt/[1-9])")
 receipt_end = re.compile(rb"CHB_EXACT_RECEIPTS_RETURNED [0-9]+")
 lookup_end = re.compile(rb"CHB_EXACT_LOOKUPS_RETURNED [0-9]+")
@@ -90,6 +104,7 @@ def capture(entry, offset):
             if crossed:
                 return {**entry, "status": "crossed_phase_boundary"}
             counts = Counter()
+            leaves = Counter()
             total = 0
             for line in profile.read_text(errors="replace").splitlines():
                 stack, _, samples = line.rpartition(" ")
@@ -97,10 +112,14 @@ def capture(entry, offset):
                     continue
                 count = int(samples)
                 total += count
+                leaf = stack.rsplit(";", 1)[-1]
                 for category, needles in categories.items():
                     if any(needle in stack for needle in needles):
                         counts[category] += count
-            return {**entry, "status": "sampled", "cpu_samples": total, "inclusive_stack_membership": dict(counts)}
+                    if any(needle in leaf for needle in needles):
+                        leaves[category] += count
+            return {**entry, "status": "sampled", "cpu_samples": total,
+                    "inclusive_stack_membership": dict(counts), "leaf_stack_membership": dict(leaves)}
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return {**entry, "status": "sampler_unavailable"}
 
