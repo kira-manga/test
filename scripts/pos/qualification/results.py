@@ -28,6 +28,7 @@ if mode == "frozen":
         r"|POS_NATIVE_TYPED_MEMBERSHIP_PREFILL receipts=[0-9]{1,4} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_CUT_EQUAL exact=[01]"
         r"|POS_PHYSICAL_START_FRESH_STOCK_READ elapsed_ns=[0-9]{1,19}"
+        r"|POS_PHYSICAL_START_FRESH_LEGACY_CUTS count=[0-9]{1,2} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_FRESH_LITERALS streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
         r" bytes=[0-9]{1,13} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_WITNESS original=(?:-1|[01]) stock=(?:-1|[01]) native=(?:-1|[01])"
