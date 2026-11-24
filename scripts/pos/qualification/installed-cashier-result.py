@@ -1,4 +1,5 @@
 """Accept numeric timings only after the exact installed selector passes."""
+from datetime import datetime
 import json
 from pathlib import Path
 import re
@@ -28,6 +29,9 @@ pre_master_fields = ("lease_ns", "lock_ns", "session_ns", "intent_ns", "ready_ns
 pre_master_pattern = numeric_line("POS_RETAIL_START_PREMASTER", pre_master_fields)
 cohost_current_fields = ("lock_ns", "current_ns", "intent_ns", "ready_ns")
 cohost_current_pattern = numeric_line("POS_RETAIL_START_COHOST_CURRENT", cohost_current_fields)
+lock_pattern = re.compile(r"^(\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})\s+(\d{1,8})\s+\d{1,8} I System\.out: "
+                          r"POS_CLIENT_INTENT_LOCK_STAGE holder=(WORKFLOW_READ|LIVE_POLL|WORKFLOW_PENDING|PAYMENT_START) "
+                          r"phase=(WAITING|ACQUIRED|RETURNING)$")
 own_recover_pattern = re.compile(
     r"POS_RETAIL_OWN_RECOVER stage=(SESSION|INTENT|SAVED_RESULT|ORIGINAL_FACT|LINKED_FACT|PROGRESS)"
     r" outcome=(SQL_ORIGINAL_PENDING|SQL_RESOLUTION_PENDING|FINANCIALLY_APPLIED"
@@ -39,6 +43,7 @@ pre_master = []
 cohost_current = []
 own_recover = []
 presentation = []
+lock_events = []
 timings = []
 raw_boundaries = {name: [] for name in boundary_fields}
 for line in (stage / "installed-cashier-device.log").read_text(errors="replace").splitlines():
@@ -66,6 +71,49 @@ for line in (stage / "installed-cashier-device.log").read_text(errors="replace")
             own_recover.append(dict(zip(("stage", "outcome"), match.groups(), strict=True)))
         if (match := presentation_pattern.fullmatch(event)) and len(presentation) < 16:
             presentation.append({"reply": match[1], "same_id": match[2] == "1"})
+    if scope == "paid" and len(lock_events) < 2049 and (match := lock_pattern.fullmatch(line)):
+        lock_events.append(match.groups())
+
+def intent_lock_observation(events):
+    if not events:
+        return None
+    waits = [event for event in events if event[2:] == ("PAYMENT_START", "WAITING")]
+    if len(waits) != 1 or len(events) > 2048:
+        return {"attributed": False}
+    request, process, _, _ = waits[0]
+    acquired = [event[0] for event in events if event[1:] == (process, "PAYMENT_START", "ACQUIRED")]
+    if len(acquired) != 1:
+        return {"attributed": False}
+
+    def milliseconds(stamp):
+        return int((datetime.strptime("2000 " + stamp, "%Y %m-%d %H:%M:%S.%f") -
+                    datetime(2000, 1, 1)).total_seconds() * 1000 + 0.5)
+
+    try:
+        start, end = milliseconds(request), milliseconds(acquired[0])
+        if not 0 <= end - start <= 120_000:
+            return {"attributed": False}
+        open_holders = {}
+        overlap = []
+        for time, pid, holder, phase in events:
+            if pid != process or holder == "PAYMENT_START":
+                continue
+            at = milliseconds(time)
+            if phase == "ACQUIRED":
+                if holder in open_holders:
+                    return {"attributed": False}
+                open_holders[holder] = at
+            elif phase == "RETURNING" and holder in open_holders:
+                since = open_holders.pop(holder)
+                overlapped = min(end, at) - max(start, since)
+                if 0 < overlapped <= 120_000:
+                    overlap.append({"holder": holder, "overlap_ms": overlapped,
+                                    "ended_before_acquire_ms": end - at})
+        if len(overlap) > 8 or any(item["ended_before_acquire_ms"] < 0 for item in overlap):
+            return {"attributed": False}
+        return {"attributed": bool(overlap), "start_wait_ms": end - start, "observed_overlaps": overlap}
+    except ValueError:
+        return {"attributed": False}
 
 success = (
     process_exit == 0
@@ -95,10 +143,12 @@ record = {
     "scope": ("covered local sale confirm to recorded result and paid-sale preview on MainActivity" if scope == "covered" else
               "local native cash payment and sale finalization to protected financial preview on MainActivity"),
 }
-if pre_master or cohost_current or own_recover or presentation:
+intent_lock = intent_lock_observation(lock_events)
+if pre_master or cohost_current or own_recover or presentation or intent_lock:
     record["observed_paid_diagnostics"] = {
         "pre_master": pre_master,
         "cohost_current": cohost_current,
+        "intent_lock": intent_lock,
         "own_recover": own_recover,
         "presentation": presentation,
     }
