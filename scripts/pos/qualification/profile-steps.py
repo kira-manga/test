@@ -9,12 +9,12 @@ import time
 base, installed = map(Path, sys.argv[1:3])
 suite, mode, count = sys.argv[3:]
 supporting = suite == "paid-profile"
-if mode not in ("seed", "restart") or not count.isdecimal():
+if mode not in ("seed", "restart", "profile-reopen") or not count.isdecimal():
     raise ValueError("Invalid observation phase")
 source = base / f"{mode}.raw"
 done = base / f"{mode}.stack.done"
 seed_close = f"CHB_NATIVE_CLOSE seeded-{count}".encode()
-cold_selected = mode == "restart"
+cold_selected = mode != "seed"
 cold_started = None
 cold_samples = (6, 15, 22, 26)
 cold_index = 0

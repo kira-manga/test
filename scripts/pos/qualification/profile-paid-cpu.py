@@ -11,7 +11,7 @@ import time
 
 stage, worker = map(Path, sys.argv[1:3])
 mode, profiler = sys.argv[3:]
-if mode not in ("seed", "restart"):
+if mode not in ("seed", "restart", "profile-reopen"):
     raise ValueError("Unexpected paid worker")
 source = stage / f"{mode}.raw"
 done = stage / f"{mode}.profile.done"
@@ -125,10 +125,10 @@ def capture(entry, offset):
 
 
 offset = 0
-cold_allowed = mode == "restart"
+cold_allowed = mode != "seed"
 seed_close = f"CHB_NATIVE_CLOSE seeded-{os.environ['UKKERA_CHB_COUNT']}".encode()
 recovery_started = False
-recovery_mode = "fresh" if mode == "restart" else "same_process"
+recovery_mode = {"seed": "same_process", "restart": "fresh", "profile-reopen": "fresh_read_only"}[mode]
 active = None
 windows = 0
 next_sample = 0.0
@@ -155,7 +155,7 @@ with (stage / "public" / f"{mode}.cpu-samples.jsonl").open("x") as out:
                         active = {"phase": f"{recovery_mode}_reopen"}
                         recovery_started = True
                     elif recovery_started and line == b"CHB_NATIVE_HISTORY_OPERATIONAL":
-                        active = {"phase": f"{recovery_mode}_protected_lookups"}
+                        active = None if mode == "profile-reopen" else {"phase": f"{recovery_mode}_protected_lookups"}
                     elif recovery_started and lookup_end.fullmatch(line):
                         active = {"phase": f"{recovery_mode}_receipt_checks"}
                     elif recovery_started and receipt_end.fullmatch(line):

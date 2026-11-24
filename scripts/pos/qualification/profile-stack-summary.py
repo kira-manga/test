@@ -20,7 +20,7 @@ categories = {
 profiles = []
 for path in sorted(stage.glob("profile-*.txt")):
     match = re.fullmatch(r"profile-(\d{1,4})-(create|begin|start|capture|apply|finalize|receipt-[12])\.txt", path.name)
-    cold = re.fullmatch(r"profile-cold-(seed|restart)-(6|15|22|26)s\.txt", path.name)
+    cold = re.fullmatch(r"profile-cold-(seed|restart|profile-reopen)-(6|15|22|26)s\.txt", path.name)
     if match:
         observation = {"sale": int(match[1]), "stage": match[2]}
     elif cold:

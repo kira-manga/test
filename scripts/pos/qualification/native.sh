@@ -331,7 +331,7 @@ observe_profile() {
   if [[ "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
     python3 "$here/profile-steps.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$POS_SUITE" "$1" "$count" &
     observer=$!
-    trap 'touch "$stage/seed.stack.done" "$stage/restart.stack.done"' EXIT
+    trap 'touch "$stage/seed.stack.done" "$stage/restart.stack.done" "$stage/profile-reopen.stack.done" "$stage/profile-reopen.profile.done"' EXIT
   fi
   if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     python3 "$here/paid-profile-metrics.py" "$stage" "$UKKERA_CHB_ATTEMPT" "$1" &
