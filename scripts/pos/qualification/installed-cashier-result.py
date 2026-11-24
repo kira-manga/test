@@ -9,7 +9,7 @@ stage = Path(sys.argv[1])
 process_exit = int(sys.argv[2])
 sdk = int(sys.argv[3])
 scope = sys.argv[4] if len(sys.argv) == 5 else "covered"
-assert scope in ("covered", "paid")
+assert scope in ("covered", "paid", "paid-control")
 instrumentation = (stage / "installed-cashier.instrumentation").read_text(errors="replace").splitlines()
 ranges = (
     ("confirm_to_durable_ns", "confirm_to_preview_ns") if scope == "covered" else
@@ -129,13 +129,14 @@ if success and scope == "covered":
 elif success:
     instruction, capture, pending, apply, finalize, preview, total = timings[0]
     success = (capture <= pending <= total and finalize <= preview <= total and
-               instruction <= total and apply <= total and
-               # One saved Start read precedes up to six same-original fact reads.
-               2 <= len(raw_boundaries["recover"]) <= 7 and
-               all(len(raw_boundaries[name]) == 1 for name in ("start", "apply", "finalize", "preview")) and
-               all(0 < values[0] <= values[1] for name in ("start", "recover", "apply", "finalize")
-                   for values in raw_boundaries[name]) and
-               0 < sum(raw_boundaries["preview"][0][:2]) <= raw_boundaries["preview"][0][-1])
+               instruction <= total and apply <= total)
+    if scope == "paid":
+        # One saved Start read precedes up to six same-original fact reads.
+        success = (success and 2 <= len(raw_boundaries["recover"]) <= 7 and
+                   all(len(raw_boundaries[name]) == 1 for name in ("start", "apply", "finalize", "preview")) and
+                   all(0 < values[0] <= values[1] for name in ("start", "recover", "apply", "finalize")
+                       for values in raw_boundaries[name]) and
+                   0 < sum(raw_boundaries["preview"][0][:2]) <= raw_boundaries["preview"][0][-1])
 record = {
     "sdk": sdk,
     "process_exit": process_exit,
@@ -152,6 +153,8 @@ if pre_master or cohost_current or own_recover or presentation or intent_lock:
         "own_recover": own_recover,
         "presentation": presentation,
     }
+if scope == "paid-control":
+    record["phase_timing"] = "external-only"
 if success:
     record.update(zip(ranges, timings[0], strict=True))
     if scope == "paid":

@@ -12,7 +12,7 @@ sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 scope="${POS_INSTALLED_CASHIER_CASE:-covered}"
 case "$scope" in
   covered) selector=measureConfirmedCoveredSaleThroughRecordedFinancialPreview ;;
-  paid) selector=measureActualCashStartThroughRecordedFinancialPreview ;;
+  paid|paid-control) selector=measureActualCashStartThroughRecordedFinancialPreview ;;
   *) exit 2 ;;
 esac
 source="$stage/source/apps/pos/apps"

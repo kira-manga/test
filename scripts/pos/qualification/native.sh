@@ -84,7 +84,7 @@ EOFCRYPTO
   fi
 }
 
-if [[ "$POS_SUITE" == 'installed-cashier' || "$POS_SUITE" == 'installed-cashier-paid' ]]; then
+if [[ "$POS_SUITE" == 'installed-cashier' || "$POS_SUITE" == 'installed-cashier-paid' || "$POS_SUITE" == 'installed-cashier-paid-control' ]]; then
   test="$stage/inputs/runner/InstalledCashierFinalizeLatencySupportingTest.kt"
   target='apps/android/src/androidTest/kotlin/com/ukkera/pos/android/independent/coldoriginalstartv1/InstalledCashierFinalizeLatencySupportingTest.kt'
   [[ -f "$test" && ! -e "$target" ]]
