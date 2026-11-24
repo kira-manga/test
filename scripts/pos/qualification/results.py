@@ -33,6 +33,7 @@ if mode == "frozen":
         r" missing_claims=[0-9]{1,4} publications=[0-9]{1,7} aggregate_pages=[0-9]{1,7} claim_pages=[0-9]{1,7}"
         r" setup=[0-9]{1,7} other_sources=[0-9]{1,7} bound=[01]"
         r"|POS_PHYSICAL_START_FRESH_LEGACY_CUTS count=[0-9]{1,2} elapsed_ns=[0-9]{1,19}"
+        r"|POS_PHYSICAL_START_NESTED_CUTS selected=[0-9]{1,3} unavailable=[0-9]{1,3} outside=[0-9]{1,7}"
         r"|POS_PHYSICAL_START_FRESH_LITERALS streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
         r" bytes=[0-9]{1,13} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_WITNESS original=(?:-1|[01]) stock=(?:-1|[01]) native=(?:-1|[01])"
