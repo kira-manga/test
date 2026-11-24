@@ -38,6 +38,28 @@ def parse_cold_history_pass(line):
 
 
 
+cold_workspace_read = re.compile(
+    rb"POS_COLD_WORKSPACE (CAPTURE|REPLAY) " + history_pass_name + history_table_name +
+    rb"(MATCH_BATCH|METADATA|EXACT_PAYLOAD|FLOOR_PAYLOAD|FLOOR_BATCH|KEY_FLOOR_BATCH|"
+    rb"SMALL_PAYLOAD|ORDERED_PAYLOADS|RECORD_PAYLOAD|CURSOR_OPEN|CURSOR_PAGE) "
+    rb"calls=([0-9]{1,12}) elapsed_ns=([0-9]{1,19})"
+)
+
+
+def parse_cold_workspace_read(line):
+    match = cold_workspace_read.fullmatch(line)
+    if match is None:
+        return None
+    phase, history_pass, table, operation, calls, elapsed_ns = match.groups()
+    if int(calls) == 0:
+        return None
+    return {
+        "phase": phase.decode("ascii"), "history_pass": history_pass.decode("ascii"),
+        "table": table.decode("ascii"), "operation": operation.decode("ascii"),
+        "calls": int(calls), "elapsed_ns": int(elapsed_ns),
+    }
+
+
 cold_earlier = re.compile(
     rb"POS_COLD_EARLIER " + history_pass_name + history_table_name +
     rb"hits=([0-9]{1,12}) rejoins=([0-9]{1,12}) rejoin_ns=([0-9]{1,19}) "

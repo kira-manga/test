@@ -6,7 +6,9 @@ import re
 import sys
 import time
 
-from cold_pass_metrics import parse_cold_earlier, parse_cold_history_pass, parse_cold_join, parse_history_source
+from cold_pass_metrics import (
+    parse_cold_earlier, parse_cold_history_pass, parse_cold_join, parse_cold_workspace_read, parse_history_source,
+)
 
 stage, worker = map(Path, sys.argv[1:3])
 phase = sys.argv[3]
@@ -140,6 +142,8 @@ with output.open("x") as stream:
                         sample(cold[1])
                     elif cold_pass := parse_cold_history_pass(line.rstrip()):
                         sample(b"POS_COLD_PASS", **cold_pass)
+                    elif workspace_read := parse_cold_workspace_read(line.rstrip()):
+                        sample(b"POS_COLD_WORKSPACE", **workspace_read)
                     elif join := parse_cold_join(line.rstrip()):
                         sample(b"POS_COLD_JOIN", **join)
                     elif earlier := parse_cold_earlier(line.rstrip()):
