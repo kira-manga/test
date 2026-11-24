@@ -2,14 +2,19 @@
 import re
 
 
-cold_history_pass = re.compile(
-    rb"POS_COLD_PASS (CAPTURE|REPLAY) "
+history_pass_name = (
     rb"(CENSUS|EMPLOYEE_ENROLLMENTS|EVENTS|LINEAGE|COMMANDS|STOCK_AGGREGATES|STOCK_REVERSE|"
     rb"ACCOUNT_RELATIONS|ACCESS_RELATIONS|ARCHIVE_RELATIONS|APPROVAL_RELATIONS) "
+)
+history_table_name = (
     rb"(BRANCH|OPERATION|AGGREGATE|CLAIM|JOURNAL|AUDIT|OUTBOX|ACCOUNT|POLICY|ADMISSION|"
     rb"THROTTLE|ACCESS|CONFIGURATION|REFRESH|AUTH_EVENT|ARCHIVE|APPROVAL|STOCK_POSITION|"
     rb"STOCK_ALLOCATION|STOCK_RESERVATION|STOCK_VALUE|JOURNAL_FRAGMENT|HEAD|EVENT|ROW_VERSION|"
     rb"CHUNK|ROW_TIP|WRITE_FRAME|CAPTURE) "
+)
+
+cold_history_pass = re.compile(
+    rb"POS_COLD_PASS (CAPTURE|REPLAY) " + history_pass_name + history_table_name +
     rb"elapsed_ns=([0-9]{1,19}) original_calls=([0-9]{1,12}) original_ns=([0-9]{1,19}) "
     rb"workspace_reads=([0-9]{1,12}) workspace_read_ns=([0-9]{1,19}) "
     rb"workspace_writes=([0-9]{1,12}) workspace_write_ns=([0-9]{1,19})"
@@ -29,6 +34,28 @@ def parse_cold_history_pass(line):
         "history_pass": history_pass.decode("ascii"),
         "table": table.decode("ascii"),
         **dict(zip(cold_history_pass_counters, map(int, values), strict=True)),
+    }
+
+
+
+cold_earlier = re.compile(
+    rb"POS_COLD_EARLIER " + history_pass_name + history_table_name +
+    rb"hits=([0-9]{1,12}) rejoins=([0-9]{1,12}) rejoin_ns=([0-9]{1,19}) "
+    rb"evictions=([0-9]{1,12}) peak_commands=([0-9]{1,3}) peak_versions=([0-9]{1,4})"
+)
+
+def parse_cold_earlier(line):
+    match = cold_earlier.fullmatch(line)
+    if match is None:
+        return None
+    history_pass, table, *values = match.groups()
+    hits, rejoins, rejoin_ns, evictions, commands, versions = map(int, values)
+    if not (hits + rejoins + evictions > 0 and commands <= 256 and versions <= 4096):
+        return None
+    return {
+        "history_pass": history_pass.decode("ascii"), "table": table.decode("ascii"),
+        "hits": hits, "rejoins": rejoins, "rejoin_ns": rejoin_ns, "evictions": evictions,
+        "peak_commands": commands, "peak_versions": versions,
     }
 
 

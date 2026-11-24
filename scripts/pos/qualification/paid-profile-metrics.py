@@ -6,7 +6,7 @@ import re
 import sys
 import time
 
-from cold_pass_metrics import parse_cold_history_pass, parse_history_source
+from cold_pass_metrics import parse_cold_earlier, parse_cold_history_pass, parse_history_source
 
 stage, worker = map(Path, sys.argv[1:3])
 phase = sys.argv[3]
@@ -139,6 +139,8 @@ with output.open("x") as stream:
                         sample(cold[1])
                     elif cold_pass := parse_cold_history_pass(line.rstrip()):
                         sample(b"POS_COLD_PASS", **cold_pass)
+                    elif earlier := parse_cold_earlier(line.rstrip()):
+                        sample(b"POS_COLD_EARLIER", **earlier)
                     elif history := parse_history_source(line.rstrip()):
                         sample(b"POS_HISTORY_SOURCE", **history)
                     elif replay := history_source_replay.fullmatch(line.rstrip()):
