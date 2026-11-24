@@ -83,6 +83,10 @@ sampled_io = re.compile(
     + b" ".join(bucket.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19})" for bucket in sampled_io_buckets)
 )
 history_source_replay = re.compile(rb"POS_HISTORY_SOURCE_REPLAY images=([0-9]{1,19}) closure_chunks=([0-9]{1,19})")
+typed_return_inputs = re.compile(
+    rb"POS_TYPED_RETURN_INPUTS outcome=(FIRST|SAME|DIFFERENT|CAPACITY) "
+    rb"direct_calls=([0-9]{1,4}) distinct_inputs=([0-9]{1,4}) elapsed_ns=([0-9]{1,19})"
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -136,6 +140,11 @@ with output.open("x") as stream:
                     elif replay := history_source_replay.fullmatch(line.rstrip()):
                         images, closure_chunks = map(int, replay.groups())
                         sample(b"POS_HISTORY_SOURCE_REPLAY", images=images, closure_chunks=closure_chunks)
+                    elif typed := typed_return_inputs.fullmatch(line.rstrip()):
+                        calls, distinct, elapsed = map(int, typed.groups()[1:])
+                        if 0 < distinct <= calls <= 1024 and elapsed > 0:
+                            sample(b"POS_TYPED_RETURN_INPUTS", outcome=typed[1].decode(),
+                                   direct_calls=calls, distinct_inputs=distinct, elapsed_ns=elapsed)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
