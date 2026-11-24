@@ -7,18 +7,37 @@ import sys
 stage = Path(sys.argv[1])
 process_exit = int(sys.argv[2])
 sdk = int(sys.argv[3])
+scope = sys.argv[4] if len(sys.argv) == 5 else "covered"
+assert scope in ("covered", "paid")
 instrumentation = (stage / "installed-cashier.instrumentation").read_text(errors="replace").splitlines()
-timed = re.compile(
-    r"POS_INSTALLED_CASHIER covered_sale_records=1 "
-    r"confirm_to_durable_ns=([0-9]{1,15}) confirm_to_preview_ns=([0-9]{1,15})"
+ranges = (
+    ("confirm_to_durable_ns", "confirm_to_preview_ns") if scope == "covered" else
+    ("start_instruction_ns", "capture_memory_ns", "capture_sql_pending_ns", "apply_recorded_ns",
+     "finalize_recorded_ns", "finalize_preview_ns", "first_confirmation_preview_ns")
 )
+def numeric_line(prefix, fields):
+    return re.compile(prefix + "".join(f" {field}=([0-9]{{1,15}})" for field in fields))
+
+timed = numeric_line("POS_INSTALLED_CASHIER covered_sale_records=1" if scope == "covered" else
+                     "POS_INSTALLED_PAID paid_sale_records=1", ranges)
+boundary_fields = {name: (f"{name}_gateway_ns", f"{name}_state_ns")
+                   for name in ("start", "recover", "apply", "finalize")}
+boundary_fields["preview"] = ("preview_pending_ns", "preview_gateway_ns", "preview_state_ns")
+boundary_patterns = [(name, numeric_line("POS_CHECKOUT_BOUNDARY", fields)) for name, fields in boundary_fields.items()]
 timings = []
+raw_boundaries = {name: [] for name in boundary_fields}
 for line in (stage / "installed-cashier-device.log").read_text(errors="replace").splitlines():
-    if "POSCashierLatency: " not in line:
-        continue
-    match = timed.fullmatch(line.split("POSCashierLatency: ", 1)[1])
-    if match:
-        timings.append(tuple(map(int, match.groups())))
+    if "POSCashierLatency: " in line:
+        match = timed.fullmatch(line.split("POSCashierLatency: ", 1)[1])
+        if match:
+            timings.append(tuple(map(int, match.groups())))
+    if scope == "paid" and ": POS_CHECKOUT_BOUNDARY " in line:
+        event = line.split(": POS_CHECKOUT_BOUNDARY ", 1)[1]
+        for name, pattern in boundary_patterns:
+            match = pattern.fullmatch("POS_CHECKOUT_BOUNDARY " + event)
+            if match:
+                raw_boundaries[name].append(tuple(map(int, match.groups())))
+
 success = (
     process_exit == 0
     and instrumentation.count("OK (1 test)") == 1
@@ -26,16 +45,33 @@ success = (
     and not any(re.search(r"^INSTRUMENTATION_STATUS_CODE: -[1-4]|FAILURES!!!|INSTRUMENTATION_FAILED|Process crashed", line)
                 for line in instrumentation)
     and len(timings) == 1
-    and 0 < timings[0][0] <= timings[0][1]
+    and all(value > 0 for value in timings[0])
 )
+if success and scope == "covered":
+    success = timings[0][0] <= timings[0][1]
+elif success:
+    instruction, capture, pending, apply, finalize, preview, total = timings[0]
+    success = (capture <= pending <= total and finalize <= preview <= total and
+               instruction <= total and apply <= total and
+               1 <= len(raw_boundaries["recover"]) <= 6 and
+               all(len(raw_boundaries[name]) == 1 for name in ("start", "apply", "finalize", "preview")) and
+               all(0 < values[0] <= values[1] for name in ("start", "recover", "apply", "finalize")
+                   for values in raw_boundaries[name]) and
+               0 < sum(raw_boundaries["preview"][0][:2]) <= raw_boundaries["preview"][0][-1])
 record = {
     "sdk": sdk,
     "process_exit": process_exit,
     "passed": success,
-    "scope": "covered local sale confirm to recorded result and paid-sale preview on MainActivity",
+    "scope": ("covered local sale confirm to recorded result and paid-sale preview on MainActivity" if scope == "covered" else
+              "local native cash payment and sale finalization to protected financial preview on MainActivity"),
 }
 if success:
-    record.update(confirm_to_durable_ns=timings[0][0], confirm_to_preview_ns=timings[0][1])
+    record.update(zip(ranges, timings[0], strict=True))
+    if scope == "paid":
+        record["app_boundaries"] = {
+            name: [dict(zip(boundary_fields[name], values, strict=True)) for values in rows]
+            for name, rows in raw_boundaries.items()
+        }
 (stage / "public" / "installed-cashier-result.json").write_text(json.dumps(record, indent=2) + "\n")
 if not success:
     raise SystemExit("Installed timing or exact selector assertion failed")

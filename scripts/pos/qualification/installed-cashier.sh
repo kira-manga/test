@@ -9,6 +9,12 @@ if [[ "${1:-}" != 'instrument' ]]; then
 fi
 sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
 [[ "$sdk" == 35 ]]
+scope="${POS_INSTALLED_CASHIER_CASE:-covered}"
+case "$scope" in
+  covered) selector=measureConfirmedCoveredSaleThroughRecordedFinancialPreview ;;
+  paid) selector=measureActualCashStartThroughRecordedFinancialPreview ;;
+  *) exit 2 ;;
+esac
 source="$stage/source/apps/pos/apps"
 mapfile -t app < <(find "$source/android/build/outputs/apk/localTesting" -maxdepth 1 -name '*.apk')
 mapfile -t tests < <(find "$source/android-runtime-tests/build/outputs/apk/localTesting" -maxdepth 1 -name '*.apk')
@@ -22,10 +28,10 @@ adb shell pm path com.ukkera.pos.local.testing.test | grep -q '^package:'
 adb logcat -c
 result=0
 adb shell am instrument -w -r \
-  -e class com.ukkera.pos.android.independent.coldoriginalstartv1.InstalledCashierFinalizeLatencySupportingTest#measureConfirmedCoveredSaleThroughRecordedFinancialPreview \
+  -e class "com.ukkera.pos.android.independent.coldoriginalstartv1.InstalledCashierFinalizeLatencySupportingTest#$selector" \
   -e syntheticInstalledCashierFinalizeLatency true -e keyProtection OS_ISOLATED \
   com.ukkera.pos.local.testing.test/androidx.test.runner.AndroidJUnitRunner \
   > "$stage/installed-cashier.instrumentation" 2>&1 || result=$?
 cat "$stage/installed-cashier.instrumentation"
 adb logcat -d > "$stage/installed-cashier-device.log"
-python3 "$here/installed-cashier-result.py" "$stage" "$result" "$sdk"
+python3 "$here/installed-cashier-result.py" "$stage" "$result" "$sdk" "$scope"
