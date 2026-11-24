@@ -59,6 +59,31 @@ def parse_cold_earlier(line):
     }
 
 
+
+cold_join = re.compile(
+    rb"POS_COLD_JOIN " + history_pass_name + history_table_name +
+    rb"(NATIVE_MUTATIONS|OBSERVED_SOURCES|TYPED_PRODUCER) calls=([0-9]{1,12}) "
+    rb"elapsed_ns=([0-9]{1,19}) workspace_ns=([0-9]{1,19})"
+)
+
+
+def parse_cold_join(line):
+    match = cold_join.fullmatch(line)
+    if match is None:
+        return None
+    history_pass, table, stage, calls, elapsed, workspace = match.groups()
+    if not (int(calls) > 0 and 0 <= int(workspace) <= int(elapsed)):
+        return None
+    return {
+        "history_pass": history_pass.decode("ascii"),
+        "table": table.decode("ascii"),
+        "join_stage": stage.decode("ascii"),
+        "calls": int(calls),
+        "elapsed_ns": int(elapsed),
+        "workspace_ns": int(workspace),
+    }
+
+
 history_source_fields = (
     "events", "versions", "chunks", "capture_ns", "total_ns",
     "selected_images", "selected_chunks", "selected_immutable", "indexed_absences",
