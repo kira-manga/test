@@ -247,7 +247,7 @@ jobs:
           python3 scripts/pos/qualification/prepare-comparison.py
           baseline=0
           candidate=0
-          bash "$runner" || baseline=$?
+          POS_MEASURE_CHECKED_PREFIX="$SAME_PREFIX_COMPARISON" bash "$runner" || baseline=$?
           if [[ "$SAME_PREFIX_COMPARISON" == 1 && "$baseline" != 0 ]]; then exit "$baseline"; fi
           RUNNER_TEMP="$RUNNER_TEMP/pos-comparison" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT-comparison" \
             POS_RESTART_ON_CHECKED_PREFIX="$SAME_PREFIX_COMPARISON" \

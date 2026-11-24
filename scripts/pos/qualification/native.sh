@@ -268,6 +268,10 @@ fi
 export UKKERA_CHB_COUNT="$count"
 expected=$((12 + 7 * count + 5))
 export UKKERA_CHB_RUNNER="$stage/inputs/runner"
+if [[ "${POS_MEASURE_CHECKED_PREFIX:-0}" == 1 || "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
+  test "$POS_SUITE" = paid-profile
+  grep -Fxq "installed-native-read-only-startup-v1" "$UKKERA_CHB_RUNNER/READ-ONLY-MEASUREMENT"
+fi
 if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
   [[ "$POS_SUITE" == 'paid-profile' && "$GITHUB_RUN_ATTEMPT" == *-comparison ]]
   export UKKERA_CHB_ATTEMPT="$HOME/.pos-frozen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT%-comparison}"
@@ -353,30 +357,35 @@ finish_profile() {
     fi
   fi
 }
-if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
-  # The ordinary control has already finished its own same-process and fresh
-  # reopens and complete closed census. Reopen the same pinned files in a new
-  # process with the candidate. Never run the seed again or copy native keys.
+measure_checked_prefix() {
+  # A protected user restart appends live authorization history after native
+  # startup. Compare fresh native owners without signing in on either source.
+  local phase=profile-reopen
+  local outcome=0
   python3 "$here/closed-paid-prefix.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/prefix-before.json"
-  mv "$UKKERA_CHB_ATTEMPT/restart.pid" "$stage/control-restart.pid"
-  export UKKERA_CHB_EXISTING=true
-  restart=0
-  observe_profile restart
-  python3 "$here/watched.py" "$report" restart "$phase_budget" "${gradle[@]}" \
-    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidRestart || restart=$?
-  finish_profile restart
+  if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
+    cmp "$RUNNER_TEMP/../pos-qualification/prefix-after.json" "$stage/prefix-before.json"
+  fi
+  cp "$UKKERA_CHB_ATTEMPT/restart.utc" "$UKKERA_CHB_ATTEMPT/$phase.utc"
+  if [[ -f "$UKKERA_CHB_ATTEMPT/$phase.pid" ]]; then
+    mv "$UKKERA_CHB_ATTEMPT/$phase.pid" "$stage/control-$phase.pid"
+  fi
+  observe_profile "$phase"
+  python3 "$here/watched.py" "$report" "$phase" "$phase_budget" "${gradle[@]}" \
+    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidReadOnly || outcome=$?
+  finish_profile "$phase"
   python3 "$here/results.py" frozen "$stage" "$UKKERA_CHB_ATTEMPT"
-  python3 "$here/profile-stack-summary.py" "$stage" > "$report/stack-samples.json"
-  if (( restart != 0 )); then exit "$restart"; fi
-  grep -Fxq "CHB_EXACT_LOOKUPS_RETURNED $expected" "$stage/restart.raw"
-  grep -Fxq "CHB_EXACT_RECEIPTS_RETURNED $count" "$stage/restart.raw"
-  grep -Fxq "CHB_PROTECTED_ORIGINALS_VERIFIED $expected SALE_COUNT $count" "$stage/restart.raw"
-  grep -Fxq "CHB_FRESH_PROCESS_RESTART $count" "$stage/restart.raw"
-  grep -Fxq "CHB_NATIVE_CLOSE restart" "$stage/restart.raw"
+  if (( outcome != 0 )); then return "$outcome"; fi
+  grep -Fxq "CHB_NATIVE_HISTORY_OPEN_ENTERED" "$stage/$phase.raw"
+  grep -Fxq "CHB_NATIVE_HISTORY_OPERATIONAL" "$stage/$phase.raw"
+  grep -Fxq "CHB_READ_ONLY_NATIVE_CLOSE" "$stage/$phase.raw"
   python3 "$here/closed-paid-prefix.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/prefix-after.json"
   cmp "$stage/prefix-before.json" "$stage/prefix-after.json"
-  printf '{"same_closed_installation":true,"mode":"fresh-process-only","sales":%s,"originals":%s}\n' \
+  printf '{"same_closed_installation":true,"mode":"read-only-native-startup","sales":%s,"originals_in_control_census":%s}\n' \
     "$count" "$expected" > "$report/shared-installation.json"
+}
+if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
+  measure_checked_prefix
   exit 0
 fi
 observe_profile seed
@@ -415,3 +424,4 @@ for phase in seed restart; do
 done
 python3 "$UKKERA_CHB_RUNNER/verify-closed-eight-census.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/census.raw"
 python3 "$here/results.py" census "$stage" "$UKKERA_CHB_ATTEMPT"
+if [[ "${POS_MEASURE_CHECKED_PREFIX:-0}" == 1 ]]; then measure_checked_prefix; fi

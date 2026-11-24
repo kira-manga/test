@@ -18,7 +18,7 @@ output = stage / "public" / (phase + ".metrics.jsonl")
 event = re.compile(
     rb"CHB_(?:STEP_(?:BEGIN|END) [0-9]{1,4} (?:create|begin|start|capture|apply|finalize|receipt/[1-9])"
     rb"(?: elapsedMillis=[0-9]+)?|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
-    rb"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+"
+    rb"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|READ_ONLY_NATIVE_CLOSE|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+"
     rb"|RETURN_(?:BEGIN|END) (?:record|receipt-evidence|qualification|accept|restore)(?: elapsedMillis=[0-9]+)?)"
 )
 cold_history_stage = re.compile(

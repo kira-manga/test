@@ -13,7 +13,7 @@ if mode == "frozen":
     pattern = re.compile(
         r"CHB_(?:STEP_(?:BEGIN|END) [0-9]{1,4} (?:create|begin|start|capture|apply|finalize|receipt/[a-zA-Z0-9_-]+)"
         r"(?: elapsedMillis=[0-9]+)?|PAID_PREFIX [0-9]+|NATIVE_HISTORY_(?:OPEN_ENTERED|OPERATIONAL)"
-        r"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
+        r"|NATIVE_CLOSE (?:seed(?:ed-[0-9]{1,4})?|restart)|READ_ONLY_NATIVE_CLOSE|SAME_PROCESS_REOPEN [0-9]+|FRESH_PROCESS_RESTART [0-9]+"
         r"|EXACT_(?:LOOKUPS|RECEIPTS)_RETURNED [0-9]+|PROTECTED_ORIGINALS_VERIFIED [0-9]+ SALE_COUNT [0-9]+)"
         r"|POS_NATIVE_CENSUS trial=[12] items=[0-9]+ bytes=[0-9]+ intake_ns=[0-9]+ schema_ns=[0-9]+"
         r" row_ns=[0-9]+ hash_ns=[0-9]+ close_ns=[0-9]+ total_ns=[0-9]+"
@@ -38,7 +38,7 @@ if mode == "frozen":
         r"|POS_NATIVE_PROJECTED_CUT families=22 keys=[0-9]{1,4} bytes=[0-9]{1,7} controls=10"
         r"|POS_NATIVE_AUTH_ONLY_CUT events=2 mutations=9 commands=0"
     )
-    for phase in ("seed", "restart"):
+    for phase in ("seed", "restart", "profile-reopen"):
         log = stage / f"{phase}.raw"
         if not log.exists():
             continue
