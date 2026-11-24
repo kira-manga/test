@@ -5,7 +5,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 
-from cold_pass_metrics import parse_cold_history_pass, parse_history_source
+from cold_pass_metrics import parse_cold_history_pass, parse_cold_join, parse_history_source
 
 mode, stage, run = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 published = stage / "public"
@@ -87,6 +87,10 @@ elif mode in ("cold-payment-control", "cold-pass-control", "cold-owner-control",
                   if (parsed := parse_cold_history_pass(line.encode("utf-8"))) is not None]
         (published / "cold-native-passes.json").write_text(json.dumps(passes, indent=2) + "\n")
         assert {item["phase"] for item in passes} == {"CAPTURE", "REPLAY"}, "Missing cold pass timings"
+        joins = [parsed for line in source.splitlines()
+                 if (parsed := parse_cold_join(line.encode("utf-8"))) is not None]
+        if joins:
+            (published / "cold-join-timings.json").write_text(json.dumps(joins, indent=2) + "\n")
     if mode == "cold-literal-control":
         source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")

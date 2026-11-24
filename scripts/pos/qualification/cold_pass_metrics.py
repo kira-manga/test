@@ -63,7 +63,7 @@ def parse_cold_earlier(line):
 cold_join = re.compile(
     rb"POS_COLD_JOIN " + history_pass_name + history_table_name +
     rb"(NATIVE_MUTATIONS|OBSERVED_SOURCES|TYPED_PRODUCER) calls=([0-9]{1,12}) "
-    rb"elapsed_ns=([0-9]{1,19}) workspace_ns=([0-9]{1,19})"
+    rb"elapsed_ns=([0-9]{1,19}) workspace_ns=([0-9]{1,19})(?: decoded_replays=([0-9]{1,12}))?"
 )
 
 
@@ -71,7 +71,7 @@ def parse_cold_join(line):
     match = cold_join.fullmatch(line)
     if match is None:
         return None
-    history_pass, table, stage, calls, elapsed, workspace = match.groups()
+    history_pass, table, stage, calls, elapsed, workspace, decoded = match.groups()
     if not (int(calls) > 0 and 0 <= int(workspace) <= int(elapsed)):
         return None
     return {
@@ -81,6 +81,7 @@ def parse_cold_join(line):
         "calls": int(calls),
         "elapsed_ns": int(elapsed),
         "workspace_ns": int(workspace),
+        **({"decoded_replays": int(decoded)} if decoded is not None else {}),
     }
 
 
