@@ -26,6 +26,8 @@ if mode == "frozen":
         r"|POS_NATIVE_TYPED_CHECKPOINT_RESTORE (?:seed_saved=1|fresh_exact=1 fresh_new_cut_refused=1)"
         r"|POS_NATIVE_TYPED_PROJECTION_PREFLIGHT exact=[01] elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_CUT_EQUAL exact=[01]"
+        r"|POS_NATIVE_TYPED_PROJECTION_LEDGERS employees=[0-9]{1,4} policies=[0-9]{1,4}"
+        r" publications=[0-9]{1,4} admissions=[0-9]{1,4}"
         r"|POS_NATIVE_BOOTSTRAP_FINGERPRINT stage=(?:SEED|FRESH_SAME_CUT|FRESH_NEW_CUT)"
         r" employees=[0-9]{1,4} policies=[0-9]{1,4} publications=[0-9]{1,4} admissions=[0-9]{1,4} elapsed_ns=[0-9]{1,19}"
         r"|POS_NATIVE_CENSUS_CUT trial=[12] items=[0-9]+ bytes=[0-9]+ row_ns=[0-9]+"
