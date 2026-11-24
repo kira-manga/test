@@ -87,6 +87,10 @@ typed_return_inputs = re.compile(
     rb"POS_TYPED_RETURN_INPUTS outcome=(FIRST|SAME|DIFFERENT|CAPACITY) "
     rb"direct_calls=([0-9]{1,4}) distinct_inputs=([0-9]{1,4}) elapsed_ns=([0-9]{1,19})"
 )
+typed_return_ancestors = re.compile(
+    rb"POS_TYPED_RETURN_ANCESTORS streamed=([0-9]{1,4}) legacy=([0-9]{1,4}) repeated=([0-9]{1,7}) "
+    rb"streamed_ns=([0-9]{1,14}) legacy_ns=([0-9]{1,14})"
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -145,6 +149,11 @@ with output.open("x") as stream:
                         if 0 < distinct <= calls <= 1024 and elapsed > 0:
                             sample(b"POS_TYPED_RETURN_INPUTS", outcome=typed[1].decode(),
                                    direct_calls=calls, distinct_inputs=distinct, elapsed_ns=elapsed)
+                    elif ancestors := typed_return_ancestors.fullmatch(line.rstrip()):
+                        streamed, legacy, repeated, stock_ns, legacy_ns = map(int, ancestors.groups())
+                        if streamed + legacy <= 256 and (stock_ns == 0) == (streamed == 0) and (legacy_ns == 0) == (legacy == 0):
+                            sample(b"POS_TYPED_RETURN_ANCESTORS", streamed=streamed, legacy=legacy,
+                                   repeated=repeated, streamed_ns=stock_ns, legacy_ns=legacy_ns)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
