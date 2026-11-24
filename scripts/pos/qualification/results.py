@@ -100,7 +100,7 @@ elif mode in ("cold-payment-control", "cold-pass-control", "cold-owner-control",
         count = source.count("Native physical stage: COLD_STREAMED_LITERAL_REVALIDATED")
         (published / "cold-literal-validation.json").write_text(json.dumps({"validated_streams": count}) + "\n")
         assert count > 0, "No completed exact cold literal stream verification was observed"
-elif mode == "history-source-control":
+elif mode in ("history-source-control", "history-event-stream-control"):
     directory = run / "adapters/app-gateway/build/test-results/jvmTest"
     reports = list(directory.glob("TEST-*.SupplierCashAncestryNativeSupportingTest.xml"))
     report = None
@@ -110,14 +110,27 @@ elif mode == "history-source-control":
         source = (suite.findtext("system-out") or "") + (suite.findtext("system-err") or "")
         # The native assertion and the diagnostic each establish a different condition.
         # No operand values, identities or underlying exception text are exported.
-        report["indexed_absences"] = sum(
-            found["indexed_absences"] for line in source.splitlines()
-            if (found := parse_history_source(line.encode("utf-8"))) is not None
-        )
-    (published / "history-source-control-tests.json").write_text(json.dumps(report, indent=2) + "\n")
+        if mode == "history-source-control":
+            report["indexed_absences"] = sum(
+                found["indexed_absences"] for line in source.splitlines()
+                if (found := parse_history_source(line.encode("utf-8"))) is not None
+            )
+        else:
+            stream = re.compile(r"POS_HISTORY_EVENT_STREAM events=([0-9]{1,5}) versions=([0-9]{1,5}) "
+                                r"chunks=([0-9]{1,8}) elapsed_ns=([0-9]{1,19})")
+            observations = [
+                dict(zip(("events", "versions", "chunks", "elapsed_ns"), map(int, match.groups()), strict=True))
+                for line in source.splitlines() if (match := stream.fullmatch(line)) is not None
+            ]
+            assert observations and all(0 < row["events"] <= row["versions"] <= 4096
+                                        and row["chunks"] >= row["events"] and row["elapsed_ns"] > 0
+                                        for row in observations), "Missing complete native history event measurements"
+            (published / "history-event-stream.json").write_text(json.dumps(observations, indent=2) + "\n")
+    (published / (mode + "-tests.json")).write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
     assert report and report["tests"] == 1 and not any(report[field] for field in ("failures", "errors", "skipped"))
-    assert report["indexed_absences"] > 0, "No authenticated journal absence lookup was observed"
+    if mode == "history-source-control":
+        assert report["indexed_absences"] > 0, "No authenticated journal absence lookup was observed"
 elif mode in ("floor-batch-control", "workspace-control"):
     directory = run / "core/database/build/test-results/jvmTest"
     reports = list(directory.glob("TEST-*.NativeColdHistoryWorkspaceSupportingTest.xml"))

@@ -186,7 +186,7 @@ EOFCOLD
   exit "$result"
   ;;
 esac
-if [[ "$POS_SUITE" == 'history-source-control' ]]; then
+if [[ "$POS_SUITE" == 'history-source-control' || "$POS_SUITE" == 'history-event-stream-control' ]]; then
   cat > "$stage/history-source-control.init.gradle" <<'EOFSOURCE'
 gradle.beforeProject { p ->
     if (p.path == ':adapters:app-gateway') {
@@ -206,7 +206,7 @@ EOFSOURCE
     python3 "$here/watched.py" "$report" history-source-control 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
       -I "$stage/verified-cryptography.init.gradle" -I "$stage/history-source-control.init.gradle" "${tests[@]}" || result=$?
   fi
-  python3 "$here/results.py" history-source-control "$stage" "$source"
+  python3 "$here/results.py" "$POS_SUITE" "$stage" "$source"
   exit "$result"
 fi
 if [[ "$POS_SUITE" == 'opening-control' ]]; then
