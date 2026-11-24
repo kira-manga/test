@@ -235,7 +235,7 @@ jobs:
           case "$POS_SUITE" in
             paid-profile) case "$POS_PAID_PROFILE_COUNT" in 5|10|25|35) ;; *) exit 2 ;; esac ;;
             cold-pass-control) test "$POS_HISTORY_PROFILE" = 1 ;;
-            installed-cashier-paid) ;;
+            installed-cashier-paid|installed-cashier-paid-control) ;;
             *) exit 2 ;;
           esac
           umask 077
@@ -245,7 +245,7 @@ jobs:
           bash "$runner" || baseline=$?
           RUNNER_TEMP="$RUNNER_TEMP/pos-comparison" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT-comparison" \
             bash "$runner" || candidate=$?
-          if [[ "$POS_SUITE" == installed-cashier-paid ]]; then
+          if [[ "$POS_SUITE" == installed-cashier-paid || "$POS_SUITE" == installed-cashier-paid-control ]]; then
             printf 'POS_INSTALLED_SAME_RUNNER_BUILDS baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
           else
             printf 'POS_SAME_RUNNER_PROFILE baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
@@ -278,7 +278,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always() && inputs.compare_revision != '' && (matrix.suite == 'paid-profile' || matrix.suite == 'cold-pass-control' || matrix.suite == 'installed-cashier-paid')
+        if: always() && inputs.compare_revision != '' && (matrix.suite == 'paid-profile' || matrix.suite == 'cold-pass-control' || matrix.suite == 'installed-cashier-paid' || matrix.suite == 'installed-cashier-paid-control')
         with:
           name: pos-qualification-paired-profile-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pos-comparison/pos-qualification/public

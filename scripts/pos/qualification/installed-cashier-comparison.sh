@@ -7,7 +7,8 @@ if [[ -z "${EXPECTED_COMPARISON:-}" ]]; then
   exec bash "$runner"
 fi
 
-[[ "${POS_INSTALLED_CASHIER_CASE:-}" == paid && "$EXPECTED_COMPARISON" =~ ^[0-9a-f]{40}$ ]]
+[[ ( "${POS_INSTALLED_CASHIER_CASE:-}" == paid || "${POS_INSTALLED_CASHIER_CASE:-}" == paid-control ) &&
+   "$EXPECTED_COMPARISON" =~ ^[0-9a-f]{40}$ ]]
 candidate="$RUNNER_TEMP/pos-comparison"
 [[ "$(cat "$candidate/pos-qualification/inputs/POS-REVISION")" == "$EXPECTED_COMPARISON" ]]
 
