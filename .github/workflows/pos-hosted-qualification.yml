@@ -185,10 +185,35 @@ jobs:
       - name: Prepare Android compile SDK for JVM Gradle configuration
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-37.0' 'build-tools;37.0.0'
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          "$sdkmanager" 'platforms;android-37.0' 'build-tools;37.0.0'
           if [[ ! -e "$ANDROID_HOME/platforms/android-37" ]]; then
             ln -s android-37.0 "$ANDROID_HOME/platforms/android-37"
           fi
+          ndk_version=27.2.12479018
+          ndk="$ANDROID_HOME/ndk/$ndk_version"
+          ndk_installed() {
+            [[ -x "$ndk/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]] &&
+              awk -F= -v expected="$ndk_version" '
+                $1 ~ /^Pkg[.]Revision[[:space:]]*$/ {
+                  value=$2
+                  gsub(/[[:space:]]/, "", value)
+                  ready=(value == expected)
+                }
+                END { exit !ready }
+              ' "$ndk/source.properties"
+          }
+          if ! ndk_installed; then
+            for attempt in 1 2 3; do
+              if "$sdkmanager" --install "ndk;$ndk_version" --channel=0 && ndk_installed; then
+                break
+              fi
+              printf 'Pinned Android NDK incomplete after attempt %s\n' "$attempt" >&2
+              if [[ "$attempt" != 3 ]]; then sleep 4; fi
+            done
+          fi
+          ndk_installed
+          printf 'POS_ANDROID_NDK_READY %s\n' "$ndk_version"
       - name: Verify the disposable Android system image before compiling
         if: matrix.suite == 'installed-cashier' || matrix.suite == 'installed-cashier-paid' || matrix.suite == 'installed-cashier-paid-control'
         run: |
