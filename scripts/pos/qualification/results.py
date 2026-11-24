@@ -18,6 +18,8 @@ if mode == "frozen":
         r"|POS_NATIVE_CENSUS trial=[12] items=[0-9]+ bytes=[0-9]+ intake_ns=[0-9]+ schema_ns=[0-9]+"
         r" row_ns=[0-9]+ hash_ns=[0-9]+ close_ns=[0-9]+ total_ns=[0-9]+"
         r"|POS_NATIVE_STABLE_IMAGE trial=[12] bytes=[0-9]{1,11} elapsed_ns=[0-9]{1,19}"
+        r"|POS_NATIVE_IMAGE_SEAL stage=(?:SEED|FRESH_SAME_CUT) exact=1 tamper_refused=3 prior_cut_refused=0"
+        r"|POS_NATIVE_IMAGE_SEAL stage=FRESH_NEW_CUT exact=1 tamper_refused=3 prior_cut_refused=1"
         r"|POS_NATIVE_CENSUS_CUT trial=[12] items=[0-9]+ bytes=[0-9]+ row_ns=[0-9]+"
         r" hash_ns=[0-9]+ full_typed_open_and_close_ns=[0-9]+"
         r"|POS_NATIVE_CENSUS_COVERAGE trial=[12] distinct=[0-9]+ repeated=[0-9]+ repeated_bytes=[0-9]+"
