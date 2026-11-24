@@ -41,6 +41,7 @@ def parse_cold_history_pass(line):
 cold_workspace_read = re.compile(
     rb"POS_COLD_WORKSPACE (CAPTURE|REPLAY) " + history_pass_name + history_table_name +
     rb"(MATCH_BATCH|METADATA|EXACT_PAYLOAD|FLOOR_PAYLOAD|FLOOR_BATCH|KEY_FLOOR_BATCH|"
+    rb"FLOOR_CURSOR_PREFETCH|FLOOR_MATCHED_IMAGES|FLOOR_UPCOMING_IMAGES|FLOOR_COMMAND_PAIR|"
     rb"SMALL_PAYLOAD|ORDERED_PAYLOADS|RECORD_PAYLOAD|CURSOR_OPEN|CURSOR_PAGE) "
     rb"calls=([0-9]{1,12}) elapsed_ns=([0-9]{1,19})"
 )
