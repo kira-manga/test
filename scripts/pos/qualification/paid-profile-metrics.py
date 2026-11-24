@@ -62,11 +62,21 @@ retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
 )
 retained_proof_phases = ("posting_frame", "stock_transitions", "installed_producer", "final_literal", "direct_sources")
-retained_proof = re.compile(
-    b"POS_RETAINED_PROOF " + b" ".join(
-        phase.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19}):([0-9]{1,19})" for phase in retained_proof_phases
-    )
+retained_proof_detailed_phases = retained_proof_phases + (
+    "literal_batch_close", "direct_original_pair", "direct_typed_streamed", "direct_typed_legacy_stock", "direct_typed_commerce",
 )
+
+
+def proof_pattern(phases):
+    return re.compile(
+        b"POS_RETAINED_PROOF " + b" ".join(
+            phase.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19}):([0-9]{1,19})" for phase in phases
+        )
+    )
+
+
+retained_proof = proof_pattern(retained_proof_phases)
+retained_proof_detailed = proof_pattern(retained_proof_detailed_phases)
 sampled_io_buckets = ("original_db", "scratch_db", "process_metadata", "jdk_archive", "other", "unknown")
 sampled_io = re.compile(
     rb"POS_SYNTHETIC_COLD_IO phase=(batch|exit) monotonic_ns=([0-9]{1,19}) calls=([0-9]{1,19}) bytes=([0-9]{1,19}) "
@@ -135,7 +145,8 @@ with output.open("x") as stream:
                                wrapped_calls=calls, wrapped_bytes=size,
                                sampled={name: dict(calls=buckets[2*i], bytes=buckets[2*i+1])
                                         for i, name in enumerate(sampled_io_buckets)})
-                    elif proof := retained_proof.fullmatch(line.rstrip()):
+                    elif (proof := retained_proof_detailed.fullmatch(line.rstrip()) or retained_proof.fullmatch(line.rstrip())):
+                        phases = retained_proof_detailed_phases if proof.re is retained_proof_detailed else retained_proof_phases
                         values = list(map(int, proof.groups()))
                         groups = [values[i:i+3] for i in range(0, len(values), 3)]
                         if any(interrupted > calls or (calls == 0 and elapsed)
@@ -143,7 +154,7 @@ with output.open("x") as stream:
                             continue
                         record = {"event": "POS_RETAINED_PROOF", "observer_seconds": round(time.monotonic() - start, 3)}
                         record["phases"] = {phase: dict(calls=calls, inclusive_ns=elapsed, interrupted=interrupted)
-                            for phase, (calls, elapsed, interrupted) in zip(retained_proof_phases, groups, strict=True)}
+                            for phase, (calls, elapsed, interrupted) in zip(phases, groups, strict=True)}
                         print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif payment_owner := payment_owner_stage.fullmatch(line.rstrip()):
                         record = {"event": payment_owner[1].decode(),
