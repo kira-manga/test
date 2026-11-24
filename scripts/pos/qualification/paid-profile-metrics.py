@@ -64,6 +64,7 @@ retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
     + rb"(?: nested_return_complete_producer=([0-9]{1,19}))?"
     + rb"(?: direct_group_reuse=([0-9]{1,19}))?"
+    + rb"(?: direct_stock_closure_reuse=([0-9]{1,19}))?"
 )
 retained_proof_phases = ("posting_frame", "stock_transitions", "installed_producer", "final_literal", "direct_sources")
 retained_proof_detailed_phases = retained_proof_phases + (
@@ -165,12 +166,14 @@ with output.open("x") as stream:
                             sample(b"POS_TYPED_RETURN_ANCESTORS", streamed=streamed, legacy=legacy,
                                    repeated=repeated, streamed_ns=stock_ns, legacy_ns=legacy_ns)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
-                        *sites, nested, direct_group = retained_sites.groups()
+                        *sites, nested, direct_group, direct_stock_closure = retained_sites.groups()
                         counts = dict(zip(retained_read_sites, map(int, sites), strict=True))
                         if nested is not None:
                             counts["nested_return_complete_producer"] = int(nested)
                         if direct_group is not None:
                             counts["direct_group_reuse"] = int(direct_group)
+                        if direct_stock_closure is not None:
+                            counts["direct_stock_closure_reuse"] = int(direct_stock_closure)
                         sample(b"POS_RETAINED_SITES", **counts)
                     elif io := sampled_io.fullmatch(line.rstrip()):
                         tick, calls, size, *buckets = map(int, io.groups()[1:])
