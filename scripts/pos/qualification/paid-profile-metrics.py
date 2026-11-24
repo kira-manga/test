@@ -87,6 +87,10 @@ sampled_io = re.compile(
     rb"POS_SYNTHETIC_COLD_IO phase=(batch|exit) monotonic_ns=([0-9]{1,19}) calls=([0-9]{1,19}) bytes=([0-9]{1,19}) "
     + b" ".join(bucket.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19})" for bucket in sampled_io_buckets)
 )
+stock_census = re.compile(
+    rb"POS_STOCK_PROJECTION_CENSUS rows=([0-9]{1,12}) shape_ns=([0-9]{1,19}) "
+    rb"aggregate_ns=([0-9]{1,19}) index_ns=([0-9]{1,19})"
+)
 history_source_replay = re.compile(rb"POS_HISTORY_SOURCE_REPLAY images=([0-9]{1,19}) closure_chunks=([0-9]{1,19})")
 typed_return_inputs = re.compile(
     rb"POS_TYPED_RETURN_INPUTS outcome=(FIRST|SAME|DIFFERENT|CAPACITY) "
@@ -150,6 +154,11 @@ with output.open("x") as stream:
                         sample(b"POS_COLD_JOIN", **join)
                     elif earlier := parse_cold_earlier(line.rstrip()):
                         sample(b"POS_COLD_EARLIER", **earlier)
+                    elif census := stock_census.fullmatch(line.rstrip()):
+                        rows, shape, aggregate, index = map(int, census.groups())
+                        record = {"event": "POS_STOCK_PROJECTION_CENSUS", "observer_seconds": round(time.monotonic() - start, 3),
+                                  "rows": rows, "shape_ns": shape, "aggregate_ns": aggregate, "index_ns": index}
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif history := parse_history_source(line.rstrip()):
                         sample(b"POS_HISTORY_SOURCE", **history)
                     elif replay := history_source_replay.fullmatch(line.rstrip()):
