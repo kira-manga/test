@@ -34,6 +34,7 @@ if mode == "frozen":
         r" setup=[0-9]{1,7} other_sources=[0-9]{1,7} bound=[01]"
         r"|POS_PHYSICAL_START_FRESH_LEGACY_CUTS count=[0-9]{1,2} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_NESTED_CUTS selected=[0-9]{1,3} unavailable=[0-9]{1,3} outside=[0-9]{1,7}"
+        r"|POS_PHYSICAL_START_NATIVE_LITERALS points=[0-9]{1,3} publication_selections=[0-9]{1,3}"
         r"|POS_PHYSICAL_START_FRESH_LITERALS streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
         r" bytes=[0-9]{1,13} elapsed_ns=[0-9]{1,19}"
         r"|POS_PHYSICAL_START_WITNESS original=(?:-1|[01]) stock=(?:-1|[01]) native=(?:-1|[01])"
