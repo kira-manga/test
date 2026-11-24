@@ -67,6 +67,11 @@ retained_proof = re.compile(
         phase.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19}):([0-9]{1,19})" for phase in retained_proof_phases
     )
 )
+sampled_io_buckets = ("original_db", "scratch_db", "process_metadata", "jdk_archive", "other", "unknown")
+sampled_io = re.compile(
+    rb"POS_SYNTHETIC_COLD_IO phase=(batch|exit) monotonic_ns=([0-9]{1,19}) calls=([0-9]{1,19}) bytes=([0-9]{1,19}) "
+    + b" ".join(bucket.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19})" for bucket in sampled_io_buckets)
+)
 history_source_replay = re.compile(rb"POS_HISTORY_SOURCE_REPLAY images=([0-9]{1,19}) closure_chunks=([0-9]{1,19})")
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
@@ -124,6 +129,12 @@ with output.open("x") as stream:
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
+                    elif io := sampled_io.fullmatch(line.rstrip()):
+                        tick, calls, size, *buckets = map(int, io.groups()[1:])
+                        sample(b"POS_SYNTHETIC_COLD_IO", native_phase=io[1].decode(), monotonic_ns=tick,
+                               wrapped_calls=calls, wrapped_bytes=size,
+                               sampled={name: dict(calls=buckets[2*i], bytes=buckets[2*i+1])
+                                        for i, name in enumerate(sampled_io_buckets)})
                     elif proof := retained_proof.fullmatch(line.rstrip()):
                         values = list(map(int, proof.groups()))
                         groups = [values[i:i+3] for i in range(0, len(values), 3)]
