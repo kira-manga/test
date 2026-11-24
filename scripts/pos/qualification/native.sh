@@ -166,9 +166,22 @@ EOFCOLD
   if [[ "$POS_SUITE" == 'cold-pass-control' && "${POS_HISTORY_PROFILE:-0}" == 1 ]]; then
     control_options+=(-PposColdPassDiagnostics=true)
   fi
+  control_tasks=(:adapters:app-gateway:jvmTest --tests '*PaidRetailReceiptColdNativeSupportingTest')
+  workspace=0
+  if [[ "$POS_SUITE" == 'cold-pass-control' && "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
+    workspace=1
+    control_tasks+=(:core:database:jvmTest --tests '*NativeColdHistoryWorkspaceSupportingTest'
+      :core:database:compileAndroidMain)
+  fi
   python3 "$here/watched.py" "$report" cold-payment 30 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
-    -I "$stage/cold-payment.init.gradle" "${control_options[@]}" :adapters:app-gateway:jvmTest \
-    --tests '*PaidRetailReceiptColdNativeSupportingTest' || result=$?
+    -I "$stage/cold-payment.init.gradle" "${control_options[@]}" "${control_tasks[@]}" || result=$?
+  if [[ "$workspace" == 1 && "$result" == 1 ]] && prepare_verified_plugin cold-payment; then
+    result=0
+    python3 "$here/watched.py" "$report" cold-payment 30 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+      -I "$stage/verified-cryptography.init.gradle" -I "$stage/cold-payment.init.gradle" \
+      "${control_options[@]}" "${control_tasks[@]}" || result=$?
+  fi
+  if [[ "$workspace" == 1 ]]; then python3 "$here/results.py" workspace-control "$stage" "$source"; fi
   python3 "$here/results.py" "$POS_SUITE" "$stage" "$source"
   exit "$result"
   ;;

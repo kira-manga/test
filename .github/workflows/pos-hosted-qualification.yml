@@ -43,7 +43,7 @@ on:
         type: boolean
         default: false
       check_floor_batch:
-        description: Require the native bounded floor-batch test before a paid-profile workload
+        description: Check the native floor batch before a paid profile or the full workspace during cold-pass-control
         type: boolean
         default: false
       diagnostic_certificate:
@@ -233,7 +233,7 @@ jobs:
             exec bash "$runner"
           fi
           case "$POS_SUITE" in
-            paid-profile) case "$POS_PAID_PROFILE_COUNT" in 5|10|25) ;; *) exit 2 ;; esac ;;
+            paid-profile) case "$POS_PAID_PROFILE_COUNT" in 5|10|25|35) ;; *) exit 2 ;; esac ;;
             cold-pass-control) test "$POS_HISTORY_PROFILE" = 1 ;;
             *) exit 2 ;;
           esac

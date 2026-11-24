@@ -104,16 +104,18 @@ elif mode == "history-source-control":
     print(json.dumps(report))
     assert report and report["tests"] == 1 and not any(report[field] for field in ("failures", "errors", "skipped"))
     assert report["indexed_absences"] > 0, "No authenticated journal absence lookup was observed"
-elif mode == "floor-batch-control":
+elif mode in ("floor-batch-control", "workspace-control"):
     directory = run / "core/database/build/test-results/jvmTest"
     reports = list(directory.glob("TEST-*.NativeColdHistoryWorkspaceSupportingTest.xml"))
     report = None
     if len(reports) == 1:
         suite = ET.parse(reports[0]).getroot()
         report = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
-    (published / "floor-batch-tests.json").write_text(json.dumps(report, indent=2) + "\n")
+    report_name = "workspace-tests.json" if mode == "workspace-control" else "floor-batch-tests.json"
+    (published / report_name).write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report))
-    assert report == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
+    expected_count = 6 if mode == "workspace-control" else 1
+    assert report == {"tests": expected_count, "failures": 0, "errors": 0, "skipped": 0}
 elif mode == "retained-reader":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
