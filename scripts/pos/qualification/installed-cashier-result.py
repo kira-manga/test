@@ -24,6 +24,18 @@ boundary_fields = {name: (f"{name}_gateway_ns", f"{name}_state_ns")
                    for name in ("start", "recover", "apply", "finalize")}
 boundary_fields["preview"] = ("preview_pending_ns", "preview_gateway_ns", "preview_state_ns")
 boundary_patterns = [(name, numeric_line("POS_CHECKOUT_BOUNDARY", fields)) for name, fields in boundary_fields.items()]
+pre_master_fields = ("lease_ns", "lock_ns", "session_ns", "intent_ns", "ready_ns")
+pre_master_pattern = numeric_line("POS_RETAIL_START_PREMASTER", pre_master_fields)
+own_recover_pattern = re.compile(
+    r"POS_RETAIL_OWN_RECOVER stage=(SESSION|INTENT|SAVED_RESULT|ORIGINAL_FACT|LINKED_FACT|PROGRESS)"
+    r" outcome=(SQL_ORIGINAL_PENDING|SQL_RESOLUTION_PENDING|FINANCIALLY_APPLIED"
+    r"|START_RECORDED_NO_INSTRUCTION|UNAVAILABLE|SESSION_ENDED|RETRY_LATER|DENIED"
+    r"|NOT_CONFIGURED|NOT_IMPLEMENTED|STORAGE_UNCERTAIN|INVALID_INPUT|CHECK_FAILED|OTHER)"
+)
+presentation_pattern = re.compile(r"POS_RETAIL_RECOVER_PRESENTATION reply=(PROGRESS|UNAVAILABLE|OTHER) same_id=([01])")
+pre_master = []
+own_recover = []
+presentation = []
 timings = []
 raw_boundaries = {name: [] for name in boundary_fields}
 for line in (stage / "installed-cashier-device.log").read_text(errors="replace").splitlines():
@@ -37,6 +49,16 @@ for line in (stage / "installed-cashier-device.log").read_text(errors="replace")
             match = pattern.fullmatch("POS_CHECKOUT_BOUNDARY " + event)
             if match:
                 raw_boundaries[name].append(tuple(map(int, match.groups())))
+    if scope == "paid" and ": " in line:
+        event = line.split(": ", 1)[1]
+        if (match := pre_master_pattern.fullmatch(event)) and len(pre_master) < 8:
+            intervals = tuple(map(int, match.groups()))
+            if tuple(sorted(intervals)) == intervals and intervals[-1] <= 300_000_000_000:
+                pre_master.append(dict(zip(pre_master_fields, intervals, strict=True)))
+        if (match := own_recover_pattern.fullmatch(event)) and len(own_recover) < 16:
+            own_recover.append(dict(zip(("stage", "outcome"), match.groups(), strict=True)))
+        if (match := presentation_pattern.fullmatch(event)) and len(presentation) < 16:
+            presentation.append({"reply": match[1], "same_id": match[2] == "1"})
 
 success = (
     process_exit == 0
@@ -65,6 +87,12 @@ record = {
     "scope": ("covered local sale confirm to recorded result and paid-sale preview on MainActivity" if scope == "covered" else
               "local native cash payment and sale finalization to protected financial preview on MainActivity"),
 }
+if pre_master or own_recover or presentation:
+    record["observed_paid_diagnostics"] = {
+        "pre_master": pre_master,
+        "own_recover": own_recover,
+        "presentation": presentation,
+    }
 if success:
     record.update(zip(ranges, timings[0], strict=True))
     if scope == "paid":
