@@ -100,6 +100,7 @@ typed_return_ancestors = re.compile(
     rb"POS_TYPED_RETURN_ANCESTORS streamed=([0-9]{1,4}) legacy=([0-9]{1,4}) repeated=([0-9]{1,7}) "
     rb"streamed_ns=([0-9]{1,14}) legacy_ns=([0-9]{1,14})"
 )
+legacy_native_prefix = re.compile(rb"POS_LEGACY_NATIVE_PREFIX_REUSE events=([0-9]{1,12})")
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -174,6 +175,10 @@ with output.open("x") as stream:
                         if streamed + legacy <= 256 and (stock_ns == 0) == (streamed == 0) and (legacy_ns == 0) == (legacy == 0):
                             sample(b"POS_TYPED_RETURN_ANCESTORS", streamed=streamed, legacy=legacy,
                                    repeated=repeated, streamed_ns=stock_ns, legacy_ns=legacy_ns)
+                    elif prefix := legacy_native_prefix.fullmatch(line.rstrip()):
+                        events = int(prefix[1])
+                        if events > 0:
+                            sample(b"POS_LEGACY_NATIVE_PREFIX_REUSE", events=events)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         *sites, nested, direct_group, direct_stock_closure = retained_sites.groups()
                         counts = dict(zip(retained_read_sites, map(int, sites), strict=True))
