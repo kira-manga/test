@@ -17,7 +17,7 @@ assert all(census[field] == expected for field in ("originals", "journal", "audi
 database, = (root / "original").rglob("master.db")
 history, = (root / "original").rglob("native-history.v2")
 assert history.parent == database.parent.parent
-assert not any(Path(str(database) + ending).exists() for ending in ("-wal", "-journal"))
+assert not Path(str(database) + "-wal").exists()
 
 
 def fingerprint(path: Path):
@@ -36,5 +36,9 @@ paths = ("bound-commands.json", "durable-results.jsonl")
 data = {name: fingerprint(root / name) for name in paths}
 data["master"] = fingerprint(database)
 data["native-history"] = fingerprint(history)
+# The normally closed installation can retain its native rollback file. The
+# actual startup still qualifies it. A comparison may only reuse it unchanged.
+rollback = Path(str(database) + "-journal")
+data["rollback"] = fingerprint(rollback) if rollback.exists() else None
 assert data["bound-commands.json"][1] == census["bound_input_sha256"]
 print(json.dumps(data, sort_keys=True))
