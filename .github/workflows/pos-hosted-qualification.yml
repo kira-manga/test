@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
@@ -67,7 +67,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || inputs.suite == 'candidate' && '["paid-prefix","payment-regression"]' || inputs.suite == 'profile-reader-candidate' && '["paid-profile","retained-reader"]' || inputs.suite == 'profile-stock-candidate' && '["paid-profile","payment-regression"]' || inputs.suite == 'profile-history-source' && '["paid-profile","history-source-control"]' || format('["{0}"]', inputs.suite)) }}
+        suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || inputs.suite == 'candidate' && '["paid-prefix","payment-regression"]' || inputs.suite == 'paid-restart-candidate' && '["paid-profile"]' || inputs.suite == 'profile-reader-candidate' && '["paid-profile","retained-reader"]' || inputs.suite == 'profile-stock-candidate' && '["paid-profile","payment-regression"]' || inputs.suite == 'profile-history-source' && '["paid-profile","history-source-control"]' || format('["{0}"]', inputs.suite)) }}
     name: Linux x64 / ${{ matrix.suite }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -226,9 +226,14 @@ jobs:
           POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
           POS_CHECK_FLOOR_BATCH: ${{ inputs.check_floor_batch && '1' || '0' }}
           EXPECTED_COMPARISON: ${{ inputs.compare_revision }}
+          SAME_PREFIX_COMPARISON: ${{ inputs.suite == 'paid-restart-candidate' && '1' || '0' }}
         run: |
           set -euo pipefail
           runner=scripts/pos/qualification/native.sh
+          if [[ "$SAME_PREFIX_COMPARISON" == 1 ]]; then
+            test -n "$EXPECTED_COMPARISON"
+            test "$POS_HISTORY_PROFILE" = 1
+          fi
           if [[ -z "$EXPECTED_COMPARISON" ]]; then
             exec bash "$runner"
           fi
@@ -243,7 +248,9 @@ jobs:
           baseline=0
           candidate=0
           bash "$runner" || baseline=$?
+          if [[ "$SAME_PREFIX_COMPARISON" == 1 && "$baseline" != 0 ]]; then exit "$baseline"; fi
           RUNNER_TEMP="$RUNNER_TEMP/pos-comparison" GITHUB_RUN_ATTEMPT="$GITHUB_RUN_ATTEMPT-comparison" \
+            POS_RESTART_ON_CHECKED_PREFIX="$SAME_PREFIX_COMPARISON" \
             bash "$runner" || candidate=$?
           if [[ "$POS_SUITE" == installed-cashier-paid || "$POS_SUITE" == installed-cashier-paid-control ]]; then
             printf 'POS_INSTALLED_SAME_RUNNER_BUILDS baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"

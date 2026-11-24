@@ -268,13 +268,24 @@ fi
 export UKKERA_CHB_COUNT="$count"
 expected=$((12 + 7 * count + 5))
 export UKKERA_CHB_RUNNER="$stage/inputs/runner"
-export UKKERA_CHB_ATTEMPT="$HOME/.pos-frozen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-mkdir -m700 "$UKKERA_CHB_ATTEMPT"
-printf '%s\n%s\n' "$(< "$stage/inputs/POS-REVISION")" "$(< "$stage/inputs/POS-TREE")" > "$UKKERA_CHB_ATTEMPT/SOURCE"
+if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
+  [[ "$POS_SUITE" == 'paid-profile' && "$GITHUB_RUN_ATTEMPT" == *-comparison ]]
+  export UKKERA_CHB_ATTEMPT="$HOME/.pos-frozen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT%-comparison}"
+  grep -Fxq "CHB_NATIVE_CLOSE seeded-$count" "$UKKERA_CHB_ATTEMPT/gradle.log"
+  grep -Fxq "CHB_NATIVE_CLOSE seed" "$UKKERA_CHB_ATTEMPT/gradle.log"
+  grep -Fxq "CHB_NATIVE_CLOSE restart" "$UKKERA_CHB_ATTEMPT/gradle.log"
+  test "$(< "$UKKERA_CHB_ATTEMPT/EXIT")" = 0
+else
+  export UKKERA_CHB_ATTEMPT="$HOME/.pos-frozen-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+  mkdir -m700 "$UKKERA_CHB_ATTEMPT"
+  printf '%s\n%s\n' "$(< "$stage/inputs/POS-REVISION")" "$(< "$stage/inputs/POS-TREE")" > "$UKKERA_CHB_ATTEMPT/SOURCE"
+fi
 cc -shared -fPIC -O2 -Wall -Wextra "$UKKERA_CHB_RUNNER/controlled-utc.c" -o "$UKKERA_CHB_RUNNER/controlled-utc.so"
-for phase in seed restart; do
-  printf '%s 0\n' "$(date -ud '2026-08-01T07:59:00Z' +%s)" > "$UKKERA_CHB_ATTEMPT/$phase.utc"
-done
+if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" != 1 ]]; then
+  for phase in seed restart; do
+    printf '%s 0\n' "$(date -ud '2026-08-01T07:59:00Z' +%s)" > "$UKKERA_CHB_ATTEMPT/$phase.utc"
+  done
+fi
 # Measure compilation separately from this supporting run's fixed runtime budget.
 # The same resources guard compilation and both native invocations.
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then
@@ -342,6 +353,32 @@ finish_profile() {
     fi
   fi
 }
+if [[ "${POS_RESTART_ON_CHECKED_PREFIX:-0}" == 1 ]]; then
+  # The ordinary control has already finished its own same-process and fresh
+  # reopens and complete closed census. Reopen the same pinned files in a new
+  # process with the candidate. Never run the seed again or copy native keys.
+  python3 "$here/closed-paid-prefix.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/prefix-before.json"
+  mv "$UKKERA_CHB_ATTEMPT/restart.pid" "$stage/control-restart.pid"
+  export UKKERA_CHB_EXISTING=true
+  restart=0
+  observe_profile restart
+  python3 "$here/watched.py" "$report" restart "$phase_budget" "${gradle[@]}" \
+    -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidRestart || restart=$?
+  finish_profile restart
+  python3 "$here/results.py" frozen "$stage" "$UKKERA_CHB_ATTEMPT"
+  python3 "$here/profile-stack-summary.py" "$stage" > "$report/stack-samples.json"
+  if (( restart != 0 )); then exit "$restart"; fi
+  grep -Fxq "CHB_EXACT_LOOKUPS_RETURNED $expected" "$stage/restart.raw"
+  grep -Fxq "CHB_EXACT_RECEIPTS_RETURNED $count" "$stage/restart.raw"
+  grep -Fxq "CHB_PROTECTED_ORIGINALS_VERIFIED $expected SALE_COUNT $count" "$stage/restart.raw"
+  grep -Fxq "CHB_FRESH_PROCESS_RESTART $count" "$stage/restart.raw"
+  grep -Fxq "CHB_NATIVE_CLOSE restart" "$stage/restart.raw"
+  python3 "$here/closed-paid-prefix.py" "$UKKERA_CHB_ATTEMPT" "$count" > "$stage/prefix-after.json"
+  cmp "$stage/prefix-before.json" "$stage/prefix-after.json"
+  printf '{"same_closed_installation":true,"mode":"fresh-process-only","sales":%s,"originals":%s}\n' \
+    "$count" "$expected" > "$report/shared-installation.json"
+  exit 0
+fi
 observe_profile seed
 python3 "$here/watched.py" "$report" seed "$phase_budget" "${gradle[@]}" \
   -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" :core:database:chbFrozenPaidSeed || seed=$?
