@@ -61,6 +61,12 @@ retained_read_sites = (
 retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
 )
+retained_proof_phases = ("posting_frame", "stock_transitions", "installed_producer", "final_literal", "direct_sources")
+retained_proof = re.compile(
+    b"POS_RETAINED_PROOF " + b" ".join(
+        phase.encode("ascii") + rb"=([0-9]{1,19}):([0-9]{1,19}):([0-9]{1,19})" for phase in retained_proof_phases
+    )
+)
 history_source_replay = re.compile(rb"POS_HISTORY_SOURCE_REPLAY images=([0-9]{1,19}) closure_chunks=([0-9]{1,19})")
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
@@ -118,6 +124,16 @@ with output.open("x") as stream:
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
                         sample(b"POS_RETAINED_SITES",
                                **dict(zip(retained_read_sites, map(int, retained_sites.groups()), strict=True)))
+                    elif proof := retained_proof.fullmatch(line.rstrip()):
+                        values = list(map(int, proof.groups()))
+                        groups = [values[i:i+3] for i in range(0, len(values), 3)]
+                        if any(interrupted > calls or (calls == 0 and elapsed)
+                               for calls, elapsed, interrupted in groups):
+                            continue
+                        record = {"event": "POS_RETAINED_PROOF", "observer_seconds": round(time.monotonic() - start, 3)}
+                        record["phases"] = {phase: dict(calls=calls, inclusive_ns=elapsed, interrupted=interrupted)
+                            for phase, (calls, elapsed, interrupted) in zip(retained_proof_phases, groups, strict=True)}
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif payment_owner := payment_owner_stage.fullmatch(line.rstrip()):
                         record = {"event": payment_owner[1].decode(),
                                   "observer_seconds": round(time.monotonic() - start, 3)}
