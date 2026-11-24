@@ -30,6 +30,7 @@ if mode == "frozen":
         r" tail_versions=[0-9]{1,4} tombstones=[0-9]{1,4} comparator_controls=5"
         r"|POS_NATIVE_PROJECTED_CUT families=6 keys=[0-9]{1,4} bytes=[0-9]{1,7} controls=4"
         r"|POS_NATIVE_PROJECTED_CUT families=22 keys=[0-9]{1,4} bytes=[0-9]{1,7} controls=10"
+        r"|POS_NATIVE_AUTH_ONLY_CUT events=2 mutations=9 commands=0"
     )
     for phase in ("seed", "restart"):
         log = stage / f"{phase}.raw"
