@@ -210,7 +210,7 @@ elif mode == "checkpoint-ledgers":
         names += ("RuntimeRetainedOriginalCheckpointNativeSupportingTest",)
     if native_receipts.with_name("RuntimeSettledCheckpointBoundaryNativeSupportingTest.kt").is_file():
         names += ("RuntimeSettledCheckpointBoundaryNativeSupportingTest",)
-    auth_frame = source / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"
+    auth_frame = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"
     if "fun verifySettledLoginActor" in auth_frame.read_text():
         names += ("AuthenticationNativeHistorySupportingTest",)
     if "fun verifyCurrentFrameProtectedAuthRow" in auth_frame.read_text():
