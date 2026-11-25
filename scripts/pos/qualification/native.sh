@@ -176,7 +176,21 @@ run_checkpoint_checks() {
       --tests '*LegacyWorkAncestorNativeSupportingTest'
       :adapters:sales-store:jvmTest --tests '*LanJournalRpcSelectionSupportingTest')
   fi
-  printf '%s\n' 'allprojects { tasks.withType(Test).configureEach { testLogging { exceptionFormat "full" } } }' > "$stage/checkout-checkpoint.init.gradle"
+  cat > "$stage/checkout-checkpoint.init.gradle" <<'GRADLE'
+allprojects {
+    tasks.withType(Test).configureEach {
+        testLogging {
+            exceptionFormat "full"
+            events "started", "passed", "failed", "skipped"
+        }
+        if (project.path == ":adapters:app-gateway") {
+            forkEvery = 1
+            maxParallelForks = 1
+            testLogging.showStandardStreams = true
+        }
+    }
+}
+GRADLE
   tests=(-I "$stage/checkout-checkpoint.init.gradle" "${tests[@]}")
   local result=0
   python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${test_environment[@]}" "${gradle[@]}" "${tests[@]}" || result=$?
