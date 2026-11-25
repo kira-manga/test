@@ -346,7 +346,9 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
       --tests '*PhysicalInstructionDependenciesSupportingTest'
       --tests '*StockRetainedAuthorizationNativeSupportingTest'
       --tests '*LanBusinessTransactionIntegrationTest')
-    profile_compile_prefix=(env POS_HISTORY_PROFILE=0 bash "$here/runner-owned-temp.sh")
+    profile_compile_prefix=(bash "$here/runner-owned-temp.sh" env POS_HISTORY_PROFILE=0
+      "UKKERA_CHB_RUNNER=$UKKERA_CHB_RUNNER" "UKKERA_CHB_ATTEMPT=$UKKERA_CHB_ATTEMPT"
+      "UKKERA_CHB_COUNT=$UKKERA_CHB_COUNT")
   fi
   compile_result=0
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
