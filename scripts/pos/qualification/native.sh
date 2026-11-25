@@ -144,10 +144,25 @@ run_checkpoint_checks() {
   tree_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt"
   if [[ -f "$tree_test" ]]; then
     tests+=(--tests '*RuntimeStateTreeV1SupportingTest' --tests '*LanBusinessTransactionIntegrationTest')
+    if grep -q 'receiptSalePrefix' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryStateWriter.kt"; then
+      tests+=(--tests '*ReceiptMembershipDataV1SupportingTest')
+      tests+=(--tests '*ReceiptSelectorV2SupportingTest')
+      tests+=(--tests '*ReceiptSelectorV2DetachedRoomSupportingTest')
+    fi
   fi
   stock_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStockStateTreeProjectionV1SupportingTest.kt"
   if [[ -f "$stock_test" ]]; then
     tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
+  fi
+  if grep -q 'HISTORICAL_SOURCE_CHECKPOINT_SELECTED' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"; then
+    tests+=(:adapters:app-gateway:jvmTest
+      --tests '*LegacyReturnCaseSourceNativeSupportingTest'
+      --tests '*LegacyExchangeNativeSupportingTest'
+      --tests '*LegacyPartialExchangeRefundNativeSupportingTest'
+      --tests '*LegacyIntakeExchangeRefundNativeSupportingTest'
+      --tests '*ExchangeRejectionNativeSupportingTest'
+      --tests '*LegacyWorkAncestorNativeSupportingTest'
+      :adapters:sales-store:jvmTest --tests '*LanJournalRpcSelectionSupportingTest')
   fi
   printf '%s\n' 'allprojects { tasks.withType(Test).configureEach { testLogging { exceptionFormat "full" } } }' > "$stage/checkout-checkpoint.init.gradle"
   tests=(-I "$stage/checkout-checkpoint.init.gradle" "${tests[@]}")

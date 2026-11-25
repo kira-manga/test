@@ -209,12 +209,23 @@ elif mode == "checkout-checkpoint":
     stock_test = tree_test.with_name("RuntimeStockStateTreeProjectionV1SupportingTest.kt")
     if stock_test.is_file():
         names.append("RuntimeStockStateTreeProjectionV1SupportingTest")
-    for name in names:
-        entries = list(directory.glob(f"TEST-*.{name}.xml"))
-        suites[name] = None
-        if len(entries) == 1:
-            suite = ET.parse(entries[0]).getroot()
-            suites[name] = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+    state_writer = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryStateWriter.kt"
+    if state_writer.is_file() and "receiptSalePrefix" in state_writer.read_text():
+        names.extend(('ReceiptMembershipDataV1SupportingTest', 'ReceiptSelectorV2SupportingTest', 'ReceiptSelectorV2DetachedRoomSupportingTest'))
+    targets = [(directory, names)]
+    financial_source = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"
+    if "HISTORICAL_SOURCE_CHECKPOINT_SELECTED" in financial_source.read_text():
+        targets.extend((
+            (run / "adapters/app-gateway/build/test-results/jvmTest", ('LegacyReturnCaseSourceNativeSupportingTest', 'LegacyExchangeNativeSupportingTest', 'LegacyPartialExchangeRefundNativeSupportingTest', 'LegacyIntakeExchangeRefundNativeSupportingTest', 'ExchangeRejectionNativeSupportingTest', 'LegacyWorkAncestorNativeSupportingTest')),
+            (run / "adapters/sales-store/build/test-results/jvmTest", ("LanJournalRpcSelectionSupportingTest",)),
+        ))
+    for directory, selected in targets:
+        for name in selected:
+            entries = list(directory.glob(f"TEST-*.{name}.xml"))
+            suites[name] = None
+            if len(entries) == 1:
+                suite = ET.parse(entries[0]).getroot()
+                suites[name] = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
     (published / "checkout-checkpoint-tests.json").write_text(json.dumps(suites, indent=2) + "\n")
     schema = run / "core/database/schemas/com.ukkera.pos.database.MasterRoomDatabase/8.json"
     if schema.is_file():
