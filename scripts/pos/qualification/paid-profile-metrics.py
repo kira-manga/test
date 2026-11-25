@@ -62,6 +62,7 @@ retained_read_sites = (
 )
 retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
+    + rb"(?: settled_producer_reused=([0-9]{1,19}))?"
     + rb"(?: nested_return_complete_producer=([0-9]{1,19}))?"
     + rb"(?: direct_group_reuse=([0-9]{1,19}))?"
     + rb"(?: direct_stock_closure_reuse=([0-9]{1,19}))?"
@@ -205,8 +206,10 @@ with output.open("x") as stream:
                         if events > 0:
                             sample(b"POS_LEGACY_NATIVE_PREFIX_REUSE", events=events)
                     elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
-                        *sites, nested, direct_group, direct_stock_closure = retained_sites.groups()
+                        *sites, settled, nested, direct_group, direct_stock_closure = retained_sites.groups()
                         counts = dict(zip(retained_read_sites, map(int, sites), strict=True))
+                        if settled is not None:
+                            counts["settled_producer_reused"] = int(settled)
                         if nested is not None:
                             counts["nested_return_complete_producer"] = int(nested)
                         if direct_group is not None:
