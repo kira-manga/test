@@ -41,6 +41,7 @@ if mode == "frozen":
         r"|POS_DISTINCT_RETURN_ORIGINALS comparable=[01] exact=[01] selected=\d+ roots=\d+"
         r"|POS_RETURN_CALLBACK_LIVE_READS points=\d+ ranges=\d+ originals=\d+ other=\d+ stock_points=\d+ stock_ranges=\d+ stock_sql=\d+"
         r"|POS_RETURN_CALLBACK_LITERAL_COVERAGE pairs=\d+ roots=\d+ fragments=\d+ unknown=\d+ selected=\d+ uncovered=\d+ inconsistent=[01]"
+        r"|POS_CHECKOUT_SQL family=(?:PAIR|ROOT|FRAGMENT|STOCK_INDEX|AGGREGATE|CLAIM|OTHER) calls=\d+ elapsed_ns=\d+ maximum_ns=\d+ body_ns=\d+ step_calls=\d+ step_ns=\d+ blob_ns=\d+ blob_bytes=\d+"
         r"|POS_RETURN_BATCHED_ROOT_READS deferred=\d+"
         r"|POS_PHYSICAL_START_EXTERNAL_WITNESS publications=[0-9]{1,2} unsupported_cash=[0-9]{1,3}"
         r"|POS_PHYSICAL_START_LEGACY_EFFECTS callbacks=[0-9]{1,4} native_changed=[0-9]{1,4} stock_changed=[0-9]{1,4} publication_changed=[0-9]{1,4}"
