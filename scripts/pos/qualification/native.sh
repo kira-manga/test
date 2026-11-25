@@ -205,8 +205,8 @@ GRADLE
   python3 "$here/results.py" checkout-checkpoint "$stage" "$source"
   return "$result"
 }
-if [[ "$POS_SUITE" == 'checkout-reopen' ]]; then
-  if [[ -f "$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt" ]]; then
+if [[ "$POS_SUITE" == 'checkout-reopen' || "$POS_SUITE" == 'checkout-reopen-diagnostic' ]]; then
+  if [[ "$POS_SUITE" == 'checkout-reopen' && -f "$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt" ]]; then
     run_checkpoint_checks
   fi
   mkdir -m700 "$stage/reopen-probe"
@@ -246,6 +246,9 @@ GRADLE
   fi
   if grep -q 'fun verifySettledLoginActor' core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt; then
     ledger_tests+=(--tests '*AuthenticationNativeHistorySupportingTest')
+  fi
+  if grep -q 'fun verifyCurrentFrameProtectedAuthRow' core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt; then
+    ledger_tests+=(--tests '*ExactActionApprovalNativeSupportingTest')
   fi
   result=0
   python3 "$here/watched.py" "$report" checkpoint-ledgers 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
