@@ -68,6 +68,9 @@ retained_optional_read_sites = (
     "settled_producer_reused", "nested_return_complete_producer", "direct_group_reuse",
     "direct_stock_closure_reuse", "settled_producer_reused_during_capture", "settled_sources_reused",
     "settled_producer_reused_during_trace",
+    "settled_verify_refused_trace", "settled_verify_refused_capture", "settled_verify_refused_nested",
+    "settled_verify_ineligible", "settled_verify_staged", "settled_verify_frame_full", "settled_verify_unstaged",
+    "direct_legacy_producer", "direct_nonstock_sources", "payment_traversal", "payment_node",
 )
 retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)

@@ -366,7 +366,7 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     python3 "$here/results.py" floor-batch-control "$stage" "$source"
   fi
   if [[ "$instruction_checks" == 1 ]]; then
-    python3 "$here/results.py" payment-regression "$stage" "$source"
+    python3 "$here/results.py" instruction-regression "$stage" "$source"
   fi
   test "$compile_result" = 0
   if [[ -f "$stage/verified-cryptography.init.gradle" ]]; then

@@ -210,19 +210,22 @@ elif mode == "opening-control":
     (published / "opening-control-tests.json").write_text(json.dumps(results, indent=2) + "\n")
     print(json.dumps(results))
     assert results == {"tests": 1, "failures": 0, "errors": 0, "skipped": 0}
-elif mode == "payment-regression":
+elif mode in {"payment-regression", "instruction-regression"}:
     verification = {}
-    for module in ("adapters/inventory-store", "adapters/sales-store", "core/database"):
+    modules = ("core/database",)
+    if mode == "payment-regression":
+        modules = ("adapters/inventory-store", "adapters/sales-store", *modules)
+    for module in modules:
         suite = run / module / "build/test-results/jvmTest"
         entries = [ET.parse(path).getroot() for path in suite.glob("TEST-*.xml")]
         verification[module] = {
             field: sum(int(elem.attrib.get(field, 0)) for elem in entries)
             for field in ("tests", "failures", "errors", "skipped")
         }
-    (published / "payment-regression.json").write_text(json.dumps(verification, indent=2) + "\n")
+    (published / (mode + ".json")).write_text(json.dumps(verification, indent=2) + "\n")
     print(json.dumps(verification))
     assert all(row["tests"] > 0 and not any(row[field] for field in ("failures", "errors", "skipped"))
-               for row in verification.values()), "Incomplete inventory, sales or native proof regression"
+               for row in verification.values()), "Incomplete regression: " + mode
 elif mode == "catalog-deposit-draft":
     verification = {}
     required = {
