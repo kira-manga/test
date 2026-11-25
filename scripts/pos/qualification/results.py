@@ -41,6 +41,10 @@ if mode == "frozen":
         r"|POS_DISTINCT_RETURN_ORIGINALS comparable=[01] exact=[01] selected=\d+ roots=\d+"
         r"|POS_RETURN_CALLBACK_LIVE_READS points=\d+ ranges=\d+ originals=\d+ other=\d+ stock_points=\d+ stock_ranges=\d+ stock_sql=\d+"
         r"|POS_RETURN_CALLBACK_LITERAL_COVERAGE pairs=\d+ roots=\d+ fragments=\d+ unknown=\d+ selected=\d+ uncovered=\d+ inconsistent=[01]"
+        r"|POS_CHECKOUT_WRITER start_ns=\d{1,19} elapsed_ns=\d{1,19} returned=[01] "
+        r"queue_ns=(?:-1|\d{1,19}) room_entry_ns=(?:-1|\d{1,19}) begin_frame_ns=(?:-1|\d{1,19}) "
+        r"sql_entry_ns=(?:-1|\d{1,19}) sql_body_ns=(?:-1|\d{1,19}) sql_return_ns=(?:-1|\d{1,19}) "
+        r"settle_frame_ns=(?:-1|\d{1,19}) receipt_membership_ns=(?:-1|\d{1,19}) room_return_ns=(?:-1|\d{1,19})"
         r"|POS_CHECKOUT_SQL family=(?:PAIR|ROOT|FRAGMENT|STOCK_INDEX|AGGREGATE|CLAIM|OTHER) calls=\d+ elapsed_ns=\d+ maximum_ns=\d+ body_ns=\d+ step_calls=\d+ step_ns=\d+ blob_ns=\d+ blob_bytes=\d+"
         r"|POS_RETURN_BATCHED_ROOT_READS deferred=\d+"
         r"|POS_PHYSICAL_START_EXTERNAL_WITNESS publications=[0-9]{1,2} unsupported_cash=[0-9]{1,3}"
@@ -215,6 +219,47 @@ elif mode == "payment-regression":
     print(json.dumps(verification))
     assert all(row["tests"] > 0 and not any(row[field] for field in ("failures", "errors", "skipped"))
                for row in verification.values()), "Incomplete inventory, sales or native proof regression"
+elif mode == "catalog-deposit-draft":
+    verification = {}
+    required = {
+        "adapters/app-gateway": {"DesktopDepositPublicationSupportingTest",
+                                 "DesktopMasterEmployeeConsoleNativeTest",
+                                 "DesktopMasterEmployeeDataTest",
+                                 "CatalogProductVersionFrozenMappingTest"},
+        "adapters/catalog-store": {"ContainerDepositPublicationTest"},
+        "ui/app": {"CompanySkuDepositEditorSupportingTest", "CatalogProductVersionFrozenEditorTest",
+                   "ReturnStructuredPromiseFrozenEditorSlicesTest"},
+    }
+    for module, expected in required.items():
+        directory = run / module / "build/test-results/jvmTest"
+        suites = {element.get("name", "").rsplit(".", 1)[-1]: element
+                  for element in (ET.parse(path).getroot() for path in directory.glob("TEST-*.xml"))}
+        fields = ("tests", "failures", "errors", "skipped")
+        verification[module] = {
+            "suites": {name: {field: int(suite.get(field, 0)) for field in fields}
+                       for name, suite in sorted(suites.items())},
+            "missing": sorted(expected - suites.keys()),
+        }
+        if module == "ui/app" and not any("CatalogUnitAuthoring" in name for name in suites):
+            verification[module]["missing"].append("CatalogUnitAuthoring")
+        if module == "adapters/app-gateway":
+            native = suites.get("DesktopMasterEmployeeConsoleNativeTest")
+            verification[module]["executed_original_retry"] = native is not None and any(
+                row.get("name", "").startswith("originalDepositPublicationRefusesSameIdentityWithAnyChangedTerm")
+                and not list(row) for row in native.findall("testcase"))
+    output = stage / "catalog-deposit-draft.raw"
+    raw = output.read_text(errors="replace") if output.exists() else ""
+    verification["compile"] = {name: bool(re.search(
+        rf"^> Task {re.escape(name)}(?: UP-TO-DATE| FROM-CACHE)?$", raw, re.M))
+        for name in (":apps:desktop:compileKotlin", ":apps:android:compileLocalTestingKotlin")}
+    (published / "catalog-deposit-draft.json").write_text(json.dumps(verification, indent=2) + "\n")
+    print(json.dumps(verification))
+    assert all(verification["compile"].values())
+    assert verification["adapters/app-gateway"]["executed_original_retry"]
+    assert all(not verification[module]["missing"] and verification[module]["suites"] and all(
+        row["tests"] and not any(row[field] for field in ("failures", "errors", "skipped"))
+        for row in verification[module]["suites"].values()) for module in required)
+
 else:
     suites = {
         "core:database": "CapturedMatchSourceDeferralNativeSupportingTest",

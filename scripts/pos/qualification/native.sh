@@ -260,6 +260,29 @@ EOFREGRESSION
   python3 "$here/results.py" payment-regression "$stage" "$source"
   exit "$result"
 fi
+
+if [[ "$POS_SUITE" == 'catalog-deposit-draft' ]]; then
+  result=0
+  checks=(:adapters:app-gateway:jvmTest
+    --tests '*DesktopDepositPublicationSupportingTest'
+    --tests '*DesktopMasterEmployeeConsoleNativeTest'
+    --tests '*DesktopMasterEmployeeDataTest'
+    --tests '*CatalogProductVersionFrozenMappingTest'
+    :adapters:catalog-store:jvmTest --tests '*ContainerDepositPublicationTest'
+    :ui:app:jvmTest --tests '*CatalogUnitAuthoring*Test'
+    --tests '*CatalogProductVersionFrozenEditorTest'
+    --tests '*ReturnStructuredPromiseFrozenEditorSlicesTest'
+    --tests '*CompanySkuDepositEditorSupportingTest'
+    :apps:desktop:compileKotlin :apps:android:compileLocalTestingKotlin)
+  python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh"     "${gradle[@]}" --continue "${checks[@]}" || result=$?
+  if [[ "$result" == 1 ]] && prepare_verified_plugin catalog-deposit-draft; then
+    result=0
+    python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh"       "${gradle[@]}" --continue -I "$stage/verified-cryptography.init.gradle" "${checks[@]}" || result=$?
+  fi
+  python3 "$here/results.py" catalog-deposit-draft "$stage" "$source"
+  exit "$result"
+fi
+
 count=1000
 if [[ "$POS_SUITE" == 'paid-prefix' ]]; then count=8; fi
 if [[ "$POS_SUITE" == 'paid-profile' ]]; then
