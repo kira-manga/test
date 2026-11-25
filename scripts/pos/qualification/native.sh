@@ -136,15 +136,8 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
-if [[ "$POS_SUITE" == 'checkout-reopen' ]]; then
-  mkdir -m700 "$stage/reopen-probe"
-  bash "$stage/inputs/runner/run-hosted-reopen-probe.sh" "$stage/inputs/runner" "$here" \
-    "$stage/reopen-probe" "$POS_CHECKOUT_PRIOR_SALES" 240 "${gradle[@]}" > "$report/reopen-checkout.json.tmp"
-  mv "$report/reopen-checkout.json.tmp" "$report/reopen-checkout.json"
-  exit 0
-fi
-if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
-  tests=(:core:database:jvmTest
+run_checkpoint_checks() {
+  local tests=(:core:database:jvmTest
     --tests '*RuntimeHistoryCheckpointSupportingTest'
     --tests '*OwnedRoomStartupNativeSupportingTest'
     --tests '*RuntimeStockProjectionChangesSupportingTest')
@@ -158,7 +151,7 @@ if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
   fi
   printf '%s\n' 'allprojects { tasks.withType(Test).configureEach { testLogging { exceptionFormat "full" } } }' > "$stage/checkout-checkpoint.init.gradle"
   tests=(-I "$stage/checkout-checkpoint.init.gradle" "${tests[@]}")
-  result=0
+  local result=0
   python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" "${tests[@]}" || result=$?
   if [[ "$result" == 1 ]] && prepare_verified_plugin checkout-checkpoint; then
     result=0
@@ -166,7 +159,21 @@ if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
       -I "$stage/verified-cryptography.init.gradle" "${tests[@]}" || result=$?
   fi
   python3 "$here/results.py" checkout-checkpoint "$stage" "$source"
-  exit "$result"
+  return "$result"
+}
+if [[ "$POS_SUITE" == 'checkout-reopen' ]]; then
+  if [[ -f "$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt" ]]; then
+    run_checkpoint_checks
+  fi
+  mkdir -m700 "$stage/reopen-probe"
+  bash "$stage/inputs/runner/run-hosted-reopen-probe.sh" "$stage/inputs/runner" "$here" \
+    "$stage/reopen-probe" "$POS_CHECKOUT_PRIOR_SALES" 240 "${gradle[@]}" > "$report/reopen-checkout.json.tmp"
+  mv "$report/reopen-checkout.json.tmp" "$report/reopen-checkout.json"
+  exit 0
+fi
+if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
+  run_checkpoint_checks
+  exit 0
 fi
 if [[ "$POS_SUITE" == 'retained-reader' ]]; then
   result=0
