@@ -232,7 +232,7 @@ elif mode == "catalog-deposit-draft":
     }
     for module, expected in required.items():
         directory = run / module / "build/test-results/jvmTest"
-        suites = {element.get("name", "").rsplit(".", 1)[-1]: element
+        suites = {element.get("name", "").rsplit(".", 1)[-1].removesuffix("[jvm]"): element
                   for element in (ET.parse(path).getroot() for path in directory.glob("TEST-*.xml"))}
         fields = ("tests", "failures", "errors", "skipped")
         verification[module] = {
@@ -246,7 +246,8 @@ elif mode == "catalog-deposit-draft":
             native = suites.get("DesktopMasterEmployeeConsoleNativeTest")
             verification[module]["executed_original_retry"] = native is not None and any(
                 row.get("name", "").startswith("originalDepositPublicationRefusesSameIdentityWithAnyChangedTerm")
-                and not list(row) for row in native.findall("testcase"))
+                and all(row.find(outcome) is None for outcome in ("failure", "error", "skipped"))
+                for row in native.findall("testcase"))
     output = stage / "catalog-deposit-draft.raw"
     raw = output.read_text(errors="replace") if output.exists() else ""
     verification["compile"] = {name: bool(re.search(

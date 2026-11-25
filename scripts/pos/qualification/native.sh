@@ -262,6 +262,18 @@ EOFREGRESSION
 fi
 
 if [[ "$POS_SUITE" == 'catalog-deposit-draft' ]]; then
+  test -f "$stage/inputs/CATALOG-FREEZE-TREE"
+  cp "$stage/inputs/CATALOG-FREEZE-TREE" "$report/"
+  cat > "$stage/catalog-draft-test-logging.init.gradle" <<'EOFTESTLOG'
+gradle.beforeProject { p ->
+    p.tasks.withType(Test).configureEach {
+        testLogging {
+            events 'failed'
+            exceptionFormat 'full'
+        }
+    }
+}
+EOFTESTLOG
   result=0
   checks=(:adapters:app-gateway:jvmTest
     --tests '*DesktopDepositPublicationSupportingTest'
@@ -274,10 +286,13 @@ if [[ "$POS_SUITE" == 'catalog-deposit-draft' ]]; then
     --tests '*ReturnStructuredPromiseFrozenEditorSlicesTest'
     --tests '*CompanySkuDepositEditorSupportingTest'
     :apps:desktop:compileKotlin :apps:android:compileLocalTestingKotlin)
-  python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh"     "${gradle[@]}" --continue "${checks[@]}" || result=$?
+  gradle+=(-I "$stage/catalog-draft-test-logging.init.gradle")
+  python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh" \
+    "${gradle[@]}" --continue "${checks[@]}" || result=$?
   if [[ "$result" == 1 ]] && prepare_verified_plugin catalog-deposit-draft; then
     result=0
-    python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh"       "${gradle[@]}" --continue -I "$stage/verified-cryptography.init.gradle" "${checks[@]}" || result=$?
+    python3 "$here/watched.py" "$report" catalog-deposit-draft 95 bash "$here/runner-owned-temp.sh" \
+      "${gradle[@]}" --continue -I "$stage/verified-cryptography.init.gradle" "${checks[@]}" || result=$?
   fi
   python3 "$here/results.py" catalog-deposit-draft "$stage" "$source"
   exit "$result"

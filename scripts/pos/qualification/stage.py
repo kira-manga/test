@@ -85,4 +85,11 @@ shutil.copytree(inputs / frozen, source / frozen)
 git("add", "--all", "--", frozen)
 if git("rev-parse", f"{git('write-tree')}:{frozen}") != require_sha((inputs / "FROZEN-TREE").read_text().strip(), 40):
     raise SystemExit("Frozen specification tree mismatches")
+catalog_tree = inputs / "CATALOG-FREEZE-TREE"
+if catalog_tree.is_file():
+    catalog = "qa/pos/freezes/catalog-unit-authoring-v1"
+    shutil.copytree(inputs / catalog, source / catalog)
+    git("add", "--all", "--", catalog)
+    if git("rev-parse", f"{git('write-tree')}:{catalog}") != require_sha(catalog_tree.read_text().strip(), 40):
+        raise SystemExit("Frozen catalog unit-authoring tree mismatches")
 print(f"POS_SOURCE_VERIFIED revision={expected_rev} tree={pos_tree}")
