@@ -150,11 +150,17 @@ run_checkpoint_checks() {
       tests+=(--tests '*ReceiptSelectorV2DetachedRoomSupportingTest')
     fi
   fi
+  if grep -q 'verifySettledProtectedAuthRow' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"; then
+    tests+=(--tests '*RoomCurrentLocalAuthorizationTest')
+    tests+=(--tests '*RoomCurrentLocalAuthorizationAtomicityTest')
+    tests+=(--tests '*RoomLocalAccessPrincipalVerifierTest')
+  fi
   stock_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStockStateTreeProjectionV1SupportingTest.kt"
   if [[ -f "$stock_test" ]]; then
     tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
   fi
   if grep -q 'HISTORICAL_SOURCE_CHECKPOINT_SELECTED' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"; then
+    local -x UKKERA_POS_LEGACY107=1
     tests+=(:adapters:app-gateway:jvmTest
       --tests '*LegacyReturnCaseSourceNativeSupportingTest'
       --tests '*LegacyExchangeNativeSupportingTest'

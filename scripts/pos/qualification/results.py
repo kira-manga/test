@@ -212,6 +212,9 @@ elif mode == "checkout-checkpoint":
     state_writer = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RuntimeHistoryStateWriter.kt"
     if state_writer.is_file() and "receiptSalePrefix" in state_writer.read_text():
         names.extend(('ReceiptMembershipDataV1SupportingTest', 'ReceiptSelectorV2SupportingTest', 'ReceiptSelectorV2DetachedRoomSupportingTest'))
+    frame = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"
+    if "verifySettledProtectedAuthRow" in frame.read_text():
+        names.extend(('RoomCurrentLocalAuthorizationTest', 'RoomCurrentLocalAuthorizationAtomicityTest', 'RoomLocalAccessPrincipalVerifierTest'))
     targets = [(directory, names)]
     financial_source = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"
     if "HISTORICAL_SOURCE_CHECKPOINT_SELECTED" in financial_source.read_text():
