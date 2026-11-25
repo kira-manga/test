@@ -161,7 +161,7 @@ run_checkpoint_checks() {
     tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
   fi
   if grep -q 'HISTORICAL_SOURCE_CHECKPOINT_SELECTED' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"; then
-    test_environment=(env UKKERA_POS_LEGACY107=1)
+    test_environment=(env UKKERA_POS_LEGACY107=1 UKKERA_POS_EXCHANGE_REFUSAL=1)
     tests+=(:adapters:app-gateway:jvmTest
       --tests '*LegacyReturnCaseSourceNativeSupportingTest'
       --tests '*LegacyExchangeNativeSupportingTest'
