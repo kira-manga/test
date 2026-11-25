@@ -38,6 +38,7 @@ if mode == "frozen":
         r"|POS_PHYSICAL_START_VERIFIED_RETURN_REUSED count=1"
         r"|POS_RETURN_TRIAL_ALTERED_PROOF kind=[123]"
         r"|POS_DISTINCT_SETTLED_RETURN_INPUTS root=[01] sources=[01] before=[01] after=[01] stock=[01]"
+        r"|POS_DISTINCT_RETURN_ORIGINALS comparable=[01] exact=[01] selected=\d+ roots=\d+"
         r"|POS_RETURN_CALLBACK_LIVE_READS points=\d+ ranges=\d+ originals=\d+ other=\d+ stock_points=\d+ stock_ranges=\d+ stock_sql=\d+"
         r"|POS_RETURN_CALLBACK_LITERAL_COVERAGE pairs=\d+ roots=\d+ fragments=\d+ unknown=\d+ selected=\d+ uncovered=\d+ inconsistent=[01]"
         r"|POS_RETURN_BATCHED_ROOT_READS deferred=\d+"
