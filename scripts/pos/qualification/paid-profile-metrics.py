@@ -29,7 +29,7 @@ payment_owner_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
     rb"(PHYSICAL_(?:START_(?:AUTHENTICATION|PREFLIGHT|PREPARATION|NATIVE_ACQUIRE|COMMIT|RECHECK|PERSIST|RELEASE)"
     rb"|INSTRUCTION_(?:AUTHENTICATION|NATIVE_PREPARE|AUTHORIZATION|RETAINED_READ|DOMAIN_PREPARE|RELEASE))"
-    rb"_(?:ENTERED|RETURNED))"
+    rb"_(?:ENTERED|RETURNED)|CHECKOUT_STOCK_VERIFIED)"
 )
 physical_dependencies = re.compile(
     rb"POS_PHYSICAL_READ_DEPENDENCIES complete=(true|false) total=([0-9]{1,4}) "
