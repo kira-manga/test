@@ -215,6 +215,28 @@ if [[ "$POS_SUITE" == 'checkout-reopen' ]]; then
   mv "$report/reopen-checkout.json.tmp" "$report/reopen-checkout.json"
   exit 0
 fi
+if [[ "$POS_SUITE" == 'checkpoint-ledgers' ]]; then
+  cat > "$stage/checkpoint-ledgers.init.gradle" <<'GRADLE'
+allprojects {
+    tasks.withType(Test).configureEach {
+        testLogging {
+            exceptionFormat "full"
+            events "started", "passed", "failed", "skipped"
+            showStandardStreams = true
+        }
+    }
+}
+GRADLE
+  result=0
+  python3 "$here/watched.py" "$report" checkpoint-ledgers 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+    -I "$stage/checkpoint-ledgers.init.gradle" :core:database:jvmTest \
+    --tests '*RuntimeCheckpointLedgerSelectionNativeSupportingTest' \
+    --tests '*OwnedRoomStartupNativeSupportingTest' \
+    --tests '*OriginalDeviceAdmissionNativeSupportingTest' \
+    --tests '*RuntimeHistoryColdDataSupportingTest' || result=$?
+  python3 "$here/results.py" checkpoint-ledgers "$stage" "$source"
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
   run_checkpoint_checks
   exit 0

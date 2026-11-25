@@ -198,6 +198,22 @@ elif mode == "retained-reader":
     print(json.dumps(suites))
     assert all(row and row["tests"] and not any(row[field] for field in ("failures", "errors", "skipped"))
                for row in suites.values())
+elif mode == "checkpoint-ledgers":
+    directory = run / "core/database/build/test-results/jvmTest"
+    names = ("RuntimeCheckpointLedgerSelectionNativeSupportingTest", "OwnedRoomStartupNativeSupportingTest",
+             "OriginalDeviceAdmissionNativeSupportingTest", "RuntimeHistoryColdDataSupportingTest")
+    suites = {}
+    for name in names:
+        matches = list(directory.glob(f"TEST-*.{name}.xml"))
+        suites[name] = None
+        if len(matches) == 1:
+            suite = ET.parse(matches[0]).getroot()
+            suites[name] = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
+    (published / "checkpoint-ledgers-tests.json").write_text(json.dumps(suites, indent=2) + "\n")
+    print(json.dumps(suites))
+    assert all(row and row["tests"] > 0 and not any(row[field] for field in ("failures", "errors", "skipped"))
+               for row in suites.values())
+    assert suites[names[0]]["tests"] == 4
 elif mode == "checkout-checkpoint":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}

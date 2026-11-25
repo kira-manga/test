@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, checkout-reopen, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, checkout-reopen, checkpoint-ledgers, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
