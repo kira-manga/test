@@ -101,6 +101,24 @@ typed_return_ancestors = re.compile(
     rb"streamed_ns=([0-9]{1,14}) legacy_ns=([0-9]{1,14})"
 )
 legacy_native_prefix = re.compile(rb"POS_LEGACY_NATIVE_PREFIX_REUSE events=([0-9]{1,12})")
+producer_shadow_fields = (
+    "nodes", "eligible", "graphs_staged", "graphs_discarded", "batch_discarded", "match", "match_ineligible",
+    "miss", "decline_subject", "decline_reads", "decline_deps", "decline_charge", "typed_ns", "typed_ns_matched",
+    "probe_nodes", "probe_pairs", "probe_fragments", "probe_stream_bytes", "probe_calls", "probe_bytes", "stage_capacity",
+    "taint_non_reader_sql", "taint_view_read", "taint_estate", "taint_native_provenance",
+    "taint_conflicting_read", "taint_composition", "taint_dependency", "taint_nested", "taint_capacity",
+    "probe_none", "probe_miss", "probe_subject", "probe_incomplete", "probe_budget", "probe_ineligible", "probe_would_skip",
+)
+producer_settled_fields = ("settlements", "declined", "promoted", "entries", "bytes", "evicted")
+producer_patterns = tuple(
+    (name, fields, re.compile(name.encode("ascii") + b"".join(
+        b" " + field.encode("ascii") + rb"=([0-9]{1,19})" for field in fields
+    )))
+    for name, fields in (
+        ("POS_PRODUCER_SHADOW", producer_shadow_fields),
+        ("POS_PRODUCER_SHADOW_SETTLED", producer_settled_fields),
+    )
+)
 clock_ticks = os.sysconf("SC_CLK_TCK")
 page_bytes = os.sysconf("SC_PAGE_SIZE")
 start = time.monotonic()
@@ -145,6 +163,13 @@ with output.open("x") as stream:
                     offset = log.tell()
                     if event.fullmatch(line.rstrip()):
                         sample(line.rstrip())
+                    elif line.startswith(b"POS_PRODUCER_SHADOW"):
+                        for name, fields, pattern in producer_patterns:
+                            if match := pattern.fullmatch(line.rstrip()):
+                                report = {"event": name, "observer_seconds": round(time.monotonic() - start, 3)}
+                                report.update(zip(fields, map(int, match.groups()), strict=True))
+                                print(json.dumps(report, sort_keys=True), file=stream, flush=True)
+                                break
                     elif cold := cold_history_stage.fullmatch(line.rstrip()):
                         sample(cold[1])
                     elif cold_pass := parse_cold_history_pass(line.rstrip()):
