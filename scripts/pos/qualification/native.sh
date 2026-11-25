@@ -148,6 +148,10 @@ if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
     --tests '*RuntimeHistoryCheckpointSupportingTest'
     --tests '*OwnedRoomStartupNativeSupportingTest'
     --tests '*RuntimeStockProjectionChangesSupportingTest')
+  tree_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt"
+  if [[ -f "$tree_test" ]]; then
+    tests+=(--tests '*RuntimeStateTreeV1SupportingTest' --tests '*LanBusinessTransactionIntegrationTest')
+  fi
   result=0
   python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" "${tests[@]}" || result=$?
   if [[ "$result" == 1 ]] && prepare_verified_plugin checkout-checkpoint; then

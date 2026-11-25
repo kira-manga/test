@@ -201,8 +201,12 @@ elif mode == "retained-reader":
 elif mode == "checkout-checkpoint":
     directory = run / "core/database/build/test-results/jvmTest"
     suites = {}
-    for name in ("RuntimeHistoryCheckpointSupportingTest", "OwnedRoomStartupNativeSupportingTest",
-                 "RuntimeStockProjectionChangesSupportingTest"):
+    names = ["RuntimeHistoryCheckpointSupportingTest", "OwnedRoomStartupNativeSupportingTest",
+             "RuntimeStockProjectionChangesSupportingTest"]
+    tree_test = run / "core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt"
+    if tree_test.is_file():
+        names.extend(("RuntimeStateTreeV1SupportingTest", "LanBusinessTransactionIntegrationTest"))
+    for name in names:
         entries = list(directory.glob(f"TEST-*.{name}.xml"))
         suites[name] = None
         if len(entries) == 1:
