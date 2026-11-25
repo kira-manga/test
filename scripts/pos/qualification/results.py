@@ -202,6 +202,10 @@ elif mode == "checkpoint-ledgers":
     directory = run / "core/database/build/test-results/jvmTest"
     names = ("RuntimeCheckpointLedgerSelectionNativeSupportingTest", "OwnedRoomStartupNativeSupportingTest",
              "OriginalDeviceAdmissionNativeSupportingTest", "RuntimeHistoryColdDataSupportingTest")
+    native_receipts = run / "core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeRetailCustomerReceiptCheckpointNativeSupportingTest.kt"
+    if native_receipts.is_file():
+        names += ("RuntimeRetailCustomerReceiptCheckpointCrosswalkSupportingTest",
+                  "RuntimeRetailCustomerReceiptCheckpointNativeSupportingTest", "RuntimeHistoryCheckpointSupportingTest")
     suites = {}
     for name in names:
         matches = list(directory.glob(f"TEST-*.{name}.xml"))

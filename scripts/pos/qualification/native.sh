@@ -227,13 +227,20 @@ allprojects {
     }
 }
 GRADLE
+  ledger_tests=(
+    --tests '*RuntimeCheckpointLedgerSelectionNativeSupportingTest'
+    --tests '*OwnedRoomStartupNativeSupportingTest'
+    --tests '*OriginalDeviceAdmissionNativeSupportingTest'
+    --tests '*RuntimeHistoryColdDataSupportingTest'
+  )
+  if [[ -f core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeRetailCustomerReceiptCheckpointNativeSupportingTest.kt ]]; then
+    ledger_tests+=(--tests '*RuntimeRetailCustomerReceiptCheckpointCrosswalkSupportingTest'
+      --tests '*RuntimeRetailCustomerReceiptCheckpointNativeSupportingTest'
+      --tests '*RuntimeHistoryCheckpointSupportingTest')
+  fi
   result=0
   python3 "$here/watched.py" "$report" checkpoint-ledgers 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
-    -I "$stage/checkpoint-ledgers.init.gradle" :core:database:jvmTest \
-    --tests '*RuntimeCheckpointLedgerSelectionNativeSupportingTest' \
-    --tests '*OwnedRoomStartupNativeSupportingTest' \
-    --tests '*OriginalDeviceAdmissionNativeSupportingTest' \
-    --tests '*RuntimeHistoryColdDataSupportingTest' || result=$?
+    -I "$stage/checkpoint-ledgers.init.gradle" :core:database:jvmTest "${ledger_tests[@]}" || result=$?
   python3 "$here/results.py" checkpoint-ledgers "$stage" "$source"
   exit "$result"
 fi
