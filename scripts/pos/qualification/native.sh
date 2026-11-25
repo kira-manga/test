@@ -244,6 +244,9 @@ GRADLE
   if [[ -f core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeSettledCheckpointBoundaryNativeSupportingTest.kt ]]; then
     ledger_tests+=(--tests '*RuntimeSettledCheckpointBoundaryNativeSupportingTest')
   fi
+  if grep -q 'fun verifySettledLoginActor' core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt; then
+    ledger_tests+=(--tests '*AuthenticationNativeHistorySupportingTest')
+  fi
   result=0
   python3 "$here/watched.py" "$report" checkpoint-ledgers 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
     -I "$stage/checkpoint-ledgers.init.gradle" :core:database:jvmTest "${ledger_tests[@]}" || result=$?

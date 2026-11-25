@@ -210,6 +210,9 @@ elif mode == "checkpoint-ledgers":
         names += ("RuntimeRetainedOriginalCheckpointNativeSupportingTest",)
     if native_receipts.with_name("RuntimeSettledCheckpointBoundaryNativeSupportingTest.kt").is_file():
         names += ("RuntimeSettledCheckpointBoundaryNativeSupportingTest",)
+    auth_frame = source / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"
+    if "fun verifySettledLoginActor" in auth_frame.read_text():
+        names += ("AuthenticationNativeHistorySupportingTest",)
     suites = {}
     for name in names:
         matches = list(directory.glob(f"TEST-*.{name}.xml"))
