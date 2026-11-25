@@ -34,7 +34,11 @@ payment_owner_stage = re.compile(
 physical_dependencies = re.compile(
     rb"POS_PHYSICAL_READ_DEPENDENCIES complete=(true|false) total=([0-9]{1,4}) "
     rb"retained=([0-9]{1,4}) aggregates=([0-9]{1,3}) ranges=([0-9]{1,3}) "
-    rb"claims=([0-9]{1,3}) resources=([0-9]{1,3})"
+    rb"claims=([0-9]{1,3}) resources=([0-9]{1,3})(?: present_retained=([0-9]{1,19}))?"
+)
+trace_effects_event = re.compile(
+    rb"POS_TRACE_EFFECTS mode=(ordinary|capture|trace) command=([A-Za-z0-9_.-]{1,100}\.v[0-9]{1,10}) "
+    rb"nodes=([0-9]{1,19}) effectful=([0-9]{1,19}) attempts=([0-9]{1,19}) pruned_edges=([0-9]{1,19})"
 )
 payment_preparation = re.compile(
     rb"POS_PAID_PREPARATION (COLLECTION_ENTERED|COLLECTION_RETURNED|STOCK_ENTERED|STOCK_RETURNED|"
@@ -219,6 +223,14 @@ with output.open("x") as stream:
                             if value is not None
                         }
                         sample(b"POS_RETAINED_SITES", **counts)
+                    elif effects := trace_effects_event.fullmatch(line.rstrip()):
+                        nodes, effectful, attempts, pruned_edges = map(int, effects.groups()[2:])
+                        if effectful <= nodes and attempts >= effectful:
+                            sample(b"POS_TRACE_EFFECTS", mode=effects[1].decode("ascii"),
+                                   command=effects[2].decode("ascii"), nodes=nodes, effectful=effectful,
+                                   attempts=attempts, pruned_edges=pruned_edges)
+                    elif line.rstrip() == b"POS_TRACE_EFFECTS capped=true":
+                        sample(b"POS_TRACE_EFFECTS", capped=True)
                     elif formats := retained_formats_event.fullmatch(line.rstrip()):
                         legacy, streamed, absent = map(int, formats.groups())
                         sample(b"POS_RETAINED_FORMATS", legacy=legacy, streamed=streamed, absent=absent)
@@ -248,13 +260,15 @@ with output.open("x") as stream:
                                   "observer_seconds": round(time.monotonic() - start, 3)}
                         print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif dependencies := physical_dependencies.fullmatch(line.rstrip()):
-                        total, *counts = map(int, dependencies.groups()[1:])
+                        total, *counts = map(int, dependencies.groups()[1:7])
                         if total == sum(counts) and counts[0] <= 8192 and sum(counts[1:]) <= 512:
                             record = {"event": "POS_PHYSICAL_READ_DEPENDENCIES",
                                       "observer_seconds": round(time.monotonic() - start, 3),
                                       "complete": dependencies[1] == b"true", "total": total}
                             record.update(zip(("retained", "aggregates", "ranges", "claims", "resources"), counts,
                                               strict=True))
+                            if dependencies[8] is not None:
+                                record["present_retained_lookups"] = int(dependencies[8])
                             print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif preparation := payment_preparation.fullmatch(line.rstrip()):
                         record = {"event": "POS_PAID_PREPARATION " + preparation[1].decode(),

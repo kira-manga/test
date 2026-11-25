@@ -42,6 +42,10 @@ on:
         description: Sample selected phases of a supporting paid profile with external CPU timers
         type: boolean
         default: false
+      paid_instruction_checks:
+        description: Run focused instruction JVM regressions in the profiled build
+        type: boolean
+        default: false
       check_floor_batch:
         description: Check the native floor batch before a paid profile or the full workspace during cold-pass-control
         type: boolean
@@ -266,6 +270,7 @@ jobs:
           POS_SUITE: ${{ matrix.suite }}
           POS_PAID_PROFILE_COUNT: ${{ inputs.paid_profile_count }}
           POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
+          POS_PAID_INSTRUCTION_CHECKS: ${{ inputs.paid_instruction_checks && '1' || '0' }}
           POS_CHECK_FLOOR_BATCH: ${{ inputs.check_floor_batch && '1' || '0' }}
           EXPECTED_COMPARISON: ${{ inputs.compare_revision }}
           SAME_PREFIX_COMPARISON: ${{ inputs.suite == 'paid-restart-candidate' && '1' || '0' }}

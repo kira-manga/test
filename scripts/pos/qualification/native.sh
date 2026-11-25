@@ -337,20 +337,34 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     exit 2
   fi
   compile_tasks=(:core:database:jvmTestClasses)
+  instruction_checks=0
+  profile_compile_prefix=()
+  if [[ "${POS_PAID_INSTRUCTION_CHECKS:-0}" == 1 &&
+        ( -z "${EXPECTED_COMPARISON:-}" || "$GITHUB_RUN_ATTEMPT" == *-comparison ) ]]; then
+    instruction_checks=1
+    compile_tasks+=(:core:database:jvmTest
+      --tests '*PhysicalInstructionDependenciesSupportingTest'
+      --tests '*StockRetainedAuthorizationNativeSupportingTest'
+      --tests '*LanBusinessTransactionIntegrationTest')
+    profile_compile_prefix=(env POS_HISTORY_PROFILE=0 bash "$here/runner-owned-temp.sh")
+  fi
   compile_result=0
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
     compile_tasks+=(:core:database:jvmTest --tests '*NativeColdHistoryWorkspaceSupportingTest.nativeKeyFloorBatchPreservesExactOrderAndStrictCut*')
   fi
-  python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
+  python3 "$here/watched.py" "$report" profile-compile 15 "${profile_compile_prefix[@]}" "${gradle[@]}" \
     -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" "${compile_tasks[@]}" || compile_result=$?
   if [[ "$compile_result" == 1 ]] && prepare_verified_plugin profile-compile; then
     compile_result=0
-    python3 "$here/watched.py" "$report" profile-compile 15 "${gradle[@]}" \
+    python3 "$here/watched.py" "$report" profile-compile 15 "${profile_compile_prefix[@]}" "${gradle[@]}" \
       -I "$stage/verified-cryptography.init.gradle" -I "$UKKERA_CHB_RUNNER/paid-rung.init.gradle" \
       "${compile_tasks[@]}" || compile_result=$?
   fi
   if [[ "${POS_CHECK_FLOOR_BATCH:-0}" == 1 ]]; then
     python3 "$here/results.py" floor-batch-control "$stage" "$source"
+  fi
+  if [[ "$instruction_checks" == 1 ]]; then
+    python3 "$here/results.py" payment-regression "$stage" "$source"
   fi
   test "$compile_result" = 0
   if [[ -f "$stage/verified-cryptography.init.gradle" ]]; then
