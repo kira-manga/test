@@ -208,6 +208,8 @@ elif mode == "checkpoint-ledgers":
                   "RuntimeRetailCustomerReceiptCheckpointNativeSupportingTest", "RuntimeHistoryCheckpointSupportingTest")
     if native_receipts.with_name("RuntimeRetainedOriginalCheckpointNativeSupportingTest.kt").is_file():
         names += ("RuntimeRetainedOriginalCheckpointNativeSupportingTest",)
+    if native_receipts.with_name("RuntimeSettledCheckpointBoundaryNativeSupportingTest.kt").is_file():
+        names += ("RuntimeSettledCheckpointBoundaryNativeSupportingTest",)
     suites = {}
     for name in names:
         matches = list(directory.glob(f"TEST-*.{name}.xml"))
