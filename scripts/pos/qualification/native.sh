@@ -137,6 +137,7 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   exit "$result"
 fi
 run_checkpoint_checks() {
+  local -a test_environment=()
   local tests=(:core:database:jvmTest
     --tests '*RuntimeHistoryCheckpointSupportingTest'
     --tests '*OwnedRoomStartupNativeSupportingTest'
@@ -160,7 +161,7 @@ run_checkpoint_checks() {
     tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
   fi
   if grep -q 'HISTORICAL_SOURCE_CHECKPOINT_SELECTED' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"; then
-    local -x UKKERA_POS_LEGACY107=1
+    test_environment=(env UKKERA_POS_LEGACY107=1)
     tests+=(:adapters:app-gateway:jvmTest
       --tests '*LegacyReturnCaseSourceNativeSupportingTest'
       --tests '*LegacyExchangeNativeSupportingTest'
@@ -173,10 +174,10 @@ run_checkpoint_checks() {
   printf '%s\n' 'allprojects { tasks.withType(Test).configureEach { testLogging { exceptionFormat "full" } } }' > "$stage/checkout-checkpoint.init.gradle"
   tests=(-I "$stage/checkout-checkpoint.init.gradle" "${tests[@]}")
   local result=0
-  python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" "${tests[@]}" || result=$?
+  python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${test_environment[@]}" "${gradle[@]}" "${tests[@]}" || result=$?
   if [[ "$result" == 1 ]] && prepare_verified_plugin checkout-checkpoint; then
     result=0
-    python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+    python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${test_environment[@]}" "${gradle[@]}" \
       -I "$stage/verified-cryptography.init.gradle" "${tests[@]}" || result=$?
   fi
   python3 "$here/results.py" checkout-checkpoint "$stage" "$source"
