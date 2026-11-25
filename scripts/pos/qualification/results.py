@@ -209,6 +209,11 @@ elif mode == "checkout-checkpoint":
             suite = ET.parse(entries[0]).getroot()
             suites[name] = {field: int(suite.attrib[field]) for field in ("tests", "failures", "errors", "skipped")}
     (published / "checkout-checkpoint-tests.json").write_text(json.dumps(suites, indent=2) + "\n")
+    schema = run / "core/database/schemas/com.ukkera.pos.database.MasterRoomDatabase/8.json"
+    if schema.is_file():
+        raw = schema.read_bytes()
+        assert len(raw) < 1024 * 1024 and json.loads(raw)["database"]["version"] == 8
+        (published / "owned-room-schema-8.json").write_bytes(raw)
     print(json.dumps(suites))
     assert all(row and row["tests"] > 0 and not any(row[field] for field in ("failures", "errors", "skipped"))
                for row in suites.values())
