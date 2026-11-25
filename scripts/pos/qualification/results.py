@@ -215,6 +215,10 @@ elif mode == "checkout-checkpoint":
     frame = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomRuntimeHistoryFrame.kt"
     if "verifySettledProtectedAuthRow" in frame.read_text():
         names.extend(('RoomCurrentLocalAuthorizationTest', 'RoomCurrentLocalAuthorizationAtomicityTest', 'RoomLocalAccessPrincipalVerifierTest'))
+    stock_access = frame.with_name("StockRelationalProjectionV2.kt")
+    if "bindPreparationCheckpoint" in stock_access.read_text():
+        names.extend(("PhysicalInstructionDependenciesSupportingTest",
+                      "StockRetainedAuthorizationNativeSupportingTest", "CheckoutProducerIntegrationTest"))
     targets = [(directory, names)]
     financial_source = run / "core/database/src/commonMain/kotlin/com/ukkera/pos/database/RoomFoodCheckRejectedOriginalSources.kt"
     if "HISTORICAL_SOURCE_CHECKPOINT_SELECTED" in financial_source.read_text():

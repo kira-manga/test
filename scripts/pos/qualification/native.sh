@@ -156,6 +156,11 @@ run_checkpoint_checks() {
     tests+=(--tests '*RoomCurrentLocalAuthorizationAtomicityTest')
     tests+=(--tests '*RoomLocalAccessPrincipalVerifierTest')
   fi
+  if grep -q 'bindPreparationCheckpoint' "$source/core/database/src/commonMain/kotlin/com/ukkera/pos/database/StockRelationalProjectionV2.kt"; then
+    tests+=(--tests '*PhysicalInstructionDependenciesSupportingTest'
+      --tests '*StockRetainedAuthorizationNativeSupportingTest'
+      --tests '*CheckoutProducerIntegrationTest')
+  fi
   stock_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStockStateTreeProjectionV1SupportingTest.kt"
   if [[ -f "$stock_test" ]]; then
     tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
