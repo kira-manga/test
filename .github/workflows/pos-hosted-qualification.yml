@@ -182,6 +182,23 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(raw),mode="r:xz") as source:
               source.extractall(workspace,filter="data")
           PYREGRESSION
+      - name: Identify public POS build dependencies
+        id: pos-dependency-inputs
+        run: |
+          cd "$RUNNER_TEMP/pos-qualification/source/apps/pos"
+          fingerprint="$(sha256sum gradle/wrapper/gradle-wrapper.properties gradle/libs.versions.toml settings.gradle.kts | sha256sum)"
+          printf 'fingerprint=%s\n' "${fingerprint%% *}" >> "$GITHUB_OUTPUT"
+      - name: Restore public Gradle dependencies
+        id: pos-public-gradle
+        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |
+            ~/.gradle/wrapper/dists
+            ~/.gradle/caches/modules-2/files-2.1
+            ~/.gradle/caches/modules-2/metadata-2.*
+          key: pos-public-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-temurin21-${{ steps.pos-dependency-inputs.outputs.fingerprint }}-${{ matrix.suite }}
+          restore-keys: |
+            pos-public-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-temurin21-${{ steps.pos-dependency-inputs.outputs.fingerprint }}-
       - name: Prepare Android compile SDK for JVM Gradle configuration
         run: |
           set -euo pipefail
@@ -284,6 +301,15 @@ jobs:
           fi
           if (( baseline != 0 )); then exit "$baseline"; fi
           exit "$candidate"
+      - name: Save public Gradle dependencies
+        if: success() && steps.pos-public-gradle.outputs.cache-hit != 'true'
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
+        with:
+          path: |
+            ~/.gradle/wrapper/dists
+            ~/.gradle/caches/modules-2/files-2.1
+            ~/.gradle/caches/modules-2/metadata-2.*
+          key: ${{ steps.pos-public-gradle.outputs.cache-primary-key }}
       - name: Prepare the disposable Android guest
         if: matrix.suite == 'installed-cashier' || matrix.suite == 'installed-cashier-paid' || matrix.suite == 'installed-cashier-paid-control'
         run: sudo chmod 666 /dev/kvm
