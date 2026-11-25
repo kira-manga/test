@@ -60,12 +60,17 @@ retained_read_sites = (
     "replay_installed", "replay_released", "replay_evicted", "replay_unavailable_scan",
     "replay_size_refused", "replay_budget_refused", "commerce_key_scan",
 )
+retained_optional_read_sites = (
+    "settled_producer_reused", "nested_return_complete_producer", "direct_group_reuse",
+    "direct_stock_closure_reuse", "settled_producer_reused_during_capture", "settled_sources_reused",
+    "settled_producer_reused_during_trace",
+)
 retained_sites_event = re.compile(
     b"POS_RETAINED_SITES " + b" ".join(site.encode("ascii") + rb"=([0-9]{1,19})" for site in retained_read_sites)
-    + rb"(?: settled_producer_reused=([0-9]{1,19}))?"
-    + rb"(?: nested_return_complete_producer=([0-9]{1,19}))?"
-    + rb"(?: direct_group_reuse=([0-9]{1,19}))?"
-    + rb"(?: direct_stock_closure_reuse=([0-9]{1,19}))?"
+    + b"".join(rb"(?: " + site.encode("ascii") + rb"=([0-9]{1,19}))?" for site in retained_optional_read_sites)
+)
+retained_formats_event = re.compile(
+    rb"POS_RETAINED_FORMATS legacy=([0-9]{1,19}) streamed=([0-9]{1,19}) absent=([0-9]{1,19})"
 )
 retained_proof_phases = ("posting_frame", "stock_transitions", "installed_producer", "final_literal", "direct_sources")
 retained_proof_detailed_phases = retained_proof_phases + (
@@ -205,18 +210,18 @@ with output.open("x") as stream:
                         events = int(prefix[1])
                         if events > 0:
                             sample(b"POS_LEGACY_NATIVE_PREFIX_REUSE", events=events)
-                    elif retained_sites := retained_sites_event.fullmatch(line.rstrip()):
-                        *sites, settled, nested, direct_group, direct_stock_closure = retained_sites.groups()
-                        counts = dict(zip(retained_read_sites, map(int, sites), strict=True))
-                        if settled is not None:
-                            counts["settled_producer_reused"] = int(settled)
-                        if nested is not None:
-                            counts["nested_return_complete_producer"] = int(nested)
-                        if direct_group is not None:
-                            counts["direct_group_reuse"] = int(direct_group)
-                        if direct_stock_closure is not None:
-                            counts["direct_stock_closure_reuse"] = int(direct_stock_closure)
+                    elif site := retained_sites_event.fullmatch(line.rstrip()):
+                        counts = {
+                            name: int(value)
+                            for name, value in zip(
+                                retained_read_sites + retained_optional_read_sites, site.groups(), strict=True
+                            )
+                            if value is not None
+                        }
                         sample(b"POS_RETAINED_SITES", **counts)
+                    elif formats := retained_formats_event.fullmatch(line.rstrip()):
+                        legacy, streamed, absent = map(int, formats.groups())
+                        sample(b"POS_RETAINED_FORMATS", legacy=legacy, streamed=streamed, absent=absent)
                     elif io := sampled_io.fullmatch(line.rstrip()):
                         tick, calls, size, *buckets = map(int, io.groups()[1:])
                         sample(b"POS_SYNTHETIC_COLD_IO", native_phase=io[1].decode(), monotonic_ns=tick,
