@@ -226,6 +226,9 @@ elif mode == "checkout-checkpoint":
             (run / "adapters/app-gateway/build/test-results/jvmTest", ('LegacyReturnCaseSourceNativeSupportingTest', 'LegacyExchangeNativeSupportingTest', 'LegacyPartialExchangeRefundNativeSupportingTest', 'LegacyIntakeExchangeRefundNativeSupportingTest', 'ExchangeRejectionNativeSupportingTest', 'LegacyWorkAncestorNativeSupportingTest')),
             (run / "adapters/sales-store/build/test-results/jvmTest", ("LanJournalRpcSelectionSupportingTest",)),
         ))
+    trust_test = run / "core/security/src/commonTest/kotlin/com/ukkera/pos/security/NativeCompanyPublicationTrustFactsSupportingTest.kt"
+    if trust_test.is_file():
+        targets.append((run / "core/security/build/test-results/jvmTest", ("NativeCompanyPublicationTrustFactsSupportingTest",)))
     for directory, selected in targets:
         for name in selected:
             entries = list(directory.glob(f"TEST-*.{name}.xml"))

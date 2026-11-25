@@ -176,6 +176,9 @@ run_checkpoint_checks() {
       --tests '*LegacyWorkAncestorNativeSupportingTest'
       :adapters:sales-store:jvmTest --tests '*LanJournalRpcSelectionSupportingTest')
   fi
+  if [[ -f "$source/core/security/src/commonTest/kotlin/com/ukkera/pos/security/NativeCompanyPublicationTrustFactsSupportingTest.kt" ]]; then
+    tests+=(:core:security:jvmTest --tests '*NativeCompanyPublicationTrustFactsSupportingTest')
+  fi
   cat > "$stage/checkout-checkpoint.init.gradle" <<'GRADLE'
 allprojects {
     tasks.withType(Test).configureEach {
