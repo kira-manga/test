@@ -345,6 +345,7 @@ if [[ "$POS_SUITE" == 'paid-profile' ]]; then
     compile_tasks+=(:core:database:jvmTest
       --tests '*PhysicalInstructionDependenciesSupportingTest'
       --tests '*StockRetainedAuthorizationNativeSupportingTest'
+      --tests '*RuntimeStockProjectionChangesSupportingTest'
       --tests '*LanBusinessTransactionIntegrationTest')
     profile_compile_prefix=(bash "$here/runner-owned-temp.sh" env POS_HISTORY_PROFILE=0
       "UKKERA_CHB_RUNNER=$UKKERA_CHB_RUNNER" "UKKERA_CHB_ATTEMPT=$UKKERA_CHB_ATTEMPT"
