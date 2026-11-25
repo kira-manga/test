@@ -21,6 +21,10 @@ def numeric_line(prefix, fields):
 
 timed = numeric_line("POS_INSTALLED_CASHIER covered_sale_records=1" if scope == "covered" else
                      "POS_INSTALLED_PAID paid_sale_records=1", ranges)
+receipt_required = (stage / "inputs" / "INSTALLED-RECEIPT-PROFILE").is_file()
+receipt_fields = ("finalize_ack_ns", "receipt_submit_ns", "receipt_readback_ns", "checkout_to_receipt_ns")
+receipt_timing = numeric_line("POS_INSTALLED_RECEIPT originals=1", receipt_fields)
+receipt_samples = []
 boundary_fields = {name: (f"{name}_gateway_ns", f"{name}_state_ns")
                    for name in ("start", "recover", "apply", "finalize")}
 boundary_fields["preview"] = ("preview_pending_ns", "preview_gateway_ns", "preview_state_ns")
@@ -48,9 +52,12 @@ timings = []
 raw_boundaries = {name: [] for name in boundary_fields}
 for line in (stage / "installed-cashier-device.log").read_text(errors="replace").splitlines():
     if "POSCashierLatency: " in line:
-        match = timed.fullmatch(line.split("POSCashierLatency: ", 1)[1])
+        sample = line.split("POSCashierLatency: ", 1)[1]
+        match = timed.fullmatch(sample)
         if match:
             timings.append(tuple(map(int, match.groups())))
+        if receipt_required and (match := receipt_timing.fullmatch(sample)):
+            receipt_samples.append(tuple(map(int, match.groups())))
     if scope == "paid" and ": POS_CHECKOUT_BOUNDARY " in line:
         event = line.split(": POS_CHECKOUT_BOUNDARY ", 1)[1]
         for name, pattern in boundary_patterns:
@@ -137,6 +144,11 @@ elif success:
                    all(0 < values[0] <= values[1] for name in ("start", "recover", "apply", "finalize")
                        for values in raw_boundaries[name]) and
                    0 < sum(raw_boundaries["preview"][0][:2]) <= raw_boundaries["preview"][0][-1])
+if success and receipt_required:
+    success = (scope == "paid-control" and len(receipt_samples) == 1
+               and all(value > 0 for value in receipt_samples[0])
+               and sum(receipt_samples[0][:3]) < receipt_samples[0][-1]
+               and timings[0][-1] < receipt_samples[0][-1])
 record = {
     "sdk": sdk,
     "process_exit": process_exit,
@@ -157,6 +169,9 @@ if scope == "paid-control":
     record["phase_timing"] = "external-only"
 if success:
     record.update(zip(ranges, timings[0], strict=True))
+    if receipt_required:
+        record["scope"] = "local paid sale and exact counter-receipt observation through installed Android MainActivity"
+        record["counter_receipt"] = dict(zip(receipt_fields, receipt_samples[0], strict=True))
     if scope == "paid":
         record["app_boundaries"] = {
             name: [dict(zip(boundary_fields[name], values, strict=True)) for values in rows]
