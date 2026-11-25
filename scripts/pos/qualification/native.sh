@@ -152,6 +152,12 @@ if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
   if [[ -f "$tree_test" ]]; then
     tests+=(--tests '*RuntimeStateTreeV1SupportingTest' --tests '*LanBusinessTransactionIntegrationTest')
   fi
+  stock_test="$source/core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStockStateTreeProjectionV1SupportingTest.kt"
+  if [[ -f "$stock_test" ]]; then
+    tests+=(--tests '*RuntimeStockStateTreeProjectionV1SupportingTest')
+  fi
+  printf '%s\n' 'allprojects { tasks.withType(Test).configureEach { testLogging { exceptionFormat "full" } } }' > "$stage/checkout-checkpoint.init.gradle"
+  tests=(-I "$stage/checkout-checkpoint.init.gradle" "${tests[@]}")
   result=0
   python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" "${tests[@]}" || result=$?
   if [[ "$result" == 1 ]] && prepare_verified_plugin checkout-checkpoint; then

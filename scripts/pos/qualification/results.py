@@ -206,6 +206,9 @@ elif mode == "checkout-checkpoint":
     tree_test = run / "core/database/src/jvmTest/kotlin/com/ukkera/pos/database/RuntimeStateTreeV1SupportingTest.kt"
     if tree_test.is_file():
         names.extend(("RuntimeStateTreeV1SupportingTest", "LanBusinessTransactionIntegrationTest"))
+    stock_test = tree_test.with_name("RuntimeStockStateTreeProjectionV1SupportingTest.kt")
+    if stock_test.is_file():
+        names.append("RuntimeStockStateTreeProjectionV1SupportingTest")
     for name in names:
         entries = list(directory.glob(f"TEST-*.{name}.xml"))
         suites[name] = None
