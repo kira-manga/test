@@ -136,6 +136,21 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
+if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
+  tests=(:core:database:jvmTest
+    --tests '*RuntimeHistoryCheckpointSupportingTest'
+    --tests '*OwnedRoomStartupNativeSupportingTest'
+    --tests '*RuntimeStockProjectionChangesSupportingTest')
+  result=0
+  python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" "${tests[@]}" || result=$?
+  if [[ "$result" == 1 ]] && prepare_verified_plugin checkout-checkpoint; then
+    result=0
+    python3 "$here/watched.py" "$report" checkout-checkpoint 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
+      -I "$stage/verified-cryptography.init.gradle" "${tests[@]}" || result=$?
+  fi
+  python3 "$here/results.py" checkout-checkpoint "$stage" "$source"
+  exit "$result"
+fi
 if [[ "$POS_SUITE" == 'retained-reader' ]]; then
   result=0
   python3 "$here/watched.py" "$report" retained-reader 25 bash "$here/runner-owned-temp.sh" "${gradle[@]}" \
