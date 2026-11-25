@@ -136,6 +136,13 @@ if [[ "$POS_SUITE" == 'companion' ]]; then
   python3 "$here/results.py" companion "$stage" "$source"
   exit "$result"
 fi
+if [[ "$POS_SUITE" == 'checkout-reopen' ]]; then
+  mkdir -m700 "$stage/reopen-probe"
+  bash "$stage/inputs/runner/run-hosted-reopen-probe.sh" "$stage/inputs/runner" "$here" \
+    "$stage/reopen-probe" "$POS_CHECKOUT_PRIOR_SALES" 240 "${gradle[@]}" > "$report/reopen-checkout.json.tmp"
+  mv "$report/reopen-checkout.json.tmp" "$report/reopen-checkout.json"
+  exit 0
+fi
 if [[ "$POS_SUITE" == 'checkout-checkpoint' ]]; then
   tests=(:core:database:jvmTest
     --tests '*RuntimeHistoryCheckpointSupportingTest'

@@ -15,13 +15,17 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, checkout-reopen, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
         type: choice
         options: ['5', '10', '25', '32', '35', '50', '100', '250', '500']
         default: '10'
+      checkout_prior_sales:
+        description: Fully committed paid sales before each first-checkout probe, from 2 to 999
+        type: string
+        default: '12'
       compare_revision:
         description: Optional sealed candidate SHA for a same-runner paid, cold-pass, or installed cashier comparison
         type: string
@@ -269,6 +273,7 @@ jobs:
         env:
           POS_SUITE: ${{ matrix.suite }}
           POS_PAID_PROFILE_COUNT: ${{ inputs.paid_profile_count }}
+          POS_CHECKOUT_PRIOR_SALES: ${{ inputs.checkout_prior_sales }}
           POS_HISTORY_PROFILE: ${{ inputs.profile_history && '1' || '0' }}
           POS_PAID_INSTRUCTION_CHECKS: ${{ inputs.paid_instruction_checks && '1' || '0' }}
           POS_CHECK_FLOOR_BATCH: ${{ inputs.check_floor_batch && '1' || '0' }}
