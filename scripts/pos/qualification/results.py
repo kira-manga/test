@@ -40,6 +40,7 @@ if mode == "frozen":
         r"|POS_DISTINCT_SETTLED_RETURN_INPUTS root=[01] sources=[01] before=[01] after=[01] stock=[01]"
         r"|POS_RETURN_CALLBACK_LIVE_READS points=\d+ ranges=\d+ originals=\d+ other=\d+ stock_points=\d+ stock_ranges=\d+ stock_sql=\d+"
         r"|POS_RETURN_CALLBACK_LITERAL_COVERAGE pairs=\d+ roots=\d+ fragments=\d+ unknown=\d+ selected=\d+ uncovered=\d+ inconsistent=[01]"
+        r"|POS_RETURN_BATCHED_ROOT_READS deferred=\d+"
         r"|POS_PHYSICAL_START_EXTERNAL_WITNESS publications=[0-9]{1,2} unsupported_cash=[0-9]{1,3}"
         r"|POS_PHYSICAL_START_LEGACY_EFFECTS callbacks=[0-9]{1,4} native_changed=[0-9]{1,4} stock_changed=[0-9]{1,4} publication_changed=[0-9]{1,4}"
         r"|POS_PHYSICAL_START_FRESH_LITERALS streamed=[0-9]{1,4} legacy=[0-9]{1,4} absent=[0-9]{1,4}"
