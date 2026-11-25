@@ -29,7 +29,7 @@ payment_owner_stage = re.compile(
     rb"UkkeraNativeOwner I Native physical stage: "
     rb"(PHYSICAL_(?:START_(?:AUTHENTICATION|PREFLIGHT|PREPARATION|NATIVE_ACQUIRE|COMMIT|RECHECK|PERSIST|RELEASE)"
     rb"|INSTRUCTION_(?:AUTHENTICATION|NATIVE_PREPARE|AUTHORIZATION|RETAINED_READ|DOMAIN_PREPARE|RELEASE))"
-    rb"_(?:ENTERED|RETURNED)|CHECKOUT_(?:STOCK|COLLECTION)_VERIFIED)"
+    rb"_(?:ENTERED|RETURNED)|CHECKOUT_(?:STOCK|COLLECTION|INSTRUCTION_START)_VERIFIED)"
 )
 physical_dependencies = re.compile(
     rb"POS_PHYSICAL_READ_DEPENDENCIES complete=(true|false) total=([0-9]{1,4}) "
@@ -230,6 +230,10 @@ with output.open("x") as stream:
                         record = {"event": "POS_RETAINED_PROOF", "observer_seconds": round(time.monotonic() - start, 3)}
                         record["phases"] = {phase: dict(calls=calls, inclusive_ns=elapsed, interrupted=interrupted)
                             for phase, (calls, elapsed, interrupted) in zip(phases, groups, strict=True)}
+                        print(json.dumps(record, sort_keys=True), file=stream, flush=True)
+                    elif line.rstrip() == b"POS_INSTRUCTION_MUTABLE_PARITY_OK":
+                        record = {"event": "POS_INSTRUCTION_MUTABLE_PARITY_OK",
+                                  "observer_seconds": round(time.monotonic() - start, 3)}
                         print(json.dumps(record, sort_keys=True), file=stream, flush=True)
                     elif payment_owner := payment_owner_stage.fullmatch(line.rstrip()):
                         record = {"event": payment_owner[1].decode(),
