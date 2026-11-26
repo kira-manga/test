@@ -61,14 +61,14 @@ git_env = {
     "GIT_WORK_TREE": str(source),
     "GIT_INDEX_FILE": str(stage / "source-index"),
     "GIT_CONFIG_NOSYSTEM": "1",
-    "GIT_CONFIG_GLOBAL": "/dev/null",
+    "GIT_CONFIG_GLOBAL": os.devnull,
 }
 
 
 def git(*args, data=None):
     # Git's diff error can contain private filenames. Keep it out of the public log.
     result = subprocess.run(
-        ["git", "-c", "core.sparseCheckout=false", "-c", "core.autocrlf=false", *args], cwd=source, env=git_env, input=data, capture_output=True, check=False
+        ["git", "-c", "core.sparseCheckout=false", "-c", "core.autocrlf=false", "-c", "core.longpaths=true", *args], cwd=source, env=git_env, input=data, capture_output=True, check=False
     )
     if result.returncode:
         raise SystemExit(f"POS source verification failed at {args[0]}")

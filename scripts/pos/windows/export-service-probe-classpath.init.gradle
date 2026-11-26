@@ -2,12 +2,16 @@
 import org.gradle.api.tasks.testing.Test
 
 gradle.projectsEvaluated {
-    def security = gradle.rootProject.project(':core:security')
-    security.tasks.register('exportWindowsServiceProbeClasspath') {
-        dependsOn security.tasks.named('jvmTestClasses')
+    def archive = gradle.startParameter.projectProperties['posWindowsServiceProbe'] == 'archive'
+    def project = gradle.rootProject.project(archive ? ':adapters:sales-store' : ':core:security')
+    def output = gradle.startParameter.projectProperties['posWindowsServiceProbeOutput']
+    project.tasks.register('exportWindowsServiceProbeClasspath') {
+        dependsOn project.tasks.named('jvmTestClasses')
         doLast {
-            def test = security.tasks.named('jvmTest', Test).get()
-            def destination = new File(gradle.rootProject.projectDir, '../../native-service-output/probe-classpath.txt')
+            def test = project.tasks.named('jvmTest', Test).get()
+            def destination = output == null
+                ? new File(gradle.rootProject.projectDir, '../../native-service-output/probe-classpath.txt')
+                : new File(output)
             destination.parentFile.mkdirs()
             destination.setText(test.classpath.asPath, 'UTF-8')
         }

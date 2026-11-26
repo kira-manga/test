@@ -15,7 +15,7 @@ on:
       suite:
         description: Frozen 1,000 paid sales or bounded companion checks
         type: choice
-        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, checkout-reopen, checkout-reopen-diagnostic, checkpoint-ledgers, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control]
+        options: [both, frozen, companion, tcp, recovery, candidate, paid-prefix, paid-profile, paid-restart-candidate, profile-reader-candidate, profile-stock-candidate, profile-history-source, history-event-stream-control, checkout-checkpoint, checkout-reopen, checkout-reopen-diagnostic, checkpoint-ledgers, retained-reader, cold-payment-control, cold-pass-control, cold-owner-control, cold-literal-control, payment-regression, catalog-deposit-draft, opening-control, installed-cashier, installed-cashier-paid, installed-cashier-paid-control, windows-physical-archive]
         default: both
       paid_profile_count:
         description: Supporting performance prefix length
@@ -70,13 +70,16 @@ jobs:
   native:
     if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
     environment: pos-qualification-originals
-    runs-on: ubuntu-24.04
+    runs-on: ${{ matrix.suite == 'windows-physical-archive' && 'windows-2025' || 'ubuntu-24.04' }}
     timeout-minutes: 350
     strategy:
       fail-fast: false
       matrix:
         suite: ${{ fromJSON(inputs.suite == 'both' && '["frozen","companion"]' || inputs.suite == 'candidate' && '["paid-prefix","payment-regression"]' || inputs.suite == 'paid-restart-candidate' && '["paid-profile"]' || inputs.suite == 'profile-reader-candidate' && '["paid-profile","retained-reader"]' || inputs.suite == 'profile-stock-candidate' && '["paid-profile","payment-regression"]' || inputs.suite == 'profile-history-source' && '["paid-profile","history-source-control"]' || format('["{0}"]', inputs.suite)) }}
-    name: Linux x64 / ${{ matrix.suite }}
+    name: ${{ matrix.suite == 'windows-physical-archive' && 'Windows x64' || 'Linux x64' }} / ${{ matrix.suite }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -84,6 +87,7 @@ jobs:
           sparse-checkout: |
             apps/pos
             scripts/pos/qualification
+            scripts/pos/windows
       - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3
         with:
           distribution: temurin
@@ -107,7 +111,11 @@ jobs:
           POS_INPUT_14: ${{ secrets.POS_INPUT_14 }}
           POS_INPUT_15: ${{ secrets.POS_INPUT_15 }}
           POS_INPUT_16: ${{ secrets.POS_INPUT_16 }}
-        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 0 17
+        run: |
+          umask 077
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" scripts/pos/qualification/stage.py chunk 0 17
       - name: Stage sealed input parts 18–33
         env:
           POS_INPUT_17: ${{ secrets.POS_INPUT_17 }}
@@ -126,7 +134,11 @@ jobs:
           POS_INPUT_30: ${{ secrets.POS_INPUT_30 }}
           POS_INPUT_31: ${{ secrets.POS_INPUT_31 }}
           POS_INPUT_32: ${{ secrets.POS_INPUT_32 }}
-        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 17 33
+        run: |
+          umask 077
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" scripts/pos/qualification/stage.py chunk 17 33
       - name: Stage optional source bundle tail
         env:
           POS_INPUT_33: ${{ secrets.POS_INPUT_33 }}
@@ -137,12 +149,20 @@ jobs:
           POS_INPUT_38: ${{ secrets.POS_INPUT_38 }}
           POS_INPUT_39: ${{ secrets.POS_INPUT_39 }}
           POS_INPUT_40: ${{ secrets.POS_INPUT_40 }}
-        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 33 41 optional-tail
+        run: |
+          umask 077
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" scripts/pos/qualification/stage.py chunk 33 41 optional-tail
       - name: Verify exact main source and frozen inputs
         env:
           EXPECTED_REVISION: ${{ inputs.source_revision }}
           EXPECTED_BUNDLE: ${{ inputs.bundle_sha256 }}
-        run: umask 077 && python3 scripts/pos/qualification/stage.py verify
+        run: |
+          umask 077
+          python=python3
+          if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
+          "$python" scripts/pos/qualification/stage.py verify
       - name: Bind the existing frozen TCP mapping
         if: matrix.suite == 'tcp'
         env:
@@ -219,6 +239,7 @@ jobs:
           restore-keys: |
             pos-public-dependencies-v1-${{ runner.os }}-${{ runner.arch }}-temurin21-${{ steps.pos-dependency-inputs.outputs.fingerprint }}-
       - name: Prepare Android compile SDK for JVM Gradle configuration
+        if: runner.os == 'Linux'
         run: |
           set -euo pipefail
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
@@ -281,6 +302,7 @@ jobs:
           test -x "$directory/async-profiler-4.2-linux-x64/bin/asprof"
           printf 'POS_CPU_PROFILER=%s\n' "$directory/async-profiler-4.2-linux-x64/bin/asprof" >> "$GITHUB_ENV"
       - name: Run protected native checks
+        if: runner.os == 'Linux'
         env:
           POS_SUITE: ${{ matrix.suite }}
           POS_PAID_PROFILE_COUNT: ${{ inputs.paid_profile_count }}
@@ -322,6 +344,10 @@ jobs:
           fi
           if (( baseline != 0 )); then exit "$baseline"; fi
           exit "$candidate"
+      - name: Run the owned NTFS archive probe as an actual disposable Windows service
+        if: matrix.suite == 'windows-physical-archive'
+        shell: pwsh
+        run: scripts/pos/qualification/windows-physical-archive.ps1
       - name: Save public Gradle dependencies
         if: success() && steps.pos-public-gradle.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25

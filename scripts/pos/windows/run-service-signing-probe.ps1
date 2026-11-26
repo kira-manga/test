@@ -1,7 +1,8 @@
 # Disposable hosted-runner supporting diagnostic. Never installs a production service.
 param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
-    [ValidateSet('unrestricted','none')][string]$ServiceSidType = 'unrestricted'
+    [ValidateSet('unrestricted','none')][string]$ServiceSidType = 'unrestricted',
+    [ValidateSet('signing','archive')][string]$Probe = 'signing'
 )
 $ErrorActionPreference = 'Stop'
 if ($env:GITHUB_REPOSITORY -ne 'kira-manga/test' -or $env:RUNNER_OS -ne 'Windows') {
@@ -27,8 +28,13 @@ try {
     # genuine production service/account/impersonation observer before any key work.
     $argfile = Join-Path $out 'probe-java.args'
     $cp = $classpath.Replace('\', '/')
-    $probeMode = if ($ServiceSidType -eq 'none') { 'NO_SERVICE_SID' } else { 'SIGNING' }
-    $argText = '-Xmx256m -XX:ActiveProcessorCount=2 -cp "' + $cp + '" com.ukkera.pos.security.supporting.windowsservice.WindowsServiceSigningNativeProbe "' + $out.Replace('\', '/') + '" ' + $sid + ' ' + $probeMode
+    $probeMode = if ($ServiceSidType -eq 'none') { 'NO_SERVICE_SID' } elseif ($Probe -eq 'archive') { 'ARCHIVE' } else { 'SIGNING' }
+    $probeClass = if ($Probe -eq 'archive') {
+        'com.ukkera.pos.sales.store.supporting.windowsservice.WindowsServicePhysicalArchiveNativeProbe'
+    } else {
+        'com.ukkera.pos.security.supporting.windowsservice.WindowsServiceSigningNativeProbe'
+    }
+    $argText = '-Xmx256m -XX:ActiveProcessorCount=2 -cp "' + $cp + '" ' + $probeClass + ' "' + $out.Replace('\', '/') + '" ' + $sid + ' ' + $probeMode
     [IO.File]::WriteAllText($argfile, $argText, [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllLines((Join-Path $out 'launcher-input.txt'), @($java, $argfile), [Text.UTF8Encoding]::new($false))
     $source = @'
@@ -88,8 +94,9 @@ public sealed class PosSyntheticService : ServiceBase {
         if (Test-Path (Join-Path $out 'launcher-failure.txt')) { throw 'Synthetic launcher failed.' }
         Start-Sleep -Milliseconds 500
     }
-    if ((Get-Content (Join-Path $out 'child-exit.txt') -Raw).Trim() -ne '0') { throw 'Production native signing probe failed; inspect retained stages.' }
-    if (-not ((Get-Content (Join-Path $out 'signing-result.txt') -Raw) -match '(?m)^status=PASS$')) { throw 'Missing positive native result.' }
+    if ((Get-Content (Join-Path $out 'child-exit.txt') -Raw).Trim() -ne '0') { throw 'Native service probe failed; inspect retained stages.' }
+    $result = Join-Path $out "$Probe-result.txt"
+    if (-not ((Get-Content $result -Raw) -match '(?m)^status=PASS\r?$')) { throw 'Missing positive native result.' }
 } catch {
     [IO.File]::WriteAllText((Join-Path $out 'failure.txt'), $_.Exception.Message + "`n")
     throw
