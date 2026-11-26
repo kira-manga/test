@@ -22,12 +22,19 @@ if sys.argv[1] == "chunk":
     stage.mkdir(mode=0o700, exist_ok=True)
     start = int(sys.argv[2])
     stop = int(sys.argv[3])
+    optional_tail = sys.argv[4:] == ["optional-tail"]
+    absent_tail = False
     with marker.open("xb" if start == 0 else "ab") as output:
         for number in range(start, stop):
             name = f"POS_INPUT_{number:02}"
             chunk = os.environ.pop(name, "")
             if not chunk:
+                if optional_tail:
+                    absent_tail = True
+                    continue
                 raise SystemExit(f"Sealed input part {number} is missing")
+            if absent_tail:
+                raise SystemExit(f"Sealed input part {number} follows an empty tail slot")
             output.write(base64.b64decode(chunk, validate=True))
     sys.exit(0)
 

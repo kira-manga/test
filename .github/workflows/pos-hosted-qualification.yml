@@ -127,6 +127,17 @@ jobs:
           POS_INPUT_31: ${{ secrets.POS_INPUT_31 }}
           POS_INPUT_32: ${{ secrets.POS_INPUT_32 }}
         run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 17 33
+      - name: Stage optional source bundle tail
+        env:
+          POS_INPUT_33: ${{ secrets.POS_INPUT_33 }}
+          POS_INPUT_34: ${{ secrets.POS_INPUT_34 }}
+          POS_INPUT_35: ${{ secrets.POS_INPUT_35 }}
+          POS_INPUT_36: ${{ secrets.POS_INPUT_36 }}
+          POS_INPUT_37: ${{ secrets.POS_INPUT_37 }}
+          POS_INPUT_38: ${{ secrets.POS_INPUT_38 }}
+          POS_INPUT_39: ${{ secrets.POS_INPUT_39 }}
+          POS_INPUT_40: ${{ secrets.POS_INPUT_40 }}
+        run: umask 077 && python3 scripts/pos/qualification/stage.py chunk 33 41 optional-tail
       - name: Verify exact main source and frozen inputs
         env:
           EXPECTED_REVISION: ${{ inputs.source_revision }}
