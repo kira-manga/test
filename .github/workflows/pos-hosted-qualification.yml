@@ -65,6 +65,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   native:
@@ -163,6 +164,12 @@ jobs:
           python=python3
           if [[ "$RUNNER_OS" == Windows ]]; then python=python; fi
           "$python" scripts/pos/qualification/stage.py verify
+      - name: Stage the preceding encrypted synthetic installation
+        id: pos-shard-predecessor
+        if: matrix.suite == 'checkout-reopen-diagnostic'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash scripts/pos/qualification/shard-predecessor.sh
       - name: Bind the existing frozen TCP mapping
         if: matrix.suite == 'tcp'
         env:
@@ -375,6 +382,15 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot-save
           script: bash scripts/pos/qualification/installed-cashier-comparison.sh
+      - name: Upload the verified encrypted synthetic installation
+        if: success() && steps.pos-shard-predecessor.outputs.handoff == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pos-shard-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pos-qualification/shard-export/checkpoint.gpg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 3
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
