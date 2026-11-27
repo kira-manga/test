@@ -37,6 +37,10 @@ if [[ "$plan" == short-100k-v1 ]]; then
         # Resume only the already-running second shard from the previous workflow revision.
         [[ "$previous:$attempt" == 45943605033:1 ]]
         predecessor_workflow=0f1341a6ddc982785328eed410ecb3deb759f8fd
+    elif (( segment == 4 )); then
+        # The fourth shard was dispatched before the matching-diagnostics workflow change.
+        [[ "$previous:$attempt" == 45986212484:1 ]]
+        predecessor_workflow=1fd7fc78f451c1e616d013d5d572faac5893ff8c
     fi
 fi
 expected_title="POS native checkout-reopen-diagnostic @ $revision"
