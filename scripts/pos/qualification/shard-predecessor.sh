@@ -10,9 +10,15 @@ if [[ ! -f "$configuration" ]]; then exit 0; fi
 [[ -f "$stage/inputs/runner/shard-continuation.py" ]]
 mode=$(jq -er '.mode | select(. == "pilot" or . == "full")' "$configuration")
 segment=$(jq -er '.segment | select(type == "number" and . == floor and . >= 0)' "$configuration")
-case "$mode:$segment" in
-    pilot:0|full:0|full:1|full:2) printf 'handoff=true\n' >> "$GITHUB_OUTPUT" ;;
-    pilot:1|full:3) ;;
+plan=original
+if [[ -f "$stage/inputs/POS-SHARD-PLAN" ]]; then
+    plan=$(cat "$stage/inputs/POS-SHARD-PLAN")
+    [[ "$plan" == short-100k-v1 ]]
+fi
+case "$plan:$mode:$segment" in
+    original:pilot:0|original:full:0|original:full:1|original:full:2|short-100k-v1:full:[2-5])
+        printf 'handoff=true\n' >> "$GITHUB_OUTPUT" ;;
+    original:pilot:1|original:full:3|short-100k-v1:full:6) ;;
     *) exit 64 ;;
 esac
 reference="$stage/inputs/POS-SHARD-PREDECESSOR"
@@ -24,9 +30,18 @@ read -r previous attempt extra < "$reference"
 [[ "$previous" =~ ^[1-9][0-9]{0,17}$ && "$attempt" =~ ^[1-9][0-9]{0,5}$ && -z "$extra" ]]
 [[ "$previous" != "$GITHUB_RUN_ID" ]]
 revision=$(cat "$stage/inputs/POS-REVISION")
+predecessor_workflow=$GITHUB_SHA
+if [[ "$plan" == short-100k-v1 ]]; then
+    [[ "$revision" == cbe3eaaa7f552d22e0240e3fdfbea97255b96280 ]]
+    if (( segment == 2 )); then
+        # Resume only the already-running second shard from the previous workflow revision.
+        [[ "$previous:$attempt" == 45943605033:1 ]]
+        predecessor_workflow=0f1341a6ddc982785328eed410ecb3deb759f8fd
+    fi
+fi
 expected_title="POS native checkout-reopen-diagnostic @ $revision"
 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$previous" | jq -e \
-    --arg title "$expected_title" --arg sha "$GITHUB_SHA" --arg repo "$GITHUB_REPOSITORY" --arg attempt "$attempt" \
+    --arg title "$expected_title" --arg sha "$predecessor_workflow" --arg repo "$GITHUB_REPOSITORY" --arg attempt "$attempt" \
     '.status == "completed" and .conclusion == "success" and .head_sha == $sha and .head_branch == "main" and
      .repository.full_name == $repo and .event == "workflow_dispatch" and
      (.run_attempt | tostring) == $attempt and .display_title == $title' >/dev/null
