@@ -13,12 +13,12 @@ segment=$(jq -er '.segment | select(type == "number" and . == floor and . >= 0)'
 plan=original
 if [[ -f "$stage/inputs/POS-SHARD-PLAN" ]]; then
     plan=$(cat "$stage/inputs/POS-SHARD-PLAN")
-    [[ "$plan" == short-100k-v1 ]]
+    [[ "$plan" == short-100k-v1 || "$plan" == profile-87k-checkout-v1 ]]
 fi
 case "$plan:$mode:$segment" in
     original:pilot:0|original:full:0|original:full:1|original:full:2|short-100k-v1:full:[2-5])
         printf 'handoff=true\n' >> "$GITHUB_OUTPUT" ;;
-    original:pilot:1|original:full:3|short-100k-v1:full:6) ;;
+    original:pilot:1|original:full:3|short-100k-v1:full:6|profile-87k-checkout-v1:full:6) ;;
     *) exit 64 ;;
 esac
 reference="$stage/inputs/POS-SHARD-PREDECESSOR"
@@ -31,6 +31,22 @@ read -r previous attempt extra < "$reference"
 [[ "$previous" != "$GITHUB_RUN_ID" ]]
 revision=$(cat "$stage/inputs/POS-REVISION")
 predecessor_workflow=$GITHUB_SHA
+if [[ "$plan" == profile-87k-checkout-v1 ]]; then
+    # This supporting run reads the closed 87k synthetic installation with the
+    # separately qualified catalogue reader. It never exports a successor.
+    [[ "$previous:$attempt" == 46037079629:1 ]]
+    [[ "$revision" == f9c9ca1dd1947f0bccb1f70e5d33ac928511ee1e ]]
+    [[ "$(cat "$stage/inputs/POS-TREE")" == 4d4393111192165fa8351f3251a919f10abf3876 ]]
+    gh api "repos/$GITHUB_REPOSITORY/actions/runs/46064566361" | jq -e '
+      .status == "completed" and .conclusion == "success" and .run_attempt == 1 and
+      .head_sha == "239f7d2e17b9782dc901e4b4ea19a8e9e9a99890" and
+      .display_title == "POS native checkout-reopen-diagnostic @ cbe3eaaa7f552d22e0240e3fdfbea97255b96280"' >/dev/null
+    gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/15230800174" | jq -e '
+      .expired == false and .name == "pos-shard-state-46037079629-1" and
+      .workflow_run.id == 46037079629' >/dev/null
+    revision=cbe3eaaa7f552d22e0240e3fdfbea97255b96280
+    predecessor_workflow=239f7d2e17b9782dc901e4b4ea19a8e9e9a99890
+fi
 if [[ "$plan" == short-100k-v1 ]]; then
     [[ "$revision" == cbe3eaaa7f552d22e0240e3fdfbea97255b96280 ]]
     if (( segment == 2 )); then
