@@ -210,8 +210,13 @@ if [[ "$POS_SUITE" == 'checkout-reopen' || "$POS_SUITE" == 'checkout-reopen-diag
     run_checkpoint_checks
   fi
   mkdir -m700 "$stage/reopen-probe"
+  budget=240
+  if [[ "${POS_CHECKOUT_PAIR_BUDGET:-}" == 70 ]]; then
+    test "$POS_SUITE" = 'checkout-reopen-diagnostic'
+    budget=70
+  fi
   bash "$stage/inputs/runner/run-hosted-reopen-probe.sh" "$stage/inputs/runner" "$here" \
-    "$stage/reopen-probe" "$POS_CHECKOUT_PRIOR_SALES" 240 "${gradle[@]}" > "$report/reopen-checkout.json.tmp"
+    "$stage/reopen-probe" "$POS_CHECKOUT_PRIOR_SALES" "$budget" "${gradle[@]}" > "$report/reopen-checkout.json.tmp"
   mv "$report/reopen-checkout.json.tmp" "$report/reopen-checkout.json"
   exit 0
 fi

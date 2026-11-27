@@ -166,7 +166,7 @@ jobs:
           "$python" scripts/pos/qualification/stage.py verify
       - name: Stage the preceding encrypted synthetic installation
         id: pos-shard-predecessor
-        if: matrix.suite == 'checkout-reopen-diagnostic'
+        if: matrix.suite == 'checkout-reopen-diagnostic' && inputs.compare_revision == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: bash scripts/pos/qualification/shard-predecessor.sh
@@ -332,6 +332,14 @@ jobs:
           case "$POS_SUITE" in
             paid-profile) case "$POS_PAID_PROFILE_COUNT" in 5|10|25|35) ;; *) exit 2 ;; esac ;;
             cold-pass-control) test "$POS_HISTORY_PROFILE" = 1 ;;
+            checkout-reopen-diagnostic)
+              inputs="$RUNNER_TEMP/pos-qualification/inputs"
+              test "$POS_HISTORY_PROFILE" = 0
+              test "$POS_CHECKOUT_PRIOR_SALES" = 1428
+              test ! -e "$inputs/POS-SHARD-CAMPAIGN.json"
+              test "$(cat "$inputs/POS-CHECKOUT-REOPEN-COMPARISON")" = bounded-155-v1
+              export POS_CHECKOUT_PAIR_BUDGET=70
+              ;;
             installed-cashier-paid|installed-cashier-paid-control) ;;
             *) exit 2 ;;
           esac
@@ -346,6 +354,22 @@ jobs:
             bash "$runner" || candidate=$?
           if [[ "$POS_SUITE" == installed-cashier-paid || "$POS_SUITE" == installed-cashier-paid-control ]]; then
             printf 'POS_INSTALLED_SAME_RUNNER_BUILDS baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
+          elif [[ "$POS_SUITE" == checkout-reopen-diagnostic ]]; then
+            printf 'POS_CHECKOUT_REOPEN_SAME_RUNNER baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
+            if (( baseline == 0 && candidate == 0 )); then
+              jq -e -s --arg baseline "$(cat "$inputs/POS-REVISION")" --arg candidate "$EXPECTED_COMPARISON" '
+                length == 2 and .[0].source_revision == $baseline and .[1].source_revision == $candidate and
+                $baseline != $candidate and all(.[]; .paid_sales == 155 and .history_profile_enabled == false and
+                  .closed.originals == 1102 and .closed.journal == 1102 and
+                  .closed.audit == 1102 and .closed.outbox == 1102 and
+                  .closed.receipt_events == 155 and .closed.both_original_issue_portions_per_sale_verified == 155 and
+                  .closed.cold_same_process_and_fresh_process == true and
+                  ([.first_paid_after_restart[] | [.mode, .prior_paid_sales, .prior_business_commands]] ==
+                    [["same",12,101],["fresh",13,108],["same",141,1004],["fresh",142,1011],
+                     ["same",153,1088],["fresh",154,1095]]))
+              ' "$RUNNER_TEMP/pos-qualification/public/reopen-checkout.json" \
+                "$RUNNER_TEMP/pos-comparison/pos-qualification/public/reopen-checkout.json" >/dev/null
+            fi
           else
             printf 'POS_SAME_RUNNER_PROFILE baseline_exit=%s candidate_exit=%s\n' "$baseline" "$candidate"
           fi
@@ -399,7 +423,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always() && inputs.compare_revision != '' && (matrix.suite == 'paid-profile' || matrix.suite == 'cold-pass-control' || matrix.suite == 'installed-cashier-paid' || matrix.suite == 'installed-cashier-paid-control')
+        if: always() && inputs.compare_revision != '' && (matrix.suite == 'paid-profile' || matrix.suite == 'cold-pass-control' || matrix.suite == 'checkout-reopen-diagnostic' || matrix.suite == 'installed-cashier-paid' || matrix.suite == 'installed-cashier-paid-control')
         with:
           name: pos-qualification-paired-profile-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/pos-comparison/pos-qualification/public
