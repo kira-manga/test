@@ -25,6 +25,18 @@ for apk in "${app[0]}" "${tests[0]}"; do
 done
 adb shell pm path com.ukkera.pos.local.testing | grep -q '^package:'
 adb shell pm path com.ukkera.pos.local.testing.test | grep -q '^package:'
+case "${POS_INSTALLED_ART_MODE:-default}" in
+  default) ;;
+  speed)
+    test "$scope" = paid-control
+    app_process=$(adb shell 'pidof com.ukkera.pos.local.testing || [ "$?" -eq 1 ]' | tr -d '\r')
+    test -z "$app_process"
+    timeout 240s adb shell cmd package compile -m speed -f com.ukkera.pos.local.testing |
+      tr -d '\r' | grep -Fxq Success
+    printf '%s\n' speed > "$report/installed-cashier-art-mode.txt"
+    ;;
+  *) exit 2 ;;
+esac
 adb logcat -c
 result=0
 # Leave time inside the outer watchdog to retain instrumentation and device diagnostics.
