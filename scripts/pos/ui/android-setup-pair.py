@@ -63,7 +63,7 @@ class InstalledUi:
             "UI_TEST_STARTUP_TIMEOUT": "60",
             "UI_TEST_DURATION": "16" if PAIR else "8",
             "UI_TEST_TRANSPORT": "local",
-            "UI_TEST_ANDROID_IME": "0",
+            "UI_TEST_ANDROID_IME": "1",
             "UI_TEST_ANDROID_A11Y_DAEMON": "1",
             "UI_TEST_DEVICE_ISOLATION": "1",
             "UI_TEST_AGENT_ID": f"pos-{role}",
@@ -321,16 +321,23 @@ class InstalledUi:
         }
 
     def enter(self, label, value, scroll=0):
-        # Use the actual focused Android text field. Training inputs use only safe ASCII.
+        # Use the device's leased input session for the actual focused editor.
         assert value and all(c.isascii() and (c.isalnum() or c in "- ") for c in value)
         self.choose(label, scroll=scroll)
         secret_field = "password" in label.lower()
         if secret_field:
             self.require_focused_password(label)
-        adb(self.device, "shell", "input", "text", value.replace(" ", "%s"))
+        self.action("text.insert", text=value, method="native", settle="fast")
         if secret_field:
             self.require_focused_password(label)
-        adb(self.device, "shell", "input", "keyevent", "KEYCODE_BACK")
+        dismissed = self.action("keyboard.dismiss", settle="fast")
+        assert dismissed["dismissed"], "The selected Android editor keyboard did not dismiss"
+        if not secret_field:
+            verified = self.session.wait(
+                {"owner_app": PACKAGE, "visible": True, "text": value, "properties": {"editable": True}},
+                timeout_ms=4_000,
+            )["result"]
+            assert verified["matched"] == 1, f"Expected one edited Android field: {label}"
 
     def require_focused_password(self, label):
         # The driver redacts secure fields. Verify focus and field type without
@@ -508,7 +515,7 @@ def master_onboarding(ui, observation, scope_queue):
         ui.enter(label, value, scroll=4)
     ui.choose("OS-isolated AndroidKeyStore", scroll=6)
     ui.choose("Prepare and review the original company", scroll=5)
-    ui.find("Confirm this original company", scroll=-6)
+    ui.find("Confirm this original company", scroll=-6, wait=3_000)
     observation["master_original_company_review_verified"] = True
     installer = secrets.token_hex(16)
     head = secrets.token_hex(16)
@@ -1248,12 +1255,11 @@ def main():
             observation["driver_error_code"] = failure.code
             observation["driver_http_status"] = failure.status
         for role, ui in sessions.items():
-            if (getattr(ui, "session", None) is not None and
-                    str(failure) == "Expected accessible control is missing: Set up or inspect the original local branch"):
+            if getattr(ui, "session", None) is not None:
                 try:
-                    observation[f"{role}_setup_entry_after_failure"] = ui.visible_setup_outcome()
+                    observation[f"{role}_setup_after_failure"] = ui.visible_setup_outcome()
                 except (AssertionError, ClientError, OSError, subprocess.SubprocessError) as diagnostic:
-                    observation[f"{role}_setup_entry_error_type"] = type(diagnostic).__name__
+                    observation[f"{role}_setup_error_type"] = type(diagnostic).__name__
             try:
                 observation[f"{role}_final_native_refusals"] = ui.native_owner_refusals()[-12:]
             except (OSError, subprocess.SubprocessError):
