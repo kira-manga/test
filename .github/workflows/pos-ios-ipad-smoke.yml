@@ -1,4 +1,4 @@
-name: POS iPad existing-artifact smoke (manual, auxiliary)
+name: POS iPhone and iPad installed UI (manual, auxiliary)
 on:
   workflow_dispatch:
     inputs:
@@ -10,51 +10,61 @@ on:
         description: Existing successful iOS package workflow run
         type: string
         required: true
-        default: '42680343828'
       input_artifact_id:
         description: Exact retained artifact ID from that run
         type: string
         required: true
-        default: '13706096880'
       input_artifact_name:
         description: Exact retained artifact name from that run
         type: string
         required: true
-        default: pos-ios-native-42680343828-1
       input_source_revision:
         description: Exact source revision recorded by the package manifest
         type: string
         required: true
-        default: '038c115e'
       input_zip_sha256:
         description: Exact SHA-256 of UkkeraPos-simulator.app.zip
         type: string
         required: true
-        default: '512c42221b66fdbe9e005ad5aed0784a576a6add9a7d0abf828dfe30285a9504'
       input_zip_bytes:
         description: Exact byte length of UkkeraPos-simulator.app.zip
         type: string
         required: true
-        default: '25615381'
 permissions:
   contents: read
   actions: read
 jobs:
-  ipad-smoke:
+  installed-ios:
     if: github.repository == 'kira-manga/test'
+    strategy:
+      fail-fast: false
+      matrix:
+        family: [iphone, ipad]
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 25
+    env:
+      POS_IOS_FAMILY: ${{ matrix.family }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ui-test-actions/ui-test-actions
+          ref: e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
+          persist-credentials: false
+          path: ui-client
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
           name: ${{ inputs.input_artifact_name }}
           run-id: ${{ inputs.input_run_id }}
           github-token: ${{ github.token }}
           path: simulator-input
-      - name: Launch the exact verified simulator build on an iPad
+      - name: Install and launch the exact simulator package
+        id: install
         env:
           EXPECTED_HARNESS_SOURCE: ${{ inputs.source_revision }}
           EXPECTED_INPUT_RUN: ${{ inputs.input_run_id }}
@@ -65,23 +75,80 @@ jobs:
           EXPECTED_INPUT_BYTES: ${{ inputs.input_zip_bytes }}
           GH_TOKEN: ${{ github.token }}
         run: scripts/pos/ios/run-ipad-artifact-smoke.sh
+      - name: Prepare the persistent native AXe driver and loopback observer
+        id: observer
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          work="$RUNNER_TEMP/pos-ios-ui"
+          mkdir -p "$work/axe"
+          asset=AXe-macOS-v2.1.1-universal.tar.gz
+          curl -fsSL --retry 3 "https://github.com/cameroncooke/AXe/releases/download/v2.1.1/$asset" -o "$work/$asset"
+          printf '%s  %s\n' 8788838b1b32059d143cf06541b72fcaead85c16274457cdbff086510a5b17fa "$work/$asset" |
+            shasum -a 256 -c -
+          tar -xzf "$work/$asset" -C "$work/axe"
+          axe="$(find "$work/axe" -name axe -type f -print -quit)"
+          test -x "$axe"
+          printf 'axe=%s\n' "$axe" >> "$GITHUB_OUTPUT"
+          python - <<'PY'
+          from hashlib import sha256
+          from pathlib import Path
+          import os
+          import secrets
+
+          token = secrets.token_hex(32)
+          print(f"::add-mask::{token}")
+          token_path = Path(os.environ["RUNNER_TEMP"]) / "pos-ios-ui" / "token"
+          with token_path.open("x") as output:
+              output.write(token)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"digest={sha256(token.encode()).hexdigest()}", file=output)
+          PY
+          PYTHONPATH="$GITHUB_WORKSPACE/ui-client" python scripts/pos/ios/observe-installed.py > "$work/observer.log" 2>&1 &
+      - uses: ui-test-actions/ui-test-actions@e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
+        with:
+          target: ios
+          transport: local
+          token-sha256: ${{ steps.observer.outputs.digest }}
+          duration-minutes: '3'
+          device: ${{ steps.install.outputs.device }}
+          ios-axe-path: ${{ steps.observer.outputs.axe }}
+          app-ids: com.ukkera.pos.local
+          device-isolation: '1'
+          ready: xcrun simctl spawn "$POS_IOS_SIMULATOR" launchctl list | grep -Fq "UIKitApplication:com.ukkera.pos.local"
+      - name: Check the installed quote, safety hold, and lifecycle
+        if: ${{ !cancelled() && steps.observer.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ipad-smoke-output/installed-ui.json
+          cat ipad-smoke-output/installed-ui.json
+          [[ "$(< "$RUNNER_TEMP/pos-ios-ui/observer.exit")" == 0 ]]
+      - name: Retire the disposable simulator and record app diagnostics
+        if: ${{ always() && steps.install.outputs.device != '' }}
+        shell: bash
+        run: |
+          xcrun simctl spawn "$POS_IOS_SIMULATOR" log show --last 4m --style compact --predicate 'process == "UkkeraPos"' \
+            > ipad-smoke-output/app-log.txt 2>&1 || true
+          xcrun simctl shutdown "$POS_IOS_SIMULATOR" || true
+          xcrun simctl delete "$POS_IOS_SIMULATOR"
       - name: Validate public native diagnostics
         id: public_safe
         if: always()
         shell: bash
         env:
-          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision || inputs.apk_source_revision }}
+          EXPECTED_SOURCE_REVISION: ${{ inputs.source_revision }}
         run: |
           set -euo pipefail
-          PYTHON="$(command -v python3 || command -v python)"
-          "$PYTHON" scripts/pos/stage_native_diagnostics.py \
+          python scripts/pos/stage_native_diagnostics.py \
             --source-revision "$EXPECTED_SOURCE_REVISION" \
-            --label "ios-ipad-smoke" \
+            --label "ios-installed-ui-$POS_IOS_FAMILY" \
             --diagnostics "native=ipad-smoke-output" \
-            --output "build/pos-public-artifacts/ios-ipad-smoke"
-      - uses: actions/upload-artifact@v4
+            --output "build/pos-public-artifacts/ios-installed-ui"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always() && steps.public_safe.outcome == 'success'
         with:
-          name: pos-ipad-smoke-${{ github.run_id }}-${{ github.run_attempt }}
-          path: build/pos-public-artifacts/ios-ipad-smoke
+          name: pos-ios-ui-${{ matrix.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/pos-public-artifacts/ios-installed-ui
           retention-days: 14
