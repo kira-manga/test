@@ -16,8 +16,9 @@ import tempfile
 import threading
 import time
 
-from agent import Client, ClientError
+from agent import ClientError
 from lease import HoldLease
+from ui_sdk import LiveUI
 
 
 PACKAGE = "com.ukkera.pos.local.testing"
@@ -62,16 +63,15 @@ class InstalledUi:
             "UI_TEST_DURATION": "16" if PAIR else "8",
             "UI_TEST_TRANSPORT": "local",
             "UI_TEST_ANDROID_IME": "0",
+            "UI_TEST_ANDROID_A11Y_DAEMON": "1",
+            "UI_TEST_DEVICE_ISOLATION": "1",
+            "UI_TEST_AGENT_ID": f"pos-{role}",
+            "UI_TEST_APP_IDS": PACKAGE,
             "UI_TEST_LAUNCH": "",
             "UI_TEST_READY": "",
         }
 
     def start(self):
-        # The setup review contains long, scrollable groups. Use a fixed tablet
-        # viewport for these emulators so failure observations include headings
-        # and the actual refusal, regardless of where the last form was scrolled.
-        adb(self.device, "shell", "wm", "size", "1080x1920")
-        adb(self.device, "shell", "wm", "density", "180")
         adb(self.device, "shell", "svc", "power", "stayon", "true")
         adb(self.device, "shell", "am", "start", "-W", "-n",
             f"{PACKAGE}/com.ukkera.pos.android.MainActivity")
@@ -100,10 +100,16 @@ class InstalledUi:
         connection = json.loads(file.read_bytes())
         assert connection["target"] == "android" and connection["transport"] == "local"
         self.expires_unix = int(connection["expires_unix"])
-        self.session = Client(connection, self.token_file)
-        self.session.identify()
-        png = self.session.fetch("/v1/screenshot")
-        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        self.session_id = connection["session_id"]
+        self.session = LiveUI.open(file, self.token_file)
+        info = self.session.device_info()["result"]
+        assert info["device_id"] == self.device
+        assert info["form_factor_hardware"] == "emulator" and not info["resized_emulator"]
+        assert info["window_size_class"]["layout_class"] == "tablet"
+        self.accessibility_engine = info["driver"]["a11y_engine"]
+        self.session.wait_ready(PACKAGE)
+        self.session.set_orientation("portrait")
+        png = self.session.screenshot()
         self.width, self.height = struct.unpack_from(">II", png, 16)
 
     def session_seconds_remaining(self):
@@ -120,7 +126,7 @@ class InstalledUi:
         self.token_file.unlink(missing_ok=True)
 
     def action(self, command, **params):
-        reply = self.session.command(command, params)
+        reply = self.session.action(command, params)
         if not reply["ok"]:
             raise AssertionError(f"Android UI command failed: {command}")
         return reply["result"]
@@ -134,17 +140,25 @@ class InstalledUi:
                     return found
                 raise AssertionError(f"Ambiguous accessible control: {label}")
             except ClientError as error:
-                if error.status != 408 or attempt == abs(scroll):
+                if (error.status, error.code) not in {(404, "element_not_found"), (408, "condition_timeout")}:
+                    raise
+                if attempt == abs(scroll):
                     raise AssertionError(f"Expected accessible control is missing: {label}") from None
             self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
-                        dy=(min(20, self.height // 55) if scroll > 0 else -min(20, self.height // 55)))
-            time.sleep(0.15)
+                        dy=(min(20, self.height // 55) if scroll > 0 else -min(20, self.height // 55)),
+                        settle="fast")
 
     def choose(self, label, scroll=0, wait=0):
-        found = self.find(label, scroll=scroll, wait=wait)
-        node = found["nodes"][0]
-        assert node.get("enabled", True), f"Expected enabled control: {label}"
-        self.action("element.click", snapshot_id=found["snapshot_id"], id=node["id"])
+        for attempt in range(2):
+            found = self.find(label, scroll=scroll if attempt == 0 else 0, wait=wait)
+            node = found["nodes"][0]
+            assert node.get("enabled", True), f"Expected enabled control: {label}"
+            try:
+                self.session.click(snapshot_id=found["snapshot_id"], id=node["id"], settle="fast")
+                return
+            except ClientError as error:
+                if error.code != "stale_snapshot" or attempt != 0:
+                    raise
 
     def await_document_picker(self, observation, key, save=False):
         # The installed application first re-reads the native original. Its
@@ -342,8 +356,9 @@ class InstalledUi:
         raise AssertionError(f"Missing canonical identifier after the exact review field: {label}")
 
     def screenshot(self, name):
-        png = self.session.fetch("/v1/screenshot")
-        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        capture = self.session.screenshot(bind_snapshot=True)
+        assert capture.get("snapshot_id")
+        png = capture["png"]
         # Android may redact secure activity captures. Preserve the exact image
         # and use the accessibility assertion as the test oracle.
         (REPORT / f"{name}.png").write_bytes(png)
@@ -1183,7 +1198,7 @@ def main():
             head = master_onboarding(master, observation, scope_queue)
             restart_original_master(master, observation)
             client.start()
-            assert master.session.session_id != client.session.session_id
+            assert master.session_id != client.session_id
             client_onboarding(client, observation)
             prepare_client_target(client, observation, scope_queue.get_nowait())
             verify_pairing_proof(master, client, observation)
@@ -1194,7 +1209,7 @@ def main():
             return
         for ui in sessions.values():
             ui.start()
-        assert sessions["master"].session.session_id != sessions["client"].session.session_id
+        assert sessions["master"].session_id != sessions["client"].session_id
         with ThreadPoolExecutor(max_workers=2) as executor:
             master = executor.submit(master_onboarding, sessions["master"], observation, scope_queue)
             client = executor.submit(client_onboarding, sessions["client"], observation)
@@ -1231,6 +1246,8 @@ def main():
         raise
     finally:
         for role, ui in sessions.items():
+            if hasattr(ui, "accessibility_engine"):
+                observation[f"{role}_accessibility_engine"] = ui.accessibility_engine
             try:
                 observation[f"{role}_pairing_picker_transitions"] = ui.pairing_picker_transitions()
             except (OSError, subprocess.SubprocessError):

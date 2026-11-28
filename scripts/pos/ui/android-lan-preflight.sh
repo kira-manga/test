@@ -56,8 +56,12 @@ if ! "$emulator" -accel-check > "$work/emulator-acceleration.txt" 2>&1; then
 fi
 head -6 "$work/emulator-acceleration.txt"
 adb start-server
+device_profile=()
+if [[ "${POS_ANDROID_TWO_SETUP:-false}" == true ]]; then
+  device_profile=(--device pixel_tablet)
+fi
 for port in 5554 5556; do
-  printf 'no\n' | "$sdk/avdmanager" create avd --force --name "pos-lan-$port" --package "$image"
+  printf 'no\n' | "$sdk/avdmanager" create avd --force --name "pos-lan-$port" --package "$image" "${device_profile[@]}"
   "$emulator" -avd "pos-lan-$port" -port "$port" -no-window -no-audio -no-snapshot \
     -no-boot-anim -memory 2048 -cores 2 -gpu swiftshader_indirect > "$work/emulator-$port.log" 2>&1 &
   printf '%s\n' "$!" > "$work/emulator-$port.pid"

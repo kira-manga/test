@@ -11,7 +11,8 @@ from pathlib import Path
 import sys
 import time
 
-from agent import Client, ClientError
+from agent import ClientError
+from ui_sdk import LiveUI
 
 target = os.environ["POS_UI_TARGET"]
 temp = Path(os.environ["RUNNER_TEMP"])
@@ -20,9 +21,9 @@ report = work / "public"
 
 
 def snapshot(client, name):
-    screenshot = client.fetch("/v1/screenshot")
-    if not screenshot.startswith(b"\x89PNG\r\n\x1a\n"):
-        raise AssertionError("UI session did not return a PNG")
+    capture = client.screenshot(bind_snapshot=True)
+    screenshot = capture["png"]
+    assert capture.get("snapshot_id"), "Evidence screenshot was not bound to the UI snapshot"
     if target == "windows":
         from PIL import Image
         image = Image.open(io.BytesIO(screenshot)).convert("RGB")
@@ -41,7 +42,7 @@ def snapshot(client, name):
 
 
 def action(client, name, args=None):
-    reply = client.command(name, args or {})
+    reply = client.action(name, args or {})
     if not reply["ok"]:
         raise AssertionError(f"{name} failed")
     return reply["result"]
@@ -61,15 +62,14 @@ def reject_observer_local_network_prompt(client):
     # observed Python permission prompt before pressing its denial button.
     from PIL import Image
 
-    screen = Image.open(io.BytesIO(client.fetch("/v1/screenshot"))).convert("RGB")
+    screen = Image.open(io.BytesIO(client.screenshot())).convert("RGB")
     if screen.size != (1024, 768):
         return False
     title_and_body = screen.crop((396, 212, 628, 324))
     expected = "d6acd0771b4e502f652bae41a0165735b551c1d0d133e64bd079de8853c59243"
     if hashlib.sha256(title_and_body.tobytes()).hexdigest() != expected:
         return False
-    action(client, "pointer.click", {"x": 453, "y": 339})
-    time.sleep(1)
+    action(client, "pointer.click", {"x": 453, "y": 339, "settle": "fast"})
     return True
 
 
@@ -85,7 +85,7 @@ def click_known_windows_role(client, console=False):
     # accessibility tree. Match only the previously observed exact button.
     from PIL import Image
 
-    image = Image.open(io.BytesIO(client.fetch("/v1/screenshot"))).convert("RGB")
+    image = Image.open(io.BytesIO(client.screenshot())).convert("RGB")
     if console:
         rect, pointer = (407, 450, 740, 482), (570, 466)
         expected = "8401e63b3e0ec5174b7125801ae81fabc28c8c0b81aab271d76868910ff865c8"
@@ -98,7 +98,7 @@ def click_known_windows_role(client, console=False):
     digest = hashlib.sha256(image.crop(rect).tobytes()).hexdigest()
     if image.size != (1024, 768) or digest != expected:
         raise AssertionError("Unsupported Windows layout for the exact observed role control")
-    action(client, "pointer.click", {"x": pointer[0], "y": pointer[1]})
+    action(client, "pointer.click", {"x": pointer[0], "y": pointer[1], "settle": "fast"})
 
 
 def observed_windows_service_console(capture):
@@ -172,21 +172,31 @@ def verify_macos_service(client, observed):
 
 
 def choose(client, label):
-    finding = action(client, "element.wait", {
-        "selector": {"text_contains": label},
-        "state": "present",
-        "timeout_ms": 10000,
-    })
-    if finding["matched"] != 1:
-        raise AssertionError("Expected one accessible POS setup control")
-    action(client, "element.click", {"snapshot_id": finding["snapshot_id"], "id": finding["nodes"][0]["id"]})
+    for attempt in range(2):
+        finding = client.wait({"text_contains": label}, timeout_ms=10_000)["result"]
+        if finding["matched"] != 1:
+            raise AssertionError("Expected one accessible POS setup control")
+        try:
+            transition = client.click(snapshot_id=finding["snapshot_id"], id=finding["nodes"][0]["id"],
+                                      settle="fast", return_diff=True)["result"]
+        except ClientError as error:
+            if error.code != "stale_snapshot" or attempt != 0:
+                raise
+        else:
+            change = transition.get("diff", {})
+            result.setdefault("ui_transition_modes", []).append(change.get("mode", "unavailable"))
+            return
+
+
+def control_missing(error):
+    return (error.status, error.code) in {(404, "element_not_found"), (408, "condition_timeout")}
 
 
 def has_label(client, labels):
     for _ in range(10):
-        tree = action(client, "tree.snapshot")
+        tree = client.inspect(format="compact", visible_only=True)["result"]
         if any(label in str(node.get(field, "")) for label in labels
-               for node in tree["nodes"] for field in ("name", "text")):
+               for node in tree["nodes"] for field in ("label", "value")):
             return True
         time.sleep(1)
     return False
@@ -198,7 +208,7 @@ def identify_session():
             connection = json.loads(file.read_text())
             if connection.get("transport") != "local":
                 continue
-            client = Client(connection, work / "token")
+            client = LiveUI.open(file, work / "token")
             info = client.identify()
             if info["target"] == target:
                 return client
@@ -238,7 +248,7 @@ try:
         try:
             choose(client, "Administer this computer's Master service")
         except ClientError as unavailable:
-            if unavailable.status != 408:
+            if not control_missing(unavailable):
                 raise
             click_known_windows_role(client, console=True)
         result["master_console_action_sent"] = True
@@ -253,10 +263,9 @@ try:
     try:
         choose(client, "Set up or inspect the original local branch")
     except ClientError as unavailable:
-        if target != "windows" or unavailable.status != 408:
+        if target != "windows" or not control_missing(unavailable):
             raise
         click_known_windows_role(client)
-        time.sleep(2)
         result["visual_click_sent"] = True
         result["after_png_sha256"] = snapshot(client, "after")
         if result["before_png_sha256"] == result["after_png_sha256"]:

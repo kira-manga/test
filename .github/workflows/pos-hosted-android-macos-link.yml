@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ui-test-actions/ui-test-actions
-          ref: c7d0002a0614da7166f2abef708dc173362aa535
+          ref: e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
           path: verified-bridge
           persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065

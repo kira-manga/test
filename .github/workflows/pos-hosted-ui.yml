@@ -81,7 +81,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: ui-test-actions/ui-test-actions
-          ref: 0c818c5d72e8c30c59bd1287c330a40392bf8e89
+          ref: e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
           persist-credentials: false
           path: ui-client
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
@@ -202,13 +202,16 @@ jobs:
               print(f"digest={sha256(token.encode()).hexdigest()}", file=output)
           PY
           PYTHONPATH="$GITHUB_WORKSPACE/ui-client" python scripts/pos/ui/observe.py > "$work/observer.log" 2>&1 &
-      - uses: ui-test-actions/ui-test-actions@0c818c5d72e8c30c59bd1287c330a40392bf8e89
+      - uses: ui-test-actions/ui-test-actions@e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
         with:
           target: ${{ matrix.platform }}
           transport: local
           token-sha256: ${{ steps.start.outputs.digest }}
           duration-minutes: '2'
           android-ime: '0'
+          android-a11y-daemon: '1'
+          device-isolation: '1'
+          app-ids: ${{ matrix.platform == 'android' && 'com.ukkera.pos.local.testing' || '' }}
           launch: |
             set -euo pipefail
             work="$RUNNER_TEMP/pos-ui"
@@ -453,7 +456,7 @@ jobs:
         if: inputs.android_two_setup
         with:
           repository: ui-test-actions/ui-test-actions
-          ref: 0c818c5d72e8c30c59bd1287c330a40392bf8e89
+          ref: e22f6c35fe6ca50a83890f54e4a6ec29ef0e2951 # v4.1.0
           persist-credentials: false
           path: ui-client
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
