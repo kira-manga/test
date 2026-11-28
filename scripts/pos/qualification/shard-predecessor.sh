@@ -40,6 +40,7 @@ if [[ "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cach
     case "$plan:$revision:$tree" in
         profile-87k-checkout-v1:f9c9ca1dd1947f0bccb1f70e5d33ac928511ee1e:4d4393111192165fa8351f3251a919f10abf3876) ;;
         profile-87k-checkout-cache-v1:b682ccef2d3bc7fb9caca881a82f8101b02d9a11:1464e9ad6e11e5268f64b561ffb8e2bdd183f5f3) ;;
+        profile-87k-checkout-cache-v1:fb6865e52c27f71005d00074274bb05a6ef8741c:4be03806cf7f36d1aa908d5e81b7557f7095ce50) ;;
         profile-87k-checkout-tree-io-v1:250830b5d4191bd9db34efd83909d4c521bfbe8c:296abf87b75ebc0a0998e6f6d81c12144fadb799) ;;
         *) exit 64 ;;
     esac
