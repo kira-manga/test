@@ -17,7 +17,7 @@ DEVICE = os.environ["POS_IOS_SIMULATOR"]
 TEMP = Path(os.environ["RUNNER_TEMP"])
 WORK = TEMP / "pos-ios-ui"
 REPORT = Path("ipad-smoke-output")
-observed = {"family": FAMILY, "status": "failed", "transitions": {}}
+observed = {"family": FAMILY, "status": "failed", "transitions": []}
 
 
 def connect():
@@ -41,7 +41,7 @@ def execute(client, command, **parameters):
 
 def expect(client, label, state="visible", timeout_ms=10000):
     observed["last_assertion"] = {"label": label, "state": state}
-    return client.wait({"label_contains": label}, state=state, timeout_ms=timeout_ms)["result"]
+    return client.wait({"label_contains": label, "visible": True}, state=state, timeout_ms=timeout_ms)["result"]
 
 
 def find_visible(client, label, viewport, state):
@@ -69,7 +69,7 @@ def choose(client, label, viewport=None):
             if failure.code != "stale_snapshot" or attempt != 0:
                 raise
         else:
-            observed["transitions"][label] = action["diff"]["mode"]
+            observed["transitions"].append({"control": label, "mode": action["diff"]["mode"]})
             return
 
 
@@ -124,7 +124,7 @@ def exercise(client):
     expect(client, "Review training total", state="disabled")
     observed["reopened_basket_empty_verified"] = True
     capture(client, "reopened")
-    assert "diff" in observed["transitions"].values(), "No structural diff was returned"
+    assert any(step["mode"] == "diff" for step in observed["transitions"]), "No structural diff was returned"
     observed["status"] = "training_quote_and_lifecycle_verified"
 
 
