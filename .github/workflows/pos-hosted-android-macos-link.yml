@@ -6,7 +6,7 @@ permissions:
   actions: read
 jobs:
   paired-link:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main'
+    if: github.repository == 'kira-manga/test' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test/pos-ui-test-actions-v4.1.0')
     timeout-minutes: 28
     strategy:
       fail-fast: false

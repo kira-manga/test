@@ -61,7 +61,7 @@ permissions:
   actions: read
 jobs:
   installed-ui:
-    if: github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && !inputs.android_lan_preflight && !inputs.android_two_setup && !inputs.windows_sparse_service && !inputs.windows_service_msi
+    if: github.repository == 'kira-manga/test' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test/pos-ui-test-actions-v4.1.0') && !inputs.android_lan_preflight && !inputs.android_two_setup && !inputs.windows_sparse_service && !inputs.windows_service_msi
     strategy:
       fail-fast: false
       matrix:
@@ -395,7 +395,7 @@ jobs:
 
   android-lan-preflight:
     needs: android-signed-candidate
-    if: "!cancelled() && github.repository == 'kira-manga/test' && github.ref == 'refs/heads/main' && (inputs.android_lan_preflight || inputs.android_two_setup) && (inputs.android_candidate_parts == 0 || inputs.android_candidate_run_id != '' || needs.android-signed-candidate.result == 'success')"
+    if: "!cancelled() && github.repository == 'kira-manga/test' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test/pos-ui-test-actions-v4.1.0') && (inputs.android_lan_preflight || inputs.android_two_setup) && (inputs.android_candidate_parts == 0 || inputs.android_candidate_run_id != '' || needs.android-signed-candidate.result == 'success')"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
