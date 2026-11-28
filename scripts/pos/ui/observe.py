@@ -174,6 +174,7 @@ def verify_macos_service(client, observed):
 
 
 def choose(client, label, observed):
+    observed["last_expected_control"] = label
     for attempt in range(2):
         finding = client.wait({"label_contains": label, "visible": True}, timeout_ms=10_000)["result"]
         if finding["matched"] != 1:
@@ -192,6 +193,48 @@ def choose(client, label, observed):
 
 def control_missing(error):
     return (error.status, error.code) in {(404, "element_not_found"), (408, "condition_timeout")}
+
+
+def macos_control_diagnostic(client, label):
+    snapshot = client.inspect(limit=300, format="full", force_refresh=True)["result"]
+    observed = {
+        "driver_nodes": len(snapshot["nodes"]),
+        "driver_truncated": bool(snapshot.get("truncated")),
+        "driver_label_matches": sum(any(label in str(node.get(field, "")) for field in ("name", "text", "label"))
+                                    for node in snapshot["nodes"]),
+    }
+    import ApplicationServices as ax
+
+    window = wait_for_pos(client)
+    application = ax.AXUIElementCreateApplication(window["process_id"])
+    ax.AXUIElementSetMessagingTimeout(application, 0.3)
+
+    def attribute(node, name):
+        status, value = ax.AXUIElementCopyAttributeValue(node, name, None)
+        return value if status == 0 else None
+
+    pending = [attribute(application, "AXFocusedWindow") or application]
+    visited = set()
+    native_matches = 0
+    deadline = time.monotonic() + 8
+    while pending and len(visited) < 300 and time.monotonic() < deadline:
+        node = pending.pop()
+        if node in visited:
+            continue
+        visited.add(node)
+        if attribute(node, "AXSubrole") != "AXSecureTextField":
+            native_matches += any(label in str(attribute(node, key) or "") for key in ("AXTitle", "AXDescription", "AXValue"))
+        for key in ("AXChildren", "AXVisibleChildren", "AXContents"):
+            children = attribute(node, key)
+            available = 300 - len(visited) - len(pending)
+            if children is not None and available > 0:
+                try:
+                    pending.extend(children[:available])
+                except TypeError:
+                    continue
+    observed.update(native_nodes=len(visited), native_label_matches=native_matches,
+                    native_observation_incomplete=bool(pending))
+    return observed
 
 
 def has_label(client, labels):
@@ -298,6 +341,11 @@ except ClientError as error:
     result["reason"] = str(error)
     result["driver_error_code"] = error.code
     result["driver_http_status"] = error.status
+    if target == "macos" and "last_expected_control" in result and control_missing(error):
+        try:
+            result["macos_accessibility"] = macos_control_diagnostic(client, result["last_expected_control"])
+        except (ClientError, AssertionError, ImportError, OSError, RuntimeError, TypeError) as diagnostic:
+            result["macos_accessibility_error_type"] = type(diagnostic).__name__
 except AssertionError as error:
     result["status"] = "assertion_failed"
     result["reason"] = str(error)
