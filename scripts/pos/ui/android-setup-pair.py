@@ -132,11 +132,11 @@ class InstalledUi:
             raise AssertionError(f"Android UI command failed: {command}")
         return reply["result"]
 
-    def find(self, label, scroll=0, wait=0):
+    def find(self, label, scroll=0, wait=0, *, state="present"):
         for attempt in range(abs(scroll) + 1):
             try:
                 found = self.action("element.wait", selector={"text_contains": label},
-                                    state="present", timeout_ms=wait or 1400)
+                                    state=state, timeout_ms=wait or 1400)
                 if found["matched"] == 1:
                     return found
                 raise AssertionError(f"Ambiguous accessible control: {label}")
@@ -145,13 +145,25 @@ class InstalledUi:
                     raise
                 if attempt == abs(scroll):
                     raise AssertionError(f"Expected accessible control is missing: {label}") from None
+            if state == "actionable":
+                try:
+                    found = self.action("element.scroll_into_view", selector={"text_contains": label},
+                                        direction="down" if scroll > 0 else "up",
+                                        max_scrolls=min(abs(scroll), 30), step_distance=0.4)
+                except ClientError as error:
+                    if error.code != "element_not_found":
+                        raise
+                    raise AssertionError(f"Expected actionable control is missing: {label}") from None
+                if len(found["nodes"]) != 1:
+                    raise AssertionError(f"Ambiguous accessible control: {label}")
+                return found
             self.action("pointer.scroll", x=self.width // 2, y=self.height // 2,
                         dy=(min(20, self.height // 55) if scroll > 0 else -min(20, self.height // 55)),
                         settle="fast")
 
     def choose(self, label, scroll=0, wait=0):
         for attempt in range(2):
-            found = self.find(label, scroll=scroll if attempt == 0 else 0, wait=wait)
+            found = self.find(label, scroll=scroll, wait=wait, state="actionable")
             node = found["nodes"][0]
             assert node.get("enabled", True), f"Expected enabled control: {label}"
             try:
