@@ -14,14 +14,20 @@ plan=original
 if [[ -f "$stage/inputs/POS-SHARD-PLAN" ]]; then
     plan=$(cat "$stage/inputs/POS-SHARD-PLAN")
     [[ "$plan" == short-100k-v1 || "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cache-v1 ||
-        "$plan" == profile-87k-checkout-tree-io-v1 ]]
+        "$plan" == profile-87k-checkout-tree-io-v1 || "$plan" == checkpoint-placement-100k-v1 ]]
 fi
 case "$plan:$mode:$segment" in
-    original:pilot:0|original:full:0|original:full:1|original:full:2|short-100k-v1:full:[2-5])
+    original:pilot:0|original:full:0|original:full:1|original:full:2|short-100k-v1:full:[2-5]|checkpoint-placement-100k-v1:full:[0-5])
         printf 'handoff=true\n' >> "$GITHUB_OUTPUT" ;;
-    original:pilot:1|original:full:3|short-100k-v1:full:6|profile-87k-checkout-v1:full:6|profile-87k-checkout-cache-v1:full:6|profile-87k-checkout-tree-io-v1:full:6) ;;
+    original:pilot:1|original:full:3|short-100k-v1:full:6|profile-87k-checkout-v1:full:6|profile-87k-checkout-cache-v1:full:6|profile-87k-checkout-tree-io-v1:full:6|checkpoint-placement-100k-v1:full:6) ;;
     *) exit 64 ;;
 esac
+if [[ "$plan" == checkpoint-placement-100k-v1 ]]; then
+    # Begin with an empty synthetic installation. Every later input is authenticated
+    # below and must have the same source and workflow as this campaign.
+    [[ "$(cat "$stage/inputs/POS-REVISION")" == 9aa65986f3e542b7a869f29c11fcb412b561c7b9 ]]
+    [[ "$(cat "$stage/inputs/POS-TREE")" == b655c227a3deaa9fa29d6e391cf3fc2bd7c5bf11 ]]
+fi
 reference="$stage/inputs/POS-SHARD-PREDECESSOR"
 if (( segment == 0 )); then
     test ! -e "$reference"
