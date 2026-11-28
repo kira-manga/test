@@ -51,8 +51,9 @@ def action(client, name, args=None):
 def wait_for_pos(client):
     for _ in range(15):
         windows = action(client, "windows.list")["windows"]
-        if any("Ukkera POS" in window.get("title", "") for window in windows):
-            return
+        matches = [window for window in windows if window.get("title") == "Ukkera POS · Local qualification"]
+        if len(matches) == 1:
+            return matches[0]
         time.sleep(1)
     raise AssertionError("The installed application window never appeared")
 
@@ -121,9 +122,10 @@ def verify_macos_service(client, observed):
     label = "com.ukkera.pos.master"
     agent = Path.home() / "Library/LaunchAgents" / f"{label}.plist"
     assert not agent.exists(), "Expected a fresh macOS user service"
-    choose(client, "Administer this computer's Master service")
+    action(client, "windows.focus", {"id": wait_for_pos(client)["id"]})
+    choose(client, "Administer this computer's Master service", observed)
     observed["master_console_action_sent"] = True
-    choose(client, "Install Master service")
+    choose(client, "Install Master service", observed)
     observed["install_service_ui_action_sent"] = True
 
     for _ in range(16):
@@ -162,7 +164,7 @@ def verify_macos_service(client, observed):
 
     connected = has_label(client, ("Master employee administration",))
     if not connected and has_label(client, ("Reconnect to setup",)):
-        choose(client, "Reconnect to setup")
+        choose(client, "Reconnect to setup", observed)
         observed["master_console_reconnect_ui_action_sent"] = True
         connected = has_label(client, ("Master employee administration",))
     observed["master_console_accessible_verified"] = connected
@@ -171,9 +173,9 @@ def verify_macos_service(client, observed):
     observed["status"] = "master_service_console_navigation_verified"
 
 
-def choose(client, label):
+def choose(client, label, observed):
     for attempt in range(2):
-        finding = client.wait({"text_contains": label}, timeout_ms=10_000)["result"]
+        finding = client.wait({"label_contains": label, "visible": True}, timeout_ms=10_000)["result"]
         if finding["matched"] != 1:
             raise AssertionError("Expected one accessible POS setup control")
         try:
@@ -184,7 +186,7 @@ def choose(client, label):
                 raise
         else:
             change = transition.get("diff", {})
-            result.setdefault("ui_transition_modes", []).append(change.get("mode", "unavailable"))
+            observed.setdefault("ui_transition_modes", []).append(change.get("mode", "unavailable"))
             return
 
 
@@ -236,6 +238,9 @@ try:
         result["observer_local_network_permission_denied"] = True
         result["entry_png_sha256"] = snapshot(client, "entry")
     if target == "android":
+        info = client.device_info()["result"]
+        result["android_accessibility_engine"] = info["driver"]["a11y_engine"]
+        result["android_layout_class"] = info["window_size_class"]["layout_class"]
         from PIL import Image
         before = Image.open(report / "before.png").convert("RGB")
         result["screen_capture_opaque"] = all(low == high == 0 for low, high in before.getextrema())
@@ -246,7 +251,7 @@ try:
     console = target == "windows" and os.environ.get("POS_WINDOWS_CONSOLE_UI") == "true"
     if console:
         try:
-            choose(client, "Administer this computer's Master service")
+            choose(client, "Administer this computer's Master service", result)
         except ClientError as unavailable:
             if not control_missing(unavailable):
                 raise
@@ -261,7 +266,7 @@ try:
         rc = 0
         sys.exit(0)
     try:
-        choose(client, "Set up or inspect the original local branch")
+        choose(client, "Set up or inspect the original local branch", result)
     except ClientError as unavailable:
         if target != "windows" or not control_missing(unavailable):
             raise
@@ -278,7 +283,7 @@ try:
         result["composition_choice_opened"] = has_label(client, ("Choose the setup composition",))
         if not result["composition_choice_opened"]:
             raise AssertionError("Android did not show the exact setup composition chooser")
-        choose(client, "SYNTHETIC TRAINING 1 - NOT LIVE")
+        choose(client, "SYNTHETIC TRAINING 1 - NOT LIVE", result)
         labels = ("Synthetic training composition",)
     else:
         labels = ("Set up local Ukkera POS", "Local setup connection", "Choose setup mode")
@@ -291,6 +296,8 @@ try:
 except ClientError as error:
     result["status"] = "ui_driver_failed"
     result["reason"] = str(error)
+    result["driver_error_code"] = error.code
+    result["driver_http_status"] = error.status
 except AssertionError as error:
     result["status"] = "assertion_failed"
     result["reason"] = str(error)

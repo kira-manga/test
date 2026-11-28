@@ -51,6 +51,7 @@ class InstalledUi:
         self.heartbeat = None
         self.process = None
         self.expires_unix = None
+        self.password_observation_refreshes = 0
         self.env = {
             **os.environ,
             "RUNNER_TEMP": str(self.directory),
@@ -334,9 +335,20 @@ class InstalledUi:
     def require_focused_password(self, label):
         # The driver redacts secure fields. Verify focus and field type without
         # reading, saving, or reporting the typed synthetic credential.
-        nodes = self.action("tree.snapshot")["nodes"]
-        focused = [node for node in nodes if node.get("visible") and node["properties"].get("package") == PACKAGE
-                   and node["properties"].get("focused") and node["properties"].get("password")]
+        try:
+            finding = self.session.wait(
+                {"owner_app": PACKAGE, "visible": True, "properties": {"password": True, "focused": True}},
+                state="focused", timeout_ms=4_000,
+            )["result"]
+            focused = finding["nodes"]
+        except ClientError as error:
+            if error.code not in {"element_not_found", "condition_timeout"}:
+                raise
+            self.password_observation_refreshes += 1
+            snapshot = self.session.inspect(scope="all", include_hidden=False, force_refresh=True)["result"]
+            focused = [node for node in snapshot["nodes"] if node.get("owner_app") == PACKAGE
+                       and node.get("visible") and node["properties"].get("focused")
+                       and node["properties"].get("password")]
         assert len(focused) == 1, f"Android secure edit did not have one focused password control: {label}"
 
     def review_identifier(self, label):
@@ -1232,6 +1244,9 @@ def main():
                 verify_pairing_proof(sessions["master"], sessions["client"], observation)
     except (AssertionError, ClientError) as failure:
         observation["failed_observation"] = str(failure)
+        if isinstance(failure, ClientError):
+            observation["driver_error_code"] = failure.code
+            observation["driver_http_status"] = failure.status
         for role, ui in sessions.items():
             if (getattr(ui, "session", None) is not None and
                     str(failure) == "Expected accessible control is missing: Set up or inspect the original local branch"):
@@ -1248,6 +1263,7 @@ def main():
         for role, ui in sessions.items():
             if hasattr(ui, "accessibility_engine"):
                 observation[f"{role}_accessibility_engine"] = ui.accessibility_engine
+                observation[f"{role}_password_observation_refreshes"] = ui.password_observation_refreshes
             try:
                 observation[f"{role}_pairing_picker_transitions"] = ui.pairing_picker_transitions()
             except (OSError, subprocess.SubprocessError):
