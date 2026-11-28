@@ -13,12 +13,13 @@ segment=$(jq -er '.segment | select(type == "number" and . == floor and . >= 0)'
 plan=original
 if [[ -f "$stage/inputs/POS-SHARD-PLAN" ]]; then
     plan=$(cat "$stage/inputs/POS-SHARD-PLAN")
-    [[ "$plan" == short-100k-v1 || "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cache-v1 ]]
+    [[ "$plan" == short-100k-v1 || "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cache-v1 ||
+        "$plan" == profile-87k-checkout-tree-io-v1 ]]
 fi
 case "$plan:$mode:$segment" in
     original:pilot:0|original:full:0|original:full:1|original:full:2|short-100k-v1:full:[2-5])
         printf 'handoff=true\n' >> "$GITHUB_OUTPUT" ;;
-    original:pilot:1|original:full:3|short-100k-v1:full:6|profile-87k-checkout-v1:full:6|profile-87k-checkout-cache-v1:full:6) ;;
+    original:pilot:1|original:full:3|short-100k-v1:full:6|profile-87k-checkout-v1:full:6|profile-87k-checkout-cache-v1:full:6|profile-87k-checkout-tree-io-v1:full:6) ;;
     *) exit 64 ;;
 esac
 reference="$stage/inputs/POS-SHARD-PREDECESSOR"
@@ -31,7 +32,7 @@ read -r previous attempt extra < "$reference"
 [[ "$previous" != "$GITHUB_RUN_ID" ]]
 revision=$(cat "$stage/inputs/POS-REVISION")
 predecessor_workflow=$GITHUB_SHA
-if [[ "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cache-v1 ]]; then
+if [[ "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cache-v1 || "$plan" == profile-87k-checkout-tree-io-v1 ]]; then
     # This supporting run reads the closed 87k synthetic installation with the
     # separately qualified catalogue reader. It never exports a successor.
     [[ "$previous:$attempt" == 46037079629:1 ]]
@@ -39,6 +40,7 @@ if [[ "$plan" == profile-87k-checkout-v1 || "$plan" == profile-87k-checkout-cach
     case "$plan:$revision:$tree" in
         profile-87k-checkout-v1:f9c9ca1dd1947f0bccb1f70e5d33ac928511ee1e:4d4393111192165fa8351f3251a919f10abf3876) ;;
         profile-87k-checkout-cache-v1:b682ccef2d3bc7fb9caca881a82f8101b02d9a11:1464e9ad6e11e5268f64b561ffb8e2bdd183f5f3) ;;
+        profile-87k-checkout-tree-io-v1:250830b5d4191bd9db34efd83909d4c521bfbe8c:296abf87b75ebc0a0998e6f6d81c12144fadb799) ;;
         *) exit 64 ;;
     esac
     gh api "repos/$GITHUB_REPOSITORY/actions/runs/46064566361" | jq -e '
