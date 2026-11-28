@@ -559,7 +559,17 @@ def master_onboarding(ui, observation, scope_queue):
         ui.choose("Prepare only these original branch/device IDs", scroll=5)
         ui.choose("Retain original preparation", scroll=5)
         observation["master_branch_submit_sent"] = True
-        ui.choose("Prepare only the original target", scroll=8)
+        try:
+            ui.choose("Prepare only the original target", scroll=8)
+        except AssertionError:
+            before_inspection = ui.visible_setup_outcome()
+            labels = before_inspection["known_labels"]
+            observation["master_original_preparation_before_inspection"] = before_inspection
+            if not {"company_unresolved", "recovery_action"}.issubset(labels):
+                raise
+            ui.choose("Inspect the same original again", scroll=8)
+            observation["master_inspected_same_original"] = True
+            ui.choose("Prepare only the original target", scroll=8, wait=5_000)
         ui.find("Original native material retained", scroll=-10)
         observation["master_original_target_retained"] = True
         if ACTIVATE:
